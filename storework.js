@@ -660,6 +660,13 @@ const OPS = {
     return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } },
       big: { min: FIND_BIG, open: (file, onMessage, o) => BC().reader(fs, file, { ...o, onMessage, chunk: 512 * 1024 }) } }); // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed in slices
   },
+  // (round 83, idleburst83) 🧭 Cost coach's look at one chat (costcoachmain.js scan): parsed here, only its per-reply
+  // records go back (a long chat's JSON.parse held the main process 70–140 ms)
+  costRecords({ file, from, to }) {
+    const chat = readChat(file);
+    if (!chat) return null;
+    return { id: chat.id, agent: chat.agentId, title: String(chat.title || '').slice(0, 80), recs: require('./costcoach-core').recordsOf(chat, { from, to }) };
+  },
   forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
 };

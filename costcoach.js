@@ -187,7 +187,12 @@ const CostCoach = (() => {
     if (s.state === 'unreadable') return { skipped: 'store' };
     const wk = C.weekKey(now);
     if (s.value.noted[wk]) return { skipped: 'noted' };
+    // (round 83, idleburst83) a week whose note wasn't due is looked at again at most once a day: the look reads every
+    // chat changed in 7 days (2 min after EVERY start, then every 6 h, as long as the note stayed small)
+    const seen = store.get('costcoach.small', null);
+    if (seen?.wk === wk && now - (Number(seen.at) || 0) < 20 * 3600e3) return { skipped: 'small (looked at today)' };
     const res = await compute().catch(() => null);
+    if (res && !res.note?.due) store.set('costcoach.small', { wk, at: now });
     if (!res?.note?.due) return { skipped: 'small' };
     const show = () => toast(res.note.text, { timeout: 12000, action: { label: 'See the fixes', fn: () => open() } });
     const shown = window.Hints ? await Hints.offer({ id: `costcoach:${wk}`, rank: 50, ttl: 30 * 60000, show }) : Boolean(show());
