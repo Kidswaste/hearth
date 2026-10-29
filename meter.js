@@ -466,7 +466,7 @@ const Meter = (() => {
   // meter-dash.js, out of the first screen: lazy group 'meterdash', loaded in an idle moment after it or when the
   // dashboard first opens. Same code; what it reads from here comes through Meter._dash.
   async function dashboard(tab) { if (window.Lazy) await Lazy.load('meterdash'); return MeterDash.dashboard(tab); }
-  const dashOpen = () => (window.Lazy ? Lazy.isIn('meterdash') : typeof MeterDash !== 'undefined') && MeterDash.dlg;
+  const dashOpen = () => (window.Lazy ? Lazy.isIn('meterdash') : typeof MeterDash !== 'undefined') && MeterDash.dlg?.open && MeterDash.dlg; // open now: its close event (which forgets it) comes a task later, and a quick Ctrl+Shift+U after a close must reopen it
   // average tokens per weekday over every recorded day (Mon first)
   function weekdays() {
     const acc = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));

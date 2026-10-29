@@ -38,6 +38,12 @@ async function round(label) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'U', ctrlKey: true, shiftKey: true, bubbles: true }));
   for (let i = 0; i < 30 && !document.querySelector('dialog.meter-dlg[open]'); i++) await sleep(100);
   ok(document.querySelector('dialog.meter-dlg[open]'), `${label}: Ctrl+Shift+U opens it again`);
+  // the same key at once after a close (Esc / ×): its close event hasn't run yet, and it must still reopen
+  document.querySelector('dialog.meter-dlg[open]')?.close();
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'U', ctrlKey: true, shiftKey: true, bubbles: true }));
+  for (let i = 0; i < 30 && !document.querySelector('dialog.meter-dlg[open]'); i++) await sleep(100);
+  await sleep(150); // (a late close event of the old one must not take the new one away)
+  ok(document.querySelectorAll('dialog.meter-dlg[open]').length === 1, `${label}: Ctrl+Shift+U right after a close reopens it`);
   await closeAll();
   await AppUI.usageDialog();
   ok(document.querySelector('dialog.meter-dlg[open]'), `${label}: the old usage entry opens the dashboard`);
