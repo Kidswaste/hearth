@@ -157,6 +157,7 @@ const HistoryLeanCore = (() => {
     const upto = o.upto ?? Math.max(0, (chat?.messages?.length || 0) - 1);
     const { head, list: raw } = scope(chat, upto);
     const list = raw.filter(talk);
+    if (list.length > LAZY_FROM && !o.whole) return buildFromEnd(head, list, o); // (round 82, bigchat82; o.whole: the whole way, for tests)
     const current = codeIndex(list);
     // tiers: from the end, the last KEEP exchanges word for word, then RECENT trimmed, then the rest shortened
     let users = 0;
@@ -178,6 +179,64 @@ const HistoryLeanCore = (() => {
     const intro = `We continue this chat in a fresh session to save tokens. Here is our conversation so far, lighter: tool results and pictures are not sent again, and earlier code versions and older long answers are shortened (in [brackets]). Re-run a tool to see the current state; ${fetch}. Continue naturally; don't redo finished work.`;
     const text = `${intro}\n\n<earlier_conversation>\n${history}\n</earlier_conversation>\n\n${o.text ?? ''}`;
     return { text, history, tokens: tok(text) - tok(o.text ?? ''), dropped, stubs, messages: list.length };
+  }
+
+  // (round 82, bigchat82) a long chat: the same result, made from its END. The lighter history keeps the first message and
+  // the newest rows that fit in MAX_CHARS, so the rows in between were rendered (code stubbed, words clipped: ≈ 0.2–0.3 s
+  // of the window's time on every message sent in a 6,000-message chat) only to be dropped. Here rows are rendered newest
+  // first until the cap is reached; a code block is "current" when no LATER block has its key, which reading from the end
+  // tells as it goes (the first message's blocks: the rest is read for their keys only when it has long ones).
+  // dev/historylean-test.js checks it against the whole build.
+  const LAZY_FROM = 400;
+  function blocksOf(m, i) { // [{ id, key, long }] of a message's code blocks, in order
+    if (m.role === 'user' && !/```/.test(m.text || '')) return [];
+    const out = []; let b = 0;
+    for (const x of String(m.ctx || m.text || '').matchAll(FENCE)) { out.push({ id: `${i}:${b}`, long: x[2].split('\n').length > CODE_LINES, key: x[2].split('\n').length > CODE_LINES ? codeKey(x[1], x[2], String(m.text).slice(0, x.index)) : null }); b += 1; }
+    return out;
+  }
+  function buildFromEnd(head, list, o) {
+    const n = list.length;
+    let users = 0;
+    const tiers = new Array(n);
+    for (let i = n - 1; i >= 0; i--) {
+      tiers[i] = users < KEEP ? 'keep' : users < KEEP + RECENT ? 'recent' : 'old';
+      if (list[i].role === 'user') users += 1;
+    }
+    const firstKeep = tiers.indexOf('keep');
+    const seen = new Set(); const current = new Set();
+    const scan = (i) => { const bl = blocksOf(list[i], i); for (let j = bl.length - 1; j >= 0; j--) { const x = bl[j]; if (x.long && !seen.has(x.key)) { seen.add(x.key); current.add(x.id); } } };
+    const rows = new Array(n);
+    let scanned = n; // messages [scanned, n) read for their blocks
+    const rowAt = (i) => { while (scanned > i) scan(--scanned); return (rows[i] = render(list[i], tiers[i], i, current)); };
+    // the newest rows, while they fit (the whole build drops rows[1..cut) from the oldest while over the cap, never past
+    // the first 'keep' row nor the last row)
+    rowAt(n - 1);
+    let tail = rows[n - 1].length + 2; let cut = n - 1;
+    const firstLen = () => (rows[0] ?? '').length + 2;
+    // the first row needs the blocks of everything after it when it has long ones
+    const row0 = () => { if (rows[0] !== undefined) return; if (blocksOf(list[0], 0).some((x) => x.long)) { while (scanned > 1) scan(--scanned); } rows[0] = render(list[0], tiers[0], 0, firstCurrent()); };
+    // (row 0's own blocks: current when no later block has their key; the blocks after it are all scanned by then)
+    const firstCurrent = () => { const c = new Set(current); const s2 = new Set(seen); const bl = blocksOf(list[0], 0); for (let j = bl.length - 1; j >= 0; j--) { const x = bl[j]; if (x.long && !s2.has(x.key)) { s2.add(x.key); c.add(x.id); } } return c; };
+    if (n > 1) {
+      row0();
+      while (cut > 1) {
+        const i = cut - 1;
+        const len = rowAt(i).length + 2;
+        if (i >= firstKeep && firstKeep >= 0) { tail += len; cut = i; continue; } // a 'keep' row always stays
+        if (head.length + firstLen() + tail + len > MAX_CHARS) break;
+        tail += len; cut = i;
+      }
+    } else cut = 1;
+    // the whole build's cut: rows[1..cut) dropped; when every row fits, none
+    const kept0 = n ? [rows[0] ?? (row0(), rows[0])] : [];
+    const dropped = Math.max(0, cut - 1);
+    const fetch = o.chatTools ? 'chat_do {op: "earlier", query: "<words>"} returns any earlier message word for word' : 'ask me if you need an earlier detail';
+    const kept = dropped > 0 ? [kept0[0], `[… ${dropped} earlier messages left out here; ${o.chatTools ? 'chat_do earlier finds them' : 'ask me for them'} …]`, ...rows.slice(cut)] : [...kept0, ...rows.slice(1)];
+    const history = [head, kept.join('\n\n')].filter(Boolean).join('\n\n');
+    const stubs = { tools: list.reduce((k, m) => k + (Array.isArray(m.tools) ? m.tools.length : 0), 0), pictures: list.reduce((k, m) => k + (m.attachments || []).filter((a) => a.kind === 'image').length, 0), code: (history.match(/\[code[^\]]*lines: /g) || []).length, clipped: (history.match(/\[…≈ /g) || []).length };
+    const intro = `We continue this chat in a fresh session to save tokens. Here is our conversation so far, lighter: tool results and pictures are not sent again, and earlier code versions and older long answers are shortened (in [brackets]). Re-run a tool to see the current state; ${fetch}. Continue naturally; don't redo finished work.`;
+    const text = `${intro}\n\n<earlier_conversation>\n${history}\n</earlier_conversation>\n\n${o.text ?? ''}`;
+    return { text, history, tokens: tok(text) - tok(o.text ?? ''), dropped, stubs, messages: n };
   }
 
   // ---------- the decision ----------

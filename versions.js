@@ -104,8 +104,10 @@ const Versions = (() => {
   // ---------- Preview (read-only) ----------
   async function thingOf(S, e) {
     if (e.tm) { const st = await ThreeHistory.stateOf(e.tm, S.id); const cur = lab()?.get?.(S.id); return st ? { ...clone(cur || {}), layers: st.layers, palette: st.palette } : null; }
-    return api().read(e.token);
+    return readThing(e.token);
   }
+  // (round 82, bigchat82) a giant chat's version comes as bytes (parsed here, never on the main process)
+  async function readThing(token) { const v = await api().read(token); return v?.__chatBytes ? JSON.parse(new TextDecoder().decode(v.__chatBytes)) : v; }
   async function preview(S, e) {
     const v = await thingOf(S, e).catch(() => null);
     if (!v) { toast('That version can\'t be read any more.', { timeout: 4000 }); return; }
@@ -158,7 +160,7 @@ const Versions = (() => {
           const k = await api().keep(S, cur);
           if (!k?.ok) throw new Error(k?.error || 'The version in place couldn\'t be kept, so nothing was changed.');
           before = k.before;
-          let v = await api().read(e.token);
+          let v = await readThing(e.token); // (round 82: was api().read)
           if (!v) throw new Error('That version isn\'t there any more.');
           if (over) v = (await api().undo(S.kind, over, v, cur)) || v;
           restored = VC.restoreValue(S.kind, v, cur);

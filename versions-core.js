@@ -35,6 +35,7 @@
   }
   // a short hash (FNV-1a, two lanes): enough to tell versions of one thing apart
   function hashOf(kind, thing) {
+    if (thing?.__digest) return thing.key; // (round 82, bigchat82) a giant chat's digest (bigchat-core.js): its key, made from its bytes
     const s = canon(thing);
     let a = 0x811c9dc5; let b = 0x01000193 ^ s.length;
     for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); a = Math.imul(a ^ c, 16777619) >>> 0; b = Math.imul(b ^ c, 2246822519) >>> 0; }
@@ -57,8 +58,23 @@
   }
   const textOf = (m) => String(m?.text ?? m?.content ?? '');
   const codeOf = (s) => (listOf(s?.layers).length ? listOf(s.layers).map((l) => `${l.code || ''}`).join('\n') : String(s?.code || ''));
+  // (round 82, bigchat82) the same words for a giant chat, from digests (bigchat-core.js digestBytes): no chat parsed
+  function summaryDigest(v, cur) {
+    if (!cur) return `${plural(v.n, 'message')}`;
+    if (v.key === cur.key) return 'same as now';
+    const parts = [];
+    const d = v.n - cur.n;
+    if (d) parts.push(moreFewer(d, 'message'));
+    const byId = new Map(); cur.ids.forEach((id, i) => { if (id) byId.set(id, i); });
+    let worded = 0;
+    for (let i = 0; i < v.n; i++) { const id = v.ids[i]; const c = id ? byId.get(id) : i; if (c !== undefined && c < cur.n && cur.texts[c] !== v.texts[i]) worded += 1; }
+    if (worded) parts.push(`${plural(worded, 'message')} worded differently`);
+    if ((v.title || '') !== (cur.title || '')) parts.push(`title “${String(v.title || '').slice(0, 40)}”`);
+    return parts.filter(Boolean).join(' · ') || 'small differences';
+  }
   function summary(kind, v, cur) {
     if (!v) return '';
+    if (v.__digest) return summaryDigest(v, cur?.__digest ? cur : null);
     if (!cur) return kind === 'chat' ? `${plural(listOf(v.messages).length, 'message')}` : 'not here now';
     if (hashOf(kind, v) === hashOf(kind, cur)) return 'same as now';
     const parts = [];

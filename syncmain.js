@@ -94,6 +94,7 @@ function start() {
     // (round 72, sync72) a big store arriving / changed on both computers: its JSON work on the same thread
     pullJson: opts.store?.runOff ? (a) => opts.store.runOff('syncPull', a) : undefined,
     mergeJson: opts.store?.runOff ? (a) => opts.store.runOff('syncMerge', a) : undefined,
+    textJson: opts.store?.runOff ? (a) => opts.store.runOff('syncText', a) : undefined, // (round 82, bigchat82) a giant chat's cloud form for a push, made on the files thread
     jsonSettleMs: JSON_SETTLE, // (round 77, synclatency77)
     hold: holdHot, // (round 77) a chat a reply is streaming into goes up when it calms down (≥ every 20 s / 60 s while busy)
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },

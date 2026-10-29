@@ -1,242 +1,410 @@
 {
- "about": "dev/perfguard.js baseline (round 77, perfguard77): medians of per-launch values; spread = their median absolute deviation. Rebaseline: docs/upgrades/perfguard77.md",
- "when": "2026-10-28T05:15:29.770Z",
+ "about": "dev/perfguard.js baseline (round 77, perfguard77; calibration + CPU times from round 82, perfguard82): medians of per-launch values; spread = their median absolute deviation; calib = the calibration benchmark per part when it was recorded. Rebaseline: docs/upgrades/perfguard77.md",
+ "when": "2026-10-29T06:20:53.001Z",
  "machine": {
   "cpus": 4,
-  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
   "memGB": 16,
-  "platform": "linux 6.18.44-fc-v180",
+  "platform": "linux 6.18.44-fc-v185",
   "node": "v22.22.0",
   "electron": "44.5.1",
   "gl": "SwiftShader (software) under Xvfb",
-  "commit": "6a8482d",
+  "commit": "6d38298",
   "dirty": true,
   "loadStart": [
-   1.99,
-   2.83,
-   2.25
+   1.76,
+   2.66,
+   2.56
   ],
   "loadEnd": [
-   3.02,
-   2.94,
-   2.33
+   1.94,
+   2.72,
+   2.76
   ],
-  "minutes": 1
+  "minutes": 11.5
  },
  "settings": {
   "runs": 3,
   "starts": 5,
   "sync": 3,
+  "rounds": 3,
   "parts": [
-   "startup"
+   "startup",
+   "app",
+   "sync"
   ],
   "fixture": "/tmp/hearth-bigprofile72",
   "syncFixture": "/tmp/hearth-sync72-bigprofile"
  },
  "parts": {
   "startup": {
-   "when": "2026-10-28T05:15:29.770Z",
-   "commit": "6a8482d",
+   "when": "2026-10-29T06:20:53.001Z",
+   "commit": "6d38298",
    "dirty": true,
    "load": [
     [
-     1.99,
-     2.83,
-     2.25
+     1.76,
+     2.66,
+     2.56
     ],
     [
-     3.02,
-     2.94,
-     2.33
+     1.94,
+     2.72,
+     2.76
     ]
    ]
   },
   "sync": {
-   "when": "2026-10-28T05:04:30Z",
-   "commit": "6a8482d",
-   "dirty": false,
-   "load": [
-    [
-     1.64,
-     1.37,
-     0.81
-    ],
-    null
-   ]
-  },
-  "app": {
-   "when": "2026-10-28T05:11:26.593Z",
-   "commit": "6a8482d",
+   "when": "2026-10-29T06:20:53.001Z",
+   "commit": "6d38298",
    "dirty": true,
    "load": [
     [
-     1.78,
-     2.25,
-     1.51
+     1.76,
+     2.66,
+     2.56
     ],
     [
-     3.58,
-     3.41,
-     2.27
+     1.94,
+     2.72,
+     2.76
+    ]
+   ]
+  },
+  "app": {
+   "when": "2026-10-29T06:20:53.001Z",
+   "commit": "6d38298",
+   "dirty": true,
+   "load": [
+    [
+     1.76,
+     2.66,
+     2.56
+    ],
+    [
+     1.94,
+     2.72,
+     2.76
     ]
    ]
   }
  },
+ "calib": {
+  "startup": {
+   "n": 2,
+   "single": 54.69,
+   "par": 72.36,
+   "win": null,
+   "wait": 0.98,
+   "load": 0.65,
+   "loadavg": [
+    1.76,
+    2.58
+   ],
+   "unstable": 1.05
+  },
+  "app": {
+   "n": 6,
+   "single": 52.33,
+   "par": 66.34,
+   "win": 32.7,
+   "wait": 0.97,
+   "load": 0.66,
+   "loadavg": [
+    2.58,
+    2.45,
+    2.33,
+    2.44,
+    2.44,
+    2.64
+   ],
+   "unstable": 1.61
+  },
+  "sync": {
+   "n": 6,
+   "single": 54.99,
+   "par": 69.63,
+   "win": null,
+   "wait": 0.99,
+   "load": 0.66,
+   "loadavg": [
+    2.64,
+    2.19,
+    2.19,
+    1.86,
+    1.86,
+    1.94
+   ],
+   "unstable": 1.25
+  }
+ },
  "metrics": {
-  "sync.steadyStall": {
-   "label": "Sync steady pass: main-process stall",
+  "start.ready": {
+   "label": "Start → first usable chat",
    "unit": "ms",
-   "median": 18.89,
-   "spread": 0.02,
-   "spreadPct": 0.11,
-   "n": 3,
+   "median": 1072,
+   "spread": 63,
+   "spreadPct": 5.88,
+   "n": 5,
    "values": [
-    18.91,
-    17.47,
-    18.89
+    1009,
+    1095,
+    1001,
+    1072,
+    1272
    ]
   },
-  "sync.changeStall": {
-   "label": "Sync small-change pass: main-process stall",
+  "start.settled": {
+   "label": "Start → settled (last long task)",
    "unit": "ms",
-   "median": 17.2,
-   "spread": 0.81,
-   "spreadPct": 4.71,
-   "n": 3,
+   "median": 2967,
+   "spread": 108,
+   "spreadPct": 3.64,
+   "n": 5,
    "values": [
-    16.39,
-    19.92,
-    17.2
+    1531,
+    3075,
+    2967,
+    2973,
+    1963
    ]
   },
-  "sync.steadyWall": {
-   "label": "Sync steady pass: wall time",
+  "start.cpuReady": {
+   "label": "Start → first screen: CPU, main + window",
    "unit": "ms",
-   "median": 247,
-   "spread": 10,
-   "spreadPct": 4.05,
-   "n": 3,
+   "median": 5240,
+   "spread": 70,
+   "spreadPct": 1.34,
+   "n": 5,
    "values": [
-    236,
-    257,
-    247
+    5170,
+    5240,
+    5240,
+    4960,
+    5320
+   ]
+  },
+  "start.cpuSettled": {
+   "label": "Start → settled: CPU, main + window",
+   "unit": "ms",
+   "median": 5330,
+   "spread": 60,
+   "spreadPct": 1.13,
+   "n": 5,
+   "values": [
+    5270,
+    5330,
+    5340,
+    5050,
+    5430
    ]
   },
   "project.coldOpen": {
    "label": "Project cold open (Hearth's part)",
    "unit": "ms",
-   "median": 143,
-   "spread": 13,
-   "spreadPct": 9.09,
+   "median": 358,
+   "spread": 11,
+   "spreadPct": 3.07,
    "n": 3,
    "values": [
-    180,
-    143,
-    130
+    358,
+    319,
+    369
    ]
   },
   "project.warmOpen": {
    "label": "Project warm open (Hearth's part)",
    "unit": "ms",
-   "median": 486,
-   "spread": 3,
-   "spreadPct": 0.62,
+   "median": 1682,
+   "spread": 68,
+   "spreadPct": 4.04,
    "n": 3,
    "values": [
-    486,
-    489,
-    444
+    1750,
+    1682,
+    1603
    ]
   },
   "project.switch": {
    "label": "Project switch (Hearth's part)",
    "unit": "ms",
-   "median": 227,
-   "spread": 1,
-   "spreadPct": 0.44,
+   "median": 870,
+   "spread": 54,
+   "spreadPct": 6.21,
    "n": 3,
    "values": [
-    227,
-    210,
-    228
+    870,
+    561,
+    924
+   ]
+  },
+  "project.coldOpenCpu": {
+   "label": "Project cold open: window CPU",
+   "unit": "ms",
+   "median": 578,
+   "spread": 71,
+   "spreadPct": 12.28,
+   "n": 3,
+   "values": [
+    437,
+    578,
+    649
+   ]
+  },
+  "project.warmOpenCpu": {
+   "label": "Project warm open: window CPU",
+   "unit": "ms",
+   "median": 1037,
+   "spread": 64,
+   "spreadPct": 6.17,
+   "n": 3,
+   "values": [
+    1230,
+    973,
+    1037
+   ]
+  },
+  "project.switchCpu": {
+   "label": "Project switch: window CPU",
+   "unit": "ms",
+   "median": 735,
+   "spread": 27,
+   "spreadPct": 3.67,
+   "n": 3,
+   "values": [
+    831,
+    735,
+    708
    ]
   },
   "chat.switch": {
    "label": "Long chat opened from its list row",
    "unit": "ms",
-   "median": 121,
-   "spread": 8,
-   "spreadPct": 6.61,
+   "median": 202,
+   "spread": 2,
+   "spreadPct": 0.99,
    "n": 3,
    "values": [
-    113,
-    121,
-    129
+    200,
+    202,
+    224
+   ]
+  },
+  "chat.switchCpu": {
+   "label": "Long chat opened: window CPU",
+   "unit": "ms",
+   "median": 102,
+   "spread": 1,
+   "spreadPct": 0.98,
+   "n": 3,
+   "values": [
+    101,
+    102,
+    115
    ]
   },
   "chat.clickHandler": {
    "label": "Chat list click: window handlers",
    "unit": "ms",
-   "median": 6.7,
-   "spread": 0.4,
-   "spreadPct": 5.97,
+   "median": 11.6,
+   "spread": 0.05,
+   "spreadPct": 0.43,
    "n": 3,
    "values": [
-    7.35,
-    6.3,
-    6.7
+    14.25,
+    11.55,
+    11.6
    ]
   },
   "chat.clickCpu": {
-   "label": "Chat list click: window CPU in 600 ms",
+   "label": "Chat list click: window busy in 600 ms",
    "unit": "ms",
-   "median": 36.95,
-   "spread": 0.35,
-   "spreadPct": 0.95,
+   "median": 71.4,
+   "spread": 2.5,
+   "spreadPct": 3.5,
    "n": 3,
    "values": [
-    36.55,
-    37.3,
-    36.95
+    71.4,
+    67.9,
+    73.9
+   ]
+  },
+  "chat.clickThreadCpu": {
+   "label": "Chat list click: window CPU in 700 ms",
+   "unit": "ms",
+   "median": 166,
+   "spread": 2,
+   "spreadPct": 1.2,
+   "n": 3,
+   "values": [
+    166,
+    164,
+    171
    ]
   },
   "chat.keyHandler": {
    "label": "Typing: window handlers per key",
    "unit": "ms",
-   "median": 0.2,
-   "spread": 0,
-   "spreadPct": 0,
-   "n": 3,
-   "values": [
-    0.2,
-    0.2,
-    0.4
-   ]
-  },
-  "lab.toolCall": {
-   "label": "Lab tool call (no picture), end to end",
-   "unit": "ms",
-   "median": 13,
-   "spread": 2,
-   "spreadPct": 15.38,
-   "n": 3,
-   "values": [
-    15,
-    9.5,
-    13
-   ]
-  },
-  "lab.stillDraws": {
-   "label": "Still Lab scene: draws a second",
-   "unit": "/s",
    "median": 0.4,
    "spread": 0,
    "spreadPct": 0,
    "n": 3,
    "values": [
     0.4,
-    0.2,
+    0.4,
     0.4
+   ]
+  },
+  "chat.keyCpu": {
+   "label": "Typing: window CPU per key",
+   "unit": "ms",
+   "median": 6.7,
+   "spread": 0.1,
+   "spreadPct": 1.49,
+   "n": 3,
+   "values": [
+    6.7,
+    6.9,
+    6.6
+   ]
+  },
+  "lab.toolCall": {
+   "label": "Lab tool call (no picture), end to end",
+   "unit": "ms",
+   "median": 23,
+   "spread": 1,
+   "spreadPct": 4.35,
+   "n": 3,
+   "values": [
+    24,
+    23,
+    19
+   ]
+  },
+  "lab.toolCallCpu": {
+   "label": "Lab tool call: CPU, main + window",
+   "unit": "ms",
+   "median": 280,
+   "spread": 45,
+   "spreadPct": 16.07,
+   "n": 3,
+   "values": [
+    460,
+    280,
+    235
+   ]
+  },
+  "lab.stillDraws": {
+   "label": "Still Lab scene: draws a second",
+   "unit": "/s",
+   "median": 0.2,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.2,
+    0.7,
+    0.2
    ]
   },
   "idle.windowCpu": {
@@ -247,7 +415,7 @@
    "spreadPct": 0,
    "n": 3,
    "values": [
-    0,
+    1.2,
     0.1,
     0.1
    ]
@@ -255,164 +423,918 @@
   "idle.allCpu": {
    "label": "Idle on a chat: every process",
    "unit": "% CPU",
-   "median": 1.5,
-   "spread": 0.2,
-   "spreadPct": 13.33,
+   "median": 4.3,
+   "spread": 0.6,
+   "spreadPct": 13.95,
    "n": 3,
    "values": [
-    1.3,
-    1.5,
-    1.7
+    23.6,
+    4.3,
+    3.7
    ]
   },
   "mem.windowHeap": {
    "label": "Window JS heap after GC (end of run)",
    "unit": "MB",
-   "median": 30.8,
+   "median": 31.2,
    "spread": 0,
    "spreadPct": 0,
    "n": 3,
    "values": [
-    30.8,
-    30.7,
-    30.8
+    31.2,
+    31.2,
+    31
    ]
   },
-  "start.ready": {
-   "label": "Start → first usable chat",
+  "sync.steadyStall": {
+   "label": "Sync steady pass: main-process stall",
    "unit": "ms",
-   "median": 564,
-   "spread": 17,
-   "spreadPct": 3.01,
-   "n": 5,
+   "median": 20.49,
+   "spread": 0.47,
+   "spreadPct": 2.29,
+   "n": 3,
    "values": [
-    517,
-    581,
-    549,
-    591,
-    564
+    16.69,
+    20.96,
+    20.49
    ]
   },
-  "start.settled": {
-   "label": "Start → settled (last long task)",
+  "sync.changeStall": {
+   "label": "Sync small-change pass: main-process stall",
    "unit": "ms",
-   "median": 893,
-   "spread": 98,
-   "spreadPct": 10.97,
-   "n": 5,
+   "median": 22.28,
+   "spread": 0.04,
+   "spreadPct": 0.18,
+   "n": 3,
    "values": [
-    517,
-    961,
-    893,
-    991,
-    564
+    22.32,
+    22.28,
+    19.35
+   ]
+  },
+  "sync.steadyWall": {
+   "label": "Sync steady pass: wall time",
+   "unit": "ms",
+   "median": 541,
+   "spread": 1,
+   "spreadPct": 0.18,
+   "n": 3,
+   "values": [
+    541,
+    534,
+    542
+   ]
+  },
+  "sync.steadyCpu": {
+   "label": "Sync steady pass: CPU",
+   "unit": "ms",
+   "median": 798,
+   "spread": 10,
+   "spreadPct": 1.25,
+   "n": 3,
+   "values": [
+    816,
+    788,
+    798
+   ]
+  },
+  "sync.changeCpu": {
+   "label": "Sync small-change pass: CPU",
+   "unit": "ms",
+   "median": 779,
+   "spread": 12,
+   "spreadPct": 1.54,
+   "n": 3,
+   "values": [
+    779,
+    759,
+    791
    ]
   }
  },
+ "raw": {
+  "start.ready": [
+   [
+    1009
+   ],
+   [
+    1095
+   ],
+   [
+    1001
+   ],
+   [
+    1072
+   ],
+   [
+    1272
+   ]
+  ],
+  "start.settled": [
+   [
+    1531
+   ],
+   [
+    3075
+   ],
+   [
+    2967
+   ],
+   [
+    2973
+   ],
+   [
+    1963
+   ]
+  ],
+  "start.cpuReady": [
+   [
+    5170
+   ],
+   [
+    5240
+   ],
+   [
+    5240
+   ],
+   [
+    4960
+   ],
+   [
+    5320
+   ]
+  ],
+  "start.cpuSettled": [
+   [
+    5270
+   ],
+   [
+    5330
+   ],
+   [
+    5340
+   ],
+   [
+    5050
+   ],
+   [
+    5430
+   ]
+  ],
+  "project.coldOpen": [
+   [
+    358
+   ],
+   [
+    319
+   ],
+   [
+    369
+   ]
+  ],
+  "project.coldOpenCpu": [
+   [
+    437
+   ],
+   [
+    578
+   ],
+   [
+    649
+   ]
+  ],
+  "project.warmOpen": [
+   [
+    2736,
+    763
+   ],
+   [
+    1094,
+    2270
+   ],
+   [
+    2081,
+    1124
+   ]
+  ],
+  "project.warmOpenCpu": [
+   [
+    1000,
+    1460
+   ],
+   [
+    1085,
+    861
+   ],
+   [
+    1039,
+    1035
+   ]
+  ],
+  "project.switch": [
+   [
+    802,
+    1137,
+    386,
+    938,
+    573,
+    1242
+   ],
+   [
+    838,
+    557,
+    1193,
+    497,
+    504,
+    565
+   ],
+   [
+    1367,
+    444,
+    297,
+    1308,
+    539,
+    1656
+   ]
+  ],
+  "project.switchCpu": [
+   [
+    1053,
+    694,
+    797,
+    915,
+    654,
+    865
+   ],
+   [
+    808,
+    640,
+    803,
+    667,
+    587,
+    926
+   ],
+   [
+    808,
+    693,
+    583,
+    722,
+    527,
+    822
+   ]
+  ],
+  "chat.switch": [
+   [
+    306,
+    177,
+    204,
+    195,
+    179,
+    240,
+    244,
+    180
+   ],
+   [
+    230,
+    152,
+    184,
+    198,
+    252,
+    278,
+    195,
+    205
+   ],
+   [
+    224,
+    211,
+    233,
+    179,
+    223,
+    315,
+    218,
+    233
+   ]
+  ],
+  "chat.clickHandler": [
+   [
+    15.8,
+    14.8,
+    14.1,
+    14.4,
+    11.9,
+    14.9,
+    14.1,
+    7.8
+   ],
+   [
+    10.8,
+    9.9,
+    16.6,
+    15.4,
+    8.5,
+    9.7,
+    21.2,
+    12.3
+   ],
+   [
+    12.8,
+    13.1,
+    16.1,
+    10,
+    14.3,
+    10.4,
+    8.6,
+    10.3
+   ]
+  ],
+  "chat.switchCpu": [
+   [
+    156,
+    91.4,
+    94.1,
+    105,
+    98.6,
+    104,
+    115,
+    92
+   ],
+   [
+    105,
+    89.4,
+    91.7,
+    99.8,
+    99.4,
+    105,
+    120,
+    113
+   ],
+   [
+    104,
+    108,
+    135,
+    97.1,
+    145,
+    117,
+    114,
+    116
+   ]
+  ],
+  "chat.clickThreadCpu": [
+   [
+    179,
+    174,
+    152,
+    175,
+    163,
+    149,
+    169,
+    151
+   ],
+   [
+    130,
+    164,
+    148,
+    164,
+    151,
+    172,
+    182,
+    182
+   ],
+   [
+    149,
+    165,
+    185,
+    162,
+    202,
+    151,
+    298,
+    177
+   ]
+  ],
+  "chat.clickCpu": [
+   [
+    24.7,
+    57.9,
+    81.3,
+    80.2,
+    78.9,
+    58,
+    84.5,
+    63.9
+   ],
+   [
+    17.7,
+    57,
+    68.3,
+    67.5,
+    76.5,
+    59,
+    93.7,
+    78.9
+   ],
+   [
+    21.6,
+    74.3,
+    82.4,
+    66.2,
+    82.7,
+    53.8,
+    73.5,
+    87
+   ]
+  ],
+  "chat.keyHandler": [
+   [
+    3.9,
+    0.4,
+    0.5,
+    0.3,
+    0.7,
+    0.5,
+    0.8,
+    0.4,
+    0.9,
+    0.3,
+    0.4,
+    0.5,
+    0.5,
+    0.4,
+    0.4,
+    0.4,
+    0.4,
+    0.2,
+    0.3,
+    0.3,
+    0.4,
+    0.3,
+    0.3,
+    0.3,
+    0.6,
+    0.6,
+    0.5,
+    0.4,
+    0.3,
+    0.4,
+    0.7
+   ],
+   [
+    2.8,
+    0.5,
+    0.5,
+    0.4,
+    0.4,
+    0.4,
+    0.3,
+    4.8,
+    0.9,
+    1.1,
+    0.2,
+    0.5,
+    0.3,
+    0.3,
+    0.5,
+    0.4,
+    0.4,
+    0.4,
+    0.5,
+    0.3,
+    0.2,
+    0.6,
+    1,
+    0.9,
+    0.4,
+    0.5,
+    0.4,
+    0.3,
+    0.4,
+    0.4,
+    0.5
+   ],
+   [
+    3.1,
+    0.3,
+    0.4,
+    0.4,
+    0.3,
+    0.5,
+    0.3,
+    0.9,
+    0.6,
+    0.5,
+    0.3,
+    0.3,
+    0.4,
+    0.3,
+    0.3,
+    0.4,
+    0.5,
+    0.4,
+    0.6,
+    0.5,
+    1.5,
+    0.5,
+    0.2,
+    0.3,
+    0.5,
+    0.2,
+    0.4,
+    0.2,
+    0.5,
+    0.2,
+    0.5
+   ]
+  ],
+  "chat.keyCpu": [
+   [
+    6.7
+   ],
+   [
+    6.9
+   ],
+   [
+    6.6
+   ]
+  ],
+  "lab.toolCallCpu": [
+   [
+    327,
+    593
+   ],
+   [
+    296,
+    263
+   ],
+   [
+    232,
+    238
+   ]
+  ],
+  "lab.toolCall": [
+   [
+    39,
+    18,
+    17,
+    24,
+    49,
+    21,
+    75,
+    47,
+    13,
+    12,
+    13,
+    7527,
+    24,
+    28,
+    22
+   ],
+   [
+    44,
+    22,
+    28,
+    16,
+    43,
+    16,
+    29,
+    23,
+    27,
+    20,
+    33,
+    1943,
+    17,
+    10,
+    9
+   ],
+   [
+    37,
+    12,
+    14,
+    27,
+    42,
+    27,
+    35,
+    20,
+    7,
+    10,
+    11,
+    1521,
+    16,
+    19,
+    13
+   ]
+  ],
+  "lab.stillDraws": [
+   [
+    0.2
+   ],
+   [
+    0.7
+   ],
+   [
+    0.2
+   ]
+  ],
+  "idle.windowCpu": [
+   [
+    1.2
+   ],
+   [
+    0.1
+   ],
+   [
+    0.1
+   ]
+  ],
+  "idle.allCpu": [
+   [
+    23.6
+   ],
+   [
+    4.3
+   ],
+   [
+    3.7
+   ]
+  ],
+  "mem.windowHeap": [
+   [
+    31.2
+   ],
+   [
+    31.2
+   ],
+   [
+    31
+   ]
+  ],
+  "sync.steadyStall": [
+   [
+    21.02,
+    29.66,
+    13.62,
+    14.88,
+    15.26,
+    18.12
+   ],
+   [
+    19.58,
+    27.28,
+    18.24,
+    17.1,
+    24.61,
+    22.33
+   ],
+   [
+    32,
+    20.4,
+    17.06,
+    22.12,
+    17.29,
+    20.59
+   ]
+  ],
+  "sync.changeStall": [
+   [
+    14.39,
+    21.38,
+    17.83,
+    23.27,
+    23.25,
+    25.48
+   ],
+   [
+    18.6,
+    77.59,
+    26.53,
+    23.87,
+    14.61,
+    20.69
+   ],
+   [
+    24.02,
+    18.97,
+    14.63,
+    16.34,
+    19.74,
+    23.58
+   ]
+  ],
+  "sync.steadyWall": [
+   [
+    617,
+    667,
+    548,
+    481,
+    534,
+    484
+   ],
+   [
+    677,
+    641,
+    529,
+    518,
+    538,
+    484
+   ],
+   [
+    675,
+    526,
+    476,
+    557,
+    519,
+    621
+   ]
+  ],
+  "sync.steadyCpu": [
+   [
+    782,
+    882,
+    849,
+    638,
+    896,
+    635
+   ],
+   [
+    893,
+    815,
+    838,
+    760,
+    737,
+    616
+   ],
+   [
+    881,
+    696,
+    822,
+    808,
+    788,
+    764
+   ]
+  ],
+  "sync.changeCpu": [
+   [
+    739,
+    723,
+    880,
+    725,
+    1082,
+    819
+   ],
+   [
+    676,
+    676,
+    773,
+    796,
+    1137,
+    745
+   ],
+   [
+    744,
+    798,
+    783,
+    730,
+    1016,
+    847
+   ]
+  ]
+ },
  "tops": {
-  "sync": {
-   "(anon) sync-engine.js:377": 187,
-   "(anon) sync-engine.js:323": 167,
-   "(anon) sync-engine.js:311": 22.01,
-   "(garbage collector)": 8.34,
-   "flush sync-engine.js:311": 8,
-   "(anon) sync-merge.js:22": 7.67,
-   "localOnly sync-merge.js:35": 4,
-   "(anon) sync-engine.js:386": 2,
-   "passOnce sync-engine.js:1251": 1.67,
-   "walk sync-engine.js:302": 1.33,
-   "(anon) sync-engine.js:326": 1,
-   "getStatsFromBinding utils:552": 0.67,
-   "spin mainlag-probe.js:27": 0.33
+  "startup": {
+   "CPU to the first screen: GPU process": 12670,
+   "CPU to the first screen: browser process": 2630,
+   "CPU to the first screen: renderer process": 2580,
+   "window: append": 141,
+   "start phase: start → shell": 131,
+   "ipc answered: kv:get ×21": 111,
+   "start phase: shell → chats": 102,
+   "ipc answered: chats:list ×1": 88.74,
+   "ipc answered: fs:list ×2": 74.15,
+   "main: (anon) validators:165": 71,
+   "window: (garbage collector)": 69,
+   "main: wrapSafe loader:1826": 65,
+   "main: (anon) browser_init:1": 55,
+   "CPU to the first screen: network.mojom.NetworkService process": 50,
+   "window: suggest projects-core.js:196": 38,
+   "start phase: chats → ready": 37.1,
+   "main: createWindow main.js:187": 28,
+   "window: el ui.js:81": 28,
+   "main: (garbage collector)": 23,
+   "main: spawn": 23,
+   "window: before": 23,
+   "window: dispatchEvent": 22,
+   "window: (anon) native.js:1298": 21,
+   "main: (anon) showsync-venues.js:1": 14,
+   "ipc answered: kv:pick ×1": 13.61,
+   "main: readdir": 13,
+   "window: (anon) native.js:2": 13,
+   "main: get defaultSession browser_init:1": 12,
+   "start phase: ready → gone": 10.6,
+   "window: filtered ui.js:67": 9
   },
   "projects": {
-   "(garbage collector) :0": 210,
-   "remove :0": 165,
-   "get scrollTop :0": 159,
-   "get clientWidth :0": 149,
-   "showModal :0": 132,
-   "el ui.js:81": 72.94,
-   "labShown chat-scenes.js:582": 65.7,
-   "paintProject projects-home.js:191": 61.61,
-   "checkVisibility :0": 53.6,
-   "get scrollHeight :0": 46.97,
-   "invoke sandbox_bundle:2": 43.64,
-   "querySelector :0": 42.54,
-   "querySelectorAll :0": 32.43,
-   "append :0": 27.24,
-   "decorate usage.js:128": 21.37
+   "remove :0": 339,
+   "(garbage collector) :0": 311,
+   "showModal :0": 291,
+   "get scrollTop :0": 289,
+   "get clientWidth :0": 208,
+   "labShown chat-scenes.js:596": 150,
+   "el ui.js:81": 138,
+   "querySelector :0": 128,
+   "invoke sandbox_bundle:2": 125,
+   "checkVisibility :0": 124,
+   "paintProject projects-home.js:191": 116,
+   "(anon) :0": 98.13,
+   "get scrollHeight :0": 89.07,
+   "querySelectorAll :0": 60.27,
+   "decorate usage.js:131": 56.04,
+   "invoke :0": 31.2,
+   "thumbShot three.js:3890": 21.4
   },
   "chats": {
-   "(garbage collector) :0": 46.73,
-   "querySelectorAll :0": 25.46,
-   "get clientWidth :0": 22.94,
-   "focus :0": 21.2,
-   "messageEl native.js:688": 19.13,
-   "el ui.js:81": 18.13,
-   "full meter.js:57": 16.26,
-   "querySelector :0": 14.57,
-   "decorate usage.js:128": 10.07,
-   "(anon) :0": 8.53,
-   "nameOf usage.js:122": 5.3,
-   "state three.js:4427": 4.7,
-   "closest :0": 3.6,
-   "toggle :0": 3.2,
-   "badge meter.js:414": 2.9
+   "(garbage collector) :0": 84.07,
+   "get clientWidth :0": 50.4,
+   "querySelectorAll :0": 48.54,
+   "focus :0": 39.23,
+   "messageEl native.js:688": 31.96,
+   "querySelector :0": 30.66,
+   "(anon) :0": 27.34,
+   "el ui.js:81": 25.53,
+   "decorate usage.js:131": 25.5,
+   "full meter.js:57": 20.81,
+   "nameOf usage.js:125": 12.43,
+   "fmtLocal ui.js:253": 11.37,
+   "ownerOf chat-scenes.js:141": 7.84,
+   "(anon) project-workspace.js:10": 6.97,
+   "checkVisibility :0": 6,
+   "createElement :0": 4.67,
+   "closest :0": 3.83,
+   "append :0": 3.77,
+   "decorate cmdbar.js:446": 3.5,
+   "toggle :0": 3.17
   },
   "lab": {
-   "(garbage collector) :0": 99.01,
-   "get scrollHeight :0": 58.07,
-   "frameCanvas three-director.js:349": 41.14,
-   "toBlob :0": 37.83,
-   "ownerOf chat-scenes.js:127": 34.23,
-   "get clientWidth :0": 31.73,
-   "querySelector :0": 31.49,
-   "invoke :0": 30.93,
-   "focus :0": 30.17,
-   "paintPicker chat-scenes.js:526": 25.69,
-   "checkVisibility :0": 25.1,
-   "(anon) chat-scenes.js:55": 21.27,
-   "summary projects.js:60": 14.64,
-   "querySelectorAll :0": 13.04,
-   "getBoundingClientRect :0": 10.57
+   "(garbage collector) :0": 116,
+   "querySelector :0": 115,
+   "checkVisibility :0": 94.6,
+   "get scrollHeight :0": 92.23,
+   "ownerOf chat-scenes.js:141": 78.53,
+   "focus :0": 74.4,
+   "querySelectorAll :0": 71.76,
+   "get clientWidth :0": 60.73,
+   "(anon) chat-scenes.js:56": 49.17,
+   "getBoundingClientRect :0": 42.3,
+   "paintPicker chat-scenes.js:540": 40.27,
+   "identity chat-scenes.js:35": 36.87,
+   "invoke sandbox_bundle:2": 27.13,
+   "invoke :0": 22.36,
+   "decorate usage.js:131": 20.1,
+   "summary projects.js:60": 19.83,
+   "toggle :0": 12.7,
+   "(anon) :0": 10.5,
+   "el ui.js:81": 7.9
   },
   "idle": {
-   "today apps-discover.js:15": 0.46,
-   "(anon) :0": 0.13,
-   "setTimeout :0": 0.1,
-   "(anon) powerwise.js:187": 0.1
+   "(anon) :0": 6.03,
+   "(garbage collector) :0": 5.03,
+   "analyse costcoach-core.js:132": 3.93,
+   "(anon) costcoach.js:63": 2.33,
+   "querySelector :0": 0.57,
+   "(anon) three-media.js:1783": 0.4,
+   "(anon) costcoach-core.js:138": 0.37,
+   "usesOf tokenaudit-core.js:66": 0.27,
+   "lighterSaves costcoach-core.js:105": 0.23,
+   "(anon) costcoach-core.js:211": 0.23,
+   "(anon) costcoach-core.js:219": 0.23,
+   "fixedOf costcoach-core.js:139": 0.2,
+   "checkVisibility :0": 0.17,
+   "tick costcoach.js:214": 0.17,
+   "today apps-discover.js:15": 0.13,
+   "clean tokenaudit.js:58": 0.13,
+   "setTimeout :0": 0.13,
+   "(anon) :211": 0.13,
+   "profStart :35": 0.13,
+   "idleCheck three.js:3733": 0.1
   },
-  "startup": {
-   "start phase: shell → chats": 70.6,
-   "ipc answered: kv:get ×35": 54.82,
-   "ipc answered: chats:list ×1": 54.37,
-   "start phase: start → shell": 49.6,
-   "ipc answered: fs:list ×2": 46.61,
-   "main: wrapSafe loader:1826": 43,
-   "main: emit node:events:489": 39,
-   "window: (garbage collector)": 34,
-   "window: append": 34,
-   "main: (anon) browser_init:1": 28,
-   "window: before": 24,
-   "main: spawn": 23,
-   "start phase: chats → ready": 21.6,
-   "window: suggest projects-core.js:196": 20,
-   "main: (garbage collector)": 18,
-   "window: (anon) native.js:1298": 16,
-   "window: el ui.js:81": 15,
-   "main: createWindow main.js:187": 12,
-   "main: (anon) showsync-venues.js:1": 12,
-   "window: (anon) native.js:2": 12,
-   "window: (anon) cut-presets.js:5": 10,
-   "ipc answered: kv:pick ×1": 9.27,
-   "main: get defaultSession browser_init:1": 9,
-   "window: dispatchEvent": 9,
-   "window: (anon)": 7,
-   "window: words projects-core.js:182": 7,
-   "main: readFileUtf8": 6,
-   "window: init look.js:388": 4,
-   "start phase: ready → gone": 3.9,
-   "main: normalizeSpawnArguments node:child_process:584": 3
+  "sync": {
+   "(anon) sync-engine.js:402": 567,
+   "(anon) sync-engine.js:338": 377,
+   "(anon) sync-engine.js:328": 57.66,
+   "passOnce sync-engine.js:1495": 38.33,
+   "localOnly sync-merge.js:35": 38.01,
+   "(anon) sync-merge.js:22": 36.67,
+   "flush sync-engine.js:328": 34,
+   "(garbage collector)": 29.67,
+   "(anon) sync-engine.js:411": 7.66,
+   "walk sync-engine.js:316": 7.66,
+   "(anon) sync-hard.js:114": 4.34,
+   "getStatsFromBinding utils:552": 2,
+   "cloudHash sync-engine.js:934": 2,
+   "cachedHere sync-engine.js:1308": 1.33,
+   "secretName sync-hard.js:110": 1.33,
+   "breathe sync-engine.js:279": 1.33,
+   "nfc sync-engine.js:40": 1,
+   "(anon) sync-engine.js:341": 0.67,
+   "stat promises:1028": 0.33,
+   "localExtras sync-engine.js:350": 0.33
   }
  },
  "problems": []

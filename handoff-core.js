@@ -63,11 +63,11 @@ const HandoffCore = (() => {
   }
   // files touched: the paths in the chat (texts, attachments, what was sent), newest last, at most 12
   function filesOf(messages) {
-    const out = [];
+    const out = []; const seen = new Set(); // (round 82, bigchat82) a seen set: includes() on the growing list was quadratic in a giant chat
     const PATH = /(?:[A-Za-z]:\\|~?\/)?(?:[\w.-]+[\\/])+[\w.-]+\.[A-Za-z0-9]{1,5}\b/g;
     for (const m of messages || []) {
-      for (const s of [m.text, m.sent].filter(Boolean)) for (const p of String(s).replace(/```[\s\S]*?```/g, ' ').match(PATH) || []) if (!/^https?:/.test(p) && !out.includes(p)) out.push(p);
-      for (const a of m.attachments || []) if (a?.name && /\.[A-Za-z0-9]{1,5}$/.test(a.name) && !out.includes(a.name)) out.push(a.name);
+      for (const s of [m.text, m.sent].filter(Boolean)) for (const p of String(s).replace(/```[\s\S]*?```/g, ' ').match(PATH) || []) if (!/^https?:/.test(p) && !seen.has(p)) { seen.add(p); out.push(p); }
+      for (const a of m.attachments || []) if (a?.name && /\.[A-Za-z0-9]{1,5}$/.test(a.name) && !seen.has(a.name)) { seen.add(a.name); out.push(a.name); }
     }
     return out.slice(-12);
   }
@@ -129,7 +129,10 @@ const HandoffCore = (() => {
       const cc = CC();
       const q = cc ? cc.words(query) : new Set(String(query).toLowerCase().split(/\W+/).filter((w) => w.length > 2));
       if (!q.size) return 'Give query (words to look for) or last (how many of the newest earlier messages).';
-      const scored = ms.map((m, i) => { const w = cc ? cc.words(textOf(m)) : new Set(textOf(m).toLowerCase().split(/\W+/)); let n = 0; for (const x of q) if (w.has(x)) n++; return { m, i, n }; }).filter((x) => x.n).sort((a, b) => b.n - a.n || b.i - a.i).slice(0, 4).sort((a, b) => a.i - b.i);
+      // (round 82, bigchat82) a message that holds none of the words as letters can't have them: its words aren't made
+      // (a 6,000-message chat: 1.4 s → a fraction; the same messages found)
+      const qs = [...q];
+      const scored = ms.map((m, i) => { const lc = textOf(m).toLowerCase(); if (!qs.some((x) => lc.includes(x))) return { m, i, n: 0 }; const w = cc ? cc.words(textOf(m)) : new Set(lc.split(/\W+/)); let n = 0; for (const x of q) if (w.has(x)) n++; return { m, i, n }; }).filter((x) => x.n).sort((a, b) => b.n - a.n || b.i - a.i).slice(0, 4).sort((a, b) => a.i - b.i);
       if (!scored.length) return `Nothing earlier mentions "${String(query).slice(0, 60)}".`;
       pick = scored.map((x) => x.m);
     }

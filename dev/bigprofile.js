@@ -19,12 +19,14 @@
 // then the minute-by-minute passes are part of what it measures.
 //   node dev/bigprofile.js [dir] [--chats 1500] [--long 120] [--projects 40]      (default /tmp/hearth-bigprofile70)
 //   (round 72) --projects N adds N projects with their chats, scenes, moodboards and desks (addProjects below)
+//   (round 82) --giant N adds N GIANT chats (addGiant below: 6,000 messages, ≈ 55 MB each: tool output, attachments'
+//   details, thinking, plans), the first one also in project "Clink" when there are projects; --giant-messages M
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const { make } = require('./make-chatlist-fixture');
 
-function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120, seed = 70, projects = 0 } = {}) {
+function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120, seed = 70, projects = 0, giant = 0, giantMessages = 6000 } = {}) {
   const base = make(dir, chats, seed);
   let s = (seed * 7919) >>> 0;
   const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -181,7 +183,57 @@ function bigprofile(dir = '/tmp/hearth-bigprofile70', { chats = 1500, long = 120
   json('safetynet/journal.json', Array.from({ length: 4000 }, (_, i) => ({ at: now - i * 6e4, what: `edit ${i}`, file: `notes/${i}.md` })));
   json('kv/notes.json', Array.from({ length: 150 }, (_, i) => ({ id: `n${i}`, title: `Note ${i}`, text: sentence(80), at: now - i * DAY })));
   if (projects) Object.assign(out, addProjects(dir, { count: projects, sketches, longIds, sentence, int, pick, now, DAY, W, mk, json, rnd }));
+  if (giant) Object.assign(out, addGiant(dir, { count: giant, messages: giantMessages, attach, WORDS, sentence, reply, int, pick, now, W, rnd }));
   return out;
+}
+
+// (round 82, bigchat82) GIANT chats: months of one Lab / build chat that never got a fresh start, like a real heavy
+// user's: 6,000 messages, ≈ 55 MB on disk (made up, fixed seed). Replies carry what makes chats big in practice: tool
+// output pasted back (logs, file listings, test runs: 6–60 KB), thinking, plans (progress steps), what they made
+// (things with paths), timings; your messages carry attached pictures' details and pasted files. Written as the app
+// writes a chat (JSON, 2-space). The first one joins project 0 ("Clink") when there are projects (Find in this project).
+function addGiant(dir, { count, messages: n, attach, WORDS, sentence, reply, int, pick, now, W, rnd }) {
+  const chatDir = W('chats'); const ids = []; let bytes = 0;
+  const TOOLS = ['Read', 'Edit', 'Bash', 'Grep', 'three_set', 'three_layer', 'mcp__hearth__board_add', 'WebFetch'];
+  const logLine = (j) => pick([
+    () => `[${String(j).padStart(5, '0')}] ${pick(['PASS', 'ok', 'WARN', 'info'])} ${pick(WORDS)}/${pick(WORDS)}.js:${int(1, 900)} ${sentence(int(4, 12))}`,
+    () => `${pick(['-rw-r--r--', 'drwxr-xr-x'])}  1 me  staff  ${int(100, 99999)} Oct ${int(1, 28)} ${int(10, 23)}:${int(10, 59)} ${pick(WORDS)}-${int(1, 99)}.${pick(['js', 'png', 'glb', 'json', 'wav'])}`,
+    () => `    at ${pick(WORDS)}${pick(['Layer', 'Scene', 'Pass', 'Loop'])}.${pick(['render', 'update', 'tick'])} (file:///Users/me/Hearth/data/workspace/clink/${pick(WORDS)}.js:${int(1, 400)}:${int(1, 80)})`,
+    () => `{"frame": ${j}, "ms": ${(rnd() * 16).toFixed(2)}, "draws": ${int(10, 900)}, "tris": ${int(1000, 900000)}, "note": "${sentence(3)}"}`,
+  ])();
+  for (let g = 0; g < count; g++) {
+    const id = `claude-giant${g}`; const at0 = now - 120 * 864e5; const msgs = [];
+    for (let k = 0; k < n; k++) {
+      const at = at0 + k * 30 * 60e3 / 16;
+      if (k % 2 === 0) {
+        const m = { role: 'user', text: `${sentence(int(5, 60))}?`, at };
+        if (rnd() < 0.12) { const imgs = Array.from({ length: int(1, 4) }, () => path.join(dir, 'attachments', pick(attach))); m.attachments = imgs.map((p) => ({ kind: 'image', name: path.basename(p), path: p, size: int(20e3, 4e6), w: pick([1920, 2048, 1280]), h: pick([1080, 1536, 720]), type: 'image/png' })); m.images = imgs; m.sent = m.text; }
+        if (rnd() < 0.06) { const body = Array.from({ length: int(40, 300) }, (_, j) => logLine(j)).join('\n'); m.attachments = [...(m.attachments || []), { kind: 'text', name: `${pick(WORDS)}.log`, size: body.length }]; m.text += `\n\n<file name="${pick(WORDS)}.log">\n${body}\n</file>`; }
+        msgs.push(m);
+      } else {
+        const m = { role: 'assistant', text: reply(k), at, usage: { input: int(800, 90000), output: int(200, 8000), cacheRead: int(0, 400000), cacheWrite: int(0, 40000) }, ms: int(2000, 240000), model: 'claude-opus' };
+        if (rnd() < 0.55) m.text += `\n\n\`\`\`text\n${Array.from({ length: int(60, 700) }, (_, j) => logLine(j)).join('\n')}\n\`\`\``; // tool output pasted back
+        if (rnd() < 0.6) m.tools = Array.from({ length: int(1, 14) }, () => pick(TOOLS));
+        if (rnd() < 0.25) { m.thinking = sentence(int(80, 900)); m.thinkMs = int(800, 30000); }
+        if (rnd() < 0.15) m.progress = Array.from({ length: int(3, 9) }, (_, j) => ({ text: sentence(int(3, 10)), status: j < 2 ? 'done' : pick(['done', 'doing', 'todo']) }));
+        if (rnd() < 0.12) m.things = Array.from({ length: int(1, 5) }, () => ({ k: pick(['file', 'scene', 'board']), name: `${pick(WORDS)}-${int(1, 99)}`, path: path.join(dir, 'workspace', 'clink', `${pick(WORDS)}.${pick(['js', 'glb', 'png'])}`), at }));
+        if (rnd() < 0.3) m.timing = { firstTextReceivedMs: int(300, 4000), firstTextPaintMs: int(300, 4100), uiTotalMs: m.ms, engineMs: m.ms - int(0, 200) };
+        if (rnd() < 0.02) m.reaction = { emoji: pick(['👍', '🔥', '❤️']), note: rnd() < 0.5 ? sentence(6) : '' };
+        msgs.push(m);
+      }
+    }
+    const chat = { id, agentId: 'claude', title: `Clink build log ${g ? `#${g + 1}` : ''}`.trim(), createdAt: msgs[0].at, updatedAt: msgs.at(-1).at, model: 'claude-opus', session: { id: `sess-giant-${g}` }, messages: msgs };
+    const text = JSON.stringify(chat, null, 2);
+    fs.writeFileSync(path.join(chatDir, `${id}.json`), text);
+    bytes += Buffer.byteLength(text); ids.push(id);
+  }
+  // project 0 ("Clink") holds the first one, as a chat of the project
+  try {
+    const pf = W('kv/projects.json'); const pj = JSON.parse(fs.readFileSync(pf, 'utf8'));
+    const p0 = pj.list?.[0];
+    if (p0 && ids[0]) { p0.items.push({ id: `chat:${ids[0]}`, type: 'chat', ref: ids[0], name: 'Clink build log', at: now }); fs.writeFileSync(pf, JSON.stringify(pj)); }
+  } catch { /* no projects */ }
+  return { giant: ids, giantMessages: n, giantMB: Math.round(bytes / 1e5) / 10 };
 }
 
 // (round 72, projects72) projects on top of the heavy profile, like the owner's after months of Codex's workspaces:
@@ -245,7 +297,7 @@ if (require.main === module) {
   const a = process.argv.slice(2); const o = (n, d) => { const i = a.indexOf(n); return i >= 0 ? Number(a[i + 1]) : d; };
   const dir = a.find((x, i) => !x.startsWith('--') && !/^--/.test(a[i - 1] || ''));
   const t0 = Date.now();
-  const r = bigprofile(dir || undefined, { chats: o('--chats', 1500), long: o('--long', 120), projects: o('--projects', 0) });
+  const r = bigprofile(dir || undefined, { chats: o('--chats', 1500), long: o('--long', 120), projects: o('--projects', 0), giant: o('--giant', 0), giantMessages: o('--giant-messages', 6000) });
   console.log(JSON.stringify({ ...r, ms: Date.now() - t0 }));
 }
-module.exports = { bigprofile, addProjects };
+module.exports = { bigprofile, addProjects, addGiant };

@@ -131,29 +131,44 @@ const RecallCore = (() => {
       slots[slot] = null; byKey.delete(key);
       if (dead > 4096 && dead * 4 > live) sweep();
     }
+    // (round 82, bigchat82) a chat added message by message: begin() → msg() for each → end(head) swaps it in (the chat
+    // as it was stays found until then), or abort(). A giant chat is read in slices (storework.js recall), its messages
+    // handed over as they're parsed. Its slot is held meanwhile (BUILDING: skipped by search, kept by a sweep)
+    const BUILDING = Object.freeze({ building: true, msgs: new Float64Array(0), tids: new Uint32Array(0), n: 0 });
+    function begin(key, src = null) { const slot = slots.length; slots.push(BUILDING); return { key, src, slot, msgs: [], per: new Map(), len: 0, posts: 0, done: false }; }
+    function msg(b, m, k) {
+      if (!m || !ROLES.has(m.role) || !m.text) return;
+      const text = String(m.text).slice(0, 40000);
+      const toks = tokens(text);
+      if (!toks.length) return;
+      const pos = b.msgs.length / 4;
+      const tf = new Map();
+      for (const t of toks) tf.set(t, (tf.get(t) || 0) + 1);
+      for (const [t, n] of tf) { const id = idOf(t); post(id, b.slot, pos * 4096 + Math.min(n, 4095)); b.per.set(id, (b.per.get(id) || 0) + 1); df[id] += 1; b.posts += 1; }
+      const plainText = text.replace(FENCE, ' ');
+      b.msgs.push(k, m.at || 0, toks.length, ROLE_IX.get(m.role) | (m.pinned || m.bookmark ? 4 : 0) | (DECIDE.test(plainText) ? 8 : 0) | (OPEN.test(plainText) ? 16 : 0));
+      b.len += toks.length;
+    }
+    function end(b, chat) {
+      if (b.done) return; b.done = true;
+      drop(b.key);
+      for (let i = 1; i < b.msgs.length; i += 4) if (!b.msgs[i]) b.msgs[i] = chat.updatedAt || 0; // (a message without its time: the chat's)
+      const n = b.msgs.length / 4;
+      slots[b.slot] = { key: b.key, src: b.src, sum: { id: chat.id, agentId: chat.agentId, title: chat.title || 'Chat', updatedAt: chat.updatedAt || 0, pinned: Boolean(chat.pinned) }, msgs: Float64Array.from(b.msgs), n,
+        tids: Uint32Array.from(b.per.keys()), tcounts: Uint32Array.from(b.per.values()), len: b.len, posts: b.posts };
+      byKey.set(b.key, b.slot);
+      N += n; total += b.len; live += b.posts;
+    }
+    function abort(b) {
+      if (b.done) return; b.done = true;
+      for (const [id, c] of b.per) df[id] -= c;
+      slots[b.slot] = null; dead += b.posts;
+      if (dead > 4096 && dead * 4 > live) sweep();
+    }
     function add(key, chat, src = null) {
-      drop(key);
-      const slot = slots.length;
-      const msgs = []; const per = new Map(); // term id → messages of this chat that have it
-      let len = 0; let posts = 0;
-      (chat.messages || []).forEach((m, k) => {
-        if (!m || !ROLES.has(m.role) || !m.text) return;
-        const text = String(m.text).slice(0, 40000);
-        const toks = tokens(text);
-        if (!toks.length) return;
-        const pos = msgs.length / 4;
-        const tf = new Map();
-        for (const t of toks) tf.set(t, (tf.get(t) || 0) + 1);
-        for (const [t, n] of tf) { const id = idOf(t); post(id, slot, pos * 4096 + Math.min(n, 4095)); per.set(id, (per.get(id) || 0) + 1); df[id] += 1; posts += 1; }
-        const plainText = text.replace(FENCE, ' ');
-        msgs.push(k, m.at || chat.updatedAt || 0, toks.length, ROLE_IX.get(m.role) | (m.pinned || m.bookmark ? 4 : 0) | (DECIDE.test(plainText) ? 8 : 0) | (OPEN.test(plainText) ? 16 : 0));
-        len += toks.length;
-      });
-      const n = msgs.length / 4;
-      slots.push({ key, src, sum: { id: chat.id, agentId: chat.agentId, title: chat.title || 'Chat', updatedAt: chat.updatedAt || 0, pinned: Boolean(chat.pinned) }, msgs: Float64Array.from(msgs), n,
-        tids: Uint32Array.from(per.keys()), tcounts: Uint32Array.from(per.values()), len, posts });
-      byKey.set(key, slot);
-      N += n; total += len; live += posts;
+      const b = begin(key, src);
+      (chat.messages || []).forEach((m, k) => msg(b, m, k));
+      end(b, chat);
     }
     const msgOf = (c, pos) => { const b = pos * 4; const f = c.msgs[b + 3]; return { k: c.msgs[b], role: ROLE_OF[f & 3], at: c.msgs[b + 1], len: c.msgs[b + 2], mark: Boolean(f & 4), dec: Boolean(f & 8), open: Boolean(f & 16) }; };
     // textOf(key, k) → the message's text (the index keeps no texts); now: for recency (tests pass a fixed one)
@@ -171,7 +186,7 @@ const RecallCore = (() => {
         const L = lists[id];
         for (let i = 0; i < L.n; i += 2) {
           const c = slots[L.a[i]];
-          if (!c) continue;
+          if (!c || c.building) continue;
           const v = L.a[i + 1]; const pos = Math.floor(v / 4096); const tf = v % 4096;
           const mlen = c.msgs[pos * 4 + 2];
           const key = `${c.key}\n${pos}`;
@@ -211,7 +226,7 @@ const RecallCore = (() => {
       return out;
     }
     const termCount = () => { let n = 0; for (let i = 0; i < termId.size; i++) if (df[i] > 0) n += 1; return n; };
-    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true),
+    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, begin, msg, end, abort, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true),
       _bytes: () => lists.reduce((a, L) => a + (L ? L.a.byteLength : 0), 0) + slots.reduce((a, c) => a + (c ? c.msgs.byteLength + c.tids.byteLength * 2 : 0), 0) }; // (dev) its typed arrays' bytes
   }
 
