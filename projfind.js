@@ -121,12 +121,17 @@ const ProjFind = (() => {
     if (at < s.length) out.append(s.slice(at));
     return out;
   }
+  let painted = '';
   function paint(r, q = '') {
     timed(() => {
+      const building = Boolean(r) && r.left > 0; // (what this query's own catch-up left: a background catch-up with nothing new changes nothing on screen)
+      // the same results again (the index caught up with nothing new, a repaint): the rows on screen stay as they are
+      const sig = r ? JSON.stringify([q.trim(), building, [...S.more], r.groups.map((g) => [g.id, g.total, g.hits.map((h) => `${h.ref}|${h.k ?? h.item ?? h.line ?? h.path ?? h.field ?? h.layer ?? ''}|${h.snip}`)])]) : '';
+      if (sig === painted && S.list.childElementCount === (r ? Math.max(1, r.groups.length) : 0)) { S.last = r; return; }
+      painted = sig; S.stats.paints = (S.stats.paints || 0) + 1;
       S.last = r; S.rows = []; S.sel = -1;
       if (!r) { S.list.replaceChildren(); S.status.textContent = ''; S.list.hidden = true; return; }
       S.list.hidden = false;
-      const building = r.left > 0 || (S.job && S.job.pid === S.pid);
       S.status.textContent = building ? 'Still reading this project… results fill in as it goes.' : '';
       if (!r.total) { S.list.replaceChildren(el('p', { class: 'pf-empty', text: building ? `Nothing yet for “${q.trim()}”.` : `Nothing in this project matches “${q.trim()}”. Try fewer or shorter words.` })); return; }
       const sections = [];
@@ -199,8 +204,8 @@ const ProjFind = (() => {
     // the field holding the words, selected (the worktable draws its page a moment after it opens)
     const needle = String(h.needle || '').toLowerCase();
     for (let i = 0; i < 30 && needle; i++) {
-      const surf = document.querySelector('.surface:not(.hidden) .tool-body') || document;
-      const f = [...surf.querySelectorAll('input:not([type=checkbox]):not([type=range]), textarea')].find((n) => n.checkVisibility?.() !== false && String(n.value || '').toLowerCase().includes(needle));
+      // (hidden surfaces stay in the page with visibility: hidden — only a field you can see counts, never this box)
+      const f = [...document.querySelectorAll('input:not([type=checkbox]):not([type=range]):not(.pf-input), textarea')].find((n) => n.checkVisibility?.({ visibilityProperty: true }) !== false && String(n.value || '').toLowerCase().includes(needle));
       if (f) { const a = String(f.value).toLowerCase().indexOf(needle); f.focus({ preventScroll: true }); try { f.setSelectionRange(a, a + needle.length); } catch { /* a field without a caret */ } f.scrollIntoView({ block: 'nearest' }); return true; }
       await sleep(100);
     }

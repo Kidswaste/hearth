@@ -29,6 +29,7 @@
     { id: 'file', label: 'Files', icon: '▭' },
   ];
   const W = { chatTitle: 1.3, msg: 1, note: 1.2, worktable: 1.1, sceneName: 1.6, layerName: 1.4, code: 0.7, boardName: 1.4, boardItem: 1.1, file: 1.3 };
+  const HEAD = 24; // a doc's first characters kept folded: "starts with the words" without folding its whole text
   const MSG_CAP = 6000; // characters of one message kept (a pasted log rarely matters past that)
   const CODE_CAP = 60000;
   const FILE_TYPES = { file: 'File', capture: 'Capture', render: 'Render', download: 'Download', deploy: 'Deploy' };
@@ -168,7 +169,7 @@
       drop(key);
       const inv = new Map();
       let n = 0;
-      docs.forEach((d, i) => { n += d.text.length; for (const t of tokens(d.text)) { const a = inv.get(t); if (a) a.push(i); else inv.set(t, [i]); } });
+      docs.forEach((d, i) => { n += d.text.length; d.head = fold(d.text.slice(0, HEAD)); for (const t of tokens(d.text)) { const a = inv.get(t); if (a) a.push(i); else inv.set(t, [i]); } });
       src.set(key, { sig, docs, inv, words: [...inv.keys()], chars: n, used: now });
       chars += n;
     }
@@ -238,8 +239,8 @@
       for (const x of list) {
         if (x.kind === 'scene') continue;
         let sig; let docs = null;
-        if (x.kind === 'notes') sig = hash(`${spec.notes || ''}\u0001${spec.description || ''}`);
-        else if (x.kind === 'items') sig = hash(JSON.stringify((spec.items || []).map((i) => [i.type, i.ref, i.name])));
+        if (x.kind === 'notes') sig = `${spec.notes || ''}\u0001${spec.description || ''}`; // (the text itself: comparing it is cheaper than hashing it)
+        else if (x.kind === 'items') sig = JSON.stringify((spec.items || []).map((i) => [i.type, i.ref, i.name]));
         else sig = sigOf(env.stat(x.file));
         const had = src.get(x.key);
         if (had && had.sig === sig) { had.used = env.now(); continue; }
@@ -271,48 +272,59 @@
       if (!ws.length) return { groups: groups.filter((g) => g.total), words: ws, total: 0 };
       const phrase = fold(String(q).trim().replace(/\s+/g, ' '));
       const keys = plan(spec, dirs, join).map((x) => x.key);
-      const found = [];
+      // scored in two steps: every match by its words, its start and its age, as the docs are met (no copy of their text,
+      // only the best CAND of each kind kept); then those read whole for the phrase bonus and the snippet. A common word
+      // in a big project matches thousands of messages: folding each one's whole text was most of a query's time.
+      const CAND = ws.length > 1 ? Math.max(limit * 10, 200) : limit;
+      const per = new Map(groups.map((g) => [g.id, { g, top: [] }]));
+      const byScore = (a, b) => b.score - a.score || (b.d.at || 0) - (a.d.at || 0);
+      const day30 = 30 * 864e5;
       for (const key of keys) {
         const s = src.get(key);
         if (!s || !s.docs.length) continue;
         s.used = now;
-        // each word → the docs it matches, with how well (exact 3 / start 2 / inside 1)
-        let acc = null;
+        // each word → the docs it matches, with how well (exact 3 / start 2 / inside 1); sums kept per doc in a typed
+        // array (a doc missing one word drops to 0)
+        const nd = s.docs.length;
+        let acc = null; let alive = 0;
         for (const w of ws) {
-          const m = new Map();
+          const best = new Uint8Array(nd); let any = false;
           const exact = s.inv.get(w);
-          if (exact) for (const i of exact) m.set(i, 3);
+          if (exact) { for (const i of exact) best[i] = 3; any = true; }
           for (const t of s.words) {
             if (t === w || t.length < w.length) continue;
             const how = t.startsWith(w) ? 2 : w.length >= 3 && t.includes(w) ? 1 : 0;
             if (!how) continue;
-            for (const i of s.inv.get(t)) if ((m.get(i) || 0) < how) m.set(i, how);
+            any = true;
+            for (const i of s.inv.get(t)) if (best[i] < how) best[i] = how;
           }
-          if (!m.size) { acc = null; break; }
-          if (!acc) acc = m;
-          else { const next = new Map(); for (const [i, v] of acc) { const h = m.get(i); if (h) next.set(i, v + h); } acc = next; }
-          if (!acc.size) break;
+          if (!any) { acc = null; break; }
+          if (!acc) { acc = new Uint16Array(best); alive = 1; } else { alive = 0; for (let i = 0; i < nd; i++) { if (!acc[i]) continue; if (best[i]) { acc[i] += best[i]; alive = 1; } else acc[i] = 0; } }
+          if (!alive) break;
         }
-        if (!acc) continue;
-        for (const [i, sum] of acc) found.push({ d: s.docs[i], sum });
+        if (!acc || !alive) continue;
+        for (let i = 0; i < nd; i++) {
+          if (!acc[i]) continue;
+          const d = s.docs[i];
+          let score = acc[i] * d.w;
+          if (d.what !== 'code' && (phrase.length <= HEAD ? d.head.startsWith(phrase) : fold(d.text.slice(0, phrase.length)) === phrase)) score += 1;
+          if (d.at) score += 0.5 * Math.exp(-Math.max(0, now - d.at) / day30);
+          const P = per.get(d.g);
+          P.g.total += 1;
+          const top = P.top;
+          const f = { d, score };
+          if (top.length === CAND && byScore(f, top[CAND - 1]) >= 0) continue;
+          let lo = 0; let hi = top.length;
+          while (lo < hi) { const mid = (lo + hi) >> 1; if (byScore(f, top[mid]) < 0) hi = mid; else lo = mid + 1; }
+          top.splice(lo, 0, f);
+          if (top.length > CAND) top.pop();
+        }
       }
-      const per = new Map(groups.map((g) => [g.id, g]));
-      for (const f of found) {
-        const d = f.d;
-        const low = fold(d.text);
-        let score = f.sum * d.w;
-        if (ws.length > 1 && low.includes(phrase)) score += 2 * d.w;
-        if (d.what !== 'code' && low.startsWith(phrase)) score += 1;
-        if (d.at) score += 0.5 * Math.exp(-Math.max(0, now - d.at) / (30 * 864e5));
-        f.score = Math.round(score * 1000) / 1000;
-        f.low = low;
-        per.get(d.g).total += 1;
-      }
-      found.sort((a, b) => b.score - a.score || (b.d.at || 0) - (a.d.at || 0));
-      for (const f of found) {
-        const g = per.get(f.d.g);
-        if (g.hits.length >= limit) continue;
-        g.hits.push(hitOf(f.d, f.low, ws, phrase, f.score));
+      for (const { g, top } of per.values()) {
+        if (!top.length) continue;
+        for (const f of top) { f.low = f.d.what === 'code' ? (f.d.low ||= fold(f.d.text)) : fold(f.d.text); if (ws.length > 1 && f.low.includes(phrase)) f.score += 2 * f.d.w; }
+        if (ws.length > 1) top.sort(byScore);
+        g.hits = top.slice(0, limit).map((f) => hitOf(f.d, f.low, ws, phrase, Math.round(f.score * 1000) / 1000));
       }
       const out = groups.filter((g) => g.total);
       return { groups: out, words: ws, total: out.reduce((a, g) => a + g.total, 0) };
@@ -355,7 +367,9 @@
       if (n < 0) n = lines.findIndex((l) => ws.some((w) => l.includes(w)));
       if (n < 0) n = 0;
       const line = d.text.split('\n')[n] || '';
-      const snip = cap(line.trim(), 160);
+      const t = line.trim();
+      const f = firstAt(fold(t), ws, phrase);
+      const snip = t.length <= 120 ? t : around(t, f.at, f.len, 30, 80); // (a long line: around the words, so they show)
       return { ...base, layer: d.layer, layerName: d.layerName, what: 'code', line: n + 1, snip, marks: marksIn(snip, ws) };
     }
     const f = firstAt(low, ws, phrase);

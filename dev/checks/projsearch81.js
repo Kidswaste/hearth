@@ -11,7 +11,7 @@
 //   code       a scene's code line: the Lab opens that scene, that layer selected, the line selected in its code
 //   board      a moodboard note: the board opens with that note selected
 //   notes      words typed in the project notes are found a moment later; Open selects them in the notes
-//   worktable  the worktable's storyboard words are found; Open lands on the storyboard with the words selected
+//   worktable  a storyboard title typed on the Creative board is found; Open lands on the storyboard, the words selected
 //   save       a related chat saved with a new word + the arrival event sync sends: found without retyping
 // No network, fake engines, a throwaway copy of the fixture (never real data). Budgets (window.PS_BUDGET overrides):
 // first query after the index < 100 ms, this page's longest own task < 16 ms, main-process time per find call < 4 ms.
@@ -30,11 +30,11 @@ async function realClick(node, what) {
   node.scrollIntoView({ block: 'nearest' }); await frame();
   const r = node.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
   const hit = document.elementFromPoint(x, y);
-  need(hit && (hit === node || node.contains(hit)), `${what}: something else is under the mouse (${hit?.className || hit?.tagName})`);
+  need(hit && (hit === node || node.contains(hit)), `${what}: something else is under the mouse at ${x},${y} (${hit?.className || hit?.tagName}${node.isConnected ? '' : ', the node was redrawn'})`);
   for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: type === 'mouseMoved' ? 0 : 1, buttons: type === 'mousePressed' ? 1 : 0 });
 }
 const type = async (text) => { await cdp('Input.insertText', { text }); };
-async function selectAllAndType(input, text) { input.focus(); input.select(); await type(text); }
+async function selectAllAndType(input, text) { input.focus(); input.select(); await type(text); await until(() => ProjFind.state().stats.query?.q === text || (!text.trim()), `results for ${text}`); }
 const tab = (name) => [...document.querySelectorAll('.workspace-switcher button')].find((b) => b.textContent.trim() === name);
 const desk = async () => { await realClick(tab('Desk'), 'Desk tab'); await until(() => document.querySelector('.pw-desk .pf-input') && H.surfaceIdFor(H.activeId) === 'tool:home', 'Desk'); await frame(); };
 const box = () => document.querySelector('.pw-desk .pf-input');
@@ -55,9 +55,9 @@ try {
   await until(() => ProjectWorkspace.state().phase === 'ready' && ProjectWorkspace.state().project === 'pjbp0', 'Clink open', 3000);
   await wait(800);
   await lag(true);
-  rafOn = true; lastT = 0; requestAnimationFrame(rafTick);
   const t0 = performance.now();
   await desk();
+  rafOn = true; lastT = 0; requestAnimationFrame(rafTick); // (frames from the Desk on screen until the index is read: reported)
   need(Boolean(box()), 'the Desk has the Find in this project box');
   out.index.placeholder = box()?.placeholder;
   // ---------- the index, read on the store thread in the background ----------
@@ -136,16 +136,22 @@ try {
   await realClick(rows('note')[0], 'the Notes row');
   await until(() => document.activeElement === notes && notes.value.slice(notes.selectionStart, notes.selectionEnd).toLowerCase() === 'jellyfish', 'the words selected in the notes', 200);
   out.open.note = 'jellyfish selected in the notes';
-  // ---------- the worktable (the project's storyboard: written by the worktable when the project opened) ----------
+  // ---------- the worktable: a storyboard title typed on the Creative board is found; Open lands back on it, selected ----------
+  await realClick(tab('Creative board'), 'Creative board tab');
+  const sbTab = () => [...document.querySelectorAll('.workspace-creative-tabs button')].find((b) => b.textContent.trim() === 'Storyboard');
+  await realClick(await until(sbTab, 'the worktable', 400), 'Storyboard');
+  const sbt = await until(() => document.querySelector('input[aria-label="Storyboard title"]'), 'the storyboard title', 400);
+  await realClick(sbt, 'the storyboard title'); sbt.select(); await type('Moonlit harbour opening');
+  await wait(1800);
   await desk();
-  await selectAllAndType(box(), 'breathe');
+  await selectAllAndType(box(), 'harbour');
   const wr = await until(() => rows('worktable')[0], 'a worktable row', 300).catch(() => null);
   if (need(wr, 'the worktable\'s storyboard words are found')) {
     const wh = ProjFind._S.rows[Number(wr.dataset.i)];
     await realClick(wr, 'a Worktable row');
     const got = await until(() => { const a = document.activeElement; return a && /INPUT|TEXTAREA/.test(a.tagName) && a.selectionEnd > a.selectionStart ? a.value.slice(a.selectionStart, a.selectionEnd) : null; }, 'the worktable words selected', 300).catch(() => null);
     out.open.worktable = { feature: wh.feature, path: wh.path, selected: got };
-    need(/breathe/i.test(got || ''), `the worktable opens with the words selected (${got})`);
+    need(/harbour/i.test(got || ''), `the worktable opens with the words selected (${got})`);
   }
   // ---------- a save + the arrival event: found without retyping ----------
   await desk();
