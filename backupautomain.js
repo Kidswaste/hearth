@@ -26,7 +26,7 @@ const path = require('path');
 const C = require('./backupauto-core');
 
 const TEST = Boolean(process.env.HEARTH_TEST_SAVE_DIR);
-const SKIP_DIRS = new Set(['workspace', 'ae', 'sync', '.backup', 'node_modules', 'mcp-runs']); // (as before: workspace / ae / sync) + this computer's backup state
+const SKIP_DIRS = new Set(['workspace', 'ae', 'sync', '.backup', 'node_modules', 'mcp-runs', '.cache']); // (as before: workspace / ae / sync) + this computer's backup state · (round 83, idleburst83) + .cache: rebuildable caches (the chats list's rows, the recall index ≈ 20 MB)
 const SKIP_NAME = /\.(hubtmp|tmp|partial|crdownload|download|icloud)$|^\.hearth-tmp-|\.hearth-part|^\._|^\.DS_Store$|^Thumbs\.db$|^desktop\.ini$/i; // (round 46) + the Mac's "._" / .DS_Store, Windows' Thumbs.db / desktop.ini, iCloud placeholders
 const DETAILS = '.hearth';
 const MAX_MS = 30 * 60000;

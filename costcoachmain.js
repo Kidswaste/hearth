@@ -6,7 +6,9 @@ const path = require('path');
 const Core = require('./costcoach-core');
 
 const MAX_RECORDS = 20000;
-async function scan(chatsDir, { days = Core.WINDOW_DAYS, now = Date.now() } = {}) {
+// (round 83) the store's files thread, when there is one (Electron); tests / no thread: parsed here as before
+const offThread = () => { try { const s = require('./store'); return process.versions.electron && s.runOff ? s.runOff : null; } catch { return null; } };
+async function scan(chatsDir, { days = Core.WINDOW_DAYS, now = Date.now(), runOff = offThread() } = {}) {
   const from = now - days * 864e5;
   const out = { records: [], chats: {}, from, now };
   let names = [];
@@ -16,12 +18,18 @@ async function scan(chatsDir, { days = Core.WINDOW_DAYS, now = Date.now() } = {}
     let st;
     try { st = await fs.promises.stat(file); } catch { continue; }
     if (st.mtimeMs < from || st.size > 60e6) continue; // not touched in the window: no reply in it
-    let chat;
-    try { chat = JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch { continue; } // held / half-written: skipped, never "empty"
-    const recs = Core.recordsOf(chat, { from, to: now });
-    if (recs.length) {
-      out.chats[chat.id] = { agent: chat.agentId, title: String(chat.title || '').slice(0, 80) };
-      for (const r of recs) { if (out.records.length >= MAX_RECORDS) break; out.records.push(r); }
+    // (round 83, idleburst83) read and parsed on the store's files thread (storework.js costRecords): a long chat's
+    // JSON.parse held the main process 70–140 ms at a time, 2 minutes after every start; here when there's no thread
+    let got = null;
+    if (runOff) { try { got = await runOff('costRecords', { file, from, to: now }); } catch { got = undefined; } }
+    if (got === undefined || !runOff) {
+      let chat;
+      try { chat = JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch { continue; } // held / half-written: skipped, never "empty"
+      got = { id: chat.id, agent: chat.agentId, title: String(chat.title || '').slice(0, 80), recs: Core.recordsOf(chat, { from, to: now }) };
+    }
+    if (got?.recs?.length) {
+      out.chats[got.id] = { agent: got.agent, title: got.title };
+      for (const r of got.recs) { if (out.records.length >= MAX_RECORDS) break; out.records.push(r); }
     }
     await new Promise((r) => setImmediate(r)); // one chat at a time: the window stays smooth
   }

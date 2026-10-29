@@ -2,7 +2,8 @@
 // pure part, shared by the store thread (storework.js op `recall`, where the index lives) and dev/recall-test.js:
 //   tokens(text)              words → light stems, no stop words, fenced code left out
 //   questionTerms(q)          the words of a question that matter ("what did we decide about the intro font?" → intro, font)
-//   createIndex()             { has(key, src), add(key, chat, src), drop(key), keys(), size(), search(q, { textOf, now, limit }) }
+//   createIndex(snapshot?)    { has(key, src), add(key, chat, src), drop(key), keys(), size(), search(q, { textOf, now, limit }),
+//                             snapshot(extra) → Buffer (round 83: kept between starts; createIndex(buffer) gives it back) }
 // One document per message (user / assistant / second opinion / collab). Ranking: BM25 (k1 1.2, b 0.75) × how many of
 // the question's words it has × recency (a month-old message still counts, a fresh one a bit more) × pinned chat ×
 // pinned / bookmarked message × decision phrasing ("let's go with", "we decided", "use X instead"…). Results come as
@@ -90,7 +91,7 @@ const RecallCore = (() => {
   // when a chat comes and when it goes (it counted chats coming and messages going: a term could vanish from every search).
   const ROLE_OF = ['user', 'assistant', 'opinion', 'collab'];
   const ROLE_IX = new Map(ROLE_OF.map((r, i) => [r, i]));
-  function createIndex() {
+  function createIndex(snap = null) {
     const byKey = new Map(); // key → slot
     const slots = []; // slot → { key, src, sum, msgs: Float64Array [k, at, len, flags] per message, n, tids, tcounts, len, posts } | null
     const termId = new Map(); // term → id
@@ -226,7 +227,58 @@ const RecallCore = (() => {
       return out;
     }
     const termCount = () => { let n = 0; for (let i = 0; i < termId.size; i++) if (df[i] > 0) n += 1; return n; };
-    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, begin, msg, end, abort, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true),
+    // (round 83, idleburst83) the index kept between starts: snapshot() → one Buffer (a JSON head + its typed arrays),
+    // createIndex(buffer) → the same index back. Building it again took the store thread a minute or more of a CPU at
+    // every start on a big profile; a kept one is read in a fraction of a second and only the chats changed since
+    // (their src differs) are read again. Not while a chat is being added (a slot BUILDING): null then.
+    function snapshot(extra = {}) {
+      if (slots.some((c) => c && c.building)) return null;
+      sweep(true);
+      const T = termId.size;
+      const parts = []; let off = 0;
+      const put = (ta) => { const b = Buffer.from(ta.buffer, ta.byteOffset, ta.byteLength); const at = off; parts.push(b); off += b.length; const pad = (8 - (off % 8)) % 8; if (pad) { parts.push(Buffer.alloc(pad)); off += pad; } return [at, ta.length]; };
+      const llen = new Uint32Array(T); let P = 0;
+      for (let i = 0; i < T; i++) { llen[i] = lists[i] ? lists[i].n : 0; P += llen[i]; }
+      const posts = new Uint32Array(P); P = 0;
+      for (let i = 0; i < T; i++) if (llen[i]) { posts.set(lists[i].a.subarray(0, llen[i]), P); P += llen[i]; }
+      const live0 = slots.map((c) => (c && !c.building ? c : null));
+      let M = 0; let Q = 0; for (const c of live0) if (c) { M += c.msgs.length; Q += c.tids.length; }
+      const msgs = new Float64Array(M); const tids = new Uint32Array(Q); const tcounts = new Uint32Array(Q); M = 0; Q = 0;
+      for (const c of live0) if (c) { msgs.set(c.msgs, M); M += c.msgs.length; tids.set(c.tids, Q); tcounts.set(c.tcounts, Q); Q += c.tids.length; }
+      const head = { v: 1, N, total, live, terms: [...termId.keys()], df: put(df.subarray(0, T)), llen: put(llen), posts: put(posts), msgs: put(msgs), tids: put(tids), tcounts: put(tcounts),
+        slots: live0.map((c) => (c ? [c.key, c.src, c.sum, c.n, c.len, c.posts, c.tids.length] : null)), extra };
+      const h = Buffer.from(JSON.stringify(head), 'utf8');
+      const pre = Buffer.alloc(16); pre.write('HRI1', 0, 'latin1'); pre.writeUInt32LE(h.length, 4);
+      const hp = Buffer.alloc((8 - ((16 + h.length) % 8)) % 8);
+      return Buffer.concat([pre, h, hp, ...parts]);
+    }
+    function restore(buf) {
+      if (!buf || buf.length < 16 || buf.toString('latin1', 0, 4) !== 'HRI1') throw new Error('not a recall index');
+      const hl = buf.readUInt32LE(4); const head = JSON.parse(buf.toString('utf8', 16, 16 + hl));
+      if (head.v !== 1) throw new Error('another version');
+      const base = 16 + hl + ((8 - ((16 + hl) % 8)) % 8);
+      const get = (T, [at, n]) => { const bytes = n * T.BYTES_PER_ELEMENT; const ab = new ArrayBuffer(bytes); new Uint8Array(ab).set(buf.subarray(base + at, base + at + bytes)); return new T(ab); };
+      const T = head.terms.length;
+      const df0 = get(Int32Array, head.df); const llen = get(Uint32Array, head.llen); const posts = get(Uint32Array, head.posts);
+      const msgs = get(Float64Array, head.msgs); const tids = get(Uint32Array, head.tids); const tcounts = get(Uint32Array, head.tcounts);
+      if (df0.length !== T || llen.length !== T) throw new Error('damaged');
+      head.terms.forEach((t, i) => termId.set(t, i));
+      let cap = 1024; while (cap < T) cap *= 2; df = new Int32Array(cap); df.set(df0);
+      let P = 0;
+      for (let i = 0; i < T; i++) { const n = llen[i]; lists.push(n ? { a: posts.slice(P, P + n), n } : null); P += n; }
+      let M = 0; let Q = 0;
+      for (const x of head.slots) {
+        if (!x) { slots.push(null); continue; }
+        const [key, src, sum, n, len, nposts, nt] = x;
+        slots.push({ key, src, sum, msgs: msgs.slice(M, M + n * 4), n, tids: tids.slice(Q, Q + nt), tcounts: tcounts.slice(Q, Q + nt), len, posts: nposts });
+        byKey.set(key, slots.length - 1); M += n * 4; Q += nt;
+      }
+      N = head.N; total = head.total; live = head.live; dead = 0;
+      return head.extra || {};
+    }
+    let extra = {};
+    if (snap) extra = restore(snap);
+    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, begin, msg, end, abort, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true), snapshot, extra: () => extra,
       _bytes: () => lists.reduce((a, L) => a + (L ? L.a.byteLength : 0), 0) + slots.reduce((a, c) => a + (c ? c.msgs.byteLength + c.tids.byteLength * 2 : 0), 0) }; // (dev) its typed arrays' bytes
   }
 

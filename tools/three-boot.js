@@ -162,12 +162,19 @@ const LabBoot = (() => {
   addEventListener('hearth:lab-ready', () => used(document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame')));
 
   // after the start: once every 'soon' group is in (or 6 s), in an idle moment
+  // (round 83, idleburst83) and after the calm start (lazy.js Lazy.calm(): 10 s after the first screen and 3 s with no
+  // key / click / scroll, 30 s at most): a hidden preview page, three.js and its shaders were made ~6 s in, while the
+  // owner's first clicks wanted the computer. Opening the Lab before then opens it the usual way.
   function schedule() {
     const t0 = performance.now();
+    let openAt = 0;
     const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 1500 }) : setTimeout(fn, 200));
     const tick = () => {
+      const shut = window.Lazy?.calm ? !window.Lazy.calm().open : false;
+      if (shut && performance.now() - t0 < 30000) { setTimeout(tick, 500); return; }
+      openAt ||= performance.now();
       const busy = window.Lazy?.state?.().some((g) => g.tier === 'soon' && g.state !== 'loaded' && g.state !== 'failed');
-      if (busy && performance.now() - t0 < 6000) { setTimeout(tick, 400); return; }
+      if (busy && performance.now() - openAt < 6000) { setTimeout(tick, 400); return; }
       idle(() => warm().catch((err) => { st.skipped = err.message; }));
     };
     setTimeout(tick, 300);
