@@ -28,7 +28,7 @@
 //   chatPeek { file, ctx, wrapped, to, count }  (round 85) Earlier versions' Preview of a giant chat: only what it shows
 //   chatWinOpen { file, ver, cpl, tail }  (round 86, chatwindow86) a GIANT chat opened WINDOWED: its own fields, its last
 //                                 `tail` messages and its pinned ones as bytes, and one small record per message (chatwin-core
-//                                 metaOf: its height, its small fields); the rest stays in the file. { whole: true }: open it the
+//                                 metaOf: its height, its usage, its small fields as a short text); the rest stays in the file. { whole: true }: open it the
 //                                 usual way (a file the cut can't read, or not laid out as the app writes it)
 //   chatRange { file, ver, from, to }  (round 86) messages [from, to) of a giant chat as bytes ({"messages":[…]}): cut once
 //                                 per version of the file (the offsets kept with its sig, in `bigs`); same: whether the file is
@@ -741,7 +741,8 @@ const OPS = {
     }
     const from = Math.max(0, n - Math.max(0, Number(tail) || 0));
     const pk = []; for (let k = 0; k < from; k++) if (e.meta.list[k]?.[2]?.pinnedMsg) pk.push(k);
-    const parts = [Buffer.from(`{"cpl":${c},"meta":${JSON.stringify(e.meta.list)},"pk":${JSON.stringify(pk)},"pins":[`)];
+    const L = e.meta.list;
+    const parts = [Buffer.from(`{"cpl":${c},"h":${JSON.stringify(L.map((x) => x[0]))},"u":${JSON.stringify(L.map((x) => x[3]))},"r":${JSON.stringify(L.map(CW().recOf))},"pk":${JSON.stringify(pk)},"pins":[`)];
     pk.forEach((k, i) => { if (i) parts.push(Buffer.from(',')); parts.push(buf.subarray(els[k * 2], els[k * 2 + 1])); });
     parts.push(Buffer.from('],"messages":['));
     if (from < n) parts.push(buf.subarray(els[from * 2], els[n * 2 - 1]));

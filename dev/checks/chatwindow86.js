@@ -207,16 +207,14 @@ await step('export', async () => {
   return { bytes: st?.size || 0 };
 }, { wholeOk: true });
 out.export.loadedWhole = !Native.isWin?.(chat);
-out.export.same = await (async () => { // (the chat as it is now, whole; its 57 MB strings let go before the heap is read)
-  const got = await window.hub.fs.read(fileOf('json'), { maxBytes: 200 * 1048576 }).catch(() => null);
-  const want = Native.isWin?.(chat) ? null : JSON.stringify({ ...chat, session: undefined, hearthExport: 1 }, null, 2);
-  if (got !== want) out.problems.push(`export: the file differs from the whole-chat way (${got?.length} vs ${want?.length})`);
-  return got === want;
-})();
+// the whole-chat way's bytes, hashed now (compared with the file at the end, after the heap's been read)
+const sha = async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+// (made in a callback of its own: the 57 MB string never sits in this script's suspended frame, where it stayed alive)
+const wantSha = Native.isWin?.(chat) ? null : await new Promise((res) => { setTimeout(() => { res(sha(JSON.stringify({ ...chat, session: undefined, hearthExport: 1 }, null, 2))); }, 0); });
 out.heap.exportWholeMB = MB((await heap()) - heap0);
 if (!OFF) { // a minute later the chat goes back to its window (here at once)
   out.export.backToWindow = Boolean(CW()?.rewindow(chat, true) && Native.isWin(chat));
-  out.heap.afterExportMB = MB((await heap()) - heap0);
+  out.heap.afterExportMB = MB((await heap()) - heap0); out.export.kept = CW()?.stats?.().lastRewindow;
   if (!out.export.backToWindow) out.problems.push('export: the chat did not go back to its window');
 }
 
@@ -235,6 +233,9 @@ if (!out.sync.drawn || out.sync.messages !== 6000) out.problems.push(`sync: ${JS
 if (!OFF && !out.sync.windowed) out.problems.push('sync: the chat did not open windowed again');
 out.heap.endMB = MB((await heap()) - heap0);
 
+// the exported file = the whole-chat way, byte for byte
+out.export.same = Boolean(wantSha) && wantSha === await new Promise((res) => { window.hub.fs.read(fileOf('json'), { maxBytes: 200 * 1048576 }).then((t) => res(sha(t)), () => res('')); });
+if (!out.export.same) out.problems.push('export: the file differs from the whole-chat way');
 const s = CW()?.stats?.();
 out.cw = cwStats();
 if (s?.misses?.length) { out.misses = [...new Map(s.misses.map((x) => [x.where.split(' | ').slice(2, 4).join(' | '), `#${x.k} ${x.key}`])).entries()].slice(0, 30); out.problems.push(`${s.misses.length} read(s) reached a message that wasn't loaded: ${s.misses.slice(0, 3).map((x) => `#${x.k} ${x.key} at ${x.where}`).join(' ; ')}`); }

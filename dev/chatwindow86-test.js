@@ -92,9 +92,9 @@ const parseBytes = (b) => JSON.parse(Buffer.from(b).toString('utf8'));
 // a windowed chat as chatwin.js open() makes it, from chatWinOpen's answer
 function windowed(r, ver, misses) {
   const p = parseBytes(r.bytes); const head = JSON.parse(r.head);
-  const st = { meta: p.meta, cpl: p.cpl, poison: null };
+  const st = { r: p.r, cpl: p.cpl, poison: null };
   const loaded = p.messages.map((m, i) => [r.from + i, m]); p.pk.forEach((k, i) => loaded.push([k, p.pins[i]]));
-  st.a = C.makeArray({ n: r.n, loaded, meta: (k) => st.meta[k], miss: (k, key) => { misses?.push([k, key]); throw new C.NotLoaded(k, key); }, refuse: (k, why, hard) => { if (hard) st.poison = why; if (!hard) throw new C.NotLoaded(k, why); throw new Error(why); } });
+  st.a = C.makeArray({ n: r.n, loaded, meta: (k) => st.r[k], miss: (k, key) => { misses?.push([k, key]); throw new C.NotLoaded(k, key); }, refuse: (k, why, hard) => { if (hard) st.poison = why; if (!hard) throw new C.NotLoaded(k, why); throw new Error(why); } });
   const chat = {}; for (const k of Object.keys(head)) chat[k] = k === 'messages' ? st.a.px : head[k];
   const sh = { ver, keys: Object.keys(chat), head: new Map(), msgs: [] };
   for (const k of sh.keys) if (k !== 'messages') sh.head.set(k, N.shapeOf(chat[k]));
@@ -109,7 +109,7 @@ async function main() {
     // ---------- the array and its stubs ----------
     {
       const full = chatOf(600); const n = full.messages.length;
-      const meta = full.messages.map((m) => C.metaOf(m, 90));
+      const meta = full.messages.map((m) => C.recOf(C.metaOf(m, 90)));
       const misses = []; let hard = 0;
       const a = C.makeArray({ n, loaded: full.messages.slice(500).map((m, i) => [500 + i, m]), meta: (k) => meta[k], miss: (k, key) => { misses.push(k); throw new C.NotLoaded(k, key); }, refuse: (k, why, h) => { if (h) hard += 1; if (!h) throw new C.NotLoaded(k, why); throw new Error(why); } });
       const px = a.px;
@@ -147,7 +147,7 @@ async function main() {
       const b2 = C.makeArray({ n: 50, loaded: full.messages.slice(40, 50).map((x, i) => [40 + i, x]), meta: (k) => meta[k], miss: (k) => { throw new C.NotLoaded(k); }, refuse: (k, why, h) => { if (h) hard += 10; throw new Error(why); } });
       ok(throws(() => b2.px.unshift({ role: 'x' })) && hard >= 11, 'windowed: unshift over unloaded messages refused as a hard stop (the chat is read again)');
       // a message that isn't an object reads as itself
-      const odd = C.makeArray({ n: 3, loaded: [[2, { role: 'user', text: 'a' }]], meta: (k) => C.metaOf([null, 7][k], 90), miss: () => { throw new C.NotLoaded(0); }, refuse: () => { throw new Error('no'); } });
+      const odd = C.makeArray({ n: 3, loaded: [[2, { role: 'user', text: 'a' }]], meta: (k) => C.recOf(C.metaOf([null, 7][k], 90)), miss: () => { throw new C.NotLoaded(0); }, refuse: () => { throw new Error('no'); } });
       ok(odd.px[0] === null && odd.px[1] === 7, 'windowed: a null / number message reads as itself');
     }
 
@@ -178,7 +178,9 @@ async function main() {
       const head = JSON.parse(r.head);
       ok(r.n === 1500 && r.from === 1200 && JSON.stringify(p.messages) === JSON.stringify(full.messages.slice(1200)), 'chatWinOpen: the end (300 messages) as they are');
       ok(JSON.stringify(Object.keys(head)) === JSON.stringify(Object.keys(full)) && Array.isArray(head.messages) && !head.messages.length && head.title === full.title, 'chatWinOpen: its own fields, messages in place, empty');
-      ok(JSON.stringify(p.meta) === JSON.stringify(full.messages.map((m) => C.metaOf(m, 90))), 'chatWinOpen: one record per message (metaOf)');
+      const M = full.messages.map((m) => C.metaOf(m, 90));
+      ok(JSON.stringify(p.h) === JSON.stringify(M.map((x) => x[0])) && JSON.stringify(p.u) === JSON.stringify(M.map((x) => x[3])) && JSON.stringify(p.r) === JSON.stringify(M.map(C.recOf)), 'chatWinOpen: one record per message (metaOf: height, usage, its small fields)');
+      ok(p.u.reduce((a, b) => a + b, 0) === full.messages.reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0), 'chatWinOpen: the usages add up to native.js\'s header total');
       ok(JSON.stringify(p.pk) === JSON.stringify(full.messages.map((m, i) => (m.pinnedMsg && i < 1200 ? i : -1)).filter((i) => i >= 0)) && JSON.stringify(p.pins) === JSON.stringify(p.pk.map((k) => full.messages[k])), 'chatWinOpen: its pinned messages');
       const r2 = await T.op({ op: 'chatRange', file, ver: 'v1', from: 20, to: 45 });
       ok(r2.same && r2.n === 1500 && JSON.stringify(parseBytes(r2.bytes).messages) === JSON.stringify(full.messages.slice(20, 45)), 'chatRange: messages [20, 45) as they are, the same version');

@@ -321,7 +321,7 @@ const AiUndo = (() => {
   // the replies whose changes were all undone show it
   function restamp(turnIds) {
     if (!turnIds.size || typeof Native === 'undefined') return;
-    for (const a of H.agents?.() || []) { const c = Native.chatOf(a.id); if (c?.messages?.some((m) => turnIds.has(m.aiChanges?.turn))) Native.refresh(a.id, { keepScroll: true }); }
+    for (const a of H.agents?.() || []) { const c = Native.chatOf(a.id); if (c && (Native.isWin?.(c) || c.messages?.some((m) => turnIds.has(m.aiChanges?.turn)))) Native.refresh(a.id, { keepScroll: true }); } // (round 86: a windowed giant chat is drawn again, its older messages unread)
   }
   function ask(p, warnings, title) {
     return new Promise((resolve) => {

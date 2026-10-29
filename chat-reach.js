@@ -50,7 +50,7 @@ const Reach = (() => {
     const { abs, rel } = event.type === 'done' ? pathsIn(event.text) : { abs: [], rel: [] };
     if (!abs.length && !rel.length) { if (!opens.length) delete extras.opens; return; }
     resolve([...abs, ...rel], chat).then((list) => {
-      const msg = chat.messages.find((x) => x.opens === opens);
+      const msg = chat.messages.findLast((x) => x.opens === opens); // (round 86: from the end, where this reply is)
       if (!msg) return;
       let changed = false;
       for (const r of list) {
@@ -152,7 +152,10 @@ const Reach = (() => {
     const waitingThings = [];
     for (const a of H.agents?.() || []) {
       const chat = Native.chatOf?.(a.id);
-      for (const msg of chat?.messages || []) for (const t of msg.things || []) if (t.waiting) waitingThings.push({ t, chat });
+      // (round 86, chatwindow86) a windowed giant chat: its loaded messages (the ones that can be on screen; a resting
+      // block's waiting card is drawn, and looks for its file, when the block wakes)
+      const ms = chat && Native.isWin?.(chat) ? Native._rest.W.x.keys(chat).map((k) => chat.messages[k]) : chat?.messages || [];
+      for (const msg of ms) for (const t of msg?.things || []) if (t.waiting) waitingThings.push({ t, chat });
     }
     if (!cards.length && !waitingThings.length) return;
     const list = [...new Set([...cards.map((c) => c._reach?.o?.path), ...waitingThings.map((w) => w.t.path)].filter(Boolean))];

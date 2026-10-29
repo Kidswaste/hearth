@@ -54,11 +54,12 @@ const ChatWin = (() => {
   async function open(id, w) {
     const head = JSON.parse(w.head);
     const p = await parse(w.bytes);
-    const meta = p.head?.meta; const tail = msgsOf(p); const pk = p.head?.pk || []; const pins = p.head?.pins || [];
-    if (!Array.isArray(meta) || meta.length !== w.n || tail.length !== w.n - w.from || pins.length !== pk.length) throw new Error('a windowed chat that doesn\'t add up');
-    const st = { id, n: w.n, meta, cpl: p.head.cpl, find: null, inflight: new Map(), whole: null, poison: null, full: 0 };
+    const { h, u, r } = p.head || {}; const tail = msgsOf(p); const pk = p.head?.pk || []; const pins = p.head?.pins || [];
+    if (!Array.isArray(h) || h.length !== w.n || u?.length !== w.n || r?.length !== w.n || tail.length !== w.n - w.from || pins.length !== pk.length) throw new Error('a windowed chat that doesn\'t add up');
+    // per message: its height (h), its usage (u) and its record text (r: read when a stub is asked for a field)
+    const st = { id, n: w.n, h, u, r, cpl: p.head.cpl, find: null, inflight: new Map(), whole: null, poison: null, full: 0 };
     const loaded = tail.map((m, i) => [w.from + i, m]); pk.forEach((k, i) => loaded.push([k, pins[i]]));
-    st.a = C.makeArray({ n: w.n, loaded, meta: (k) => st.meta[k], miss: (k, key) => miss(chat, st, k, key), refuse: (k, why, hard) => refuse(chat, st, k, why, hard) });
+    st.a = C.makeArray({ n: w.n, loaded, meta: (k) => st.r[k], miss: (k, key) => miss(chat, st, k, key), refuse: (k, why, hard) => refuse(chat, st, k, why, hard) });
     st.px = st.a.px;
     const chat = {}; for (const k of Object.keys(head)) chat[k] = k === 'messages' ? st.px : head[k];
     if (!('messages' in head)) chat.messages = st.px;
@@ -171,7 +172,8 @@ const ChatWin = (() => {
     return st.whole;
   }
   // after a quiet minute, a giant chat loaded whole goes back to its window (what isn't saved, drawn or pinned stays)
-  function later(chat, ms = 60000) { const st = S.get(chat); if (!st) return; clearTimeout(st.backT); st.backT = setTimeout(() => { if (!rewindow(chat)) later(chat, 60000); }, ms); }
+  // (the timer holds the chat weakly: a chat let go meanwhile isn't kept for it)
+  function later(chat, ms = 60000) { const st = S.get(chat); if (!st) return; const ref = new WeakRef(chat); clearTimeout(st.backT); st.backT = setTimeout(() => { const c = ref.deref(); if (c && !rewindow(c)) later(c, 60000); }, ms); }
   function rewindow(chat, now = false) { // (now: the app check, without the quiet minute)
     const st = S.get(chat);
     if (!st || !st.full || is(chat) || !on() || R.chats.get(chat.id) !== chat) return true; // (nothing to do: stop)
@@ -182,18 +184,18 @@ const ChatWin = (() => {
     const awake = new Set();
     for (const [agentId, v] of R.views) if (H.activeChat[agentId] === chat.id) { for (const b of v.list?.awake || []) awake.add(b); keepFrom = Math.min(keepFrom, R.shownFrom(chat, R.unreadFrom.get(chat.id))); }
     if (n && !(n - 1 in ms)) return false; // (a hole at the end: it stays whole)
-    const loaded = []; const meta = st.meta.slice(0, n);
+    const loaded = []; const h = st.h.slice(0, n); const u = st.u.slice(0, n); const r = st.r.slice(0, n);
     for (let k = 0; k < n; k++) {
       const m = ms[k];
-      const keep = k >= keepFrom || awake.has(Math.floor(k / R.BLOCK)) || (m && typeof m === 'object' && m.pinnedMsg) || !(k in ms) || !SV.sameShape(s.msgs[k], m);
-      if (keep) loaded.push([k, m]); else meta[k] = C.metaOf(m, st.cpl);
+      const keep = k >= keepFrom || awake.has(Math.floor(k / R.BLOCK)) || (m && typeof m === 'object' && m.pinnedMsg) || !(k in ms) || !C.sameSaved(s.msgs[k], m);
+      if (keep) loaded.push([k, m]); else { const x = C.metaOf(m, st.cpl); h[k] = x[0]; u[k] = x[3]; r[k] = C.recOf(x); }
     }
-    const a = C.makeArray({ n, loaded, meta: (k) => st.meta[k], miss: (k, key) => miss(chat, st, k, key), refuse: (k, why, hard) => refuse(chat, st, k, why, hard) });
+    const a = C.makeArray({ n, loaded, meta: (k) => st.r[k], miss: (k, key) => miss(chat, st, k, key), refuse: (k, why, hard) => refuse(chat, st, k, why, hard) });
     for (let k = 0; k < n; k++) if (!(k in ms)) { delete a.t[k]; a.gone.add(k); }
-    st.meta = meta; st.a = a; st.px = a.px; st.full = 0; st.find = null;
+    Object.assign(st, { h, u, r }); st.a = a; st.px = a.px; st.full = 0; st.find = null;
     chat.messages = a.px;
     for (let k = 0; k < n; k++) if (!a.loaded(k)) delete s.msgs[k];
-    stat.rewindowed += 1;
+    stat.rewindowed += 1; stat.lastRewindow = { kept: loaded.length, of: n };
     return true;
   }
   // a block far away back to rest: its messages let go (not the last ones, a pinned one, or one changed and not saved yet)
@@ -204,8 +206,8 @@ const ChatWin = (() => {
     for (let k = Math.max(0, lo); k < end; k++) {
       if (!(k in st.a.t)) continue;
       const m = st.a.t[k];
-      if ((m && typeof m === 'object' && m.pinnedMsg) || k >= s.msgs.length || !SV.sameShape(s.msgs[k], m)) continue;
-      st.meta[k] = C.metaOf(m, st.cpl); st.a.drop(k); delete s.msgs[k]; n += 1;
+      if ((m && typeof m === 'object' && m.pinnedMsg) || k >= s.msgs.length || !C.sameSaved(s.msgs[k], m)) continue;
+      const x = C.metaOf(m, st.cpl); st.h[k] = x[0]; st.u[k] = x[3]; st.r[k] = C.recOf(x); st.a.drop(k); delete s.msgs[k]; n += 1;
     }
     stat.released += n;
     return n;
@@ -213,9 +215,12 @@ const ChatWin = (() => {
   // the resting blocks' height (native.js restBit): a loaded message measured as guessH does, the others by their record
   function guess(chat, lo, hi, w) {
     const st = live(chat); const cpl = Math.max(30, (w - 90) / 7.4); let all = 0;
-    for (let k = lo; k < hi; k++) all += st && !st.a.loaded(k) ? (st.meta[k]?.[0] || 0) : C.msgPx(chat.messages[k], cpl);
+    for (let k = lo; k < hi; k++) all += st && !st.a.loaded(k) ? (st.h[k] || 0) : C.msgPx(chat.messages[k], cpl);
     return all;
   }
+  // the header's token total (native.js render) and the pinned messages (planOf): from the records, no stub made
+  function usage(chat) { const st = live(chat); if (!st) return 0; let n = 0; for (let k = 0; k < st.a.t.length; k++) n += st.a.loaded(k) ? C.useOf(st.a.t[k]) : (st.u[k] || 0); return n; }
+  const pins = (chat) => { const st = live(chat); return st ? st.a.keys().filter((k) => st.a.t[k]?.pinnedMsg) : []; }; // (a pinned message is always loaded: opened with it, never let go)
 
   // ---------- saving by change ----------
   function save(chat) {
@@ -285,7 +290,7 @@ const ChatWin = (() => {
     for (const c of R.chats.values()) { const st = live(c); if (st) { windowed += 1; loaded += st.a.keys().length; total += st.a.t.length; } }
     return { ...stat, windowed, loaded, total };
   }
-  const api = { is, open, keys, has, ensure, cut, whole, release, guess, save, hits, calc, calcSync, bad, all, stats, rewindow, on, TAIL };
+  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, bad, all, stats, rewindow, on, TAIL };
   R.W.x = api;
   return api;
 })();

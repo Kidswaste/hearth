@@ -35,14 +35,19 @@ const ChatWinCore = (() => {
   // a field a stub may give: a short value (its content fields never, whatever their size)
   const BIG = new Set(['text', 'thinking', 'sent', 'ctx']);
   const small = (x) => x === null || typeof x === 'boolean' || typeof x === 'number' || (typeof x === 'string' && x.length <= 80) || (typeof x === 'object' && JSON.stringify(x).length <= 200);
-  // a message's record: [height, its keys in order, its small fields] (a message that isn't an object: [height, null, itself])
+  // a message's record: [height, its keys in order, its small fields, its usage (input + output: the chat's header
+  // total)] (a message that isn't an object: [height, null, itself, 0])
+  const useOf = (m) => (m?.usage ? m.usage.input + m.usage.output : 0);
   function metaOf(m, cpl) {
     const h = msgPx(m, cpl);
-    if (m === null || typeof m !== 'object' || Array.isArray(m)) return [h, null, m];
+    if (m === null || typeof m !== 'object' || Array.isArray(m)) return [h, null, m, 0];
     const keys = Object.keys(m); const s = {};
     for (const k of keys) if (!BIG.has(k) && small(m[k])) s[k] = m[k];
-    return [h, keys, s];
+    return [h, keys, s, useOf(m)];
   }
+  // what the window keeps per message: its height and usage as numbers, the rest as one short JSON text (read only
+  // when something asks that message for a field: thousands of small objects made at once were a long task)
+  const recOf = (x) => JSON.stringify([x[1], x[2]]);
 
   // ---------- the errors ----------
   class NotLoaded extends Error {
@@ -68,39 +73,46 @@ const ChatWinCore = (() => {
   // (one Set per distinct list of keys: most messages share a few)
   const SETS = new Map();
   const keySet = (keys) => { const id = keys.join('\u0001'); let x = SETS.get(id); if (!x) { if (SETS.size > 500) SETS.clear(); SETS.set(id, (x = new Set(keys))); } return x; };
-  // meta: the message's record · miss(k, key) and write(k, key) throw
-  function stubOf(meta, k, miss, write) {
-    if (!meta) throw new NotLoaded(k);
-    if (meta[1] === null) return meta[2]; // (not an object: the value itself, exact)
-    const keys = meta[1]; const s = meta[2]; const has = keySet(keys);
-    const no = (t, p) => write(k, p);
-    const px = new Proxy({}, {
-      get(t, p) { if (typeof p === 'string' && has.has(p)) { if (own(s, p)) return ro(s[p], k, write); return miss(k, p); } return Reflect.get(t, p); },
-      has: (t, p) => has.has(p) || Reflect.has(t, p),
-      ownKeys: () => [...keys],
-      getOwnPropertyDescriptor(t, p) { if (typeof p !== 'string' || !has.has(p)) return undefined; if (!own(s, p)) return miss(k, p); return { value: ro(s[p], k, write), writable: true, enumerable: true, configurable: true }; },
-      set: no, defineProperty: no, deleteProperty: no, setPrototypeOf: no, preventExtensions: no,
-    });
+  // rec: the message's record text (recOf) or [keys, small] · hooks: { miss(k, key), write(k, key) } (both throw). One
+  // handler for every stub; a stub's record is read the first time it's asked for a field
+  const SK = Symbol('k'); const SR = Symbol('rec'); const SHK = Symbol('hooks'); const SI = Symbol('info');
+  const infoOf = (t) => { let i = t[SI]; if (!i) { let r = t[SR]; if (typeof r === 'string') r = JSON.parse(r); i = t[SI] = { keys: r[0], s: r[1], has: keySet(r[0]) }; t[SR] = null; } return i; };
+  const STUB = {
+    get(t, p) { if (typeof p !== 'string') return undefined; const i = infoOf(t); if (!i.has.has(p)) return p in Object.prototype ? Object.prototype[p] : undefined; if (own(i.s, p)) return ro(i.s[p], t[SK], t[SHK].write); return t[SHK].miss(t[SK], p); },
+    has: (t, p) => typeof p === 'string' && (infoOf(t).has.has(p) || p in Object.prototype),
+    ownKeys: (t) => [...infoOf(t).keys],
+    getOwnPropertyDescriptor(t, p) { if (typeof p !== 'string') return undefined; const i = infoOf(t); if (!i.has.has(p)) return undefined; if (!own(i.s, p)) return t[SHK].miss(t[SK], p); return { value: ro(i.s[p], t[SK], t[SHK].write), writable: true, enumerable: true, configurable: true }; },
+    set: (t, p) => t[SHK].write(t[SK], p), defineProperty: (t, p) => t[SHK].write(t[SK], p), deleteProperty: (t, p) => t[SHK].write(t[SK], p),
+    setPrototypeOf: (t) => t[SHK].write(t[SK], 'its prototype'), preventExtensions: (t) => t[SHK].write(t[SK], 'freeze'),
+  };
+  function stubOf(rec, k, hooks) {
+    if (rec == null) throw new NotLoaded(k);
+    if (typeof rec === 'string' ? rec.startsWith('[null,') : rec[0] === null) return (typeof rec === 'string' ? JSON.parse(rec) : rec)[1]; // (not an object: the value itself, exact)
+    const px = new Proxy({ [SK]: k, [SR]: rec, [SHK]: hooks, [SI]: null }, STUB);
     STUBS.add(px);
     return px;
   }
 
+  // a stub's two ways out, in a scope of their own (V8 keeps a closure's whole scope: made inside makeArray, a stub that
+  // something held on to kept every loaded message of that array alive, even after it was let go)
+  function stubHooks(miss, refuse) { return { miss: (k, key) => miss(k, key), write: (k, key) => refuse(k, `a change to message ${k + 1} (${String(key)}) that isn't loaded`, false) }; }
+
   // ---------- the messages array ----------
   const idx = (p) => { if (typeof p !== 'string') return -1; const c = p.charCodeAt(0); if (c < 48 || c > 57) return -1; const k = +p; return k >>> 0 === k && k < 4294967295 && String(k) === p ? k : -1; };
-  // o: { n (the chat's true count), loaded ([[k, message]]), meta (k → record), miss(k, key), refuse(k, why) }
+  // o: { n (the chat's true count), loaded ([[k, message]]), meta (k → its record: recOf text or [keys, small]), miss(k, key), refuse(k, why) }
   // → { px: the array the chat holds, t: its target (the loaded messages own their index), put(k, m), drop(k), tf(),
   //     keys() (the loaded indexes, ascending), loaded(k), stubs }
   function makeArray(o) {
     const t = new Array(o.n);
     const stubs = new Map(); const gone = new Set();
     let tf = o.n; // every index in [tf, length) is loaded
-    const miss = (k, key) => o.miss(k, key);
-    const write = (k, key) => o.refuse(k, `a change to message ${k + 1} (${String(key)}) that isn't loaded`, false);
-    const stub = (k) => { let s = stubs.get(k); if (s === undefined) { s = stubOf(o.meta(k), k, miss, write); stubs.set(k, s); } return s; };
+    const h = stubHooks(o.miss, o.refuse); // (made outside this scope: a stub kept somewhere never keeps `t`, the loaded messages, alive)
+    const stub = (k) => { let s = stubs.get(k); if (s === undefined) { s = stubOf(o.meta(k), k, h); stubs.set(k, s); } return s; };
     const fix = () => { if (tf > t.length) tf = t.length; while (tf > 0 && (tf - 1) in t) tf -= 1; };
     const put = (k, m) => { if (k < 0 || k >= t.length) return; t[k] = m; stubs.delete(k); gone.delete(k); fix(); };
     const drop = (k) => { if (!(k in t)) return; delete t[k]; if (k >= tf) tf = k + 1; };
     for (const [k, m] of o.loaded || []) if (k >= 0 && k < o.n) t[k] = m;
+    o.loaded = null;
     fix();
     const guard = (k, v) => { if (isStub(v)) o.refuse(k, 'an unloaded message written into the chat', true); if (k < tf && k < t.length) o.refuse(k, `a change at message ${k + 1} with older messages not loaded after it`, true); };
     const px = new Proxy(t, {
@@ -166,10 +178,23 @@ const ChatWinCore = (() => {
     return { keys, set, n: len, msgs, ...(trunc ? { trunc: true } : {}) };
   }
 
+  // native.js sameShape as JSON sees it (what a save writes): a key whose value is undefined isn't there. A drawn message
+  // gets `lastReply: undefined` (native.js planOf): still the message on disk, it may be let go
+  function sameSaved(sh, v) {
+    if (!Array.isArray(sh)) return Object.is(sh, v);
+    if (v === null || typeof v !== 'object' || Array.isArray(v) !== (sh[0] === 0)) return false;
+    if (sh[0] === 0) { if (v.length !== sh.length - 1) return false; for (let i = 0; i < v.length; i++) if (!sameSaved(sh[i + 1], v[i])) return false; return true; }
+    const ks = Object.keys(v).filter((k) => v[k] !== undefined); const at = [];
+    for (let i = 1; i < sh.length; i += 2) if (sh[i + 1] !== undefined) at.push(i);
+    if (ks.length !== at.length) return false;
+    for (let j = 0; j < ks.length; j++) if (ks[j] !== sh[at[j]] || !sameSaved(sh[at[j] + 1], v[ks[j]])) return false;
+    return true;
+  }
+
   // ---------- find in the chat (the store thread's side, exact) ----------
   // the test chat-rest.js restingHits makes on a message (needle: lowercase)
   const findHit = (m, needle) => Boolean(m) && !m.compactReq && (String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle));
 
-  return { textPx, msgPx, metaOf, small, BIG, NotLoaded, stubOf, isStub, makeArray, delta, findHit, idx };
+  return { textPx, msgPx, metaOf, recOf, useOf, small, BIG, NotLoaded, stubOf, isStub, makeArray, delta, sameSaved, findHit, idx };
 })();
 if (typeof module !== 'undefined') module.exports = ChatWinCore; else window.ChatWinCore = ChatWinCore;

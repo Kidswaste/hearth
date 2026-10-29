@@ -1111,7 +1111,7 @@ const Native = (() => {
     const lastIdx = chat.messages.length - 1;
     // suggestions stay on the latest reply even after a second opinion is added below it
     const lastReplyIdx = chat.messages.findLastIndex((m) => m.role === 'assistant' && !m.compactSummary);
-    const pins = chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
+    const pins = cw(chat) ? W.x.pins(chat) : chat.messages.map((m, i) => (m.pinnedMsg ? i : -1)).filter((i) => i >= 0);
     if (pins.length) head.push(pinnedStrip(agentId, chat, pins));
     const firstNew = unreadFrom.get(chat.id);
     // A long chat opens on its last 40–59 messages (switching to one rebuilt every message: ~36k laid-out objects).
@@ -1223,7 +1223,7 @@ const Native = (() => {
     const put = (node, key, value) => { if (node[key] !== value) node[key] = value; };
     put(v.title, 'textContent', `${chat?.pinned ? '📌 ' : ''}${chat?.title || 'New chat'}`);
     put(v.title, 'title', chat ? `${chat.title}\n${chat.messages.length} messages · started ${fmtDate(chat.createdAt || chat.updatedAt)}\nDouble-click to rename` : 'Double-click to rename');
-    const total = (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
+    const total = cw(chat) ? W.x.usage(chat) : (chat?.messages || []).reduce((sum, m) => sum + (m.usage ? m.usage.input + m.usage.output : 0), 0);
     const folder = agent.workspace ? `edits ${agent.workspace.split(/[\\/]/).filter(Boolean).pop() || agent.workspace}` : null;
     const metaText = [folder, total ? `${fmt(total)} token traffic this chat` : null].filter(Boolean).join(' · ');
     if (v.metaText !== metaText) { v.metaText = metaText; const badge = v.meta.querySelector('.access-badge'); v.meta.textContent = metaText; if (badge) v.meta.append(badge); }
@@ -2942,7 +2942,8 @@ const Native = (() => {
       livePaint(chatId) { const p = pending.get(chatId); if (!p?.el) return null; const text = visibleText(p.text); paintBody(p, p.el.querySelector('.body'), text); return { html: p.el.querySelector('.body').innerHTML, text }; },
     },
     // (round 10, sync.js) a chat that arrived from another computer: read again from disk next time (not mid-reply)
-    forget: (chatId) => { if (pending.has(chatId)) return false; chats.delete(chatId); for (const v of views.values()) dropPane(v, chatId); return true; },
+    // (round 86) a windowed giant chat read again: its list's old end isn't kept awake (a few hundred messages drawn at once)
+    forget: (chatId) => { if (pending.has(chatId)) return false; const big = cw(chats.get(chatId)); chats.delete(chatId); for (const v of views.values()) { dropPane(v, chatId); if (big && v.paneKey === chatId) v.list.restFrom = null; } return true; },
     // (round 16, dev/checks/chatperf.js) a text streamed in pieces of `step` characters, painted like a live reply: its HTML
     _streamHTML(text, step = 12) { const p = {}; const body = document.createElement('div'); for (let i = step; i < text.length + step; i += step) paintBody(p, body, text.slice(0, i).trim()); return body.innerHTML; },
   };
