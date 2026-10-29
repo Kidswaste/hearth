@@ -91,10 +91,31 @@ const TEXT_IDLE_MS = Number(process.env.HEARTH_TEXT_IDLE_MS) || 10 * 60 * 1000; 
 let textsWarm = false; let coolT = null;
 function warmTexts() {
   textsWarm = true; clearTimeout(coolT);
-  coolT = setTimeout(() => { textsWarm = false; for (const e of index.values()) { e.texts = null; e.n = 0; } textChars = 0; }, TEXT_IDLE_MS);
+  coolT = setTimeout(() => { textsWarm = false; for (const e of index.values()) { e.texts = null; e.n = 0; } textChars = 0; bigSearch.clear(); }, TEXT_IDLE_MS);
   coolT.unref?.();
 }
 const written = new Map(); // file → { h, size, mtimeMs } of the text this thread last wrote / saw there
+// (round 82, bigchat82) giant chats searched by their bytes (bigchat-core.js searchIndex): file → { sig, ix }, kept while
+// searching (let go with the texts), 256 MB at most
+const bigSearch = new Map();
+function bigSearchIx(file, e) {
+  const sig = `${e.size}:${e.mtimeMs}`;
+  const had = bigSearch.get(file);
+  if (had?.sig === sig) return had.ix;
+  bigSearch.delete(file);
+  const got = readStill(file);
+  if (!got || got.sig !== sig) return null;
+  const ix = BC().searchIndex(got.buf);
+  if (!ix) return null;
+  let total = ix.lower.length; for (const x of bigSearch.values()) total += x.ix.lower.length;
+  if (total <= 256 * 1024 * 1024) bigSearch.set(file, { sig, ix });
+  return ix;
+}
+// message k's text, read from the file by where the cut found it
+function textAtBytes(file, ix, k) {
+  let fd = null;
+  try { fd = fs.openSync(file, 'r'); const s = ix.els[k * 2]; const b = Buffer.allocUnsafe(ix.els[k * 2 + 1] - s); fs.readSync(fd, b, 0, b.length, s); return JSON.parse(b.toString('utf8'))?.text; } catch { return undefined; } finally { if (fd !== null) fs.closeSync(fd); }
+}
 const merged = new Map(); // (round 75) file → { value, size, mtimeMs }: a store as mergeKV last wrote it
 const applyOps = (root, ops) => require('./kvops').applyOps(root, ops); // (round 75, syncstate75) kvops.js, required when first used
 const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
@@ -323,6 +344,17 @@ const OPS = {
     const hits = [];
     for (const { file, e } of chats(dir)) {
       let texts = e.texts;
+      if (!texts && e.size >= BIG) { // (round 82, bigchat82) a giant chat: its bytes searched, not the file parsed again
+        const ix = bigSearchIx(file, e);
+        if (ix) {
+          const r = BC().searchBig(ix, q, (k) => textAtBytes(file, ix, k));
+          let snippet = null;
+          if (r.count) { const t = String(textAtBytes(file, ix, r.first) || ''); const i = t.toLowerCase().indexOf(q); if (i >= 0) snippet = `${i > 50 ? '…' : ''}${t.slice(Math.max(0, i - 50), i + q.length + 70).replace(/\s+/g, ' ')}`; }
+          const s0 = e.sum;
+          if (r.count || s0.title?.toLowerCase().includes(q)) hits.push({ id: s0.id, agentId: s0.agentId, title: s0.title, updatedAt: s0.updatedAt, count: r.count, snippet });
+          continue;
+        }
+      }
       if (!texts) {
         const chat = readChat(file); texts = (chat?.messages || []).map((m) => m.text || '');
         const n = texts.reduce((a, t) => a + t.length, 0);

@@ -528,6 +528,63 @@ function digestValue(chat, VC) {
   return { __digest: true, key: all.digest('hex'), n: ids.length, title: chat.title, updatedAt: chat.updatedAt, ids, texts };
 }
 
+// ---------- the chats' text search (storework.js search) in a giant chat's bytes ----------
+// The search looks for words in each message's text (lowercase). A giant chat's texts are more than the thread keeps
+// (TEXT_CAP), so each search parsed the whole file again (≈ 0.8 s of the store thread per query). Here: its bytes,
+// ASCII-lowercased once (kept while searching) with where each message's "text" sits; a query is looked for as it is
+// written inside JSON (escaped), and a match counts when it lies in a message's text and doesn't begin inside an
+// escape (\n, é…). A query that escapes to a backslash (quotes, \) or a message holding one of the few characters
+// whose lowercase is ASCII (K Kelvin, İ) is checked by reading that message's text: the same hits as the whole search.
+const SPECIAL = [Buffer.from('K'), Buffer.from('İ')];
+function searchIndex(buf) {
+  const st = scanBuf(buf);
+  if (st.bad) return null;
+  const n = elCount(st);
+  const lower = Buffer.allocUnsafe(buf.length); buf.copy(lower);
+  for (let i = 0; i < lower.length; i++) { const c = lower[i]; if (c >= 0x41 && c <= 0x5a) lower[i] = c | 0x20; }
+  const text = new Float64Array(n * 2).fill(-1); const special = new Uint8Array(n);
+  for (let k = 0; k < n; k++) {
+    const at = textTok(buf, st.els[k * 2], st.els[k * 2 + 1]);
+    if (at?.text && buf[at.text[0]] === Q) { text[k * 2] = at.text[0] + 1; text[k * 2 + 1] = at.text[1] - 1; } else if (at?.text) special[k] = 1; // (a text that isn't a string: read)
+  }
+  for (const sp of SPECIAL) { let p = buf.indexOf(sp); while (p >= 0) { const k = elAt(st.els, p); if (k >= 0) special[k] = 1; p = buf.indexOf(sp, p + 1); } }
+  return { lower, els: st.els, text, special, n };
+}
+// the message holding byte p (−1: none)
+function elAt(els, p) { let lo = 0; let hi = els.length / 2 - 1; while (lo <= hi) { const m = (lo + hi) >> 1; if (p < els[m * 2]) hi = m - 1; else if (p >= els[m * 2 + 1]) lo = m + 1; else return m; } return -1; }
+// does a match at byte p begin inside an escape (after its backslash)?
+function inEscape(b, p, from) {
+  for (let j = p - 1; j >= Math.max(from, p - 5); j--) {
+    if (b[j] !== BS) continue;
+    let r = 0; let k = j; while (k >= from && b[k] === BS) { r += 1; k -= 1; }
+    if (!(r & 1)) return false; // an escaped backslash: what follows is plain
+    return b[j + 1] === 0x75 ? p < j + 6 : p === j + 1;
+  }
+  return false;
+}
+// q: the lowercase query · textAt(k) → message k's text (read from the file) → { count, first (its k), hits [k…] }
+function searchBig(ix, q, textAt) {
+  const esc = Buffer.from(JSON.stringify(q).slice(1, -1), 'utf8');
+  const plain = !esc.includes(BS);
+  const hit = new Uint8Array(ix.n); // 1: found · 2: to read (a match that may sit across an escape)
+  const read = (k) => { const t = textAt(k); hit[k] = typeof t === 'string' && t.toLowerCase().includes(q) ? 1 : 0; };
+  if (esc.length) {
+    let p = ix.lower.indexOf(esc);
+    while (p >= 0) {
+      const k = elAt(ix.els, p);
+      const ts = k >= 0 ? ix.text[k * 2] : -1; const te = k >= 0 ? ix.text[k * 2 + 1] : -1;
+      if (ts >= 0 && p >= ts && p + esc.length <= te && !hit[k]) {
+        if (plain && !inEscape(ix.lower, p, ts)) { hit[k] = 1; p = ix.lower.indexOf(esc, te); continue; }
+        hit[k] = 2;
+      }
+      p = ix.lower.indexOf(esc, p + 1);
+    }
+  }
+  for (let k = 0; k < ix.n; k++) if (hit[k] === 2 || (!hit[k] && ix.special[k])) read(k);
+  const hits = []; for (let k = 0; k < ix.n; k++) if (hit[k]) hits.push(k);
+  return { count: hits.length, first: hits.length ? hits[0] : -1, hits };
+}
+
 // ---------- a big chat saved by what changed (storework.js op chatDelta) ----------
 // What the store thread knows of the file as it last wrote / read it: e = { head (the chat without its messages), els
 // (each message's [start, end) in the file), sig }. d (from the window, chatsave.js): { keys (the chat's keys in order),
@@ -589,4 +646,4 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
 // the summary the chats list shows, from a head
 const sumOf = (h) => ({ id: h.id, agentId: h.agentId, title: h.title, updatedAt: h.updatedAt, pinned: Boolean(h.pinned), model: h.model });
 
-module.exports = { BIG, digestBytes, digestValue, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
+module.exports = { BIG, searchIndex, searchBig, digestBytes, digestValue, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
