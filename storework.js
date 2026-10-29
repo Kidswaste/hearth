@@ -581,6 +581,63 @@ const OPS = {
     const copy = new Uint8Array(new ArrayBuffer(out.length)); copy.set(out); // (its own memory: handed over whole)
     return { bytes: copy, __transfer: [copy.buffer] };
   },
+  // (round 84, bigchat84) a chat's own fields and its message count, its messages never parsed when it is big (the
+  // Trash list, Deleted things, a backup's restore compare titles and times): { head: { id, title, agentId, createdAt,
+  // updatedAt, pinned }, n } or { error } (a file that can't be read is said so: never "no chat")
+  chatHead({ file }) {
+    let buf; try { buf = dfs.readFileSync(file); } catch (e) { return { error: e.code || 'read' }; }
+    let head; let n;
+    const st = buf.length >= 4096 ? BC().scanBuf(buf) : { bad: true };
+    if (st.bad || st.arrS < 0) {
+      try { head = JSON.parse(buf.toString('utf8').replace(/^﻿/, '')); } catch { return { error: 'parse' }; }
+      if (!head || typeof head !== 'object' || Array.isArray(head)) return { error: 'parse' };
+      n = Array.isArray(head.messages) ? head.messages.length : 0;
+    } else { try { head = BC().headOf(buf, st); n = BC().elCount(st); } catch { return { error: 'parse' }; } }
+    return { head: { id: head.id, title: head.title, agentId: head.agentId, createdAt: head.createdAt, updatedAt: head.updatedAt, pinned: head.pinned }, n, messages: Array.isArray(head.messages) };
+  },
+  // (round 84, bigchat84) Earlier versions: a GIANT chat restored here, in the order of this chat's saves (the main
+  // process held seconds parsing the version and the chat, keeping it, cloning it and sending it to the window): the
+  // version read (a cloud copy made this computer's, a kept copy taken out of its wrapper), the chat as it is now read
+  // (one there that can't be read: nothing is done, never "no chat"), kept first (keep.file: what versionsmain keep()
+  // writes), then the restored chat written as a whole save writes it (versions-core restoreValue; an Undo merges what
+  // the restore changed back onto the chat as it is now, as versionsmain undoOnto does)
+  chatRestore({ file, src, keep, at, over }) {
+    const S = require('./sync-merge'); const VC = require('./versions-core');
+    const load = (x) => { // → the chat (a fresh copy), or null (gone / not a chat)
+      let t; try { t = fs.readFileSync(x.file, 'utf8'); } catch { return null; }
+      let v; try { v = S.parseJson(t); } catch { return null; }
+      if (x.ctx) v = S.fromCloud(v, x.ctx);
+      if (x.wrapped) v = v?.thing;
+      return VC.KINDS.chat.pick(v);
+    };
+    const thing = load(src);
+    if (!thing) return { ok: false, error: 'That version isn\'t there any more (open the list again).' };
+    let cur = null; let curText = null;
+    if (fs.existsSync(file)) {
+      try { curText = SS.readRetry(dfs, file).replace(/^﻿/, ''); cur = JSON.parse(curText); } catch { cur = null; }
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, held: true, code: 'EHELD', error: 'This chat can\'t be read just now. Nothing was changed; try again in a moment.' };
+    }
+    let kept = false;
+    if (cur && keep?.file) { // (the chat's bytes as they are inside the wrapper: parsed back, the same copy JSON.stringify writes)
+      fs.mkdirSync(path.dirname(keep.file), { recursive: true });
+      const tmp = `${keep.file}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      const fd = fs.openSync(tmp, 'w');
+      try {
+        fs.writeSync(fd, `{"v":1,"kind":"chat","id":${JSON.stringify(String(keep.id))},"at":${Number(at)},"machine":${JSON.stringify(String(keep.machine || ''))},"thing":`);
+        fs.writeSync(fd, curText.trim()); fs.writeSync(fd, '}');
+        try { fs.fsyncSync(fd); } catch { /* a disk that can't */ }
+      } finally { fs.closeSync(fd); }
+      renameRetry(tmp, keep.file); kept = true;
+    }
+    let target = thing;
+    if (over && cur) { // an Undo: the chat as that restore left it, made again from what it was made of
+      const was = load(over.src); const before = load({ file: over.before, wrapped: true });
+      if (was && before) { try { const v = S.merge3(VC.restoreValue('chat', was, before, over.at), thing, structuredClone(cur)).value; if (v && typeof v === 'object') target = v; } catch { /* the version as it is */ } }
+    }
+    const next = VC.restoreValue('chat', target, cur, at);
+    const w = OPS.write({ file, value: next, chatDir: true });
+    return { ok: true, kept, title: next.title, n: next.messages.length, bytes: w?.bytes || 0 };
+  },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {
     const t0 = performance.now();

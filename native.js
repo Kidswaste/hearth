@@ -1538,18 +1538,30 @@ const Native = (() => {
   }
   function guessH(msgs, lo, hi, w) {
     const cpl = Math.max(30, (w - 90) / 7.4); // characters per line
+    lastCpl = cpl;
     let all = 0;
     for (let i = lo; i < hi; i++) {
       const m = msgs[i];
       if (!m || m.compactReq) continue;
-      let px = 0; let code = -1;
-      for (const line of String(m.text || '').split('\n')) {
-        if (line.startsWith('```')) { code = code < 0 ? 0 : -1; px += code ? 0 : 34; } else if (code >= 0) { if (code++ < CODE_FOLD_LINES) px += 19; } else px += line ? Math.ceil(line.length / cpl) * 23 : 6;
-      }
-      if (m.role !== 'user' && px > COLLAPSE_PX) px = 440; // (folded when it comes near: features.css .msg.collapsed)
-      all += px + 64 + (m.thinking ? 40 : 0) + (m.tools?.length ? 30 : 0) + (m.shows?.length || 0) * 260 + (m.things?.length ? 300 : 0) + (m.attachments?.length ? 34 : 0);
+      all += textPx(m, cpl) + 64 + (m.thinking ? 40 : 0) + (m.tools?.length ? 30 : 0) + (m.shows?.length || 0) * 260 + (m.things?.length ? 300 : 0) + (m.attachments?.length ? 34 : 0);
     }
     return all;
+  }
+  // (round 84, bigchat84) a message's text height, kept per message (a giant chat's are made as its slices arrive:
+  // parseOff), line by line without splitting: 6,000 messages' 60 MB were 60 ms of the opening task here
+  let lastCpl = Math.max(30, (760 - 90) / 7.4); const pxOf = new WeakMap();
+  function textPx(m, cpl) {
+    const t = String(m.text || ''); const k = pxOf.get(m);
+    if (k && k[0] === cpl && k[1] === t) return k[2];
+    let px = 0; let code = -1;
+    for (let p = 0, e; ; p = e + 1) {
+      e = t.indexOf('\n', p); if (e < 0) e = t.length; const n = e - p;
+      if (n >= 3 && t.startsWith('```', p)) { code = code < 0 ? 0 : -1; px += code ? 0 : 34; } else if (code >= 0) { if (code++ < CODE_FOLD_LINES) px += 19; } else px += n ? Math.ceil(n / cpl) * 23 : 6;
+      if (e >= t.length) break;
+    }
+    if (m.role !== 'user' && px > COLLAPSE_PX) px = 440; // (folded when it comes near: features.css .msg.collapsed)
+    pxOf.set(m, [cpl, t, px]);
+    return px;
   }
   function restLine(agentId) {
     return el('div', { class: 'rest-line', title: 'Older messages are drawn as you scroll up to them, to keep long chats light' }, 'Earlier messages are resting · ',
@@ -1903,7 +1915,8 @@ const Native = (() => {
     return true;
   }
   const newVer = () => `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  function takeShape(chat, ver) { const head = new Map(); for (const k of Object.keys(chat)) if (k !== 'messages') head.set(k, shapeOf(chat[k])); shapes.set(chat, { ver, keys: Object.keys(chat), head, msgs: chat.messages.map(shapeOf) }); }
+  const preShapes = new WeakMap(); // (round 84) a chat's messages' shapes made as its slices arrived (parseOff)
+  function takeShape(chat, ver) { const head = new Map(); for (const k of Object.keys(chat)) if (k !== 'messages') head.set(k, shapeOf(chat[k])); const pre = preShapes.get(chat); preShapes.delete(chat); shapes.set(chat, { ver, keys: Object.keys(chat), head, msgs: pre?.length === chat.messages.length ? pre : chat.messages.map(shapeOf) }); }
   function saveWhole(chat) { if (Array.isArray(chat.messages) && window.hub.saveChatDelta) { const ver = newVer(); takeShape(chat, ver); return window.hub.saveChat(chat, { ver }); } return window.hub.saveChat(chat); }
   function saveChat(chat) {
     const s = shapes.get(chat);
@@ -1924,13 +1937,23 @@ const Native = (() => {
     try {
       if (!parser) {
         parser = new Worker('chatparse-worker.js');
-        parser.onmessage = (e) => { const p = parsing.get(e.data.id); parsing.delete(e.data.id); if (p) (e.data.err ? p.no(new Error(e.data.err)) : p.ok(e.data.chat)); };
+        // (round 84, bigchat84) the chat comes in slices, each its own task here (chatparse-worker.js): its messages'
+        // shapes are made as they arrive; one 60 MB chat received at once was a 190 ms task
+        parser.onmessage = (e) => {
+          const d = e.data; const p = parsing.get(d.id); if (!p) return;
+          if (d.err) { parsing.delete(d.id); p.no(new Error(d.err)); return; }
+          if (d.head) { p.chat = d.head; p.got = []; for (const v of views.values()) { const w = v.list?.restW || v.list?.clientWidth; if (w) { lastCpl = Math.max(30, (w - 90) / 7.4); break; } } } else if (d.msgs) {
+            d.sh = d.msgs.map((m) => { if (m && typeof m === 'object') textPx(m, lastCpl); return shapeOf(m); }); p.got.push(d);
+            if (d.tail) window.Md?.warm?.(d.msgs.filter((m) => m && (m.role === 'assistant' || m.role === 'opinion')).map((m) => m.text), 0); // (its end's replies rendered on the Markdown worker meanwhile)
+          } else if ('chat' in d) p.chat = d.chat;
+          if (d.done) { parsing.delete(d.id); if (p.got) { const ms = p.chat.messages; const sh = []; for (const g of p.got.sort((a, b) => a.from - b.from)) for (let k = 0; k < g.msgs.length; k++) { ms.push(g.msgs[k]); sh.push(g.sh[k]); } preShapes.set(p.chat, sh); } p.ok(p.chat); }
+        };
         parser.onerror = () => { for (const p of parsing.values()) p.no(new Error('parser stopped')); parsing.clear(); parser = null; };
       }
       const id = ++parseSeq; let done;
       const p = new Promise((ok, no) => { done = { ok, no }; });
       const list = Array.isArray(bytes) ? bytes : [bytes];
-      parsing.set(id, done); parser.postMessage({ id, parts: list }, list.map((b) => b.buffer));
+      parsing.set(id, done); parser.postMessage({ id, parts: list, chunk: 1.5e6, tail: WINDOW + 2 * BLOCK + 20 }, list.map((b) => b.buffer));
       return p;
     } catch { const list = Array.isArray(bytes) ? bytes : [bytes]; const all = new Uint8Array(list.reduce((n, b) => n + b.length, 0)); let o = 0; for (const b of list) { all.set(b, o); o += b.length; } return Promise.resolve(JSON.parse(new TextDecoder().decode(all))); }
   }

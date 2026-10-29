@@ -277,6 +277,9 @@ function create(o = {}) {
   // thing as it is now), so what arrived from the other computer since stays
   async function restore(s, token, o2 = {}) {
     const S = subj(s);
+    const big = await restoreBig(S, tokens.get(String(token || '')), o2); // (round 84, bigchat84)
+    if (big) return big;
+    if (o2.over?.__bigOver) o2 = { ...o2, over: null }; // (a giant chat's Undo that can't go that way: the version as it was)
     const thing = await readTok(token);
     if (!thing) return { ok: false, error: 'That version isn\'t there any more (open the list again).' };
     const cur = await current(S);
@@ -297,6 +300,41 @@ function create(o = {}) {
     return { ok: true, kind: S.kind, id: S.id, before, name: C.KINDS[S.kind].name(next), value: S.kind === 'settings' ? null : next };
   }
 
+  // (round 84, bigchat84) a GIANT chat (the version or the chat ≥ BIG_CHAT) restored on the store thread (o.chatRestore:
+  // storework.js chatRestore): read, kept first, written there; the main process only names the files (it held seconds
+  // parsing both, keeping, cloning and sending 60 MB to the window). The window gets no copy back: { __bigOver } stands
+  // for the chat as the restore left it (its Undo is made again from the same files on the thread). null: the usual way
+  async function restoreBig(S, t, o2) {
+    if (S.kind !== 'chat' || !o.chatRestore || !t || t.value || t.del || !(t.file || t.zip)) return null;
+    let tmp = null; let file = t.file;
+    try {
+      if (t.zip) { // one file out of a backup zip (as fromZip), into a temporary folder removed after
+        const Zip = require('./zipkit');
+        const e = (await Zip.entries(t.zip)).find((x) => !x.dir && x.name.replace(/^(\.\/)+/, '') === t.member);
+        if (!e || e.size > MAX_BYTES) return null;
+        tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'hearth-versions-'));
+        await Zip.extract(t.zip, tmp, { members: [e.name] });
+        file = path.join(tmp, ...e.name.split('/'));
+      }
+      const size = async (f) => (await fsp.stat(f).catch(() => null))?.size || 0;
+      if ((await size(file)) < BIG_CHAT && (await size(fileOf(S.rel))) < BIG_CHAT) return null;
+      const src = { file, ctx: t.cloud ? ctx() : null, wrapped: Boolean(t.wrapped) };
+      const dir = beforeDir(S); await fsp.mkdir(dir, { recursive: true });
+      const at = now();
+      let name = SS.copyName(at, 0, 'before');
+      if (fs.existsSync(path.join(dir, name))) name = SS.copyName(at + 1000, 0, 'before');
+      const keepFile = path.join(dir, name);
+      const ov = o2?.over?.__bigOver ? tokens.get(String(o2.over.__bigOver))?.overSpec || null : null;
+      const r = await o.chatRestore({ id: S.id, src, keep: { file: keepFile, id: S.id, machine: here }, at, over: ov });
+      if (!r) return null;
+      if (!r.ok) return { ok: false, error: r.error || 'Not restored.', code: r.code || null };
+      try { const all = (await fsp.readdir(dir)).map(SS.parseCopy).filter(Boolean).sort((a, b) => b.at - a.at); for (const c of all.slice(KEEP_BEFORE)) await fsp.rm(path.join(dir, c.name), { force: true }); } catch { /* fine */ }
+      const before = r.kept ? tok({ file: keepFile, wrapped: true, kind: S.kind, pick: S.id }) : null;
+      const overKey = before && !tmp ? tok({ overSpec: { src, before: keepFile, at } }) : null; // (a backup's copy is gone after: its Undo is the version as it was)
+      return { ok: true, kind: S.kind, id: S.id, before, name: r.title || 'Chat', value: overKey ? { __bigOver: overKey } : null, big: true };
+    } finally { if (tmp) fsp.rm(tmp, { recursive: true, force: true }).catch(() => {}); }
+  }
+
   // the change from `over` (as a restore left it) to `target` (what it replaced), put onto `cur` (three-way, lists by id)
   function undoOnto(kind, over, target, cur) {
     if (!over || typeof over !== 'object' || !cur || kind === 'settings') return target;
@@ -304,6 +342,17 @@ function create(o = {}) {
   }
 
   // ---------- Deleted things ----------
+  // (round 84, bigchat84) a chat's title / AI / count for the list: a giant one from its own fields (o.chatHead: cut on
+  // the files thread), never parsed here (0.7 s of the main process per 60 MB chat each time the list opened)
+  async function readMeta(file) {
+    const st = file && o.chatHead ? await fsp.stat(file).catch(() => null) : null;
+    if (st && st.isFile() && st.size >= BIG_CHAT && st.size <= MAX_BYTES) {
+      const h = await o.chatHead(file).catch(() => null);
+      if (h?.head && h.messages) return { v: { ...h.head, messages: new Array(h.n) }, st }; // (only its count is read)
+      if (h?.error) return null;
+    }
+    return readJson(file);
+  }
   async function deleted() {
     const out = { chats: [], projects: [], scenes: [], boards: [] };
     const seen = new Set();
@@ -312,7 +361,7 @@ function create(o = {}) {
     let ns = []; try { ns = (await fsp.readdir(path.join(o.dataDir, 'trash'))).filter((n) => /^[\w-]{1,80}\.json$/.test(n)); } catch { /* none */ }
     for (const n of ns) {
       const id = n.slice(0, -5);
-      const r = await readJson(path.join(o.dataDir, 'trash', n));
+      const r = await readMeta(path.join(o.dataDir, 'trash', n));
       if (!r?.v || chatHere(id) || seen.has(id)) continue;
       seen.add(id);
       out.chats.push({ key: tok({ del: 'chat-trash', id }), id, name: r.v.title || 'Chat', at: r.st.mtimeMs, n: (r.v.messages || []).length, agentId: r.v.agentId || null, where: 'Recently deleted', machine: here });
@@ -324,7 +373,7 @@ function create(o = {}) {
       seen.add(m[1]);
       const where = /^(cloud|here):(\d{4}-\d\d-\d\d)\/(.+)$/.exec(String(t.id || ''));
       const cl = cloudDir();
-      const r = where ? await readJson(where[1] === 'cloud' ? (cl ? path.join(cl, 'trash', where[2], ...where[3].split('/')) : '') : path.join(stateDir, 'trash', where[2], ...where[3].split('/'))) : null;
+      const r = where ? await readMeta(where[1] === 'cloud' ? (cl ? path.join(cl, 'trash', where[2], ...where[3].split('/')) : '') : path.join(stateDir, 'trash', where[2], ...where[3].split('/'))) : null;
       out.chats.push({ key: tok({ del: 'chat-sync', id: m[1], syncId: t.id }), id: m[1], name: r?.v?.title || t.title || m[1], at: r?.st?.mtimeMs || Date.parse(t.day) || 0, n: Array.isArray(r?.v?.messages) ? r.v.messages.length : null, where: t.where === 'cloud' ? 'sync\'s Deleted files' : 'set aside by sync', machine: t.where === 'cloud' ? 'either computer' : here });
     }
     // projects: Recently deleted projects (kept in the synced projects list)
@@ -433,6 +482,7 @@ function register(ipcMain, opts = {}) {
     syncTrash: async () => (eng() ? eng().trash() : []), syncRestore: async (id) => (eng() ? eng().restore(id) : { ok: false, error: 'Sync is off.' }),
     backups: async () => { try { return (await require('./backupautomain').list()).items; } catch { return []; } },
     readChat: (id) => (store.getChatFresh ? store.getChatFresh(id) : store.getChat(id)), writeChat: (chat) => store.saveChat(chat), restoreChat: (id) => store.restoreChat(id),
+    chatRestore: store.restoreChatBig, chatHead: store.chatHead, // (round 84, bigchat84) a giant chat restored / listed on the store threads
     digest: store.runOff ? (a) => store.runOff('chatDigest', a) : undefined, chatIdle: store.idle, chatBytes: store.runOff ? (a) => store.runOff('chatBytes', a) : undefined, // (round 82, bigchat82) giant chats: listed from digests made on the files thread
     readKV: (name) => store.getKVStatus(name), writeKV: (name, v) => store.setKV(name, v),
     readConfig: opts.readConfig, saveConfig: opts.saveConfig,

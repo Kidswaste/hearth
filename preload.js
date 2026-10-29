@@ -222,6 +222,7 @@ contextBridge.exposeInMainWorld('hub', {
   fetchText: call('net:text'),
   openDialog: call('dialog:open'),
   saveFile: call('dialog:saveFile'),
+  saveStream: { start: call('dialog:saveStart'), part: call('dialog:savePart'), end: call('dialog:saveEnd') }, // (round 84, bigchat84) a big file saved in parts (a giant chat's export)
   // mood board (boardmain.js): copies into data/board/media, page pictures, website snapshots
   board: { dir: call('board:dir'), import: call('board:import'), save: call('board:save'), fetch: call('board:fetch'), snap: call('board:snap'), unused: call('board:unused'),
     // (round 14) the Pinterest window (boardpinsmain.js): pins(op, args) + the pins the owner adds / drags out

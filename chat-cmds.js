@@ -1061,10 +1061,47 @@ const ChatCmds = (() => {
   // =====================================================================================================
   // Export
   // =====================================================================================================
+  // (round 84, bigchat84) a row and the page's head apart: a long chat's page is made a row at a time (exportBig)
+  const htmlRow = (m, agent, md = renderMarkdown) => `<section class="${m.role}"><h4>${m.role === 'user' ? 'You' : m.role === 'opinion' ? `${escapeHtml(m.from || '')} (second opinion)` : escapeHtml(agent?.name || 'Assistant')}<small>${m.at ? fmtDate(m.at) : ''}</small></h4>${m.role === 'user' ? `<p>${escapeHtml(m.text).replace(/\n/g, '<br>')}</p>` : md(m.text)}</section>`;
+  const htmlHead = (chat) => `<!doctype html><meta charset="utf-8"><title>${escapeHtml(chat.title)}</title><style>body{font:15px/1.55 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 16px;color:#222}section{margin:18px 0;padding:12px 16px;border-radius:10px;background:#f6f6f8}section.user{background:#eef3ff}h4{margin:0 0 6px;display:flex;justify-content:space-between}small{color:#888;font-weight:normal}pre{background:#1d1f24;color:#eee;padding:10px;border-radius:8px;overflow:auto}.copy-code{display:none}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}</style><h1>${escapeHtml(chat.title)}</h1>\n`;
   function chatHtml(chat) {
     const agent = H.agent(chat.agentId);
-    const rows = chat.messages.filter((m) => m.role !== 'error').map((m) => `<section class="${m.role}"><h4>${m.role === 'user' ? 'You' : m.role === 'opinion' ? `${escapeHtml(m.from || '')} (second opinion)` : escapeHtml(agent?.name || 'Assistant')}<small>${m.at ? fmtDate(m.at) : ''}</small></h4>${m.role === 'user' ? `<p>${escapeHtml(m.text).replace(/\n/g, '<br>')}</p>` : renderMarkdown(m.text)}</section>`).join('\n');
-    return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(chat.title)}</title><style>body{font:15px/1.55 system-ui,sans-serif;max-width:820px;margin:40px auto;padding:0 16px;color:#222}section{margin:18px 0;padding:12px 16px;border-radius:10px;background:#f6f6f8}section.user{background:#eef3ff}h4{margin:0 0 6px;display:flex;justify-content:space-between}small{color:#888;font-weight:normal}pre{background:#1d1f24;color:#eee;padding:10px;border-radius:8px;overflow:auto}.copy-code{display:none}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}</style><h1>${escapeHtml(chat.title)}</h1>\n${rows}\n`;
+    const rows = chat.messages.filter((m) => m.role !== 'error').map((m) => htmlRow(m, agent)).join('\n');
+    return `${htmlHead(chat)}${rows}\n`;
+  }
+  // (round 84, bigchat84) a LONG chat's export: made a piece at a time (chatexport-core.js: the same text, byte for
+  // byte) and written in parts as it's made (hub.saveStream: the main process only hands each part to the disk); the
+  // web page's replies rendered on a Markdown worker of its own (md.js), in batches. The window never holds one long
+  // task for it (a giant chat: ≈ 0.4 s for JSON, seconds for the page, then 60 MB sent at once)
+  const BIG_EXPORT = 300; // messages
+  async function replyHtml(chat) { // → index → the reply's HTML (made on a worker; here only when it can't run)
+    const out = new Map(); const todo = [];
+    chat.messages.forEach((m, i) => { if (m.role !== 'error' && m.role !== 'user' && typeof m.text === 'string') todo.push(i); });
+    let w = null; try { w = new Worker('md.js'); } catch { w = null; }
+    try {
+      for (let k = 0; k < todo.length;) {
+        let j = k; let n = 0; while (j < todo.length && (j === k || n < 5e5)) { n += chat.messages[todo[j]].text.length; j += 1; }
+        const batch = todo.slice(k, j); k = j;
+        const html = w ? await new Promise((ok) => { w.onmessage = (e) => ok(e.data?.html || []); w.onerror = () => { w = null; ok([]); }; w.postMessage({ id: k, texts: batch.map((i) => chat.messages[i].text) }); }) : [];
+        const t0 = performance.now();
+        batch.forEach((i, x) => { out.set(i, typeof html[x] === 'string' ? html[x] : renderMarkdown(chat.messages[i].text)); });
+        if (performance.now() - t0 > 12) await new Promise((r) => setTimeout(r, 0));
+      }
+    } finally { try { w?.terminate(); } catch { /* gone */ } }
+    return out;
+  }
+  async function exportBig(chat, f, dest, defaultPath) {
+    const agent = H.agent(chat.agentId);
+    const o = { name: agent?.name, agentName: agent?.name, date: fmtDate(chat.createdAt) };
+    let pieces;
+    if (f === 'json') pieces = ChatExport.json(chat);
+    else if (f === 'html') { const h = await replyHtml(chat); pieces = ChatExport.html(chat, { head: htmlHead(chat), row: (m, i) => htmlRow(m, agent, () => h.get(i) ?? renderMarkdown(m.text)) }); } else pieces = f === 'txt' ? ChatExport.txt(chat, o) : ChatExport.md(chat, o);
+    if (dest === 'clipboard') { const parts = []; await ChatExport.pump(pieces, (t) => { parts.push(t); }); return { text: parts.join('') }; }
+    const s = await window.hub.saveStream.start({ defaultPath, filters: [{ name: EXPORT_FORMATS[f], extensions: [f] }] });
+    if (!s) return { path: null };
+    const enc = new TextEncoder();
+    try { await ChatExport.pump(pieces, (t) => window.hub.saveStream.part(s.id, enc.encode(t))); } catch (x) { window.hub.saveStream.end(s.id, false).catch(() => {}); throw x; }
+    return { path: await window.hub.saveStream.end(s.id, true) };
   }
   const EXPORT_FORMATS = { md: 'Markdown', json: 'JSON (re-import with /import)', html: 'Web page', txt: 'Plain text' };
   R({
@@ -1078,6 +1115,12 @@ const ChatCmds = (() => {
       const chat = need(ctx);
       const [fmtName = 'md', dest = 'file'] = args.toLowerCase().split(/\s+/).filter(Boolean);
       const f = EXPORT_FORMATS[fmtName] ? fmtName : 'md';
+      if (chat.messages?.length >= BIG_EXPORT && typeof ChatExport !== 'undefined' && window.hub.saveStream) { // (round 84, bigchat84)
+        const r = await exportBig(chat, f, /^clip/.test(dest) ? 'clipboard' : 'file', `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.${f}`);
+        if (r.text != null) { await copyText(r.text, `Chat copied (${EXPORT_FORMATS[f]})`); return; }
+        if (r.path) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(r.path) } });
+        return;
+      }
       const content = f === 'json' ? JSON.stringify({ ...chat, session: undefined, hearthExport: 1 }, null, 2)
         : f === 'html' ? chatHtml(chat)
           : f === 'txt' ? Native.chatMarkdown(chat).replace(/\*\*|__|`/g, '')

@@ -66,7 +66,9 @@ const Autocompact = (() => {
     if (typeof requestIdleCallback === 'undefined') return;
     let older; try { older = split(chat).older; } catch { return; }
     if (older.length < 300) return;
-    const step = (dl) => { const ix = olderWords(older, () => dl.timeRemaining() < 3); if (ix && ix.msgs.length < older.length) requestIdleCallback(step, { timeout: 3000 }); };
+    // (round 84, bigchat84) a slice also stops after 10 ms of its own: an idle moment of 50 ms filled to its end, plus the
+    // last long message, was a 50–65 ms task right after a giant chat opened
+    const step = (dl) => { const t0 = performance.now(); const ix = olderWords(older, () => dl.timeRemaining() < 3 || performance.now() - t0 > 10); if (ix && ix.msgs.length < older.length) requestIdleCallback(step, { timeout: 3000 }); };
     requestIdleCallback(step, { timeout: 3000 });
   }
   const usageOf = (chat) => [...(chat?.messages || [])].reverse().find((m) => m.role === 'assistant' && m.usage)?.usage || null;
