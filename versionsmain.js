@@ -29,6 +29,9 @@ const SS = require('./scenesafe-core');
 let SM = null; const merge = () => (SM ||= require('./sync-merge'));
 
 const MAX_BYTES = 64 * 1024 * 1024; // bigger files aren't versions anyone reads here
+// (round 82, bigchat82) a chat this big is listed from DIGESTS made on the files thread (o.digest: bigchat-core.js), never
+// parsed here: three copies of a 60 MB chat held the main process ≈ 7 s
+const BIG_CHAT = Number(process.env.HEARTH_BIGCHAT_MIN) || 8 * 1024 * 1024;
 const KEEP_BEFORE = 20; // versions kept before restores, per thing
 const BACKUPS = 12; // newest backup zips looked into
 const hereWord = (p = process.platform) => (p === 'darwin' ? 'this Mac' : p === 'win32' ? 'this PC' : 'this computer');
@@ -91,9 +94,16 @@ function create(o = {}) {
   };
   const beforeDir = (S) => path.join(o.dataDir, '.versions', `${S.kind}-${S.id}`);
 
-  async function candidates(S, phase, looked) {
+  async function candidates(S, phase, looked, big = false) {
     const out = [];
     const add = async (file, t) => {
+      if (big) { // (round 82) a giant chat's copy: its digest, from the files thread
+        const st = await fsp.stat(file).catch(() => null);
+        if (!st || !st.isFile() || st.size > MAX_BYTES || st.size === 0) return;
+        const dg = await o.digest({ file, ctx: t.cloud ? ctx() : null, wrapped: Boolean(t.wrapped) }).catch(() => null);
+        if (dg) out.push({ token: tok({ file, cloud: t.cloud, wrapped: t.wrapped, kind: S.kind, pick: t.pick || S.id }), src: t.src, label: t.label, at: t.at || st.mtimeMs, machine: t.machine, value: dg, key: dg.key, ...(t.note ? { note: t.note } : {}) });
+        return;
+      }
       const r = await readJson(file);
       if (!r) return;
       let v = local(r.v, t.cloud);
@@ -143,7 +153,7 @@ function create(o = {}) {
       }
       // "Keep both" copies (the window found them by their names)
       for (const sid of S.also) {
-        if (S.kind === 'chat') { const r = await readJson(fileOf(`chats/${sid}.json`)); if (r?.v) out.push({ token: tok({ value: r.v, kind: 'chat', pick: sid }), src: 'keepboth', label: `“Keep both” copy: ${C.KINDS.chat.name(r.v)}`, at: r.st.mtimeMs, machine: fromTitle(r.v.title) || 'the other computer', value: r.v }); } else if (S.kind === 'scene' || S.kind === 'project') {
+        if (S.kind === 'chat' && big) { const f = fileOf(`chats/${sid}.json`); const dg = await o.digest({ file: f, ctx: null }).catch(() => null); const st = await fsp.stat(f).catch(() => null); if (dg && st) out.push({ token: tok({ file: f, kind: 'chat', pick: sid }), src: 'keepboth', label: `“Keep both” copy: ${C.KINDS.chat.name(dg)}`, at: st.mtimeMs, machine: fromTitle(dg.title) || 'the other computer', value: dg, key: dg.key }); } else if (S.kind === 'chat') { const r = await readJson(fileOf(`chats/${sid}.json`)); if (r?.v) out.push({ token: tok({ value: r.v, kind: 'chat', pick: sid }), src: 'keepboth', label: `“Keep both” copy: ${C.KINDS.chat.name(r.v)}`, at: r.st.mtimeMs, machine: fromTitle(r.v.title) || 'the other computer', value: r.v }); } else if (S.kind === 'scene' || S.kind === 'project') {
           const store = await readStore(S.kind).catch(() => null);
           const x = store && C.KINDS[S.kind].pick(store, sid);
           if (x) out.push({ token: tok({ value: x, kind: S.kind, pick: sid }), src: 'keepboth', label: `“Keep both” copy: ${C.KINDS[S.kind].name(x)}`, at: C.KINDS[S.kind].time(x), machine: fromTitle(x.name) || 'the other computer', value: x });
@@ -156,6 +166,7 @@ function create(o = {}) {
       const t0 = Date.now();
       for (const b of list.filter((x) => x && x.ok !== false && x.path).slice(0, BACKUPS)) {
         if (Date.now() - t0 > 8000) break; // a slow disk: the newest ones are enough
+        if (big) { const dg = await fromZip(b.path, member, true).catch(() => null); if (dg) out.push({ token: tok({ zip: b.path, member, kind: S.kind, pick: S.id }), src: 'backup', label: `${C.SRC_WORDS.backup}${b.reason === 'update' ? ' (before an update)' : ''}`, at: b.at, machine: b.mine === false && b.computer ? b.computer : here, value: dg, key: dg.key }); continue; }
         const v = await fromZip(b.path, member).catch(() => null);
         const thing = v && C.KINDS[S.kind].pick(v, S.id);
         if (thing) out.push({ token: tok({ zip: b.path, member, kind: S.kind, pick: S.id }), src: 'backup', label: `${C.SRC_WORDS.backup}${b.reason === 'update' ? ' (before an update)' : ''}`, at: b.at, machine: b.mine === false && b.computer ? b.computer : here, value: thing });
@@ -165,7 +176,7 @@ function create(o = {}) {
     return out;
   }
   // one file out of a backup zip (read through a temporary folder, removed after)
-  async function fromZip(zip, member) {
+  async function fromZip(zip, member, digest = false) {
     const Zip = require('./zipkit');
     const ents = await Zip.entries(zip);
     const e = ents.find((x) => !x.dir && x.name.replace(/^(\.\/)+/, '') === member);
@@ -173,6 +184,7 @@ function create(o = {}) {
     const dest = await fsp.mkdtemp(path.join(os.tmpdir(), 'hearth-versions-'));
     try {
       await Zip.extract(zip, dest, { members: [e.name] });
+      if (digest) return await o.digest({ file: path.join(dest, ...e.name.split('/')), ctx: null }); // (round 82) a giant chat: its digest
       return merge().parseJson(await fsp.readFile(path.join(dest, ...e.name.split('/')), 'utf8'));
     } catch { return null; } finally { fsp.rm(dest, { recursive: true, force: true }).catch(() => {}); }
   }
@@ -202,16 +214,40 @@ function create(o = {}) {
   }
 
   // ---------- the timeline ----------
+  // (round 82, bigchat82) a giant chat (it, or its Recently deleted copy, or sync's base, is that big): listed from digests
+  async function bigChat(S) {
+    if (S.kind !== 'chat' || !o.digest) return false;
+    for (const f of [fileOf(S.rel), path.join(o.dataDir, 'trash', `${S.id}.json`), path.join(stateDir, 'base', ...cloudRel(S.rel).split('/'))]) { const st = await fsp.stat(f).catch(() => null); if (st && st.size >= BIG_CHAT) return true; }
+    return false;
+  }
+  async function currentDigest(S) {
+    await o.chatIdle?.(); // (its changes on their way land first)
+    const f = fileOf(S.rel);
+    if (!fs.existsSync(f)) return null;
+    const dg = await o.digest({ file: f, ctx: null });
+    if (!dg) { const e = new Error('This chat can\'t be read just now. Nothing was changed; try again in a moment.'); e.code = 'EHELD'; throw e; }
+    return dg;
+  }
   async function list(s, { phase = 'local' } = {}) {
     const S = subj(s);
     const looked = [];
-    const cur = await current(S).catch((err) => ({ __error: err.message }));
+    const big = await bigChat(S);
+    const cur = await (big ? currentDigest(S) : current(S)).catch((err) => ({ __error: err.message }));
     const curOk = cur && !cur.__error ? cur : null;
-    const cands = await candidates(S, phase, looked);
+    const cands = await candidates(S, phase, looked, big);
     const r = C.gather(S.kind, cands, curOk, { withSame: true });
     return { kind: S.kind, id: S.id, phase, name: curOk ? C.KINDS[S.kind].name(curOk) : (r.list[0]?.name || ''), exists: Boolean(curOk), error: cur?.__error || null, versions: r.list.slice(0, 200), same: r.same, looked, here };
   }
-  async function read(token) { return readTok(token); }
+  // (round 82, bigchat82) a giant chat's version for the window (Preview, Restore): its bytes in this computer's form,
+  // made on the files thread ({ __chatBytes }: the window parses them); never parsed here
+  async function read(token) {
+    const t = tokens.get(String(token || ''));
+    if (t && t.kind === 'chat' && t.file && !t.zip && o.chatBytes) {
+      const st = await fsp.stat(t.file).catch(() => null);
+      if (st && st.size >= BIG_CHAT && st.size <= MAX_BYTES) { const r = await o.chatBytes({ file: t.file, ctx: t.cloud ? ctx() : null, wrapped: Boolean(t.wrapped) }).catch(() => null); if (r?.bytes) return { __chatBytes: r.bytes }; }
+    }
+    return readTok(token);
+  }
 
   // ---------- keeping the version in place, restoring ----------
   async function keep(s, thing, { why = 'before' } = {}) {
@@ -396,7 +432,8 @@ function register(ipcMain, opts = {}) {
     conflicts: () => eng()?.conflicts?.() || [], incoming: (rel) => eng()?.incoming?.(rel) || null,
     syncTrash: async () => (eng() ? eng().trash() : []), syncRestore: async (id) => (eng() ? eng().restore(id) : { ok: false, error: 'Sync is off.' }),
     backups: async () => { try { return (await require('./backupautomain').list()).items; } catch { return []; } },
-    readChat: (id) => store.getChat(id), writeChat: (chat) => store.saveChat(chat), restoreChat: (id) => store.restoreChat(id),
+    readChat: (id) => (store.getChatFresh ? store.getChatFresh(id) : store.getChat(id)), writeChat: (chat) => store.saveChat(chat), restoreChat: (id) => store.restoreChat(id),
+    digest: store.runOff ? (a) => store.runOff('chatDigest', a) : undefined, chatIdle: store.idle, chatBytes: store.runOff ? (a) => store.runOff('chatBytes', a) : undefined, // (round 82, bigchat82) giant chats: listed from digests made on the files thread
     readKV: (name) => store.getKVStatus(name), writeKV: (name, v) => store.setKV(name, v),
     readConfig: opts.readConfig, saveConfig: opts.saveConfig,
   }));

@@ -75,18 +75,20 @@
   function hash(s) { let h = 2166136261 >>> 0; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return `${s.length}:${h.toString(36)}`; }
 
   // ---------- the docs of each kind of source ----------
+  // (round 82, bigchat82) one message's doc (null: nothing to find in it); a giant chat's are made as its messages are read
+  function msgDoc(m, k, title, at, ref) {
+    const t = typeof m?.text === 'string' ? m.text : '';
+    if (!t.trim() || (m.role !== 'user' && m.role !== 'assistant')) return null;
+    return { g: 'chat', w: W.msg + (m.role === 'user' ? 0.1 : 0), text: cap(t, MSG_CAP), title, at: m.at || at || 0, ref, k, who: m.role === 'user' ? 'you' : 'ai' };
+  }
+  const titleDoc = (chat, title) => ({ g: 'chat', w: W.chatTitle, text: title, title, at: chat.updatedAt || 0, ref: chat.id, k: null, what: 'title' });
   function chatDocs(chat) {
     const out = [];
     if (!chat || typeof chat !== 'object') return out;
     const title = cap(chat.title || 'Chat', 200);
-    out.push({ g: 'chat', w: W.chatTitle, text: title, title, at: chat.updatedAt || 0, ref: chat.id, k: null, what: 'title' });
+    out.push(titleDoc(chat, title));
     const ms = Array.isArray(chat.messages) ? chat.messages : [];
-    for (let k = 0; k < ms.length; k++) {
-      const m = ms[k];
-      const t = typeof m?.text === 'string' ? m.text : '';
-      if (!t.trim() || (m.role !== 'user' && m.role !== 'assistant')) continue;
-      out.push({ g: 'chat', w: W.msg + (m.role === 'user' ? 0.1 : 0), text: cap(t, MSG_CAP), title, at: m.at || chat.updatedAt || 0, ref: chat.id, k, who: m.role === 'user' ? 'you' : 'ai' });
-    }
+    for (let k = 0; k < ms.length; k++) { const d = msgDoc(ms[k], k, title, chat.updatedAt, chat.id); if (d) out.push(d); }
     return out;
   }
   // what a scene's words are, compared before indexing it again (a Lab save that only moved a slider changes nothing here)
@@ -163,22 +165,31 @@
   // ---------- the index ----------
   function createIndex({ maxChars = 48e6 } = {}) {
     const src = new Map(); // key → { sig, docs, inv: Map(word → [doc n]), words: string[], chars, used }
-    const scenes = { fileSig: null, file: null, parsed: null, parsedSig: null }; // the Lab's one file (kept parsed only while scenes wait)
+    const scenes = { fileSig: null, file: null, parsed: null, parsedSig: null, reading: null }; // the Lab's one file (kept parsed only while scenes wait; reading: in slices, bigchat82)
     let chars = 0;
-    function put(key, sig, docs, now = Date.now()) {
-      drop(key);
-      const inv = new Map();
-      let n = 0;
-      docs.forEach((d, i) => { n += d.text.length; d.head = fold(d.text.slice(0, HEAD)); for (const t of tokens(d.text)) { const a = inv.get(t); if (a) a.push(i); else inv.set(t, [i]); } });
-      src.set(key, { sig, docs, inv, words: [...inv.keys()], chars: n, used: now });
-      chars += n;
+    // a source's docs and words, built doc by doc (a giant chat's over several slices: bigchat82)
+    const builder = () => ({ docs: [], inv: new Map(), chars: 0 });
+    function addDoc(b, d) { addPart(b, d, 0, d.text.length); }
+    // (round 82) a long doc (a layer's 60,000 characters of code) in parts cut at a line / space, a slice each
+    function addPart(b, d, from, to) {
+      let i = b.docs.length - 1;
+      if (from === 0) { i = b.docs.length; b.docs.push(d); b.chars += d.text.length; d.head = fold(d.text.slice(0, HEAD)); }
+      for (const t of tokens(from === 0 && to >= d.text.length ? d.text : d.text.slice(from, to))) { const a = b.inv.get(t); if (!a) b.inv.set(t, [i]); else if (a[a.length - 1] !== i) a.push(i); }
     }
+    const PART = 6000;
+    const partEnd = (text, from) => { if (text.length - from <= PART * 1.5) return text.length; const nl = text.lastIndexOf('\n', from + PART); if (nl > from + PART / 2) return nl + 1; const sp = text.lastIndexOf(' ', from + PART); return sp > from + PART / 2 ? sp + 1 : from + PART; };
+    function install(key, sig, b, now) { drop(key); src.set(key, { sig, docs: b.docs, inv: b.inv, words: [...b.inv.keys()], chars: b.chars, used: now }); chars += b.chars; }
+    function put(key, sig, docs, now = Date.now()) { const b = builder(); for (const d of docs) addDoc(b, d); install(key, sig, b, now); }
+    // (round 82, bigchat82) sources being built, a slice at a time: key → { sig, b (builder), docs + i (words still to
+    // index) | r (a bigchat-core reader: a long chat still being read), extra (fields the source gets once installed) }.
+    // The source as it was stays searchable until the new one is whole
+    const building = new Map();
     function drop(key) { const s = src.get(key); if (s) { chars -= s.chars; src.delete(key); } }
     // a file saved here: the source(s) it feeds are looked at again next time (by the store thread, right after the write)
     function stale(file) {
       const f = String(file || '');
       for (const s of src.values()) if (s.file === f) { s.sig = null; s.fileSig = null; }
-      if (scenes.file === f) { scenes.fileSig = null; scenes.parsed = null; scenes.parsedSig = null; }
+      if (scenes.file === f) { scenes.fileSig = null; scenes.parsed = null; scenes.parsedSig = null; scenes.reading = null; }
     }
     // the sources a project is made of: [{ key, kind, file?, id?, inline? }]
     function plan(spec, dirs, join) {
@@ -196,14 +207,33 @@
       return out;
     }
     // index what changed, within the budget: → { left, built, ms }. env: { stat(file) → { size, mtimeMs } | null,
-    // read(file) → value | null (a file that can't be read: nothing indexed from it this time), now() }
+    // read(file) → value | null (a file that can't be read: nothing indexed from it this time), now(), big? }
+    // (round 82, bigchat82) every source is built DOC BY DOC (its words), so no slice runs long because one source is
+    // big: a 900-message chat's words, a scene's 60,000 characters of code. With env.big ({ min, open(file, onItem, o) }:
+    // bigchat-core.js readers), a chat file from big.min up and the Lab's scenes file are also READ in slices: their bytes
+    // cut, one message / scene parsed at a time. What a source was stays searchable until its new version is whole.
     function ensure(spec, dirs, env, { budgetMs = 12 } = {}) {
       const t0 = env.now();
       const list = plan(spec, dirs, env.join);
       let left = 0; let built = 0; let did = false;
-      const over = () => did && env.now() - t0 > budgetMs; // (at least one source each call: it always moves on)
+      const soft = budgetMs * 0.7; // (a little kept for the step it is in)
+      const over = () => did && env.now() - t0 > soft; // (at least one step each call: it always moves on)
       const sigOf = (st) => (st ? `${st.size}:${st.mtimeMs}` : 'none');
-      // the scenes' file: read once if any scene it holds is wanted and older than the file
+      // a source's words, doc by doc → true once installed
+      const work = (key, job) => {
+        while (job.i < job.docs.length) {
+          if (over()) return false;
+          const d = job.docs[job.i]; const from = job.off || 0; const to = partEnd(d.text, from);
+          addPart(job.b, d, from, to); did = true;
+          if (to >= d.text.length) { job.i += 1; job.off = 0; } else job.off = to;
+        }
+        install(key, job.sig, job.b, env.now()); Object.assign(src.get(key), job.extra);
+        building.delete(key); built += 1; did = true;
+        return true;
+      };
+      const queue = (key, sig, docs, extra) => { const job = { sig, docs, i: 0, b: builder(), extra }; building.set(key, job); return job; };
+      const parsedScenes = (v) => (Array.isArray(v) ? new Map(v.filter((sc) => sc && typeof sc === 'object' && sc.id).map((sc) => [sc.id, sc])) : null);
+      // the scenes' file: read once (a slice at a time) if any scene it holds is wanted and older than the file
       const wantScenes = list.filter((x) => x.kind === 'scene');
       if (wantScenes.length) {
         const fsig = sigOf(env.stat(wantScenes[0].file));
@@ -213,23 +243,32 @@
           if (todo.length) {
             if (scenes.parsedSig !== fsig) {
               if (over()) left += todo.length;
-              else {
-                const v = env.read(wantScenes[0].file);
-                did = true;
-                scenes.parsed = Array.isArray(v) ? new Map(v.filter((s) => s && typeof s === 'object' && s.id).map((s) => [s.id, s])) : null;
+              else if (env.big) {
+                if (!scenes.reading || scenes.reading.sig !== fsig) {
+                  const got = new Map(); const ids = new Set(wantScenes.map((x) => x.id));
+                  scenes.reading = { sig: fsig, got, r: env.big.open(wantScenes[0].file, (sc) => { if (sc && typeof sc === 'object' && ids.has(sc.id)) got.set(sc.id, sc); }, { array: true }) };
+                }
+                did = true; const state = scenes.reading.r.step(over);
+                if (state === 'done') { scenes.parsed = scenes.reading.got; scenes.parsedSig = fsig; scenes.reading = null; } else if (state !== 'more') {
+                  scenes.reading = null;
+                  if (state === 'bad') { scenes.parsed = parsedScenes(env.read(wantScenes[0].file)); scenes.parsedSig = scenes.parsed ? fsig : null; }
+                }
+                if (scenes.parsedSig !== fsig) left += todo.length;
+              } else {
+                scenes.parsed = parsedScenes(env.read(wantScenes[0].file)); did = true;
                 scenes.parsedSig = scenes.parsed ? fsig : null;
               }
             }
             if (scenes.parsedSig === fsig) {
               for (const x of todo) {
+                const job = building.get(x.key);
+                if (job && job.extra?.fileSig === fsig) { if (!work(x.key, job)) left += 1; continue; }
                 if (over()) { left += 1; continue; }
-                const s = scenes.parsed.get(x.id);
-                const ssig = s ? sceneSig(s) : 'gone';
+                const sc = scenes.parsed.get(x.id);
+                const ssig = sc ? sceneSig(sc) : 'gone';
                 const had = src.get(x.key);
-                if (had && had.sceneSig === ssig) { had.fileSig = fsig; had.used = env.now(); continue; } // its words didn't change
-                put(x.key, null, s ? sceneDocs(s) : [], env.now());
-                Object.assign(src.get(x.key), { fileSig: fsig, sceneSig: ssig, file: x.file });
-                built += 1; did = true;
+                if (had && had.sceneSig === ssig) { had.fileSig = fsig; had.used = env.now(); building.delete(x.key); continue; } // its words didn't change
+                if (!work(x.key, queue(x.key, null, sc ? sceneDocs(sc) : [], { fileSig: fsig, sceneSig: ssig, file: x.file }))) left += 1;
               }
             }
           }
@@ -238,29 +277,53 @@
       }
       for (const x of list) {
         if (x.kind === 'scene') continue;
-        let sig; let docs = null;
+        let sig;
         if (x.kind === 'notes') sig = `${spec.notes || ''}\u0001${spec.description || ''}`; // (the text itself: comparing it is cheaper than hashing it)
         else if (x.kind === 'items') sig = JSON.stringify((spec.items || []).map((i) => [i.type, i.ref, i.name]));
         else sig = sigOf(env.stat(x.file));
         const had = src.get(x.key);
-        if (had && had.sig === sig) { had.used = env.now(); continue; }
-        if (over()) { left += 1; continue; }
-        if (x.kind === 'notes') docs = notesDocs(spec.notes, spec.description, x.id);
-        else if (x.kind === 'items') docs = itemDocs(spec.items);
-        else if (sig === 'none') docs = [];
-        else {
-          const v = env.read(x.file);
-          if (v == null) { did = true; continue; } // unreadable right now (held, cut short): kept as it was, tried next time
-          docs = x.kind === 'chat' ? chatDocs(v) : x.kind === 'board' ? boardDocs(v) : worktableDocs(v, x.id);
+        if (had && had.sig === sig) { had.used = env.now(); building.delete(x.key); continue; }
+        let job = building.get(x.key);
+        if (job && job.sig !== sig) { building.delete(x.key); job = null; }
+        if (job && !job.r) { if (!work(x.key, job)) left += 1; continue; } // its words, going on
+        if (!job && over()) { left += 1; continue; }
+        if (x.kind === 'notes') { if (!work(x.key, queue(x.key, sig, notesDocs(spec.notes, spec.description, x.id), { file: null }))) left += 1; continue; }
+        if (x.kind === 'items') { if (!work(x.key, queue(x.key, sig, itemDocs(spec.items), { file: null }))) left += 1; continue; }
+        if (sig === 'none') { if (!work(x.key, queue(x.key, sig, [], { file: x.file }))) left += 1; continue; }
+        if (x.kind === 'chat' && env.big && Number(sig.split(':')[0]) >= env.big.min) { // (round 82, bigchat82) a long chat: read in slices
+          if (!job) {
+            const b = builder(); const ref = x.id;
+            job = { sig, b, r: env.big.open(x.file, (m, k) => { const d = msgDoc(m, k, '', 0, ref); if (d) addDoc(b, d); }), extra: { file: x.file } };
+            building.set(x.key, job);
+          }
+          if (over()) { left += 1; continue; }
+          did = true; // (the step reads at least once whatever over() says: it always moves on)
+          const state = job.r.step(over);
+          if (state === 'more' || state === 'changed') { if (state === 'changed') building.delete(x.key); left += 1; continue; }
+          building.delete(x.key);
+          if (state === 'done') {
+            const h = job.r.head || {}; const title = cap(h.title || 'Chat', 200);
+            for (const d of job.b.docs) { d.title = title; if (!d.at) d.at = h.updatedAt || 0; }
+            addDoc(job.b, titleDoc({ ...h, id: x.id }, title));
+            install(x.key, sig, job.b, env.now()); src.get(x.key).file = x.file;
+            built += 1;
+            continue;
+          }
+          const v = env.read(x.file); // (not a chat the cut can read: whole, as before)
+          if (v == null) continue;
+          if (!work(x.key, queue(x.key, sig, chatDocs(v), { file: x.file }))) left += 1;
+          continue;
         }
-        put(x.key, sig, docs, env.now());
-        src.get(x.key).file = x.file || null;
-        built += 1; did = true;
+        const v = env.read(x.file);
+        did = true;
+        if (v == null) continue; // unreadable right now (held, cut short): kept as it was, tried next time
+        if (!work(x.key, queue(x.key, sig, x.kind === 'chat' ? chatDocs(v) : x.kind === 'board' ? boardDocs(v) : worktableDocs(v, x.id), { file: x.file }))) left += 1;
       }
       return { left, built, ms: Math.round((env.now() - t0) * 10) / 10 };
     }
     // let go of what wasn't asked for in a while, and of the oldest past the size cap (never the project being asked)
     function sweep(now, { idleMs = 15 * 60000, keep = new Set() } = {}) {
+      for (const k of building.keys()) if (!keep.has(k)) building.delete(k); // (round 82) a giant chat half read for another project: let go
       for (const [k, s] of src) if (!keep.has(k) && now - s.used > idleMs) drop(k);
       if (chars <= maxChars) return;
       for (const [k] of [...src].filter(([k2]) => !keep.has(k2)).sort((a, b) => a[1].used - b[1].used)) { drop(k); if (chars <= maxChars) break; }

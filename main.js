@@ -352,8 +352,11 @@ ipcMain.handle('open-external', (_e, url) => openExternal(url));
 ipcMain.handle('open-data-folder', () => shell.openPath(store.DATA_DIR));
 
 ipcMain.handle('chats:list', afterSync(() => store.listChats()));
-ipcMain.handle('chats:get', afterSync((_e, id) => store.getChat(id)));
-ipcMain.handle('chats:save', afterSync((_e, chat) => store.saveChat(chat)));
+ipcMain.handle('chats:get', afterSync((_e, id) => store.getChatFresh(id))); // (round 82) after a giant chat's changes on their way
+ipcMain.handle('chats:save', afterSync((_e, chat, o) => store.saveChat(chat, o)));
+ipcMain.handle('chats:open', afterSync((_e, id) => store.openChat(id))); // (round 82, bigchat82) a giant chat: { token, parts } (its bytes in parts, parsed in the window), else { chat }
+ipcMain.handle('chats:part', (_e, token, i) => store.openPart(token, i)); // (round 82) one 4 MB part of a giant chat being opened
+ipcMain.handle('chats:delta', afterSync((_e, d) => store.saveChatDelta(d))); // (round 82, bigchat82) a giant chat saved by what changed (chatsave.js)
 ipcMain.handle('chats:delete', afterSync((_e, id) => store.deleteChat(id)));
 ipcMain.handle('chats:searchText', (_e, query) => store.searchChats(query));
 ipcMain.handle('chats:recall', (_e, o) => store.recall(o || {})); // (round 30) recall: "what did we decide about X?", ranked, local
