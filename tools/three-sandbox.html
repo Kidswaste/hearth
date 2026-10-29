@@ -2263,7 +2263,7 @@ function statsTick() {
   if ((DOZE.on || (!ticked && statsTick.idle)) && (++statsDozed % 8)) return;
   statsTick.idle = !ticked;
   adCoverTick(); // (round 31 "labadapt": covered layers)
-  hlCameras(); // (round 80, laberrors80) a camera gone NaN (twice a second, not per frame)
+  hlCameras(); // (round 80, laberrors80) a camera gone NaN (every 2 s since round 81, not per frame)
   const i = lastRenderer.info;
   // (round 60, gcchurn60) the last 60 frames' work sorted by hand into a kept typed array (no copy, no boxed sort)
   const wn = Math.min(60, wrN); const w = statsW;
@@ -2277,22 +2277,35 @@ function statsTick() {
 }
 // (round 80, laberrors80) a layer's camera whose numbers became NaN / Infinity (a division by zero in the code that
 // moves it, an aspect of 0 / 0): the picture goes blank without an error, so it's said once per run of that layer.
-// Read on the stats tick (2 a second, skipped while the picture dozes): a few numbers per layer, nothing per frame.
-function hlCameras() {
-  for (const L of layers.values()) {
-    if (L.nanG === L.gen) continue;
-    for (const r of L.renderers) {
-      const c = r.__lastCamera; if (!c?.isCamera || r.__stale) continue;
-      const bad = !Number.isFinite(c.position.x + c.position.y + c.position.z) ? 'position' : c.matrixWorld.elements.some((v) => !Number.isFinite(v)) ? 'placement' : c.projectionMatrix.elements.some((v) => !Number.isFinite(v)) ? (c.isPerspectiveCamera && !(c.aspect > 0) ? 'aspect' : 'lens') : null;
-      if (!bad) continue;
-      L.nanG = L.gen;
-      const words = { position: 'its position is NaN', placement: 'its rotation or parent is NaN', aspect: `its aspect is ${c.aspect} (a width or height of 0?)`, lens: 'its lens numbers are NaN (fov, near / far or zoom)' }[bad];
-      const rec = { kind: 'camera', layer: pcTop(L.id), line: null, message: `the camera went NaN: ${words}, so nothing draws` };
-      if (window.__labProblems.note(rec)) { post({ type: 'health', recs: [{ ...window.__labProblems.recs.get(window.__labProblems.key(rec)) }] }); post({ type: 'console', level: 'warn', text: rec.message, layer: rec.layer }); }
-      break;
-    }
-  }
+// Read on every 4th stats tick (every 2 s; skipped while the picture dozes): a few numbers per layer, nothing per frame.
+// (round 81, playchurn81) gcchurn60 saw ≈ 55 B a Lab frame here at 18 fps, the only per-frame garbage added to the Lab
+// preview since round 76: a `for…of` iterator per layer and per renderer, a `.some` closure per matrix, and its 32
+// numbers each read out on its own (a code this rare is never optimised: every number read is a new boxed value). Now:
+// kept callbacks, every 2 s, and a matrix tested by one sum of the 7 entries that carry every one of its parts (NaN
+// plus anything is NaN): a rotation's x / y / z in the diagonal, its w in [1], the position in [12–14]; a lens's fov /
+// zoom in [0] / [5], its aspect in [0], near / far in [10] / [14].
+// <hl-cameras> (dev/playchurn81-test.js runs it in Node: it still finds each kind, and allocates next to nothing)
+const HLC = { bad: null, c: null, n: 0 };
+const hlFinite7 = (e) => Number.isFinite(e[0] + e[1] + e[5] + e[10] + e[12] + e[13] + e[14]);
+function hlCamR(r) {
+  if (HLC.bad) return;
+  const c = r.__lastCamera; if (!c?.isCamera || r.__stale) return;
+  const p = c.position;
+  HLC.bad = !Number.isFinite(p.x + p.y + p.z) ? 'position' : !hlFinite7(c.matrixWorld.elements) ? 'placement' : !hlFinite7(c.projectionMatrix.elements) ? (c.isPerspectiveCamera && !(c.aspect > 0) ? 'aspect' : 'lens') : null;
+  if (HLC.bad) HLC.c = c;
 }
+function hlCamL(L) {
+  if (L.nanG === L.gen) return;
+  HLC.bad = null; L.renderers.forEach(hlCamR);
+  const bad = HLC.bad; const c = HLC.c; HLC.bad = null; HLC.c = null;
+  if (!bad) return;
+  L.nanG = L.gen;
+  const words = { position: 'its position is NaN', placement: 'its rotation or parent is NaN', aspect: `its aspect is ${c.aspect} (a width or height of 0?)`, lens: 'its lens numbers are NaN (fov, near / far or zoom)' }[bad];
+  const rec = { kind: 'camera', layer: pcTop(L.id), line: null, message: `the camera went NaN: ${words}, so nothing draws` };
+  if (window.__labProblems.note(rec)) { post({ type: 'health', recs: [{ ...window.__labProblems.recs.get(window.__labProblems.key(rec)) }] }); post({ type: 'console', level: 'warn', text: rec.message, layer: rec.layer }); }
+}
+function hlCameras(every = 4) { if (HLC.n++ % every === 0) layers.forEach(hlCamL); }
+// </hl-cameras>
 function statsAt(wn, p) { return wn ? Math.round(statsW[Math.min(wn - 1, Math.floor(wn * p))] / 10) / 100 : 0; }
 statsRun(!parked);
 // A GPU memory estimate (MB): what the page's WebGL canvases hold (color + depth, ×2 for a kept last frame: since
@@ -4672,14 +4685,18 @@ function describe(v, depth = 0, seen = new WeakSet()) {
   for (const k of Object.keys(v).slice(0, 60)) { try { out[k] = describe(v[k], depth + 1, seen); } catch { out[k] = '(unreadable)'; } }
   return out;
 }
+// (round 81, playchurn81) the 4 s time-out is cleared once the eval answers: it stayed set, and 4 s after every eval
+// (every Lab tool call that looks into the scene, every check's read) it fired into a race long over and made an Error
+// with its stack trace for nothing, in the middle of whatever was playing then (gcchurn60: up to 260 B a frame)
 async function runEval({ id, code }) {
+  let tm = 0;
   try {
     const src = String(code || '');
     const body = /(^|[;{}\n])\s*return\b/.test(src) || /;\s*\S/.test(src.trim().replace(/;\s*$/, '')) ? src : `return (${src.replace(/;\s*$/, '')});`;
     const fn = new Function(`return (async () => { ${body}\n })();`);
-    const value = await Promise.race([fn(), new Promise((_, rej) => realSetTimeout(() => rej(new Error('Timed out after 4 s')), 4000))]);
+    const value = await Promise.race([fn(), new Promise((_, rej) => { tm = realSetTimeout(() => rej(new Error('Timed out after 4 s')), 4000); })]);
     post({ type: 'eval-result', id, ok: true, value: describe(value) });
-  } catch (err) { post({ type: 'eval-result', id, ok: false, error: `${err.name}: ${err.message}` }); }
+  } catch (err) { post({ type: 'eval-result', id, ok: false, error: `${err.name}: ${err.message}` }); } finally { realClearTimeout(tm); }
 }
 const KEY_CODES = { ' ': 'Space', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', Enter: 'Enter', Escape: 'Escape', Shift: 'ShiftLeft', Control: 'ControlLeft', Alt: 'AltLeft', Tab: 'Tab', Backspace: 'Backspace' };
 const codeOf = (k) => KEY_CODES[k] || (/^[a-z]$/i.test(k) ? `Key${k.toUpperCase()}` : /^\d$/.test(k) ? `Digit${k}` : k);
@@ -12545,28 +12562,47 @@ function installRunGuards() {
   // parsed on every frame to find out
   let frameOwner = null;
   const within1 = (o, fn, a) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(a); } finally { ctxLayer = prev; frameOwner = pf; } };
+  // one asked frame: e = { o: its owner, fn, lt: its last frame time (labpace: for f60), run, pooled }
+  const rafStep = (e, t) => {
+    const o = e.o;
+    if (!alive(o)) return;
+    // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
+    if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { e.lt = -1; sched(e.run); return; }
+    if (o.L && layerMix(o.L) <= 0) { e.lt = -1; sched(e.run); return; }
+    // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
+    if (parked && !SQ.off && !fullRes()) { e.lt = -1; parkQ.push(e.run); return; }
+    if (!SQ.off && !capOk(t)) { sched(e.run); return; }
+    // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
+    globalThis.f60 = PACE.core.f60(e.lt < 0 ? -1 : t - e.lt); e.lt = t;
+    if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
+    if (o.L && o.L.errPaused === o.L.gen) { (o.L.errQ ||= []).push(e.run); return; } // (round 80, laberrors80) paused: it threw every frame
+    const fn = e.fn;
+    if (e.pooled) { e.fn = null; o.pool[o.poolN++] = e; } // (round 81: free for the next frame's function before this one runs: it asks there)
+    try { within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t); } catch (err) { layerThrew(o, err); return; }
+    if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
+  };
+  const rafEntry = (o, fn, pooled) => {
+    const e = { o, fn, lt: -1, run: null, pooled };
+    e.run = (t) => rafStep(e, t);
+    e.run.__L = o.L; // (round 52, gamemode: a merged layer's frames run together, see "▶ Play")
+    return e;
+  };
   window.requestAnimationFrame = (fn) => {
     let e = typeof fn === 'function' ? rafOf.get(fn) : null;
     if (!e || !e.o.L || !alive(e.o)) {
+      // (round 81, playchurn81) asked from inside its own layer's frame callback with a function it hasn't asked with
+      // before: a game asking with a new function every frame (requestAnimationFrame(() => tick())). A kept entry of
+      // that layer's carries it (one per frame asked at once, reused frame after frame) instead of a new entry, a new
+      // frame callback and a WeakMap slot for every frame (≈ 110 B a frame in gcchurn60's HUD layer). The frame time
+      // it remembers for f60 is the chain's, so such a layer's f60 is its real frame length now (it was always 1).
+      if (typeof fn === 'function' && frameOwner?.L && ctxLayer === frameOwner.id && alive(frameOwner)) {
+        const o = frameOwner; if (!o.pool) { o.pool = []; o.poolN = 0; } // (kept entries by count: a pop / push pair let the array's storage go and made it again)
+        e = o.poolN ? o.pool[--o.poolN] : rafEntry(o, null, true);
+        e.fn = fn;
+        return sched(e.run);
+      }
       const o = ownerNow();
-      let lt = -1; // (labpace: this callback's last frame time, for f60)
-      const run = (t) => {
-        if (!alive(o)) return;
-        // ❚❚ freeze: the picture holds (the music goes on); a layer re-run meanwhile still draws its first frame
-        if (frozen && !stepping && !SQ.off && !(o.L && o.L.drawnGen !== o.L.gen)) { lt = -1; sched(run); return; }
-        if (o.L && layerMix(o.L) <= 0) { lt = -1; sched(run); return; }
-        // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
-        if (parked && !SQ.off && !fullRes()) { lt = -1; parkQ.push(run); return; }
-        if (!SQ.off && !capOk(t)) { sched(run); return; }
-        // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
-        globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
-        if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
-        if (o.L && o.L.errPaused === o.L.gen) { (o.L.errQ ||= []).push(run); return; } // (round 80, laberrors80) paused: it threw every frame
-        try { within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t); } catch (err) { layerThrew(o, err); return; }
-        if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
-      };
-      e = { o, run };
-      run.__L = o.L; // (round 52, gamemode: a merged layer's frames run together, see "▶ Play")
+      e = rafEntry(o, fn, false);
       if (o.L && !o.stale && typeof fn === 'function') rafOf.set(fn, e);
     }
     return sched(e.run);

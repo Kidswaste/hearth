@@ -163,12 +163,12 @@
       if (p && hooks(p.id) && hooks(p.id).off) off(p.id, 'watch', p.ms);
     }
   }
+  // (round 81, playchurn81) its own time is read around the once-a-second look only: the other frames only count one and
+  // ask for the next (well under a µs), and each clock read is a new boxed number (32 B a frame for timing nothing)
   function tick(t) {
-    const a = now();
     frames += 1;
-    if (!w0) w0 = t; else if (t - w0 >= 1000) windowEnd(t);
+    if (!w0) w0 = t; else if (t - w0 >= 1000) { const a = now(); windowEnd(t); T[SELF] += now() - a; }
     raf(tick);
-    T[SELF] += now() - a;
   }
   raf(tick);
 

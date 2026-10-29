@@ -385,9 +385,10 @@
   // it kept so far (moved to the front)
   const pending = (x, i, k) => { for (let j = 0; j < k; j += 1) if (FO[j] === x) return true; for (let j = i + 1; j < FN; j += 1) if (FO[j] === x) return true; return false; };
   const TK = { compiled: 0 }; // (the pass's count of compiles this frame)
-  function take(r, scene, camera) {
+  // (round 81, playchurn81) t: the render wrapper's own clock read (each read is a new boxed number: one fewer a frame)
+  function take(r, scene, camera, t) {
     const P = r.properties; if (!P?.get) { freshClear(); return; }
-    const t = now(); let claimed = held.size ? new Set() : NONE;
+    let claimed = held.size ? new Set() : NONE;
     if (held.size) for (const h of held) claimed.add(h.o);
     let kinds = known.get(r); if (!kinds) known.set(r, kinds = new Set());
     TK.compiled = 0; let k8 = 0; let k = 0;
@@ -491,7 +492,7 @@
           const e = rends.get(this); if (e && e.scene !== scene) { e.scene = scene; e.camera = camera; hookAdd(scene); } else if (e) e.camera = camera;
           if (!S.active && S.on) active(); // (a game that loads nothing during play: what it adds is looked at all the same)
           if (S.on && S.active && (FN || held.size)) {
-            if (FN) take(this, scene, camera);
+            if (FN) take(this, scene, camera, tn);
             if (held.size) {
               stepHeld(this, scene);
               for (const h of held) if (h.r === this && h.o.visible) { h.o.visible = false; (hid || (hid = [])).push(h.o); }

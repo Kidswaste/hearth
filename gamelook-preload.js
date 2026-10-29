@@ -201,11 +201,16 @@ function gameLookPage(o) {
     if (typeof att0 === 'function') O3.attach = function attach(o) { 'use strict'; const res = att0.apply(this, arguments); try { if (!PAUSE && !OFF && o && o.isObject3D && addsN < 4000) adds[addsN++] = o; } catch (e) { /* never in the game's way */ } return res; };
     undo.push([O3, 'add', O3.add, add0]); if (typeof att0 === 'function') undo.push([O3, 'attach', O3.attach, att0]);
   }
-  function before(r, scene, force) {
+  // (round 81, playchurn81) every clock read is a new boxed number (16 B): a frame's look reads it twice now, not four to
+  // six times. t is when the render wrapper started (its own read), and the look's last read is left in BT[0] for the
+  // wrapper's time (SP) instead of the wrapper reading it again; the adds' cost is from t too (what comes before them
+  // in the frame is a WeakMap read)
+  const BT = new Float64Array(1);
+  function before(r, scene, force, t = now()) {
     if (!scene || !scene.isObject3D) return;
     if (!scene.isScene) { if (!doneO.has(scene)) { doneO.add(scene); sweep(r, scene); } return; } // (compile(object, camera, scene))
     let k = state.get(r); if (!k) state.set(r, k = { at: new WeakMap(), n: -1, walk: null, f: 0 });
-    const t = now(); const v0 = VN; const n = (r.info && r.info.memory && r.info.memory.textures) | 0;
+    const v0 = VN; const n = (r.info && r.info.memory && r.info.memory.textures) | 0;
     const last = k.at.get(scene);
     if (last === undefined || force) { // the first look: all of it, before anything is uploaded or compiled
       k.n = n; k.at.set(scene, t);
@@ -214,16 +219,18 @@ function gameLookPage(o) {
       else if (R.guard === 'waiting' && !raised.length) R.guard = 'none';
       return;
     }
+    let read = false; // (BT[0] read after the adds: the frame's end too when no walk runs after them)
     if (addsN) { // what the game added since, before its first frame (a bullet: a few µs; a level: its own size)
-      const t0 = now(); const max = maxA(r);
+      const max = maxA(r);
       try { VR = r; VM = max; for (let i = 0; i < addsN; i += 1) { const o = adds[i]; if (doneO.has(o)) continue; doneO.add(o); if (o.children.length) o.traverse(visitV); else visit(r, o, max); } } catch (e) { /* fine */ } finally { VR = null; }
-      addsClear(); cost(now() - t0);
+      addsClear(); BT[0] = now(); read = true; cost(BT[0] - t);
       if (BEST && raised.length && !guarding) guarding = guard();
     }
     k.f += 1; // (frames as well as seconds: on a slow frame rate the walk stays a small share of the frames)
     if (!k.walk && ((t - last >= 2000 && k.f >= 240) || (n !== k.n && t - last >= 1000 && k.f >= 120))) { k.f = 0; k.n = n; k.at.set(scene, t); k.walk = { scene, stack: [scene], bg: true }; }
-    if (k.walk && k.walk.scene === scene) walk(r, k);
-    const fd = now() - t; if (fd > R.cost.playMax) { R.cost.playMax = +fd.toFixed(3); R.cost.playMaxN = VN - v0; }
+    if (k.walk && k.walk.scene === scene) { walk(r, k); read = false; }
+    if (!read) BT[0] = now();
+    const fd = BT[0] - t; if (fd > R.cost.playMax) { R.cost.playMax = +fd.toFixed(3); R.cost.playMaxN = VN - v0; }
   }
   function walk(r, k) {
     const w = k.walk; const t0 = now(); const max = maxA(r);
@@ -248,8 +255,10 @@ function gameLookPage(o) {
       try {
         // (round 60, gcchurn60) render, every frame: its two arguments passed on as they are (an `arguments` object is
         // made for every call wherever the page's code isn't optimized yet; three's render takes (scene, camera))
+        // (round 81, playchurn81) the look's own last clock read ends its time here (BT, set by before()); a look that
+        // returned early or threw reads the clock as before
         const w = r[m] = m === 'render' ? function render(scene, camera) {
-          if (!PAUSE && !OFF) { const a = now(); try { before(this, scene); } catch (e) { /* never in the game's way */ } SP[0] += now() - a; }
+          if (!PAUSE && !OFF) { const a = now(); BT[0] = 0; try { before(this, scene, false, a); } catch (e) { /* never in the game's way */ } SP[0] += (BT[0] >= a ? BT[0] : now()) - a; }
           R.frames += 1;
           return base.call(this, scene, camera);
         } : function (scene) {

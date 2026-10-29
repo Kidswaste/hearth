@@ -17,7 +17,8 @@
 // removed) and the same measure must exceed the budget. Fails when Hearth's own bytes a frame are over the budget in
 // either window, or the self-test isn't seen.
 // window.GC60_ONLY = 'play,lab' · GC60_SEC (s measured, default 8) · GC60_REPORT = 1 (report only) · GC60_BUDGET (bytes
-// a frame) · GC60_SAMPLE (sampling interval in bytes, default 64) · GC60_HEAVY · GC60_OFF.
+// a frame) · GC60_SAMPLE (sampling interval in bytes, default 64) · GC60_HEAVY · GC60_OFF · GC60_TOP (lines in each top list, default 12) · GC60_WARM (ms more before the Lab's measure) · GC60_FRAMES (frames shown
+// before a measure, default 600; 0 = the fixed waits only).
 //   node dev/smoke.js --check-timeout 1200000 --screen 960x600 --script dev/checks/gcchurn60.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return false; };
@@ -30,6 +31,12 @@ const SEC = Number(window.GC60_SEC) || 8;
 // bytes a frame of Hearth's own, per window (see the header: what's left is code this machine runs unoptimised)
 const BUDGET = { play: Number(window.GC60_BUDGET) || 256, lab: Number(window.GC60_BUDGET) || 1024 };
 const SAMPLE = Number(window.GC60_SAMPLE) || 64;
+// (round 81, playchurn81) the measure starts once the game has shown WARM_FRAMES frames (on top of the waits below, at
+// most 60 s more): the engine optimises a function after a number of calls, not seconds, so on a loaded machine (the
+// Lab at 16–18 fps, ▶ Play at 30) the 8 s warm-up measured code still running unoptimised, where every number is a new
+// boxed value (tickFrames alone: 180 B a frame cold, 17 B warm), code the owner's 240 Hz optimises in its first second
+// or two. 600 frames is 10 s at 60 Hz, 2.5 s at 240. GC60_FRAMES = 0: the old fixed-time warm-up only.
+const WARM_FRAMES = window.GC60_FRAMES != null ? Number(window.GC60_FRAMES) : 600;
 const TMP = window.SMOKE_TMP || '/tmp';
 const DIR = `${TMP}/hearth-gcchurn60`;
 const THREE_DIR = '/opt/cdn-cache/three@0.186.1/package';
@@ -68,7 +75,7 @@ function digest(profile, frames) {
   };
   walk(profile.head);
   const f = Math.max(1, frames);
-  const t = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([k, v]) => `${r1(v / f)} B ${k}`);
+  const t = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, Number(window.GC60_TOP) || 12).map(([k, v]) => `${r1(v / f)} B ${k}`);
   return { frames, perFrame: { hearth: r1(by.hearth / f), game: r1(by.game / f), other: r1(by.other / f), frameStart: r1(by.frameStart / f), total: r1(total / f), ...(hook ? { selftestHook: r1(hook / f) } : {}) }, top: { hearth: t(top.hearth), game: t(top.game).slice(0, 6), other: t(top.other).slice(0, 6) } };
 }
 
@@ -136,6 +143,7 @@ async function play(game, label, after) {
   if (c.look === 'best') await until(() => ev('!["waiting", "measuring", "tight", "trying"].includes(window.__gameLook.report().guard)'), 30000);
   await ev(SINK);
   await wait(6000); // (getting ready's hooks retire 5 s into play: the steady state)
+  if (WARM_FRAMES) await until(() => ev(`window.game.frames >= ${WARM_FRAMES}`), 60000);
   const r = { [label]: await sampleGame(`${game} ${label}`) };
   r[label].sinkEvents = await ev('window.__gc60sink');
   if (after) Object.assign(r, await after());
@@ -207,7 +215,8 @@ let shown = -1; const f = (t) => { const v = Math.floor(t / 250); if (v !== show
     const frames = () => sbx('return window.__labPace.state().frameTick');
     await until(async () => (await frames()) > 60, 60000);
     await sbx(`return ${SINK}`);
-    await wait(8000); // (the still check's warm-up, the first loads, the scene doctor's look after the run)
+    await wait(8000 + (Number(window.GC60_WARM) || 0)); // (the still check's warm-up, the first loads, the scene doctor's look after the run; GC60_WARM ms more, for a report)
+    if (WARM_FRAMES) await until(async () => (await frames()) >= WARM_FRAMES, 60000);
     const pvTarget = () => { const f = [...document.querySelectorAll('iframe')].find((x) => /three-sandbox/.test(x.src) && x.getBoundingClientRect().width > 50); const n = /[?&]n=([\w-]+)/.exec(f?.src || '')?.[1]; return n ? `three-sandbox.*[?&]n=${n}` : 'three-sandbox'; };
     const tc = (method, params, ms = 30000) => Promise.race([smoke({ cdp: method, params, target: pvTarget() }), wait(ms).then(() => ({ error: 'timeout' }))]);
     async function sampleLab(label) {
@@ -219,10 +228,12 @@ let shown = -1; const f = (t) => { const v = Math.floor(t / 250); if (v !== show
       const p = await tc('HeapProfiler.stopSampling', {}, 60000); const g1 = await frames(); const sec = (performance.now() - t0) / 1000;
       await tc('HeapProfiler.collectGarbage', {});
       if (!p?.profile) throw new Error(`stopSampling: ${JSON.stringify(p).slice(0, 200)}`);
-      const d = digest(p.profile, g1 - g0); d.label = label; d.sec = r1(sec); d.fps = r1((g1 - g0) / sec);
+      const d = digest(p.profile, g1 - g0); d.label = label; d.sec = r1(sec); d.fps = r1((g1 - g0) / sec); d.warm = g0;
       return d;
     }
+    if (window.GC60_EVALS) await sbx('window.__gc60evals = []; return 1'); // (a report: the Lab's evals in the page while it's measured, with a sandbox that logs them)
     out.lab.play = await sampleLab('lab: game playing');
+    if (window.GC60_EVALS) out.lab.evals = await sbx('return JSON.stringify(window.__gc60evals.slice(-80))');
     out.lab.play.sinkEvents = await sbx('return window.__gc60sink');
     // the self-test: the same pretend hook, around the game layer's render (named as Hearth's)
     const inj = await sbx(`const sc = window.__scenes || {}; let n = 0; window.__gc60n = 0; for (const k of Object.keys(sc)) { const r = sc[k] && sc[k].renderer; if (!r || r.__gc60) continue; const r0 = r.render; r.__gc60 = 1; r.render = (0, eval)(${JSON.stringify(`(function (r0) { return ${HOOK}; })`)})(r0); n += 1; } return n`);
