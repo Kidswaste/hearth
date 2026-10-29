@@ -57,7 +57,11 @@ function formOf(file, ctx, S, got = null) {
   const r = got || readStill(file);
   if (!r || r.sig !== sig) return null;
   const cf = BC().cloudForm(r.buf, ctx, S);
-  if (cf) { forms.set(key, { sig, cf }); if (forms.size > 4) forms.delete(forms.keys().next().value); }
+  if (cf) { // (at most 160 MB of forms kept: the oldest go first)
+    forms.set(key, { sig, cf });
+    let total = 0; for (const x of forms.values()) total += x.cf.text.length;
+    for (const k of forms.keys()) { if (total <= 160 * 1024 * 1024 || forms.size <= 1) break; total -= forms.get(k).cf.text.length; forms.delete(k); }
+  }
   return cf;
 }
 const FIND_BIG = Math.min(BIG, 128 * 1024); // (round 82) Find in this project / recall: a chat this big is read (and its words indexed) a slice at a time
