@@ -309,6 +309,10 @@ async function cdpConnect(dir) {
     const sheets = new Map(); // styleSheetId → header (--coverage)
     const pageSocks = {}; // (round 53, gameinput) pageCdp: one socket per other page
     const coverage = opt('--coverage');
+    // (round 83, firstscreen83) --coverage-ready <file>: the JS coverage at the moment the first screen is up
+    // ('hearth:ready', + --coverage-ready-ms), before any input; the counters restart there, so a --coverage taken
+    // at the end then holds only what ran after it (dev/firstscreen-coverage.js reads both)
+    const coverageReady = opt('--coverage-ready');
     const smokeCall = async (payload) => {
       let req; try { req = JSON.parse(payload); } catch { return; }
       let result;
@@ -387,11 +391,25 @@ async function cdpConnect(dir) {
     await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
     await send('Fetch.enable', { patterns: CDN_PATTERNS });
     await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true });
-    if (coverage) {
+    if (coverage || coverageReady) {
       await send('Profiler.enable'); await send('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
+    }
+    if (coverage) {
       await send('DOM.enable'); await send('CSS.enable'); await send('CSS.startRuleUsageTracking');
     }
     await send('Page.reload', { ignoreCache: true });
+    if (coverageReady) {
+      for (let i = 0; i < 1500; i++) {
+        const r = await send('Runtime.evaluate', { expression: "performance.getEntriesByName('hearth:ready').length > 0 && /index\\.html/.test(location.href)", returnByValue: true });
+        if (r.result?.result?.value === true) break;
+        await new Promise((res) => setTimeout(res, 10));
+      }
+      const extra = Number(opt('--coverage-ready-ms', 0));
+      if (extra) await new Promise((res) => setTimeout(res, extra));
+      const js = (await send('Profiler.takePreciseCoverage')).result?.result || [];
+      fs.writeFileSync(coverageReady, JSON.stringify({ js: js.filter((s) => /^file:/.test(s.url)), css: [] }));
+      console.log(`\ncoverage at the first screen: ${coverageReady} (${js.length} scripts)`);
+    }
     if (coverage) { await new Promise((r) => setTimeout(r, 300)); await send('CSS.enable'); await send('CSS.startRuleUsageTracking'); }
     await new Promise((r) => setTimeout(r, waitMs));
     const CHECK_MS = Number(opt('--check-timeout', 90000));
