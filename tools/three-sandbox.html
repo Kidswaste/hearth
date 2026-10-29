@@ -151,6 +151,7 @@ if (parent !== window) {
   const gpuAway = (text) => /WebGL context could not be created|Error creating WebGL context/.test(text)
     || (/WebGLProgram: Shader Error 0 - VALIDATE_STATUS false/.test(text) && /Program Info Log: *\n/.test(text) && !/ERROR|WARNING|error|warning/.test(text.replace(/^[^\n]*\n/, '')));
   let gpuAwaySaid = false;
+  const devWarn = console.warn.bind(console); // (round 80: the devtools' own, never sent to the Lab)
   for (const level of ['log', 'info', 'warn', 'error']) {
     const orig = console[level].bind(console);
     const warnRaw = level === 'error' ? console.warn.bind(console) : orig;
@@ -165,14 +166,87 @@ if (parent !== window) {
         post({ type: 'console', level: 'warn', text: calm, layer: window.__layerOfStack(st) }); warnRaw(`Lab preview: ${calm}`);
         return;
       }
+      // (round 80, laberrors80) a material's shader that didn't compile: one error in plain words, once (the dump stays in the devtools)
+      if (level === 'error' && /THREE\.WebGLProgram: Shader Error/.test(text)) {
+        const r = { kind: 'shader', layer: window.__layerOfStack(st), line: null, message: HL.shaderWords(text) };
+        if (HL.note(r)) post({ type: 'error', ...r });
+        devWarn(...args.map((a) => (typeof a === 'string' ? a.replace(/^THREE\.WebGLProgram: Shader Error/, 'THREE.WebGLProgram: shader not compiled (said in the Lab in words)') : a))); return; // (the dump, for the devtools: a warning, said once in words above)
+      }
       post({ type: 'console', level, text, layer: window.__layerOfStack(st) }); orig(...args);
     };
   }
   // Line numbers for errors raised inside the sketch module (a blob: URL).
   // blob URLs look like blob:null/<uuid>:LINE:COL — take the first number pair after the URL.
   const lineOf = (stack) => { const m = /blob:[^\s)]*?:(\d+):(\d+)/.exec(stack || ''); return m ? Number(m[1]) : null; };
-  addEventListener('error', (e) => !window.__isStale(e.error?.stack) && post({ type: 'error', message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
-  addEventListener('unhandledrejection', (e) => !window.__isStale(e.reason?.stack) && post({ type: 'error', message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
+  // (round 80, laberrors80) the scene's health: every problem the page sees (a layer's error, a shader that didn't
+  // compile, a file that didn't load, a camera gone NaN) is kept once per layer + message + line with its first / last
+  // time and a count. The Lab hears a problem the first time it happens (the 'error' message, as before); after that
+  // the same error is only counted here, and the counts go out at most every 2 s in one 'health' message (a layer that
+  // threw every frame sent 60 errors a second and filled the console). Nothing of it runs while the scene is healthy.
+  const HL = window.__labProblems = { recs: new Map(), dirty: new Set(), timer: 0, max: 40 };
+  const hlLater = window.setTimeout.bind(window); // (the page's own timer, before layers' timers are wrapped)
+  HL.key = (r) => `${r.layer || ''}|${r.line || ''}|${r.message}`;
+  // → true the first time (the caller sends it on), false for a repeat (counted, sent with the next flush)
+  HL.note = (r) => {
+    const k = HL.key(r); const now = Date.now();
+    let x = HL.recs.get(k);
+    if (!x) {
+      if (HL.recs.size >= HL.max) return false; // (a page with 40 different problems: the first 40 tell the story)
+      HL.recs.set(k, { ...r, first: now, last: now, count: 1 });
+      return true;
+    }
+    x.count += 1; x.last = now;
+    HL.dirty.add(k);
+    if (!HL.timer) HL.timer = hlLater(HL.flush, 2000);
+    return false;
+  };
+  HL.flush = () => {
+    HL.timer = 0;
+    const recs = [...HL.dirty].map((k) => HL.recs.get(k)).filter(Boolean).map(({ kind, layer, line, message, first, last, count, paused, frames }) => ({ kind, layer, line, message, first, last, count, paused, frames }));
+    HL.dirty.clear();
+    if (recs.length) post({ type: 'health', recs });
+  };
+  HL.clear = (layer) => { let n = 0; for (const [k, r] of HL.recs) if (r.layer === layer || (layer == null && !r.layer)) { HL.recs.delete(k); HL.dirty.delete(k); n += 1; } return n; };
+  // three.js' "THREE.WebGLProgram: Shader Error …" (a whole dump of the program) → one line in plain words
+  HL.shaderWords = (text) => {
+    const type = /Material Type: *(\w+)/.exec(text)?.[1] || 'a material';
+    const which = /\n(FRAGMENT|VERTEX)\b/.exec(text)?.[1];
+    const errs = [...text.matchAll(/ERROR: *\d+:(\d+): *([^\n]+)/g)].map((m) => `${m[2].trim()} (line ${m[1]} of the GLSL three.js built)`);
+    return `${type === 'a material' ? type : `a ${type}`}'s ${which ? `${which.toLowerCase()} ` : ''}shader didn't compile: ${errs[0] || 'no reason given'}`;
+  };
+  const errPost = (r) => { if (HL.note({ kind: 'runtime', ...r })) post({ type: 'error', ...r }); };
+  addEventListener('error', (e) => !window.__isStale(e.error?.stack) && errPost({ message: e.message, line: e.filename?.startsWith('blob:') ? e.lineno : lineOf(e.error?.stack), layer: window.__layerOfUrl(e.filename) || window.__layerOfStack(e.error?.stack) }));
+  addEventListener('unhandledrejection', (e) => !window.__isStale(e.reason?.stack) && errPost({ message: String(e.reason?.message || e.reason), line: lineOf(e.reason?.stack), layer: window.__layerOfStack(e.reason?.stack) }));
+  // a file the scene asked for that didn't come (a 404, a picture / video that failed): noted once per file, said in
+  // words; fetches are wrapped (a promise's then per request, nothing per frame), pictures and media heard as they fail
+  const assetPost = (url, status, layer) => {
+    const u = String(url || ''); if (!u || /^(data|blob):/.test(u)) return;
+    const name = decodeURIComponent(u.split(/[?#]/)[0].split('/').pop() || u).slice(0, 80);
+    const r = { kind: 'asset', layer: layer || null, line: null, message: `a file didn't load${status ? ` (${status})` : ''}: ${name}` };
+    if (HL.note(r)) post({ type: 'health', recs: [{ ...HL.recs.get(HL.key(r)) }] });
+  };
+  if (typeof window.fetch === 'function') {
+    const f0 = window.fetch;
+    window.fetch = function (input, init) {
+      const p = f0.call(this, input, init);
+      const url = typeof input === 'string' ? input : input?.url;
+      if (!/^(data|blob):/i.test(String(url || ''))) {
+        const st = new Error().stack;
+        p.then((r) => { if (r && r.status >= 400) assetPost(url, r.status, window.__layerOfStack(st)); }, (err) => { if (err?.name !== 'AbortError') assetPost(url, 0, window.__layerOfStack(st)); });
+      }
+      return p;
+    };
+  }
+  addEventListener('error', (e) => { const t = e.target; if (t && t !== window && (t instanceof HTMLImageElement || t instanceof HTMLMediaElement)) assetPost(t.currentSrc || t.src, 0, null); }, true);
+  // (three.js' TextureLoader makes its <img> off the page: its failure never reaches the window, so it's heard on the image)
+  for (const m of ['createElement', 'createElementNS']) {
+    const ce = Document.prototype[m];
+    Document.prototype[m] = function (...a) {
+      const n = ce.apply(this, a);
+      if (/^img$/i.test(String(a[m === 'createElement' ? 0 : 1]))) { const st = new Error().stack; n.addEventListener('error', () => { if (!n.isConnected) assetPost(n.src, 0, window.__layerOfStack(st)); }, { once: true }); }
+      return n;
+    };
+  }
   // (round 39, labmemory) what the page holds that the garbage collector can't see by itself: object URLs not revoked,
   // ImageBitmaps not closed, AudioContexts not closed. Counters only (a Set add / delete per call); window.__labMem()
   // reads them with the GPU side (dev/checks/labmemory.js).
@@ -2189,6 +2263,7 @@ function statsTick() {
   if ((DOZE.on || (!ticked && statsTick.idle)) && (++statsDozed % 8)) return;
   statsTick.idle = !ticked;
   adCoverTick(); // (round 31 "labadapt": covered layers)
+  hlCameras(); // (round 80, laberrors80) a camera gone NaN (twice a second, not per frame)
   const i = lastRenderer.info;
   // (round 60, gcchurn60) the last 60 frames' work sorted by hand into a kept typed array (no copy, no boxed sort)
   const wn = Math.min(60, wrN); const w = statsW;
@@ -2199,6 +2274,24 @@ function statsTick() {
     p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
     hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null }; // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
   if (window.__stageHost) window.__stageHost.post(msg); else parent.postMessage(msg, '*');
+}
+// (round 80, laberrors80) a layer's camera whose numbers became NaN / Infinity (a division by zero in the code that
+// moves it, an aspect of 0 / 0): the picture goes blank without an error, so it's said once per run of that layer.
+// Read on the stats tick (2 a second, skipped while the picture dozes): a few numbers per layer, nothing per frame.
+function hlCameras() {
+  for (const L of layers.values()) {
+    if (L.nanG === L.gen) continue;
+    for (const r of L.renderers) {
+      const c = r.__lastCamera; if (!c?.isCamera || r.__stale) continue;
+      const bad = !Number.isFinite(c.position.x + c.position.y + c.position.z) ? 'position' : c.matrixWorld.elements.some((v) => !Number.isFinite(v)) ? 'placement' : c.projectionMatrix.elements.some((v) => !Number.isFinite(v)) ? (c.isPerspectiveCamera && !(c.aspect > 0) ? 'aspect' : 'lens') : null;
+      if (!bad) continue;
+      L.nanG = L.gen;
+      const words = { position: 'its position is NaN', placement: 'its rotation or parent is NaN', aspect: `its aspect is ${c.aspect} (a width or height of 0?)`, lens: 'its lens numbers are NaN (fov, near / far or zoom)' }[bad];
+      const rec = { kind: 'camera', layer: pcTop(L.id), line: null, message: `the camera went NaN: ${words}, so nothing draws` };
+      if (window.__labProblems.note(rec)) { post({ type: 'health', recs: [{ ...window.__labProblems.recs.get(window.__labProblems.key(rec)) }] }); post({ type: 'console', level: 'warn', text: rec.message, layer: rec.layer }); }
+      break;
+    }
+  }
 }
 function statsAt(wn, p) { return wn ? Math.round(statsW[Math.min(wn - 1, Math.floor(wn * p))] / 10) / 100 : 0; }
 statsRun(!parked);
@@ -12461,7 +12554,8 @@ function installRunGuards() {
         // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
         globalThis.f60 = PACE.core.f60(lt < 0 ? -1 : t - lt); lt = t;
         if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
-        within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t);
+        if (o.L && o.L.errPaused === o.L.gen) { (o.L.errQ ||= []).push(run); return; } // (round 80, laberrors80) paused: it threw every frame
+        try { within1(o, fn, o.L?.props.seqT0 != null && SQ.on ? sqLocal(o.L) * 1000 : o.L?.props.pcOf ? keyTime(o.L) * 1000 : LOOPC.on && o.L && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t); } catch (err) { layerThrew(o, err); return; }
         if (o.L) { if (o.L.ranG === o.L.gen) o.L.ran += 1; else { o.L.ranG = o.L.gen; o.L.ran = 1; } } // (seqsolid: its frames since its run, see sqDrawn)
       };
       e = { o, run };
@@ -12470,6 +12564,30 @@ function installRunGuards() {
     }
     return sched(e.run);
   };
+  // (round 80, laberrors80) a layer's frame callback threw: the Lab hears it once (then counted, see __labProblems); one
+  // that throws on (nearly) every frame for PAUSE_N frames and ½ s is paused — its last picture stays, the rest of the
+  // preview runs smoothly — until its next edit (a re-run) or Resume. A healthy frame costs nothing here (a try whose
+  // catch never runs).
+  function layerThrew(o, err) {
+    let stack = ''; try { stack = String(err?.stack || ''); } catch { /* not an Error */ }
+    if (staleStack(stack)) return;
+    const L = o.L; const id = L ? pcTop(L.id) : pcTop(o.id || null);
+    const message = err instanceof Error ? `${err.name}: ${err.message}` : `Uncaught ${String(err)}`;
+    const line = Number(/blob:[^\s)]*?:(\d+):\d+/.exec(stack)?.[1]) || null;
+    const HL = window.__labProblems;
+    const r = { kind: 'runtime', layer: id || null, line, message, frame: true };
+    if (HL.note(r)) post({ type: 'error', layer: id || null, line, message });
+    if (!L || GAME) return; // (▶ Play: the game's own frames are never held by the Lab)
+    const now = realNow();
+    if (L.errG !== L.gen || now - (L.errAt || 0) > 250) { L.errG = L.gen; L.errN = 0; L.errT0 = now; }
+    L.errN += 1; L.errAt = now;
+    if (L.errN >= PAUSE_N && now - L.errT0 >= 500 && L.errPaused !== L.gen) {
+      L.errPaused = L.gen;
+      const x = HL.recs.get(HL.key(r)); if (x) { x.paused = true; x.frames = L.errN; }
+      HL.flush();
+      post({ type: 'layer-paused', layer: id, message, line, frames: L.errN, ms: Math.round(now - L.errT0) });
+    }
+  }
   // (the running callback's layer, when it is still that layer's code that runs: see "within")
   const ownerNow = () => (frameOwner?.L && ctxLayer === frameOwner.id && alive(frameOwner) ? frameOwner : owner());
   window.setTimeout = (fn, ms, ...a) => { if (typeof fn !== 'function') return realSetTimeout(fn, ms, ...a); const o = ownerNow(); return realSetTimeout((...b) => { if (alive(o)) within(o, fn, b); }, ms, ...a); };
@@ -12483,6 +12601,7 @@ function installRunGuards() {
   window.clearInterval = (id) => { sketchIntervals.delete(id); realClearInterval(id); };
 }
 const realClearInterval = clearInterval.bind(window);
+const PAUSE_N = 90; // (round 80, laberrors80) frames in a row that threw before a layer is paused
 const sketchIntervals = new Set(); // sketch intervals still running (a dead layer's stop at their next tick)
 // ---------- what a gone layer's code still holds (round 39, labmemory) ----------
 // A layer's code is an ES module, and the page keeps every module it imported for its whole life (revoking the blob
@@ -12712,6 +12831,9 @@ function memAfterSwitch() {
 }
 const memSwitched = () => { if (mode !== 'sketch') return; if (MEMG.timer) realClearTimeout(MEMG.timer); MEMG.timer = realSetTimeout(memAfterSwitch, 3000); };
 function teardownLayer(L) {
+  // (round 80, laberrors80) its problems were its last run's: forgotten here and in the Lab (a pause ends with the run)
+  window.__labProblems.clear(pcTop(L.id)); post({ type: 'health-clear', layer: pcTop(L.id) }); // (always: a shader layer's GLSL errors are said by the page directly)
+  L.errQ = null;
   matteDispose(L);
   try { ownDispose(L); } catch { /* gone */ } // (round 75, labload75)
   if (L.url) ownRetire(L.url); // (round 39, labmemory)
@@ -14635,6 +14757,17 @@ addEventListener('message', async (e) => {
   if (msg.type === 'direct-view') { DR.view = msg.k > 0 ? msg.k : 1; drPaint(); } // (round 46, labdirect: how big the picture shows)
   if (msg.type === 'layer-props') { const L = layers.get(msg.id); if (L) setLayerProps(L, drEcho(L, msg.props)); } // (round 46, labdirect: a drag's late answers don't pull it back)
   if (msg.type === 'remove-layer') removeLayer(msg.id, { fade: Boolean(msg.fade) });
+  // (round 80, laberrors80) ▶ Resume on a paused layer (it threw every frame): it draws again, with a fresh count
+  if (msg.type === 'resume-layer') {
+    for (const L of layers.values()) {
+      if (L.id !== msg.layer && pcTop(L.id) !== msg.layer) continue;
+      L.errPaused = null; L.errN = 0;
+      const q = L.errQ || []; L.errQ = null;
+      for (const run of q) sched(run);
+    }
+    window.__labProblems.clear(msg.layer);
+    if (paceSleeping.size) paceWake();
+  }
   if (msg.type === 'pc-sync') { const P = layers.get(msg.id); if (P?.pc) pcSync(P, msg.precomp); }
   if (msg.type === 'media-load') loadMedia(msg);
   if (msg.type === 'media-unload') unloadMedia();
