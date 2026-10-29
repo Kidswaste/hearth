@@ -15,6 +15,13 @@
 // the line that asked, where the time went; window.LS_PROFILE = 'pan' a JS profile of one stretch).
 // Xvfb is a 60 Hz display with software GL on shared CPUs: absolute ms are several times a real Mac's; the counts
 // (seeks per frame, rebuilds, messages) are exact. The preview is kept small (320 × 180).
+// (round 80, checkfix80) load-aware: the ms per move and the late handlers above are wall time, which a busy machine
+// stretches many times over (side by side with other checks here: a frame's "work" read 0.4–1.1 s, the pan 18–22 ms a
+// move, the clip 15 ms, the scrub 5.7 ms). A stretch over those budgets is measured once more under a timeline trace
+// and judged on the Lab window main thread's own CPU time (thread time: what the work costs, whatever else the machine
+// runs): its CPU ms per move against the same budget, and tasks running an input's handlers over 8.3 ms of CPU as the
+// late ones. Both readings are in the report (wall, then cpu); real extra work shows in both and still fails. Counts
+// (seeks, rebuilds, messages) were exact already. window.LS_WALL = 1 judges on wall time only, as before.
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/labscrub.js --shot /tmp/labscrub.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(60); } return false; };
@@ -180,6 +187,25 @@ async function stretch(name, fn) {
   out[name] = r;
   return r;
 }
+// a stretch measured, and once more under a trace when its wall time is over a budget (judged on CPU time then)
+const CPU_KEY = { scrub: 'scrubCpu', zoom: 'zoomCpu', pan: 'panCpu', clip: 'clipCpu', sound: 'soundCpu' };
+async function measured(name, fn) {
+  const r = await stretch(name, fn);
+  const k = CPU_KEY[name];
+  if (!r || TRACE || window.LS_WALL || !(r.cpuPerMoveMs > BUDGET[k] || r.lateFrames > BUDGET.dropped)) return r;
+  const wall = { cpuPerMoveMs: r.cpuPerMoveMs, lateFrames: r.lateFrames, frameWorkP95: r.frameWorkP95, handlerP95: r.handlerP95 };
+  let seg = null; let again = null;
+  try {
+    await smoke({ trace: 'start', detail: true });
+    try { again = await stretch(name, fn); } finally { performance.mark('hz240:end'); await settle(); }
+    const tr = await smoke({ trace: 'stop', detail: true });
+    seg = tr?.detail?.segments?.[name] || null;
+  } catch (err) { out.problems.push(`${name}: the trace for its CPU time failed (${String(err.message || err).slice(0, 120)})`); }
+  if (!seg || !again?.moves) { out[name] = { ...r, wall, judgedBy: 'wall (no trace)' }; return out[name]; }
+  const cpu = { cpuPerMoveMs: r1(seg.cpuMs / again.moves), lateFrames: seg.inputOver8Cpu, cpuMs: seg.cpuMs, busyMs: seg.busyMs, longestCpu: seg.longestCpu, againWall: { cpuPerMoveMs: again.cpuPerMoveMs, lateFrames: again.lateFrames } };
+  out[name] = { ...again, wall, cpu, cpuPerMoveMs: cpu.cpuPerMoveMs, lateFrames: cpu.lateFrames, judgedBy: 'thread CPU (trace)' };
+  return out[name];
+}
 const rect = () => canvas.getBoundingClientRect();
 let released = 0;
 const over = (what, v, b) => { if (v != null && b != null && v > b) out.problems.push(`${what}: ${v} > ${b}`); };
@@ -195,7 +221,7 @@ c.player.zoomTo?.(null);
 await c.player.seek?.(0);
 store.set('three.scrubSound', false);
 c.player.scrubSound?.(false);
-await stretch('scrub', async () => {
+await measured('scrub', async () => {
   const r = rect(); const y = waveY(); const N = 120;
   await mouse('mouseMoved', r.left + 4, y, { button: 'none' });
   await mouse('mousePressed', r.left + 4, y, { buttons: 1 });
@@ -221,7 +247,7 @@ if (want('scrub')) {
 // the waveform scrolled at one zoom (10 s in view): a two-finger sideways trackpad scroll, 60 steps, ~a third of a view
 c.player.zoomTo(100, 110);
 await settle(); await wait(300);
-await stretch('pan', async () => {
+await measured('pan', async () => {
   const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
   const v0 = c.player.view;
   await mouse('mouseMoved', x, y, { button: 'none', buttons: 0 });
@@ -232,7 +258,7 @@ await stretch('pan', async () => {
   return 60;
 });
 // a pinch (Ctrl+wheel): in 40 steps, out 20
-await stretch('zoom', async () => {
+await measured('zoom', async () => {
   const r = rect(); const y = waveY(); const x = r.left + r.width * 0.4;
   const v0 = c.player.view;
   await burst(Array.from({ length: 60 }, (_, i) => () => wheel(x, y, i < 40 ? -6 : 6, 2)), 8);
@@ -242,7 +268,7 @@ await stretch('zoom', async () => {
 });
 c.player.zoomTo?.(null);
 await settle();
-await stretch('clip', async () => {
+await measured('clip', async () => {
   const g = c.player._keysGeo(); const lay = D.layers().layers.find((x) => x.name === clipName);
   const id = lay?.id || ThreeLab.scenes.layersOf(ThreeLab.scenes.get(ThreeLab.scenes.currentId())).find((x) => x.name === clipName)?.id;
   const ty = g.trackY(id); if (ty == null) throw new Error(`no track row for ${clipName}`);
@@ -256,7 +282,7 @@ await stretch('clip', async () => {
 // the scrub sound: grains that follow the playhead while you drag (if this build has it)
 if (want('sound') && c.player.scrubSound) {
   c.player.scrubSound(true);
-  await stretch('sound', async () => {
+  await measured('sound', async () => {
     const r = rect(); const y = waveY(); const N = 80;
     await mouse('mouseMoved', r.left + 4, y, { button: 'none' });
     await mouse('mousePressed', r.left + 4, y, { buttons: 1 });

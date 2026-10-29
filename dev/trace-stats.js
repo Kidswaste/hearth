@@ -30,7 +30,7 @@ function stats(events, opts = {}) {
   const tasks = X.filter((e) => e.name === 'RunTask');
   // which task each event belongs to (tasks don't overlap on one thread)
   let ti = 0; const taskOf = (ts) => { while (ti < tasks.length && tasks[ti].ts + tasks[ti].dur < ts) ti++; const t = tasks[ti]; return t && t.ts <= ts ? t : null; };
-  for (const e of X) { if (e.name === 'RunTask') continue; const t = taskOf(e.ts); if (t && RENDER.has(e.name)) t.render = true; if (t && (e.name === 'TimerFire' || e.name === 'FireIdleCallback')) t.bg = true; }
+  for (const e of X) { if (e.name === 'RunTask') continue; const t = taskOf(e.ts); if (t && RENDER.has(e.name)) t.render = true; if (t && (e.name === 'TimerFire' || e.name === 'FireIdleCallback')) t.bg = true; if (t && e.name === 'EventDispatch' && INPUT.test(e.args?.data?.type || '')) t.input = true; } // (round 80, checkfix80) input: the task ran an input's handlers
   // forced: style / layout inside a script event
   const scripts = X.filter((e) => SCRIPT.has(e.name));
   let si = 0; const open = [];
@@ -124,6 +124,7 @@ function stats(events, opts = {}) {
       // (round 45) the check's own 'at:<what>' marks in the stretch: from its first input (or its start) to each, wall · CPU ms
       at: (() => { const t0 = ins.length ? Math.min(...ins.map((i) => i.ts)) : s.from; const o = {}; for (const e of markAt) { if (e.ts < s.from || e.ts >= s.to || o[e.name.slice(3)]) continue; o[e.name.slice(3)] = { ms: r1((e.ts - t0) / 1000), cpuMs: r1(cpuIn(t0, e.ts)), fgMs: r1(cpuIn(t0, e.ts, true)) }; } return o; })(),
       longestCpu: r1(Math.max(0, ...tasks.filter((t) => t.ts >= s.from && t.ts < s.to).map((t) => (t.tdur ?? t.dur) / 1000))),
+      inputOver8Cpu: tasks.filter((t) => t.ts >= s.from && t.ts < s.to && t.input && (t.tdur ?? t.dur) / 1000 > 8.3).length, // (round 80, checkfix80) tasks running an input's handlers over 8.3 ms of the thread's own CPU time
       latency: { p50: r1(pct(lat, 0.5)), p95: r1(pct(lat, 0.95)), max: r1(lat.at(-1) || 0) },
       // (round 38, inputlatency) input delay (timeStamp → first handler) · processing (handlers, summed per input) ·
       // presentation (last handler → the frame's commit), p50 / p95 ms

@@ -3795,8 +3795,14 @@ function songNow() {
     AV.E = FR.E;
     const now = realNow();
     if (now - AV.at >= 4) { AV.at = now; avSample(now); }
-    AV.t = AV.core.read(AV.S, (FR.t + dispMs) / 1000); // (shown one screen frame after the frame's time)
-    if (AV.fr) { const i = (AV.fi % AV.fn) * 5; const sh = FR.t + dispMs; AV.fr[i] = sh; AV.fr[i + 1] = AV.t; AV.fr[i + 2] = AV.sy + (m.playbackRate || 1) * (sh / 1000 - AV.sx); AV.fr[i + 3] = m.currentTime; AV.fr[i + 4] = AV.src; AV.fi += 1; } // (checks: the newest audio-clock sample carried to the show time, and the raw element time the page used before)
+    // shown one screen frame after the frame's time. (round 80, checkfix80) …and never before now: a frame whose callback
+    // runs after that moment (the page held up by a hitch, a busy machine: 50–300 ms seen) is shown after it, so it
+    // reads the clock at now. It read the moment already past: after a seek the sound already played the new spot for
+    // that long while the frame still showed the old one; after a restart of the clock (a gap, back from another tool)
+    // the frame showed a moment up to 300 ms ahead for one frame, then the picture stepped back
+    const sh = Math.max(FR.t + dispMs, now);
+    AV.t = AV.core.read(AV.S, sh / 1000);
+    if (AV.fr) { const i = (AV.fi % AV.fn) * 6; AV.fr[i] = sh; AV.fr[i + 1] = AV.t; AV.fr[i + 2] = AV.sy + (m.playbackRate || 1) * (sh / 1000 - AV.sx); AV.fr[i + 3] = m.currentTime; AV.fr[i + 4] = AV.src; AV.fr[i + 5] = now - FR.t; AV.fi += 1; } // (checks: the newest audio-clock sample carried to the show time, the raw element time the page used before, how late the frame's callback ran)
     return AV.t;
   }
   const now = realNow();
@@ -3913,9 +3919,10 @@ window.__labAV = {
     };
   },
   // the next n frames and audio-clock samples ([x, y, element, now]) are kept
-  watch(n = 0) { AV.fn = n; AV.fi = 0; AV.fr = n ? new Float64Array(n * 5) : null; AV.rn = n; AV.ri = 0; AV.ring = n ? new Float64Array(n * 4) : null; return n; },
-  // [show time ms, the time the frame used, the newest audio-clock sample at the show time, the raw element time, source]
-  frames() { const out = []; if (!AV.fr) return out; const k = Math.min(AV.fi, AV.fn); for (let j = AV.fi - k; j < AV.fi; j += 1) { const i = (j % AV.fn) * 5; out.push([AV.fr[i], AV.fr[i + 1], AV.fr[i + 2], AV.fr[i + 3], AV.fr[i + 4]]); } return out; },
+  watch(n = 0) { AV.fn = n; AV.fi = 0; AV.fr = n ? new Float64Array(n * 6) : null; AV.rn = n; AV.ri = 0; AV.ring = n ? new Float64Array(n * 4) : null; return n; },
+  // [show time ms, the time the frame used, the newest audio-clock sample at the show time, the raw element time, source,
+  // ms the frame's callback ran after the frame's time (round 80: the page held up)]
+  frames() { const out = []; if (!AV.fr) return out; const k = Math.min(AV.fi, AV.fn); for (let j = AV.fi - k; j < AV.fi; j += 1) { const i = (j % AV.fn) * 6; out.push([AV.fr[i], AV.fr[i + 1], AV.fr[i + 2], AV.fr[i + 3], AV.fr[i + 4], AV.fr[i + 5]]); } return out; },
   samples() { const out = []; if (!AV.ring) return out; const k = Math.min(AV.ri, AV.rn); for (let j = AV.ri - k; j < AV.ri; j += 1) { const i = (j % AV.rn) * 4; out.push([AV.ring[i], AV.ring[i + 1], AV.ring[i + 2], AV.ring[i + 3]]); } return out; },
   // the output timestamp right now, raw: { ctx, contextTime, performanceTime, pos, rate } (the checks' own reference)
   raw() { const ts = actx?.getOutputTimestamp?.() || {}; return { ctx: actx?.currentTime ?? null, contextTime: ts.contextTime ?? null, performanceTime: ts.performanceTime ?? null, pos: mediaEl?.currentTime ?? null, rate: mediaEl?.playbackRate || 1, now: realNow() }; },
