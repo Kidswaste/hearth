@@ -54,7 +54,7 @@ const AUDIT = [
   ['chatparse-worker.js', 1, 'not-chat', 'a worker parsing bytes'],
   ['chatsafe.js', 1, 'throws', 'the read-only reader: its last 60 messages; "Show earlier" throws on older ones'],
   ['chatwin-core.js', 1, 'windowed', 'the access layer itself'],
-  ['chatwin.js', 13, 'windowed', 'the access layer itself'],
+  ['chatwin.js', 15, 'windowed', 'the access layer itself'],
   ['comp-dispatch.js', 3, 'windowed', 'count, push, the last message'],
   ['context-core.js', 2, 'not-chat', 'pure: the list it is handed (its callers are listed)'],
   ['costcoach-core.js', 1, 'not-chat', "main process: a chat file's records"],
