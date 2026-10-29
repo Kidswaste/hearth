@@ -101,8 +101,10 @@ try {
   ok(await until(() => H.agent(C.id).connections?.[notes.id] === 'read', 5000), `on for Claude as Read only (${JSON.stringify(H.agent(C.id).connections)})`);
   box = sheet()?.querySelector('.cn-box') || box;
   ok(await until(() => /✓ fake-notes: 4 tools/.test(sheet()?.querySelector('.cn-box .cn-result')?.textContent || '')), 'the row shows the Test result');
-  // (the fold's one-line state is written when AI setup opens: it still says "None on" until then; reported, see below)
-  out.foldLineAfterAdd = sheet()?.querySelector('details[data-fold="connections"] .opt-sum')?.textContent;
+  // (round 81, playchurn81) the fold's one line follows the add while AI setup stays open (it said "None on" until reopened)
+  const foldLine = () => sheet()?.querySelector('details[data-fold="connections"] .opt-sum')?.textContent;
+  out.foldLineAfterAdd = await until(() => (/1 of yours/.test(foldLine() || '') ? foldLine() : null), 5000) || foldLine();
+  ok(/1 of yours/.test(out.foldLineAfterAdd || ''), `the open AI setup's Connections line follows the add (${out.foldLineAfterAdd})`);
   const rowOf = (n) => [...(sheet()?.querySelectorAll('.cn-box .cn-row') || [])].find((r) => r.querySelector('.opt-label span')?.textContent === n);
   // (the row is drawn again once the switch is saved: read after that, a read right away raced it on a busy machine)
   const sel = await until(() => { const x = rowOf('Notes')?.querySelector('select'); return x?.value === 'read' ? x : null; }, 5000) || rowOf('Notes')?.querySelector('select');
@@ -130,6 +132,7 @@ try {
   const sel2 = rowOf('Notes')?.querySelector('select');
   if (sel2) { sel2.value = 'full'; sel2.dispatchEvent(new Event('change')); } // (a <select>'s list is the system's own popup: picked as its change)
   ok(await until(() => H.agent(C.id).connections?.[notes.id] === 'full'), 'Full for Claude');
+  ok(/1 of yours/.test(foldLine() || ''), `the line still counts it after Read only → Full (${foldLine()})`);
   await click(sheet()?.querySelector('.opt-head button[title^="Close"]'), 'AI setup\'s ✕');
   ok(await until(() => !sheet(), 3000), '✕ closes AI setup');
   const rc = await reply(C.id, 'mcp: [["notes_read", {"name": "hello"}], ["notes_env", {}]]');

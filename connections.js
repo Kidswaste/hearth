@@ -43,6 +43,7 @@ const Connections = (() => {
     const v = Object.keys(m).length ? m : undefined;
     for (const t of new Set([a, H.config.agents.find((x) => x.id === agentId)].filter(Boolean))) { if (v) t.connections = v; else delete t.connections; }
     await saveConfig();
+    repaint(); // (round 81, playchurn81) the open AI setup follows a switch from anywhere (its row, Add, /connections)
   }
   // tokens: a measured tool list (Test) wins over the catalog's guess
   const tokensOf = (c) => c.tokens || CATALOG.find((k) => k.key === c.catalog)?.tokens || 0;
@@ -208,7 +209,7 @@ const Connections = (() => {
       el('option', { value: 'full', text: split ? 'Full' : 'On' }));
     sel.value = mode === 'read' && !split ? 'full' : mode;
     if (mode === 'read' && !split) sel.title = 'Read only until a Test shows which tools only look';
-    sel.addEventListener('change', () => setMode(a.id, c.id, sel.value || null).then(repaint));
+    sel.addEventListener('change', () => setMode(a.id, c.id, sel.value || null));
     const menu = (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, [{ label: 'Test', action: () => test(c.id) }, { label: 'Edit…', action: () => edit(c.id) }, '-', { label: 'Remove', danger: true, action: () => remove(c.id) }]); };
     const r = el('div', { class: 'opt-row cn-row', title: `${c.kind === 'http' ? c.url : [c.command, ...(c.args || [])].join(' ')}\nRight-click: Test, Edit, Remove`, on: { contextmenu: menu } },
       el('span', { class: 'opt-label', on: { dblclick: () => edit(c.id) } }, el('span', { text: c.name }), el('small', { class: 'cn-tok', text: ` · ${tokNote(c)}` })),
@@ -223,6 +224,9 @@ const Connections = (() => {
     const list = all();
     const head = el('div', { class: 'opt-row' }, el('span', { class: 'opt-label opt-sub', text: 'Your own connections' }), el('button', { type: 'button', class: 'ghost small', text: '＋ Add a connection', title: 'Gives it a ready-made free tool (files, web pages, a database…) or a tool server you already have', on: { click: () => openAdd(a.id) } }));
     box.replaceChildren(head, ...list.flatMap((c) => row(c, a)), list.length ? el('p', { class: 'opt-hint', text: 'Settings you typed for them go only to that server, never to the AI. Each one on adds its tools to every message (the ≈ tokens).' }) : null);
+    // (round 81, playchurn81) AI setup's folded Connections line ("None on", "2 of yours") is redrawn from this: before,
+    // adding or switching one on left it at "None on" until AI setup was opened again
+    box.dispatchEvent(new CustomEvent('cn-change', { bubbles: true }));
   }
   // options.js puts this under "What it can use"
   function section(agentId) { const box = el('div', { class: 'cn-box' }); fill(box, agentId); return box; }

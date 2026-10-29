@@ -115,6 +115,8 @@ const Options = (() => {
     if (a.engine === 'claude') loadApps(a, apps);
     // (round 26, connections.js) the owner's own connections: ＋ Add a connection, per-AI on / off, Test
     const own = el('div', { class: 'opt-conns' });
+    const reSum = () => setSum('connections', connSum(H.agent(a.id) || a)); // (round 81, playchurn81) the line follows changes made while it's open
+    own.addEventListener('cn-change', reSum);
     Promise.resolve(typeof Lazy !== 'undefined' ? Lazy.load('connections') : null).then(() => { if (typeof Connections !== 'undefined') own.replaceChildren(Connections.section(a.id)); }).catch(() => {});
     // (round 30, chrome-ui.js) Chrome for Google sign-in: found or not, Open the Hearth Chrome, Sign in, what opens there
     const chrome = el('div', { class: 'opt-chrome' });
@@ -153,7 +155,7 @@ const Options = (() => {
       const modes = { ...(a.connectors || {}) };
       const sel = el('select', { class: 'opt-pick', disabled: s.status !== 'connected' && !modes[s.name] }, el('option', { value: '', text: 'Off' }), el('option', { value: 'read', text: 'Read only' }), el('option', { value: 'full', text: 'Full' }));
       sel.value = modes[s.name] || '';
-      sel.addEventListener('change', () => { const m = { ...(a.connectors || {}) }; if (sel.value) m[s.name] = sel.value; else delete m[s.name]; save(a, { connectors: Object.keys(m).length ? m : undefined }); });
+      sel.addEventListener('change', () => { const m = { ...(a.connectors || {}) }; if (sel.value) m[s.name] = sel.value; else delete m[s.name]; save(a, { connectors: Object.keys(m).length ? m : undefined }).then(() => setSum('connections', connSum(H.agent(a.id) || a))); });
       return el('div', { class: 'opt-row', title: s.status === 'connected' ? `${s.readTools} read / ${s.tools} tools` : 'Needs sign-in at claude.ai → Settings → Connectors' }, el('span', { class: 'opt-label', text: s.name.replace(/^claude\.ai\s+/, '') }), sel);
     }));
   }
