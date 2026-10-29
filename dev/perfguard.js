@@ -271,6 +271,14 @@ function loadGate(c, f) {
 const calibLine = (c, f) => (c ? `calibration ${c.single} ms${c.win != null ? ` (window ${c.win} ms)` : ''}, 3 threads ${c.par} ms, waited ${c.wait}× · load ≤ ${rnd(c.load * os.cpus().length)}${f != null ? ` · ${f}× the baseline's` : ''}` : 'no calibration');
 
 // ---------- compare mode ----------
+// (round 82) a metric over the line must also be told apart from the noise: a one-sided Mann–Whitney test of every
+// sample now (a wall time ÷ the calibration factor) against every sample of the baseline (p ≤ 0.05). Then:
+//   CPU time / level over the line: REGRESSED when significant, else "unsure" (inconclusive)
+//   wall time over the line: REGRESSED when significant AND its CPU twin is over its own line too (more work) — or,
+//     with its CPU twin fine (the extra time is waiting, not work), when it is more than WAIT_LINE worse and the box
+//     isn't slower than at the baseline ("load?" if it is). Within WAIT_LINE, or not significant, a wall time with a
+//     fine CPU twin is ok: this box's waits (software GL, other agents' disks) swing ±30 % between sessions on their own.
+const WAIT_LINE = 0.35;
 function judge(base, now, ctx = {}) {
   const rows = [];
   for (const [k, d] of Object.entries(METRICS)) {
@@ -281,22 +289,25 @@ function judge(base, now, ctx = {}) {
     const f = d.kind === 'wall' ? ctx.factor?.[d.part] ?? null : null;
     const scaled = f != null ? c.median / f : c.median;
     const delta = scaled - b.median;
-    let verdict = delta > tol ? 'REGRESSED' : delta < -tol ? 'better' : 'ok';
-    if (verdict === 'REGRESSED' && ctx.gate?.[d.part]?.length) verdict = 'too loaded'; // (refused: the box can't tell)
-    rows.push({ k, d, b, c, tol, delta, f, scaled, verdict });
+    const bx = (base.raw?.[k] || []).flat(); const nx = (ctx.raw?.[k] || []).flat().map((x) => (f != null ? x / f : x));
+    const p = bx.length && nx.length ? mannWhitney(bx, nx) : null;
+    const sig = p == null || p <= ALPHA; // (a baseline without samples: the line alone, as before round 82)
+    rows.push({ k, d, b, c, tol, delta, f, scaled, p, verdict: delta > tol ? (sig ? 'REGRESSED' : 'unsure') : delta < -tol ? 'better' : 'ok' });
   }
-  // a wall time over the line whose own CPU time is fine, on a box slower than at the baseline: the wait is the box's
   for (const r of rows) {
-    if (r.verdict !== 'REGRESSED' || r.d.kind !== 'wall' || !r.d.cpu) continue;
+    if (r.d.kind !== 'wall' || !r.d.cpu || (r.verdict !== 'REGRESSED' && r.verdict !== 'unsure')) continue;
     const twin = rows.find((x) => x.k === r.d.cpu);
+    if (!twin || !['ok', 'better'].includes(twin.verdict)) continue; // (its CPU grew too, or isn't known: as judged)
     const slower = (ctx.factor?.[r.d.part] ?? 1) > LOAD.slower || (ctx.calib?.[r.d.part]?.wait ?? 1) > 1.15;
-    if (twin && (twin.verdict === 'ok' || twin.verdict === 'better') && slower) { r.verdict = 'load?'; r.why = `its CPU time (${twin.d.label}) is ${twin.verdict}`; }
+    r.why = `its CPU time (${twin.d.label}) is ${twin.verdict}`;
+    if (r.verdict === 'unsure' || r.delta <= WAIT_LINE * Math.abs(r.b.median)) { r.note = `over the line by waiting, not work (${r.why}${r.verdict === 'unsure' ? ', and within the noise' : ''})`; r.verdict = 'ok'; } else if (slower) r.verdict = 'load?';
   }
+  for (const r of rows) if ((r.verdict === 'REGRESSED' || r.verdict === 'unsure') && ctx.gate?.[r.d.part]?.length) r.verdict = 'too loaded'; // (refused: the box can't tell)
   return rows;
 }
 function table(rows, ab) {
   const fmt = (x, u) => (x == null ? '—' : `${rnd(x)}${u === 'ms' ? ' ms' : u === 'MB' ? ' MB' : u === '/s' ? '/s' : u === '% CPU' ? ' %' : ''}`);
-  const head = ab ? ['metric', 'base', 'new', 'change', 'p', '95 % interval', 'allowed', ''] : ['metric', 'baseline', 'now', 'now ÷ calib.', 'change', 'allowed', ''];
+  const head = ab ? ['metric', 'base', 'new', 'change', 'p', '95 % interval', 'allowed', ''] : ['metric', 'baseline', 'now', 'now ÷ calib.', 'change', 'allowed', 'p', ''];
   const lines = [head.join(' | ')];
   for (const r of rows) {
     const bm = ab ? r.bm : r.b?.median;
@@ -304,7 +315,7 @@ function table(rows, ab) {
     const change = r.delta != null ? `${r.delta >= 0 ? '+' : ''}${fmt(r.delta, r.d.unit)} (${pct})` : '';
     lines.push((ab
       ? [r.d.label, fmt(r.bm, r.d.unit), fmt(r.nm, r.d.unit), change, r.p != null ? String(r.p) : '', r.ci ? `${fmt(r.ci[0], r.d.unit)} … ${fmt(r.ci[1], r.d.unit)}` : '', r.tol != null ? `+${fmt(r.tol, r.d.unit)}` : '', r.verdict]
-      : [r.d.label, fmt(r.b?.median, r.d.unit), fmt(r.c?.median, r.d.unit), r.f != null ? fmt(r.scaled, r.d.unit) : '', change, r.tol != null ? `+${fmt(r.tol, r.d.unit)}` : '', r.verdict]).join(' | '));
+      : [r.d.label, fmt(r.b?.median, r.d.unit), fmt(r.c?.median, r.d.unit), r.f != null ? fmt(r.scaled, r.d.unit) : '', change, r.tol != null ? `+${fmt(r.tol, r.d.unit)}` : '', r.delta > r.tol && r.p != null ? String(r.p) : '', r.verdict]).join(' | '));
   }
   const w = lines.map((l) => l.split(' | ')).reduce((a, cells) => cells.map((c, i) => Math.max(a[i] || 0, c.length)), []);
   return lines.map((l, j) => { const s = l.split(' | ').map((c, i) => (i ? c.padStart(w[i]) : c.padEnd(w[i]))).join('  '); return j === 0 ? `${s}\n${'-'.repeat(s.length)}` : s; }).join('\n');
@@ -466,6 +477,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
       parts: { ...(old.parts || {}), ...Object.fromEntries(PARTS.map((pt) => [pt, { when: new Date().toISOString(), commit: m.machine?.commit, dirty: m.machine?.dirty, load: [m.machine?.loadStart, m.machine?.loadEnd] }])) },
       calib: { ...(old.calib || {}), ...Object.fromEntries(PARTS.map((pt) => [pt, calibOf(m, pt)]).filter(([, c]) => c)) },
       metrics: { ...keep(old.metrics), ...now },
+      raw: { ...keep(old.raw), ...Object.fromEntries(Object.entries(m.raw || {}).filter(([k]) => PARTS.includes(METRICS[k]?.part))) }, // (round 82) every sample, by launch
       tops: { ...Object.fromEntries(Object.entries(old.tops || {}).filter(([s]) => !sections.has(s))), ...Object.fromEntries(Object.entries(m.tops).map(([s, t]) => [s, Object.fromEntries(topList(t, 30))])) },
       problems: m.problems,
     };
@@ -487,21 +499,22 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
     return ctx;
   };
   let ctx = context();
-  let rows = judge(base, now, ctx);
+  let rows = judge(base, now, { ...ctx, raw: m.raw });
   // a regression is measured again once (its part only, pooled): the box is shared and one bad minute isn't a regression
-  const again = [...new Set(rows.filter((r) => r.verdict === 'REGRESSED').map((r) => r.d.part))];
+  const doubt = (r) => r.verdict === 'REGRESSED' || r.verdict === 'unsure' || r.verdict === 'load?';
+  const again = [...new Set(rows.filter(doubt).map((r) => r.d.part))];
   if (again.length && !has('--no-confirm') && !opt('--from')) {
-    log(`\n${rows.filter((r) => r.verdict === 'REGRESSED').map((r) => r.d.label).join(', ')}: over the line, measuring ${again.join(' + ')} again to confirm…`);
+    log(`\n${rows.filter(doubt).map((r) => r.d.label).join(', ')}: over the line, measuring ${again.join(' + ')} again to confirm…`);
     const m2 = measure(again, '-again');
     for (const [k, v] of Object.entries(m2.values)) m.values[k] = [...(m.values[k] || []), ...v];
     for (const [k, v] of Object.entries(m2.raw)) m.raw[k] = [...(m.raw[k] || []), ...v];
     for (const [s, t] of Object.entries(m2.tops)) m.tops[s] = Object.fromEntries(Object.entries(t).map(([k, ms]) => [k, rnd(((m.tops[s]?.[k] || 0) + ms) / 2)]));
     m.problems.push(...m2.problems); m.calib.push(...m2.calib); m.confirmed = again;
     fs.writeFileSync(path.join(OUT, 'measured.json'), JSON.stringify(m, null, 1));
-    now = summarize(m); ctx = context(); rows = judge(base, now, ctx);
+    now = summarize(m); ctx = context(); rows = judge(base, now, { ...ctx, raw: m.raw });
   }
   const bad = rows.filter((r) => r.verdict === 'REGRESSED');
-  const unsure = rows.filter((r) => r.verdict === 'load?' || r.verdict === 'too loaded');
+  const unsure = rows.filter((r) => r.verdict === 'load?' || r.verdict === 'too loaded' || r.verdict === 'unsure');
   // a part asked for that measured nothing guards nothing: that fails too (its problems say why)
   const missing = rows.filter((r) => r.verdict === 'not measured' && parts.includes(r.d.part));
   const verdict = bad.length || missing.length ? 'regressed' : unsure.length ? 'inconclusive' : 'ok';
@@ -510,6 +523,8 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
   log('\nthe box:');
   for (const part of parts) log(`  ${part.padEnd(8)} now:      ${calibLine(ctx.calib[part], ctx.factor[part])}\n  ${''.padEnd(8)} baseline: ${calibLine(base.calib?.[part])}${!base.calib?.[part] ? ' (recorded before round 82: wall times judged as measured)' : ''}${ctx.gate[part].length ? `\n  ${''.padEnd(8)} ✖ too loaded to tell its wall times: ${ctx.gate[part].join('; ')}` : ''}`);
   for (const r of rows.filter((x) => x.verdict === 'load?')) log(`  load?: ${r.d.label}: over the line, but ${r.why} and the box is slower than at the baseline`);
+  for (const r of rows.filter((x) => x.note)) log(`  ok: ${r.d.label}: ${r.note}`);
+  for (const r of rows.filter((x) => x.verdict === 'unsure')) log(`  unsure: ${r.d.label}: over the line, but not told apart from the noise (p ${r.p})`);
   if (bad.length) {
     log('\nLikely culprits (where the regressed part spends its time now: the top functions of its CPU profile by self time; for startup also its phases, the main process\'s IPC answer times and each process\'s CPU; then what grew most):');
     const seen = new Set();
