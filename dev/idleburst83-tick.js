@@ -8,14 +8,14 @@ if (OUT && process.versions.electron && process.type === 'browser') {
   const STEP = 20; const until = Number(process.env.HEARTH_IB_TICK_MS) || 45000;
   const held = []; let last = performance.now(); let n = 0;
   // child processes started and folders / files watched (when, what): background jobs show themselves by these
-  const spawned = []; const watched = [];
+  const spawned = []; const watched = []; let watchedN = 0; // (the first 200 watches kept, and every recursive one; all counted: the file is written every second)
   const cp = require('child_process');
   for (const fn of ['spawn', 'execFile', 'exec', 'fork']) {
     const orig = cp[fn];
     cp[fn] = function (cmd, a, ...rest) { if (performance.now() < until) spawned.push([Math.round(performance.now()), fn, String(cmd).split(/[\\/]/).pop().slice(0, 40), Array.isArray(a) ? a.slice(0, 3).map((x) => String(x).slice(0, 40)).join(' ') : '']); return orig.call(this, cmd, a, ...rest); };
   }
   const fsw = fs.watch;
-  fs.watch = function (file, ...rest) { if (performance.now() < until) watched.push([Math.round(performance.now()), String(file).slice(-60), typeof rest[0] === 'object' && rest[0]?.recursive ? 'recursive' : '']); return fsw.call(this, file, ...rest); };
+  fs.watch = function (file, ...rest) { if (performance.now() < until) { watchedN += 1; if (watched.length < 200 || (rest[0]?.recursive)) watched.push([Math.round(performance.now()), String(file).slice(-60), typeof rest[0] === 'object' && rest[0]?.recursive ? 'recursive' : '']); } return fsw.call(this, file, ...rest); };
   // the main process's worker threads (the store / files threads): each op asked of them that took ≥ 20 ms on the
   // thread (when it was asked, which op, its ms there), as storework.js reports them back
   const ops = []; const opSecs = {}; // (and every op, summed per second: 'sec op' → [count, ms])
@@ -30,7 +30,7 @@ if (OUT && process.versions.electron && process.type === 'browser') {
         const k = `${Math.floor(a[0] / 1000)} ${a[1]}`; const s = (opSecs[k] ||= [0, 0]); s[0] += 1; s[1] += Math.round((m.ms || 0) * 10) / 10; });
     }
   };
-  const dump = () => JSON.stringify({ held, spawned, watched, ops, opSecs });
+  const dump = () => JSON.stringify({ held, spawned, watched, watchedN, ops, opSecs });
   const t = setInterval(() => {
     const now = performance.now(); const late = now - last - STEP;
     if (late >= 40) held.push([Math.round(last + STEP), Math.round(late)]);

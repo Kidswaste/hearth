@@ -166,7 +166,7 @@ async function launch(dir, userData, port, { warm = false, profDir = null } = {}
       const longs = (page?.longs || []).map(([s, d]) => [Math.round(toMain(s) - fp), d]).filter(([t]) => t >= 0 && t < SPAN);
       // the store / files threads' ops (ms on the thread) per 10 s window from the first picture
       const opWin = []; for (let x = 0; x < SPAN; x += 10000) { const o = {}; for (const [k, [n, ms]] of Object.entries(tk.opSecs || {})) { const [sec, op] = k.split(' '); const t = Number(sec) * 1000 - fp; if (t >= x && t < x + 10000) { o[op] = o[op] || [0, 0]; o[op][0] += n; o[op][1] += ms; } } opWin.push(Object.entries(o).filter(([, v]) => v[1] >= 20).map(([op, [n, ms]]) => `${op} ×${n} ${Math.round(ms)}ms`).join(', ')); }
-      const out = { misses: page?.misses || [], opWin, spawned: (tk.spawned || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), watched: (tk.watched || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), perSec, lazy: (page?.lazy || []).map(([n, a, ms]) => [n, Math.round(toMain(a) - fp), ms]), fp: Math.round(fp), ready: page?.ready != null ? Math.round(toMain(page.ready) - fp) : null, windows, mainHeld: held, windowLongs: longs };
+      const out = { watchedN: tk.watchedN, misses: page?.misses || [], opWin, spawned: (tk.spawned || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), watched: (tk.watched || []).map(([t, ...x]) => [Math.round(t - fp), ...x]), perSec, lazy: (page?.lazy || []).map(([n, a, ms]) => [n, Math.round(toMain(a) - fp), ms]), fp: Math.round(fp), ready: page?.ready != null ? Math.round(toMain(page.ready) - fp) : null, windows, mainHeld: held, windowLongs: longs };
       if (profDir) out.prof = profile(mainProf, winProf, winProfAt - probe.wall0, fp, held);
       return out;
     }
@@ -249,7 +249,7 @@ function report(r, i, tag) {
     console.log(`   lazy groups (at ms after fp, ms): ${r.lazy.map(([n, a, ms]) => `${n}@${a}+${ms}`).join(' ')}`);
     console.log(`   lazy misses (a global touched before its group loaded):\n      ${r.misses.join('\n      ')}`);
     console.log(`   spawned: ${r.spawned.map((x) => x.join(' ')).join(' | ')}`);
-    console.log(`   watched: ${r.watched.length} (${r.watched.slice(0, 12).map((x) => x.join(' ')).join(' | ')})`);
+    console.log(`   watched: ${r.watchedN ?? r.watched.length} (${r.watched.slice(0, 12).map((x) => x.join(' ')).join(' | ')})`);
   }
   if (r.mainHeld.length) console.log(`   main held: ${r.mainHeld.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
   if (r.windowLongs.length) console.log(`   window long: ${r.windowLongs.map(([t, ms]) => `+${t}:${ms}`).join(' ')}`);
