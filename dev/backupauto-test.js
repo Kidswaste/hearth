@@ -104,7 +104,7 @@ const DAY = 864e5; const HOUR = 36e5; const MIN = 6e4;
   check(!C.stale({ lastOk: now - 2 * DAY }, now) && C.stale({ lastOk: now - 3 * DAY }, now), 'the calm note after 3 days without a good backup');
   check(!C.stale({ lastOk: 0, since: now - DAY }, now) && C.stale({ lastOk: 0, since: now - 4 * DAY }, now), 'never one: counted from when backups started here');
   check(!C.stale({ auto: false, lastOk: 0, since: 0 }, now), 'off: no note');
-  check(C.freshEnough({ lastOk: now - 30 * MIN }, 'update', now) && !C.freshEnough({ lastOk: now - 2 * HOUR }, 'update', now), 'before an update: skipped when one is < 1 h old');
+  check(C.freshEnough({ lastOk: now - 20 * HOUR }, 'update', now) && !C.freshEnough({ lastOk: now - 25 * HOUR }, 'update', now), 'before an update: skipped when one is < 1 day old (the nightly one counts)');
   check(!C.freshEnough({ lastOk: now - 30 * MIN }, 'restore', now), 'before a restore: a fresh one (10 min)');
 }
 

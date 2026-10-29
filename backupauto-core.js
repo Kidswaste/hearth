@@ -107,7 +107,9 @@
     return now - from >= STALE;
   }
   // before an update / a restore: skip when a good backup is this fresh
-  const FRESH = { update: HOUR, restore: 10 * MIN, recover: 10 * MIN };
+  // (Oct 29, Quentin's call) an update: a day, so the nightly automatic one counts. An update never touches data/
+  // (updatermain refuses one that would), and a backup of a big data folder held every update ≈ 3 minutes (168 s, 2 GB)
+  const FRESH = { update: DAY, restore: 10 * MIN, recover: 10 * MIN };
   const freshEnough = (st = {}, reason, now = Date.now()) => Boolean(st.lastOk) && now - st.lastOk < (FRESH[reason] ?? HOUR);
 
   // ---------- where ----------
