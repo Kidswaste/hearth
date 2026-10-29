@@ -54,11 +54,16 @@ const OPTS = before.opts || {};
 const BUDGET = Object.assign({ task: 50, mainBlock: 50 }, OPTS.budget || {}, window.PO_BUDGET || {});
 const out = { budget: BUDGET, lab_first: before.labFirst || null, problems: [] };
 const need = (ok, what) => { if (!ok) out.problems.push(what); return ok; };
-const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: r0(e.duration) }); }).observe({ type: 'longtask', buffered: true }); } catch { /* none */ }
+// (a task of the scene's own page, a sandboxed frame of another origin, says so: 'cross-origin-descendant'; it's the
+// scene's code and GL, apart from Hearth's: reported as sceneLong, not held to the budget)
+const longs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push({ at: e.startTime, ms: r0(e.duration), who: e.name }); }).observe({ type: 'longtask', buffered: true }); } catch { /* none */ }
+const sceneTask = (x) => /cross-origin/.test(x.who || '');
 // long animation frames: what ran in each frame over the budget (script, function, ms) — where a long task comes from
 const loafs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) loafs.push(e); }).observe({ type: 'long-animation-frame', buffered: true }); } catch { /* none */ }
 const loafSince = (t) => loafs.filter((e) => e.startTime >= t && e.duration > BUDGET.task && e.blockingDuration > 0).sort((a, b) => b.duration - a.duration).slice(0, 4).map((e) => `${r0(e.duration)}ms (render ${r0(e.renderStart ? e.startTime + e.duration - e.renderStart : 0)}): ${[...(e.scripts || [])].sort((a, b) => b.duration - a.duration).slice(0, 4).map((x) => `${r0(x.duration)} ${x.invoker || ''} ${x.sourceFunctionName || ''}@${String(x.sourceURL || '').split('/').pop()}:${x.sourceCharPosition ?? ''}`).join(' · ')}`);
-const longsSince = (t, t1 = Infinity) => longs.filter((x) => x.at >= t && x.at <= t1).map((x) => x.ms).sort((a, b) => b - a);
+const longsSince = (t, t1 = Infinity) => longs.filter((x) => x.at >= t && x.at <= t1 && !sceneTask(x)).map((x) => x.ms).sort((a, b) => b - a);
+const sceneSince = (t) => longs.filter((x) => x.at >= t && sceneTask(x)).map((x) => x.ms).sort((a, b) => b - a);
+const whoSince = (t) => [...new Set(longs.filter((x) => x.at >= t).map((x) => x.who))];
 const lag = (label) => window.hub.power?.test?.({ lag: { label } });
 const mainOf = (r) => (r?.delay ? { max: r.delay.max, blocks: (r.blocks || []).map((b) => `${b.ms}ms ${(b.app || []).slice(0, 2).join(' | ')}`).slice(0, 4) } : null);
 const blocksOver = (r, ms) => (r?.blocks || []).filter((b) => b.ms >= ms);
@@ -101,7 +106,7 @@ async function step(name, fn, { settle = 1500 } = {}) {
   const t = performance.now();
   const [res, profile] = await prof(async () => { const r = await fn(t); await wait(settle); return r; });
   const l = await lag(name);
-  const s = { ...(res && typeof res === 'object' ? res : {}), windowLong: longsSince(t).slice(0, 8), frames: loafSince(t), main: mainOf(l), ...(profile ? { profile } : {}) };
+  const s = { ...(res && typeof res === 'object' ? res : {}), windowLong: longsSince(t).slice(0, 8), sceneLong: sceneSince(t).slice(0, 4), who: whoSince(t), frames: loafSince(t), main: mainOf(l), ...(profile ? { profile } : {}) };
   out[name] = s;
   if ((s.windowLong[0] || 0) > BUDGET.task) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${BUDGET.task})`);
   if (blocksOver(l, BUDGET.mainBlock).length) out.problems.push(`${name} held the main process: ${s.main.blocks.join('; ')}`);
@@ -136,7 +141,7 @@ try {
   // ---------- switching with the name ▾ (3 rounds) ----------
   const runs = []; const order = ['pjbp1', 'pjbp2', 'pjbp0'];
   for (let r = 0; r < 3; r++) for (const id of order) { await wait(400); const s = await step(`switch_${id}_${r}`, switchTo(id)); runs.push({ id, ...s }); delete out[`switch_${id}_${r}`]; }
-  out.switch = Object.fromEntries(order.map((id) => { const xs = runs.filter((x) => x.id === id); return [id, { ready: xs.map((x) => x.ready).join(' '), chat: xs.map((x) => x.chat).join(' '), longest: xs.map((x) => x.windowLong[0] || 0).join(' '), main: xs.map((x) => x.main?.max ?? '-').join(' '), frames: xs.flatMap((x) => x.frames).slice(0, 4), ...(xs.some((x) => x.profile) ? { longTasks: xs.flatMap((x) => x.profile?.longTasks || []).slice(0, 6) } : {}) }]; }));
+  out.switch = Object.fromEntries(order.map((id) => { const xs = runs.filter((x) => x.id === id); return [id, { ready: xs.map((x) => x.ready).join(' '), chat: xs.map((x) => x.chat).join(' '), longest: xs.map((x) => x.windowLong[0] || 0).join(' '), sceneLong: xs.map((x) => x.sceneLong[0] || 0).join(' '), who: [...new Set(xs.flatMap((x) => x.who))], main: xs.map((x) => x.main?.max ?? '-').join(' '), frames: xs.flatMap((x) => x.frames).slice(0, 4), ...(xs.some((x) => x.profile) ? { longTasks: xs.flatMap((x) => x.profile?.longTasks || []).slice(0, 6) } : {}) }]; }));
   out.switchWorst = Math.max(...runs.map((x) => x.windowLong[0] || 0));
   out.switchReady = Math.max(...runs.map((x) => x.ready));
   // ---------- ⇪ Export: the card's sizes (300 files mapped from the other computer) ----------

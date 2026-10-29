@@ -196,6 +196,9 @@ const ThreeMedia = (() => {
     return {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
+      // (round 86, projopen86) size.id without the preview's size: reading it laid out the window (≈ 12–40 ms with a
+      // long chat drawn) inside every scene switch
+      get sizeId() { const s = current(); return s.w ? s.id : 'fit'; },
       // where the picture sits inside the preview (for overlays such as the onion skin): { left, top, width, height } in px
       get rect() { const s = current(); if (!s.w) return { left: 0, top: 0, width: host.clientWidth, height: host.clientHeight }; const { k, left, top } = place(host.clientWidth, host.clientHeight, s); return { left, top, width: s.w * k, height: s.h * k }; },
       setMode, pill,
@@ -555,7 +558,9 @@ const ThreeMedia = (() => {
     // Notes on moments (pins on the ruler): [{ id, t, text, done }], handlers onOpen(id, x, y).
     let notes = [];
     let noteHandlers = {};
-    function setNotes(list, handlers) { notes = list || []; if (handlers) noteHandlers = handlers; draw(); }
+    // (round 86, projopen86) soon: drawn in the coming frame (a scene switch: drawing now read the whole Lab's layout
+    // inside the switch, ≈ 25–55 ms here, then the frame laid it out again), as setTracks' soon
+    function setNotes(list, handlers, { soon = false } = {}) { notes = list || []; if (handlers) noteHandlers = handlers; if (soon) drawNext(); else draw(); }
     // Timeline size: full, compact (no grid / hits row) or strip (just the overview, like FL Studio's).
     let size = store.get('three.timelineSize', 'full');
     let sizeBeforeTemp = null;

@@ -145,6 +145,7 @@ window.ProjectWorkspace = (() => {
         const c=chatOf(p);await (c.id===early?chatRead:Native.load(c.id));Native.selectChat(c.agentId,c.id);P.touch(p);
         await desk;
         timings.filesMs=Math.round(performance.now()-started);cancelled(controller.signal);
+        await painted();cancelled(controller.signal); // (round 86, projopen86) the chat's scene switched (it follows the chat) in its own task, the Lab shown in the next
         stage(1,'Building your scene…');surface='three';activate('tool:three');Tools.openDock('three');
         // (round 72) the scene starts first and the chat draws while its page works; the moodboard is read meanwhile
         const board=Board.ready().then(()=>Board.load(p.workspace.boardId));board.catch(()=>{});

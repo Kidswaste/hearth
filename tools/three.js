@@ -2125,8 +2125,8 @@ const ThreeLab = (() => {
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
     const notesBtn = btn('Notes', 'Your notes on this sketch: jump to them, mark them done, send them to the Three Director', (e) => notesList(e.currentTarget));
     notesBtn.dataset.feature = 'Notes list';
-    function renderNotes() {
-      player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) });
+    function renderNotes({ soon = false } = {}) { // (round 86, projopen86) soon: the timeline's pins drawn in the coming frame (see setNotes)
+      player.setNotes(notesOf().map((n) => ({ id: n.id, t: n.t, text: n.text, done: n.done })), { onOpen: (id, x, y) => openNote(id, x, y) }, { soon });
       const open = notesOf().filter((n) => !n.done).length;
       notesBtn.textContent = notesOf().length ? `Notes ${open}${open !== notesOf().length ? `/${notesOf().length}` : ''}` : 'Notes';
     }
@@ -4025,7 +4025,7 @@ const ThreeLab = (() => {
       rememberMedia();
       // (the Lab sequence on screen keeps its own shape and song: the scenes' come back when it closes)
       const seqOn = typeof ThreeSeq !== 'undefined' && ThreeSeq.active;
-      if (left && stage && !seqOn) { (extras[left.id] ||= {}).frame = stage.size.id; saveExtras(); }
+      if (left && stage && !seqOn) { (extras[left.id] ||= {}).frame = stage.sizeId ?? stage.size.id; saveExtras(); } // (round 86, projopen86: sizeId, no layout)
       current = sketches.find((s) => s.id === id) || sketches[0];
       materialize(current);
       // This sketch's frame size and song (with where it was in the song).
@@ -4038,7 +4038,7 @@ const ThreeLab = (() => {
       tweaksSlot.replaceChildren(ctlFor(sel()).el); ctlFor(sel()).showUI();
       renderPicker();
       renderLayers();
-      renderNotes();
+      renderNotes({ soon: true });
       renderRefsBtn();
       renderPalette();
       // (round 48, labstartfast) a scene whose code uses its references runs once, with them: their bytes are read
