@@ -58,6 +58,7 @@ UNIT.push('twocopies-test'); // (round 64, twocopies64) two Hearth folders on on
 UNIT.push('vstembed64-test'); // (round 64, vstembed64) 48 kHz, fast load (cached control list, warm host, scan cache), the editor inside Hearth on a fake Win32 layer
 UNIT.push('audiodoctor64-test'); // (round 64, audiodoctor64) /audio doctor: real creative-vst-doctor.py + fake Pedalboard / sounddevice / rtmidi (no runtime, no ASIO DLL, ASIO crash, UA absent, plugin failure, underruns, loopback)
 UNIT.push('playchurn81-test'); // (round 81, playchurn81) the Lab preview's per-frame garbage pinned piece by piece: the scene health's camera check (still finds each NaN camera; cold, a sixth of round 80's bytes a second; optimised, nothing), the frame wrapper's kept entries for a new function every frame, an eval leaves no 4 s timer behind
+UNIT.push('projsearch81-test'); // (round 81, projsearch81) Find in this project: the index on real files (chats, scenes file, boards, worktable), what is found and where it opens, ranking, only what changed read again (saves, arrivals, a scene's words vs a slider), slices, unreadable files, letting go, the store thread itself, a Clink-sized project's timings
 UNIT.push('labfps72-test'); // (round 72, labfps72) ▶ Play's Quality: auto (steps down only where pixels are the cost, vsync-aware, undone when it doesn't help, climbs back without flicker), the Lab's modal cap, context budget and one-big-upload-a-frame queue
 UNIT.push('framebar-test'); // (round 64, framebar64) the Lab's frame budget bar: target refresh, frame vs budget (CPU / late frames), each layer's share, the most expensive layer, the "why?" look's costs and suggestions
 UNIT.push('liveset64-test'); // (round 64, liveset64) Live set: set model, keys, bar quantize, preset preload timing, proof steps (+ the real host: quantized launch, twin switch with no underrun, panic, run recorder)
@@ -82,6 +83,7 @@ UNIT.push('syncscope79-test'); // (round 79, syncscope79) scoped sync passes und
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   guardloss78: ['unit:guardloss78-test', 'unit:storeack77-test', 'unit:storeack-scan', 'unit:sync72-test', 'unit:sync-test', 'unit:projsync76-test', 'guardloss78', 'storeack77', 'sync72', 'lazy', 'unit:boot-test'], // (round 78) adjacent-line merges, the losing side kept aside, Recover through StoreAck, every store declared or explained
+  projsearch81: ['projsearch81', 'unit:projsearch81-test', 'projects', 'project-workspaces', 'chatwindow72', 'storeack77', 'unit:storeack-scan', 'lazy', 'unit:boot-test'], // (round 81) Find in this project on the Desk (projsearch81 itself is opt-in: BIGPROFILE70=1)
   storeack77: ['unit:storeack77-test', 'unit:storeack-scan', 'unit:projsync76-test', 'unit:sync72-test', 'projects', 'project-continuity', 'sync72', 'lazy', 'unit:boot-test'], // (round 77) stores acked on arrival + the checks they lean on
   syncscope79: ['unit:syncscope79-test', 'unit:synclatency77-test', 'unit:sync-test', 'unit:sync72-test', 'unit:synchard74-test', 'unit:syncstate75-test', 'unit:syncmedia73-test', 'unit:projsync76-test', 'unit:guardloss78-test', 'unit:filewatch-test', 'unit:twocomputers-test', 'unit:twocopies-test', 'unit:versions75-test', 'sync72', 'synchard74', 'guardloss78', 'idlecpu', 'lazy', 'unit:boot-test'], // (round 79) scoped passes + the sync checks they lean on
   synclatency77: ['unit:synclatency77-test', 'unit:sync-test', 'unit:sync72-test', 'unit:synchard74-test', 'unit:syncstate75-test', 'unit:syncmedia73-test', 'unit:projsync76-test', 'unit:filewatch-test', 'sync72', 'synchard74', 'idlecpu', 'lazy', 'unit:boot-test'], // (round 77) save → visible latency, event-driven passes, idle stays idle
@@ -381,7 +383,7 @@ const EXTRA_FLAGS = {
 };
 // (round 74, projdesk74) environment a check needs that no header can say: projects-lightweight reads the main
 // process's IPC counts (window.hub.power.test({ lag }), on only with HEARTH_LOOPLAG)
-const EXTRA_ENV = { 'projects-lightweight': { HEARTH_LOOPLAG: '1' },
+const EXTRA_ENV = { 'projects-lightweight': { HEARTH_LOOPLAG: '1' }, projsearch81: { HEARTH_LOOPLAG: '1' } /* (round 81) the main process's time per find call */,
   // (round 78, winperf78) the lag probe with its Windows simulation (process starts, fs calls), ▶ Play's three.js copy
   winperf78: { HEARTH_LOOPLAG: 'prof', HEARTH_WINSIM: '1', HEARTH_GAME_WARM: '1' /* (round 79, winstart79) the owner plays games: ▶ Play warmed 20 s after the start */, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } };
 const srcOf = (n) => (n.startsWith('unit:') ? fs.readFileSync(path.join(DEV, `${n.slice(5)}.js`), 'utf8') : fs.readFileSync(path.join(CHECKS, `${n}.js`), 'utf8'));

@@ -13,6 +13,8 @@
 //   flist / fsearch               fsapi.js's recursive folder listing and folder search (on a second copy: "files")
 //   syncHash { file, rel, cloud, ctx }  cloud sync: a big JSON store's cloud form + hash (sync-engine.js hashJson)
 //   mergeKV { file, ops, prev }   (round 75) a store saved by what changed (store.js mergeKV, kvops.js applyOps)
+//   projfind { spec, dirs, q?, budgetMs? }  (round 81) Find in this project: its index caught up in a slice (only what
+//                                 changed since), then the query (projfind-core.js); made on the first find, let go when idle
 //   recall { dir, q?, budgetMs? }  (round 30) "what did we decide about X?": catches the recall index up (only chats that
 //                                 changed, within the budget) and, with q, ranks the messages (recall-core.js)
 // Chat files are parsed once and kept (by size + mtime): a list or a search only re-reads the files that changed, and
@@ -64,6 +66,7 @@ const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 const stubs = new Map(); // (round 43) chat file → its stub row, while it can't be read (kept for a folder that can't be listed)
 let textChars = 0;
 let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
+let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.js's index: made on the first find, let go 20 min after the last
 
 function stat(file) { try { return fs.statSync(file); } catch { return null; } }
 function sameOnDisk(file, h) {
@@ -181,6 +184,7 @@ const OPS = {
       if (g.value !== value) { value = g.value; restored = g.restored.length ? g.restored : null; text = JSON.stringify(value, null, 2); h = sha(text); if (sameOnDisk(file, h)) return { skipped: true, ...(restored ? { restored } : {}) }; }
     }
     if (prev && keepPrev && fs.existsSync(file)) fs.copyFileSync(file, prev);
+    if (findIdx) findIdx.stale(file); // (round 81) a saved chat / scene / board / worktable is read again at the next find
     const tmp = `${file}.w.tmp`;
     // (round 29, safetynet) flushed to the disk before the rename: after a power cut the file is the old one or the
     // new one, never an empty one (this thread waits for it; the window and the main process don't)
@@ -360,7 +364,14 @@ const OPS = {
     if (st && !doubt && !blind && !res?.kept) { merged.set(file, { value, size: st.size, mtimeMs: st.mtimeMs }); if (merged.size > 8) merged.delete(merged.keys().next().value); }
     return { ok: true };
   },
-  forget({ file }) { written.delete(file); merged.delete(file); drop(file); return true; },
+  // (round 81, projsearch81) Find in this project: the window asks in slices while the Desk is open (budgetMs), then queries
+  projfind(msg) {
+    const PF = require('./projfind-core');
+    findIdx ||= PF.createIndex();
+    clearTimeout(findT); findT = setTimeout(() => { findIdx = null; }, 20 * 60000); findT.unref?.();
+    return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } } });
+  },
+  forget({ file }) { written.delete(file); merged.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
 };
 

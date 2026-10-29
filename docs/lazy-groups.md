@@ -22,7 +22,7 @@ The long notes that used to sit after each group in `lazy-data.js` (moved here i
 - **idlecpu**: (round 44, idlecpu) nobody using the window for a minute: the look's ambient loops pause (the GPU stops redrawing it every frame)
 - **errorcalm**: (round 45, errorcalm) every error the owner sees: one plain sentence + the one action that fixes it, the raw text behind Details (toasts, failed replies, notes, the Lab console's plain line)
 - **jankwatch**: (round 20) /smooth: the jank watch's report (jank.js measures from the start) · (round 67, slowbutton67) 🐢 That was slow: the card
-- **projects**: (round 23) Home, projects, search everything (Ctrl/⌘+Shift+K) · (round 76) projsync-core.js: the Desk's sync status line
+- **projects**: (round 23) Home, projects, search everything (Ctrl/⌘+Shift+K) · (round 76) projsync-core.js: the Desk's sync status line · (round 81) projfind.js / projfind.css: Find in this project on the Desk (its index, projfind-core.js, runs on the store thread, not here)
 - **devreport**: (round 21) /report: Report to the developer (devreport-hooks.js puts the ⚑ buttons)
 - **context**: (round 24) @ references, relevant memory, what each message sent, fresh start from a summary
 - **assets**: (round 24) one asset library: textures, HDRIs, models, fonts, sounds, LUTs (Ctrl/⌘+Shift+A, /assets)

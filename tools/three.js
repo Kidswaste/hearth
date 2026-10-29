@@ -2226,6 +2226,7 @@ const ThreeLab = (() => {
       layerMenu: (id) => layersPanel.menuFor?.(id) || null,
       layers: () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, mask: L.mask || null, visible: L.visible !== false, selected: L.id === selId, color: L.color, filter: ThreeLayers.isFilter(L.code || '') })),
       selectLayer: (id) => { if (!layerById(id)) return false; selectLayer(id); return true; },
+      showLine: (id, line) => { if (!layerById(id)) return false; if (selId !== id) selectLayer(id); setCodeVisible(true); requestAnimationFrame(() => goToLine(line)); return true; }, // (round 81, projsearch81) Find in this project › a code line
       // the sliders of the layers whose panel exists (the selected one at least)
       sliders: () => layersOf().flatMap((L) => { const c = controllers.get(L.id); return c ? c.controls().map((x) => ({ layerId: L.id, layer: L.name, key: x.key, label: x.label, group: x.group || '' })) : []; }),
       revealSlider(layerId, label) {

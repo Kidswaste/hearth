@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('hub', {
   saveChat: call('chats:save'),
   deleteChat: call('chats:delete'),
   searchChatText: call('chats:searchText'),
+  projFind: call('projects:find'), // (round 81, projsearch81) Find in this project ({ spec, q?, budgetMs? }) → grouped hits / { left } (projfind-core.js on the store thread)
   recall: call('chats:recall'), // (round 30) ({ q?, budgetMs? }) → ranked decisions / open questions / mentions, or { left } (recall-core.js)
   listChatTrash: call('chats:trash'),
   restoreChat: call('chats:restore'),
