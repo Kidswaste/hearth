@@ -627,6 +627,9 @@ function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
   if (lightMode) c = c ? Math.min(c, 30) : 30;
   if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
+  // (Oct 29) and on any fast screen: at 240 Hz the preview kept the graphics card so busy that Windows' audio crackled
+  // in every app (Spotify, the DAW). 60 is a quarter of the work; Max fps is still the screen's own rate.
+  if (capWant.auto) c = c ? Math.min(c, 60) : 60;
   if (capWant.modal) c = c ? Math.min(c, 30) : 30; // (round 72, labfps72) a modal dialog over the Lab: 30 at most, whatever the setting
   if (RDY.lock) c = 0; // (round 52, presentready) a show draws at the screen's own rate
   if (c !== fpsCap) { fpsCap = c; capT = capNext = -1; }
