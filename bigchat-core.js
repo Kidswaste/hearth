@@ -602,7 +602,7 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
     if (k === 'messages') head[k] = [];
     else if (own(set, k)) head[k] = set[k];
     else if (own(e.head, k)) head[k] = e.head[k];
-    else throw new Error(`no value for ${k}`);
+    else head[k] = undefined; // (not in the file: a value JSON leaves out — undefined — in the window too; written the same)
   }
   const changed = new Map();
   for (const x of d.msgs) { if (!Array.isArray(x) || !(x[0] >= 0) || x[0] >= d.n) throw new Error('bad message index'); changed.set(x[0], x[1]); }

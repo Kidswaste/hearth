@@ -42,6 +42,7 @@ module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
       (c) => { delete c.pinned; c.compact = { index: 3, summary: 'x\ny' }; }, // a field gone, one added (at the end)
       (c) => { c.messages[c.messages.length - 1].text += ' (more)'; }, // the last reply grew
       (c) => { c.messages = c.messages.map((m) => ({ ...m })); }, // same content, new objects
+      (c) => { c.style = undefined; c.messages.push(message(c.messages.length)); }, // a key whose value JSON leaves out (native.js: chat.style = undefined)
       (c) => { c.messages = []; },
       (c) => { c.messages.push(message(0)); },
     ];
