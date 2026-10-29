@@ -33,6 +33,8 @@ const { spawn, execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
+// (round 82, perfguard82) --app <dir>: launch a copy of another checkout of Hearth (an A/B base), with this checkout's dev/
+const APP_ROOT = path.resolve(opt('--app', ROOT));
 const evals = []; args.forEach((a, i) => { if (a === '--eval') evals.push(args[i + 1]); });
 const scriptFile = opt('--script');
 const shot = opt('--shot', path.join(os.tmpdir(), 'hearth-smoke.png'));
@@ -83,7 +85,7 @@ function cdnFile(url) {
 function copyApp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-'));
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
-  for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT, n), path.join(dir, n), { recursive: true });
+  for (const n of fs.readdirSync(APP_ROOT)) if (!skip.has(n)) fs.cpSync(path.join(APP_ROOT, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
   pkg.name = 'hearth-smoke-test';
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
