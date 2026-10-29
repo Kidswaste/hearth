@@ -133,11 +133,15 @@ function ask(msg) {
 // (windows hourly 3) as the store thread's renameRetry (storework.js): on Windows a cloud client, antivirus or the
 // search indexer holds a file for a moment (EPERM / EBUSY / EACCES). The quit flush and the fallback after a failed
 // thread save run here, and one such moment lost that save ("save failed" in the log).
+// (windows hourly 4) while Hearth runs, ≤ 50 ms of waiting in all on the main thread (round 65, SS.waitFor); the quit
+// flush (nothing left to keep smooth) waits up to 0.6 s.
+let flushing = false;
 function renameRetry(from, to) {
   for (let i = 0; ; i++) {
     try { fs.renameSync(from, to); return; } catch (err) {
-      if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60 * (i + 1));
+      const ms = flushing ? 60 * (i + 1) : SS.waitFor(i, 60 * (i + 1));
+      if (i >= 4 || !ms || !['EPERM', 'EBUSY', 'EACCES'].includes(err.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
     }
   }
 }
@@ -208,7 +212,7 @@ function runOff(op, args) {
 function idle() { return worker ? ask({ op: 'ping' }).catch(() => null) : Promise.resolve(null); }
 // on quit: the thread is stopped and what is still pending is written here, synchronously
 function flushSync() {
-  const w = worker; worker = null; workerOff = true;
+  const w = worker; worker = null; workerOff = true; flushing = true;
   try { w?.terminate(); } catch { /* gone */ }
   try { filesWorker?.terminate(); } catch { /* gone */ }
   if (statsLive) { try { writeStats(statsLive); statsLive = null; } catch (err) { console.error('save failed', STATS_PATH, err.message); } } // (round 65) the token stats not written yet
