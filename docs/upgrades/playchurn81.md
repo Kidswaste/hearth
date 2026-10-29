@@ -103,9 +103,17 @@ apps' Off / Read only / Full picker updates it too. The `connections` check now 
 after Read only → Full (it only reported it before).
 
 ## Checked
-gcchurn60 (pass ×3: 181 / 543, 189 / 574 B), gamemode, labaudio77, laberrors80, labdraw74, connections, lazy,
-playbudget, unit: boot-test, playchurn81-test, playbudget-test, gamefps54-test, connections-test, datasafe-scan,
-winmac-test, errorcalm-scan, storeack-scan; perfguard (PERFGUARD=1). Results in the final report.
+- Pass: gcchurn60 (×4: ▶ Play 180–189 B, Lab 543–574 B), gamemode, labaudio77, laberrors80, labdraw74, connections,
+  lazy; unit: boot-test, playchurn81-test, playbudget-test, gamefps54-test, gamehooks55-test, connections-test,
+  datasafe-scan, winmac-test, errorcalm-scan, storeack-scan.
+- playbudget: failed once, passed on the rerun; its failing steps (the A/B under Getting ready's card finds on ≈ off)
+  fail the same way on the round-76 tree under this load: not this stream.
+- unit:labpace-test: its two wall-clock signature budgets (500 / 2000 objects) fail on this loaded machine on the
+  round-76 tree too (320 / 1350 µs): not this stream.
+- perfguard (PERFGUARD=1, load ≈ 3 on 4 CPUs): 10 metrics over the line, all outside what this stream touches
+  (start, projects, chat list, sync's Node-only pass). The unchanged b45249d tree, run right after on the same machine,
+  has the same 10 plus the Lab tool call (23 ms there vs 19 ms here). Every metric is within noise of the unchanged
+  tree or better: no regression from this stream; the baseline (6a8482d) was recorded on a quieter machine.
 
 ## For the patch notes
 - Games and Lab scenes make less memory garbage per frame again, so the small clean-up pauses that show as hitches at
