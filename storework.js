@@ -126,6 +126,38 @@ const index = new Map(); // chat file → { size, mtimeMs, sum, texts, lower }
 const stubs = new Map(); // (round 43) chat file → its stub row, while it can't be read (kept for a folder that can't be listed)
 let textChars = 0;
 let recallIdx = null; // (round 30) recall-core.js's index, made on the first recall op
+// (round 83, idleburst83) the index kept between starts (data/.cache/recall-index.bin: this computer only, never synced;
+// a cache): read on the first recall op, each chat in it checked by its size + modified time (recallSrc), so a start
+// reads only the chats changed since instead of every chat again (a minute or more of this thread on a big profile).
+// Written once it has caught up after reading ≥ 25 chats (or none was kept), a few seconds later, off the hot path.
+const recallSrc = (e) => (e ? `${e.size}:${e.mtimeMs}` : null);
+const recallKeep = { file: null, changed: 0, t: null, had: false };
+function recallLoad(dir) {
+  const RC = require('./recall-core');
+  recallKeep.file = path.join(process.env.HEARTH_RECALL_CACHE || path.join(path.dirname(dir), '.cache'), 'recall-index.bin');
+  try {
+    const buf = fs.readFileSync(recallKeep.file);
+    const ix = RC.createIndex(buf);
+    for (const [file, sig, els] of ix.extra().spans || []) spans.set(file, { sig, els }); // where each long chat's messages sit (a quote read back without parsing it)
+    recallKeep.had = true;
+    return ix;
+  } catch { return RC.createIndex(); } // none kept / another version / damaged: built as before
+}
+function recallSave() {
+  if (!recallKeep.file || recallKeep.t || recallJobs.size) return;
+  recallKeep.t = setTimeout(() => {
+    recallKeep.t = null;
+    if (!recallIdx || recallJobs.size) return;
+    const keys = new Set(recallIdx.keys());
+    const buf = recallIdx.snapshot({ spans: [...spans].filter(([file]) => keys.has(file)).map(([file, x]) => [file, x.sig, Array.isArray(x.els) ? x.els : Array.from(x.els)]) });
+    if (!buf) return;
+    try { atomicText(recallKeep.file, buf); recallKeep.changed = 0; recallKeep.had = true; } catch { /* a cache: the next start builds it */ }
+  }, 4000);
+  recallKeep.t.unref?.();
+}
+// (round 83, idleburst83) a catch-up's slices share one look at the chats folder (≤ 2 s old): every 12 ms slice used to
+// list it and stat every chat again (≈ 2,200 stats a slice, ~50 slices a second on a big profile) before indexing anything
+let recallList = null; // { dir, at, list }
 const recallJobs = new Map(); // (round 82, bigchat82) file → a long chat being read for recall, a slice at a time
 const spans = new Map(); // (round 82) file → { sig, els }: where each message of a long chat sits in it (one message read back for a quote)
 // one message of a long chat read back from its bytes (undefined: not known here, read the chat)
@@ -290,7 +322,7 @@ const OPS = {
     // a chat saved here goes straight into the index (no read back)
     // (round 82, bigchat82) a giant one isn't tokenized for recall here (seconds of this thread on every save): its next
     // recall reads it in slices (recall below). chatVer: the window holds this version now (its next saves: by change)
-    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx && text.length < BIG) recallIdx.add(file, value, index.get(file)); }
+    if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx && text.length < BIG) { recallIdx.add(file, value, recallSrc(index.get(file))); recallKeep.changed += 1; } }
     if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
     return { bytes: text.length };
   },
@@ -552,12 +584,15 @@ const OPS = {
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {
     const t0 = performance.now();
-    recallIdx ||= require('./recall-core').createIndex();
+    recallIdx ||= recallLoad(dir);
     const live = new Set(); let left = 0; let added = 0;
     const soft = budgetMs * 0.7;
-    for (const { file, e } of chats(dir)) {
+    // a question looks at the folder as it is now; a background slice may reuse the last look (≤ 2 s)
+    const fresh = q || !recallList || recallList.dir !== dir || Date.now() - recallList.at > 2000;
+    if (fresh) recallList = { dir, at: Date.now(), list: chats(dir) };
+    for (const { file, e } of recallList.list) {
       live.add(file);
-      if (recallIdx.has(file, e)) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
+      if (recallIdx.has(file, recallSrc(e))) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
       if (performance.now() - t0 > (e.size >= FIND_BIG ? soft : budgetMs)) { left += 1; continue; }
       // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed a slice at a time; what it was stays found until then
       if (e.size >= FIND_BIG) {
@@ -565,7 +600,7 @@ const OPS = {
         let j = recallJobs.get(file);
         if (j && j.sig !== sig) { recallIdx.abort(j.b); recallJobs.delete(file); j = null; }
         if (!j) {
-          const b = recallIdx.begin(file, e); const els = [];
+          const b = recallIdx.begin(file, recallSrc(e)); const els = [];
           j = { sig, b, els, r: BC().reader(fs, file, { chunk: 512 * 1024, onMessage: (m, k, s, x) => { recallIdx.msg(b, m, k); els.push(s, x); } }) };
           recallJobs.set(file, j);
         }
@@ -577,10 +612,12 @@ const OPS = {
         if (state === 'changed') { left += 1; continue; }
       }
       const chat = readChat(file);
-      if (chat) { recallIdx.add(file, chat, e); added += 1; } else live.delete(file);
+      if (chat) { recallIdx.add(file, chat, recallSrc(e)); added += 1; } else live.delete(file);
     }
     for (const [file, j] of recallJobs) if (!live.has(file)) { recallIdx.abort(j.b); recallJobs.delete(file); }
+    recallKeep.changed += added;
     if (added && !left) recallIdx.trim?.(); // (round 34, lightweight) caught up: its lists cut to size
+    if (!left && (recallKeep.changed >= 25 || (!recallKeep.had && recallKeep.changed > 0))) recallSave(); // (round 83) kept for the next start
     for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file)) recallIdx.drop(file);
     const size = recallIdx.size();
     if (!q) return { left, ...size, ms: Math.round(performance.now() - t0) };

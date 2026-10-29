@@ -105,5 +105,20 @@ ok('a term still counts after chats that had it are dropped', big.search('purple
 for (let c = 10; c < 300; c++) big.add(`k${c}`, { id: `b${c}`, agentId: 'claude', title: `Chat ${c}`, updatedAt: NOW, messages: bt.get(`k${c}`).map((t, i) => msg(i % 2 ? 'assistant' : 'user', t, 1)) }, `v2-${c}`);
 ok('saved again and again: old postings swept, the same answer', big._bytes() < bytes * 1.6 && big.size().messages === 390 * 60 && big.search('purple glow logo sting', { textOf: (k, i) => bt.get(k)[i], now: NOW }).decisions[0]?.chatId === 'b123', { bytes: big._bytes(), size: big.size() });
 
+// (round 83, idleburst83) kept between starts: snapshot() → createIndex(buffer) answers the same, knows each chat's src
+// (a changed chat is read again), takes changes after it, and a damaged / foreign file is refused (built again instead)
+{
+  const snap = big.snapshot({ spans: [['k1', '1:2', [0, 5]]] });
+  const back = R.createIndex(snap);
+  const q = (ix) => ix.search('purple glow logo sting', { textOf: (k, i) => bt.get(k)[i], now: NOW });
+  const a = q(big); const b = q(back);
+  ok('kept between starts: the same answer, sizes and srcs', JSON.stringify(a) === JSON.stringify(b) && JSON.stringify(big.size()) === JSON.stringify(back.size()) && back.has('k50', 'v2-50') && !back.has('k50', 'v3-50') && back.extra().spans?.[0]?.[0] === 'k1', { a: a.decisions[0], b: b.decisions[0], sa: big.size(), sb: back.size() });
+  back.add('k123', { id: 'b123', agentId: 'claude', title: 'Chat 123', updatedAt: NOW, messages: [msg('user', 'nothing about it any more', 1)] }, 'v3-123');
+  back.add('knew', { id: 'bnew', agentId: 'claude', title: 'New', updatedAt: NOW, messages: [msg('user', "Let's go with the teal grain for the poster.", 1)] }, 'v1');
+  ok('a kept index takes changes after it', !q(back).decisions.some((d) => d.chatId === 'b123') && back.search('teal grain poster?', { textOf: (k) => (k === 'knew' ? "Let's go with the teal grain for the poster." : bt.get(k)?.[0] || ''), now: NOW }).decisions[0]?.chatId === 'bnew');
+  let refused = 0; for (const bad of [Buffer.from('nope'), Buffer.concat([snap.subarray(0, 40), Buffer.alloc(10)])]) { try { R.createIndex(bad); } catch { refused += 1; } }
+  ok('a damaged or foreign file is refused (the index is built again)', refused === 2, refused);
+}
+
 console.log(`\n${n - fails}/${n} passed`);
 process.exit(fails ? 1 : 0);
