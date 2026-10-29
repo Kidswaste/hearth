@@ -20,6 +20,18 @@
 //     screen, the same "Pulse on beats" keyframes, the timeline's detected grid, three_media_info; the song analysed
 //     once (the Lab's analysis handed over, SongPrep made none)
 //   · /hear sync in plain words; no duplicate commands
+// (round 80, checkfix80) load-tolerant, drift still caught: on a busy machine (other checks side by side) the preview
+// drew 5–10 frames a second here and some frames' callbacks ran 50–300 ms after their frame's time (the page held up;
+// the long-task observer saw no task there: the process wasn't running). Such a frame's moment on screen isn't known,
+// so the offsets leave out a frame whose callback ran more than BLOCKED ms after its time (the page logs how late each
+// ran) and the 0.5 s after it (the clock may start over then and fits its speed again), and frames where the audio
+// clock itself didn't behave like a sound card around them (its samples within ±0.5 s off their own line by > 2 ms, or
+// its speed > 0.2 % off: a starved audio thread wobbled ±3–8 ms, stepped, or ran 0.4 % fast for a second). Elsewhere a
+// frame is held against that local line. Those left out are counted (leftOut); each stretch watches until it has
+// 20 judged frames (longer when the preview is slow, ≤ 14 s; song A is 48 s for that), never fewer. A real drift is
+// on every frame: it still fails.
+// The seek's sound reaches the speakers no earlier than the seek + the output path, and no earlier than the element
+// started playing the new spot (a busy machine takes a while to seek): the later of the two
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/labaudio77.js --shot /tmp/labaudio77.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000, every = 120) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(every); } return null; };
@@ -30,6 +42,7 @@ const r2 = (x) => Math.round(x * 100) / 100;
 const T = window.SMOKE_TMP || '/tmp';
 const SONG_A = `${T}/labaudio77-a.wav`; const SONG_B = `${T}/labaudio77-b.wav`;
 const LEAD = 0.25;
+const BLOCKED = 50; // ms: a frame whose callback ran later than this after its frame's time (the page was held up)
 // ---------- the test songs (kicks on every beat, hats between, a drop half way) ----------
 async function song(file, bpm, secs, seed) {
   const sr = 44100; const n = Math.round(secs * sr); const x = new Float32Array(n); const beat = 60 / bpm;
@@ -67,12 +80,41 @@ const pv = async (code) => { for (let i = 0; i < 5; i += 1) { const r = await D(
 // (JSON text: the eval's own answer keeps 60 items of an array and 3 decimals)
 const pj = async (code) => { const v = await pv(`return JSON.stringify(${code})`); return typeof v === 'string' ? JSON.parse(v) : null; };
 const AVS = () => pj('window.__labAV.state()');
+// (round 80) the audio clock around one frame: a line through its samples [x s, y s, …] within ±0.5 s of the frame's
+// show time; steady when those samples sit on it within 2 ms and its speed is within 0.2 % of the song's (what a real
+// sound card does: they differ by < 0.03 %); null with fewer than 4 samples there
+let lastSamples = [];
+function clockAt(sm, t) {
+  const pts = sm.filter((a) => Math.abs(a[0] - t) <= 0.5);
+  if (pts.length < 4) return null;
+  const mx = pts.reduce((s, a) => s + a[0], 0) / pts.length; const my = pts.reduce((s, a) => s + a[1], 0) / pts.length;
+  let sxy = 0; let sxx = 0; for (const a of pts) { sxy += (a[0] - mx) * (a[1] - my); sxx += (a[0] - mx) ** 2; }
+  const b = sxx ? sxy / sxx : 1; const A = my - b * mx;
+  const worst = Math.max(...pts.map((a) => Math.abs(a[1] - (A + b * a[0]))));
+  return { y: A + b * t, steady: worst <= 0.002 && Math.abs(b - 1) <= 0.002 };
+}
 // the frame log → numbers: |frame time − the audio clock| over frames from the output clock (src 1), after `skip` s
-function judge(frames, { skip = 0.5, from = -Infinity } = {}) {
+function judge(frames, { skip = 0.5, from = -Infinity, samples = lastSamples } = {}) {
   const fr = frames.filter((f) => f[0] >= from);
   const t0 = fr[0]?.[0] || 0;
-  const use = fr.filter((f) => f[4] === 1 && f[0] - t0 >= skip * 1000);
-  const err = use.map((f) => (f[1] - f[2]) * 1000); const abs = err.map(Math.abs).sort((a, b) => a - b);
+  const after = fr.filter((f) => f[4] === 1 && f[0] - t0 >= skip * 1000);
+  // (round 80) a frame whose callback ran more than BLOCKED ms late: its moment on screen isn't known; after one the
+  // clock may have started over (samples > 0.3 s apart: GAP) and fits its speed again over 0.4 s (MIN), so the frames in
+  // the 0.5 s after it are left out too. All counted
+  let heldTill = -Infinity; const skipF = new Set();
+  for (const f of after) { if (f[5] > BLOCKED) heldTill = f[0] + 500; if (f[0] <= heldTill) skipF.add(f); }
+  let use = after.filter((f) => !skipF.has(f));
+  const held = after.filter((f) => f[5] > BLOCKED).map((f) => Math.round(f[5]));
+  // (round 80) judged only where the audio clock itself behaved like a sound card around the frame (clockAt): when the
+  // audio thread was starved its samples wobbled ±3–8 ms a few in a row, stepped (underruns: the clock starts over
+  // within 3 samples by design) or ran 0.4 % fast for a second, and the newest sample read as the picture being off.
+  // Those frames are left out and counted too; elsewhere the frame is held against that local line. A picture off a
+  // steady clock, or drifting from it, still fails
+  const unsteady = new Set(); const refY = new Map();
+  for (const f of use) { const k = clockAt(samples || [], f[0] / 1000); if (!k) refY.set(f, f[2]); else if (k.steady) refY.set(f, k.y); else unsteady.add(f); }
+  use = use.filter((f) => !unsteady.has(f));
+  const refAt = (f) => refY.get(f) ?? f[2];
+  const err = use.map((f) => (f[1] - refAt(f)) * 1000); const abs = err.map(Math.abs).sort((a, b) => a - b);
   const q = (p) => abs[Math.min(abs.length - 1, Math.floor(p * abs.length))] ?? null;
   let back = 0; for (let i = 1; i < fr.length; i += 1) if (fr[i][1] < fr[i - 1][1] - 1e-9) back += 1;
   const raw = use.map((f) => (f[3] - f[2]) * 1000);
@@ -80,17 +122,22 @@ function judge(frames, { skip = 0.5, from = -Infinity } = {}) {
   let slope = 0;
   if (use.length > 20) { const xs = use.map((f) => (f[0] - use[0][0]) / 60000); const mx = xs.reduce((a, b) => a + b, 0) / xs.length; const my = err.reduce((a, b) => a + b, 0) / err.length; let sxy = 0; let sxx = 0; for (let i = 0; i < xs.length; i += 1) { sxy += (xs[i] - mx) * (err[i] - my); sxx += (xs[i] - mx) ** 2; } slope = sxx ? sxy / sxx : 0; }
   const off = use.map((f, i) => [r2((f[0] - t0) / 1000), r2(err[i]), r2((f[3] - f[2]) * 1000)]).filter((x) => Math.abs(x[1]) > FRAME).slice(0, 12); // (where it was off: s, ms, the raw time's ms)
-  // drift, plainly: the mean offset over the first and the last third of the frames
+  // drift, plainly: the offset over the first and the last third of the frames
   const third = Math.floor(err.length / 3); const avg = (a) => a.reduce((s, v) => s + v, 0) / (a.length || 1);
-  const thirds = third ? [r2(avg(err.slice(0, third))), r2(avg(err.slice(-third)))] : null;
-  return { off, thirds, frames: use.length, fps: fr.length > 1 ? Math.round((fr.length - 1) / ((fr.at(-1)[0] - fr[0][0]) / 1000)) : 0, p50: r2(q(0.5)), p95: r2(q(0.95)), max: r2(abs.at(-1) ?? NaN), mean: r2(err.reduce((a, b) => a + b, 0) / (err.length || 1)), backwards: back, rawAheadMs: r2(raw.reduce((a, b) => a + b, 0) / (raw.length || 1)), slopeMsPerMin: r2(slope), sources: [...new Set(fr.map((f) => f[4]))] };
+  // (round 80) the middle value of each third, not the mean: one or two frames off by 15 ms on a starved machine moved
+  // a third's mean by 2 ms; a drift moves every frame of the last third, so its middle value too
+  const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; };
+  const thirds = third ? [r2(med(err.slice(0, third))), r2(med(err.slice(-third)))] : null;
+  return { off, thirds, frames: use.length, leftOut: after.length - use.length, blockedMs: held.slice(0, 8), settling: skipF.size - held.length, clockUnsteady: unsteady.size, fps: fr.length > 1 ? Math.round((fr.length - 1) / ((fr.at(-1)[0] - fr[0][0]) / 1000)) : 0, p50: r2(q(0.5)), p95: r2(q(0.95)), max: r2(abs.at(-1) ?? NaN), mean: r2(err.reduce((a, b) => a + b, 0) / (err.length || 1)), backwards: back, rawAheadMs: r2(raw.reduce((a, b) => a + b, 0) / (raw.length || 1)), slopeMsPerMin: r2(slope), sources: [...new Set(fr.map((f) => f[4]))] };
 }
 const inBudget = (j, what) => ok(j.frames >= 20 && j.p95 <= FRAME && j.p50 <= 2 && j.backwards === 0, `${what}: frames off the audio clock (${JSON.stringify(j)})`);
-const frames = () => pj('window.__labAV.frames()');
-const watchFor = async (ms) => { await pv('return window.__labAV.watch(6000)'); await wait(ms); return frames(); };
+const frames = async () => { const f = await pj('window.__labAV.frames()'); lastSamples = (await pj('window.__labAV.samples()')) || []; return f; };
+// the log after `ms`, then until `enough(frames)` (≥ 20 judged frames by default), at most `cap` ms in all
+const more = async (ms, { cap = 14000, enough = (fr) => judge(fr).frames >= 22 } = {}) => { const t = Date.now(); await wait(ms); let fr = await frames(); while (!enough(fr || []) && Date.now() - t < cap) { await wait(400); fr = await frames(); } return fr || []; };
+const watchFor = async (ms, o) => { await pv('return window.__labAV.watch(6000)'); return more(ms, o); };
 
 try {
-  const kicksA = await song(SONG_A, 128, 32, 7);
+  const kicksA = await song(SONG_A, 128, 48, 7); // (round 80: 48 s, was 32: a slow preview is watched longer)
   await song(SONG_B, 100, 24, 11);
   activate('tool:three');
   const c = await ThreeLab.cmd();
@@ -121,7 +168,7 @@ try {
   out.play = play1;
   inBudget(play1, 'steady play');
   ok(play1.rawAheadMs > 10, `the raw element time (the page before) ran ahead of the speakers (${play1.rawAheadMs} ms)`);
-  ok(play1.thirds && Math.abs(play1.thirds[1] - play1.thirds[0]) < 1, `no drift over the 12 s: the mean offset of the first and last 4 s within 1 ms (${JSON.stringify(play1.thirds)})`);
+  ok(play1.thirds && Math.abs(play1.thirds[1] - play1.thirds[0]) < 1, `no drift over the 12 s: the middle offset of the first and last 4 s within 1 ms (${JSON.stringify(play1.thirds)})`);
   // what a clock on the frame time alone would have drifted over a 5-minute song with this sound card (the fit's speed)
   { const s = await AVS(); out.cardPpm = s?.slopePpm; out.frameClockDrift5minMs = s ? r2(Math.abs(s.slopePpm) * 300 / 1000) : null; }
 
@@ -129,18 +176,24 @@ try {
   await pv('return window.__labAV.watch(6000)');
   await wait(400);
   c.seek(20);
-  await wait(1500);
   {
-    const fr = await frames();
+    const fr = await more(1500, { enough: (f) => { const k = f.findIndex((x) => x[1] >= 19.9); return k > 0 && judge(f.slice(k + 3), { skip: 0 }).frames >= 22; } });
     const st = await AVS();
     const k = fr.findIndex((f) => f[1] >= 19.9);
-    // the seek's sound reaches the speakers one output path after the seek (st.jump.at, the page's clock): the first
-    // frame showing the new spot is shown then, not before (a frame's late by at most one frame of this preview)
-    const soundAt = (st?.jump?.at || 0) + (st?.leadMs || 0);
-    out.seek = { jumpFrame: k, before: fr.slice(Math.max(0, k - 2), k).map((f) => r2(f[1])), after: fr.slice(k, k + 2).map((f) => r2(f[1])), shownAfterSoundMs: k >= 0 ? r2(fr[k][0] - soundAt) : null, prevShownBeforeSoundMs: k > 0 ? r2(soundAt - fr[k - 1][0]) : null };
+    // the seek's sound reaches the speakers one output path after the seek (st.jump.at, the page's clock), and one
+    // output path after the element started playing the new spot (its time moving on from 20 in the audio-clock
+    // samples: a busy machine takes a while to seek): the first frame showing the new spot is shown then, not before
+    const sm = (await pj('window.__labAV.samples()')) || [];
+    const moved = sm.find((a) => a[3] > (st?.jump?.at || 0) && a[2] > 20.0005 && a[2] < 21);
+    const soundAt = Math.max((st?.jump?.at || 0) + (st?.leadMs || 0), moved ? moved[3] - (moved[2] - 20) * 1000 + (st?.leadMs || 0) : 0);
+    out.seek = { soundAtMs: r2(soundAt - (st?.jump?.at || 0)), jumpFrame: k, before: fr.slice(Math.max(0, k - 2), k).map((f) => r2(f[1])), after: fr.slice(k, k + 2).map((f) => r2(f[1])), shownAfterSoundMs: k >= 0 ? r2(fr[k][0] - soundAt) : null, prevShownBeforeSoundMs: k > 0 ? r2(soundAt - fr[k - 1][0]) : null };
     ok(k > 0, `the picture jumped to the seek (${JSON.stringify(out.seek)})`);
     ok(fr.slice(0, Math.max(0, k)).every((f) => f[1] < 19), 'until the jump the frames show the old spot (the sound still plays it), never a mix');
-    ok(out.seek.shownAfterSoundMs >= -FRAME && out.seek.prevShownBeforeSoundMs >= -FRAME, `the new spot is first shown when its sound reaches the speakers, not before (${JSON.stringify(out.seek)})`);
+    // (round 80) give or take one step of the element's time (one audio callback, st.stepMs: what tells the page, and this
+    // check, where the sound is; ≈ 10 ms here) on top of a 240 Hz frame
+    const tol = FRAME + (st?.stepMs || 0);
+    out.seek.tolMs = r2(tol);
+    ok(out.seek.shownAfterSoundMs >= -tol && out.seek.prevShownBeforeSoundMs >= -tol, `the new spot is first shown when its sound reaches the speakers, not before (${JSON.stringify(out.seek)})`);
     const j = judge(fr.slice(k + 3), { skip: 0 });
     out.seek.after3 = j;
     inBudget(j, 'after a seek while playing');
@@ -159,9 +212,8 @@ try {
   }
   await pv('return window.__labAV.watch(6000)');
   c.play(true);
-  await wait(3500);
   {
-    const fr = await frames();
+    const fr = await more(3500);
     out.resume = judge(fr);
     ok(fr.every((f) => f[1] >= 7.5 - 1e-6), 'on resume no frame shows a moment before the spot it starts from');
     inBudget(out.resume, 'after resume');
@@ -172,9 +224,8 @@ try {
   await wait(3000);
   activate('tool:three');
   await pv('return window.__labAV.watch(6000)');
-  await wait(2500);
   {
-    const fr = await frames();
+    const fr = await more(2500, { enough: (f) => judge(f, { skip: 0.2 }).frames >= 22 });
     out.hidden = judge(fr, { skip: 0.2 });
     inBudget(out.hidden, 'back from another tool');
     const st = await AVS();
@@ -182,6 +233,8 @@ try {
   }
 
   // ---------- 4. device changes (simulated) ----------
+  // (round 80) a slow preview watched longer above: back to 6 s while playing, so the song (48 s) plays on through here
+  if (((await AVS())?.time || 0) > 16) { c.seek(6); await wait(800); }
   {
     const st0 = await AVS();
     // a devicechange the Lab window hears (the preview's frame may not): forwarded; the same rate: nothing remade
@@ -207,8 +260,7 @@ try {
     ok(Math.abs(songMoved - wall) < 0.25, `no jump or gap in the song across the switch (the song moved ${r2(songMoved)} s in ${r2(wall)} s)`);
     const lvl = await until(async () => (await pv('return audio.level')) > 0.01, 3000);
     ok(lvl, 'the analyser hears the song after the switch (audio.level > 0)');
-    await pv('return window.__labAV.watch(6000)'); await wait(2500);
-    out.devRateSync = judge(await frames(), { skip: 0.3 });
+    out.devRateSync = judge(await watchFor(2500, { enough: (f) => judge(f, { skip: 0.3 }).frames >= 22 }), { skip: 0.3 });
     inBudget(out.devRateSync, 'after the output rate changed');
     // the system suspends the output: resumed
     await pv('return window.__labAV.suspend()');

@@ -50,9 +50,28 @@ await safe('lab', async () => {
   step('max fidelity: antialias (MSAA), pixel ratio = the screen\'s, the fast GPU, no fps cap, quality locked', drawn && drawn.antialias === true && drawn.pixelRatio === dpr && drawn.canvas?.w === Math.round(w * dpr) && drawn.cap === 0 && drawn.lock === true && drawn.quality === 1 && drawn.pace === false,
     { antialias: drawn?.antialias, samples: drawn?.samples, pr: drawn?.pixelRatio, dpr, canvas: drawn?.canvas, innerWidth: w, cap: drawn?.cap, lock: drawn?.lock, quality: drawn?.quality, power: drawn?.power });
   // the game's own frames: they keep coming (a merged frame draws all three)
-  const f0 = (await ev('window.__gameInfo().frames')) || 0; await wait(1500); const f1 = (await ev('window.__gameInfo().frames')) || 0;
-  out.measure.framesIn1500ms = f1 - f0;
-  step('the merged canvas keeps drawing', f1 - f0 >= 1, { frames: f1 - f0 }); // (SwiftShader here: a few frames a second at 1600×1000 with MSAA)
+  // (round 80, checkfix80) measured once getting ready is over and judged against the page's own frame clock. The 20
+  // frames above come from getting ready's warm-up under its card; right after, the budget's A/B holds the game's frames
+  // on purpose (__gmHold, the card at "checking it runs smooth · 99 %") for 1–10 s on this machine, so a 1.5 s count
+  // taken there read 0 frames (base: 3 of 4 runs under load) while nothing was wrong. Now: the card gone (phase
+  // 'playing'), then a frame counter of the check's own in the page (rAF, taken off after) and the merged canvas'
+  // count over at least 1.5 s and at least 6 of the page's frames (≤ 20 s: SwiftShader here draws 1600×1000 with MSAA
+  // at 2–5 fps when the machine is busy). A real stall is the page's frames going on while the canvas' don't (each page
+  // frame draws it once: ≈ 1.0), or no page frames at all
+  const ready = await until(async () => { const v = await ev('JSON.stringify(window.__gameReady ? { phase: window.__gameReady.phase, marks: window.__gameReady.marks } : { phase: "none" })'); const o = v && JSON.parse(v); return o && (o.phase === 'playing' || o.phase === 'none') ? o : null; }, 120000);
+  out.measure.readyMarks = ready?.marks || null;
+  await ev('(() => { const c = window.__cfFrames = { n: 0, on: true }; const f = () => { if (!c.on) return; c.n += 1; requestAnimationFrame(f); }; requestAnimationFrame(f); return 1; })()');
+  const f0 = (await ev('window.__gameInfo().frames')) || 0; const p0 = (await ev('window.__cfFrames.n')) || 0; const t0f = performance.now();
+  let f1 = f0; let p1 = p0;
+  while (performance.now() - t0f < 20000) {
+    await wait(250);
+    f1 = (await ev('window.__gameInfo().frames')) || 0; p1 = (await ev('window.__cfFrames.n')) || 0;
+    if (performance.now() - t0f >= 1500 && p1 - p0 >= 6) break;
+  }
+  await ev('(window.__cfFrames.on = false, 1)');
+  const secs = (performance.now() - t0f) / 1000;
+  out.measure.frames = { merged: f1 - f0, page: p1 - p0, secs: Math.round(secs * 10) / 10, fps: Math.round(((f1 - f0) / secs) * 10) / 10, perPageFrame: p1 > p0 ? Math.round(((f1 - f0) / (p1 - p0)) * 100) / 100 : null };
+  step('the merged canvas keeps drawing (every frame of the page draws it)', ready && p1 - p0 >= 6 && f1 - f0 >= 1 && (f1 - f0) >= 0.8 * (p1 - p0), out.measure.frames);
   // input: a key reaches the game (and isn't a Hearth shortcut); a click asks for pointer lock
   await G().key({ key: 'W' }); await G().key({ key: 'Space' });
   const keys = await until(async () => { const v = await ev('JSON.stringify(globalThis.__clink ? { presses: __clink.presses, last: __clink.lastKey, frames: __clink.frames } : null)'); const o = v && JSON.parse(v); return o?.presses >= 2 ? o : null; }, 5000);
