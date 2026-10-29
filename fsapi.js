@@ -271,6 +271,14 @@ function missingOf(mine, theirs) {
   }
   return null;
 }
+// (round 84, bigchat84) a chat's title and times for the restore's comparison: a GIANT one (≥ 8 MB) from its own fields,
+// cut on the files thread (store.js chatHead), never parsed here (two 60 MB parses held the main process ≈ 1.5 s per
+// look, and a restore looks twice). null when it can't be read (yours then counts as unreadable: never copied over)
+async function chatMeta(file) {
+  let size = 0; try { size = fs.statSync(file).size; } catch { return null; }
+  if (size >= 8 * 1024 * 1024) { try { const st = require('./store'); const h = st.chatHead ? await st.chatHead(file) : null; if (h) return h.head ? h.head : null; } catch { /* read here */ } }
+  return readJsonSafe(file, null);
+}
 async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
   let BA = null; try { BA = require('./backupautomain'); } catch { BA = null; }
   // (round 45, backupauto) a backup of how things are now comes first (unless a good one is a few minutes old); the zip
@@ -288,10 +296,10 @@ async function restoreBackup(zipPath, { dryRun = true, newer = false } = {}) {
     const chatsDst = path.join(HUB.data, 'chats');
     fs.mkdirSync(chatsDst, { recursive: true });
     for (const n of jsonFiles(chatsSrc)) {
-      const theirs = readJsonSafe(path.join(chatsSrc, n), null);
+      const theirs = await chatMeta(path.join(chatsSrc, n)); // (round 84, bigchat84: was readJsonSafe, also below)
       if (!theirs) continue;
       const mineP = path.join(chatsDst, n);
-      const mine = fs.existsSync(mineP) ? readJsonSafe(mineP, null) : null;
+      const mine = fs.existsSync(mineP) ? await chatMeta(mineP) : null;
       // (round 43, datasafe) yours is there but can't be read just now: never copied over (it was, as "missing")
       if (!mine && fs.existsSync(mineP)) { report.chats.unreadable = (report.chats.unreadable || 0) + 1; continue; }
       if (!mine) {
@@ -406,6 +414,34 @@ function registerIpc(ipcMain, getWin) {
     if (r.canceled || !r.filePath) return null;
     write(r.filePath, content, { base64 });
     return r.filePath;
+  });
+  // (round 84, bigchat84) a big file saved in parts (a giant chat's export: tens of MB made a few ms at a time in the
+  // window): start asks where (as dialog:saveFile), each part is written as it comes (asynchronously: the main process
+  // only hands it to the disk), end flushes it and puts it in place (a temp file renamed: never a half file there)
+  const streams = new Map(); let streamSeq = 0;
+  handle('dialog:saveStart', async ({ defaultPath, filters } = {}) => {
+    let p = null;
+    if (TEST_SAVE) p = path.join(TEST_SAVE, path.basename(defaultPath || 'file'));
+    else { const r = await dialog.showSaveDialog(getWin(), { defaultPath, filters }); if (r.canceled || !r.filePath) return null; p = r.filePath; }
+    p = assertAbs(p); fs.mkdirSync(path.dirname(p), { recursive: true });
+    const tmp = `${p}.hubtmp`; const fh = await fs.promises.open(tmp, 'w');
+    const id = `s${++streamSeq}`;
+    const t = setTimeout(() => { const x = streams.get(id); streams.delete(id); x?.fh.close().catch(() => {}).then(() => fs.promises.rm(tmp, { force: true })).catch(() => {}); }, 10 * 60000); t.unref?.();
+    streams.set(id, { p, tmp, fh, t, bytes: 0 });
+    return { id, path: p };
+  });
+  handle('dialog:savePart', async (id, bytes) => {
+    const x = streams.get(String(id)); if (!x) throw new Error('That save was stopped.');
+    const b = bytes instanceof Uint8Array ? bytes : Buffer.from(String(bytes ?? ''), 'utf8');
+    await x.fh.write(b); x.bytes += b.length; return x.bytes;
+  });
+  handle('dialog:saveEnd', async (id, ok = true) => {
+    const x = streams.get(String(id)); if (!x) return null;
+    streams.delete(String(id)); clearTimeout(x.t);
+    try { if (ok) { try { await x.fh.sync(); } catch { /* a disk that can't */ } } } finally { await x.fh.close().catch(() => {}); }
+    if (!ok) { await fs.promises.rm(x.tmp, { force: true }).catch(() => {}); return null; }
+    ownWrite(x.p); await fs.promises.rename(x.tmp, x.p);
+    return x.p;
   });
 }
 

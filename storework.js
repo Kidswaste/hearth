@@ -285,6 +285,21 @@ function chats(dir) {
   return out;
 }
 
+// (round 84, bigchat84) versions-core restoreValue('chat', v, current, now) for a version this thread just parsed (its
+// own: changed in place, not copied first), its texts compared as they are (not through canon's one long string): the
+// same chat, ≈ 4 s → ≈ 0.1 s for 6,000 messages (dev/bigchat84-test.js checks it against restoreValue)
+function restoredChat(v, current, now) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  if (current?.id) v.id = current.id;
+  if (current?.agentId) v.agentId = current.agentId;
+  const texts = (ms) => (Array.isArray(ms) ? ms.filter((m) => Boolean(m) && typeof m === 'object' && !Array.isArray(m)).map((m) => String(m?.text ?? m?.content ?? '')) : []);
+  const a = texts(v.messages); const b = current ? texts(current.messages) : null;
+  if (current && (a.length !== b.length || a.some((t, i) => t !== b[i]))) delete v.session;
+  else if (current?.session) v.session = structuredClone(current.session);
+  v.updatedAt = now;
+  delete v.deletedAt;
+  return v;
+}
 const OPS = {
   write({ file, value, prev, chatDir, sent, removed, doubt, blind, chatVer }) {
     // (round 43, datasafe) a save built on a failed read: merged with the file (throws when it's still held: nothing is
@@ -580,6 +595,63 @@ const OPS = {
     if (!out) { let v = S.parseJson(got.buf.toString('utf8')); if (ctx) v = S.fromCloud(v, ctx); if (wrapped) v = v?.thing; if (!v) return null; out = Buffer.from(JSON.stringify(v), 'utf8'); }
     const copy = new Uint8Array(new ArrayBuffer(out.length)); copy.set(out); // (its own memory: handed over whole)
     return { bytes: copy, __transfer: [copy.buffer] };
+  },
+  // (round 84, bigchat84) a chat's own fields and its message count, its messages never parsed when it is big (the
+  // Trash list, Deleted things, a backup's restore compare titles and times): { head: { id, title, agentId, createdAt,
+  // updatedAt, pinned }, n } or { error } (a file that can't be read is said so: never "no chat")
+  chatHead({ file }) {
+    let buf; try { buf = dfs.readFileSync(file); } catch (e) { return { error: e.code || 'read' }; }
+    let head; let n;
+    const st = buf.length >= 4096 ? BC().scanBuf(buf) : { bad: true };
+    if (st.bad || st.arrS < 0) {
+      try { head = JSON.parse(buf.toString('utf8').replace(/^﻿/, '')); } catch { return { error: 'parse' }; }
+      if (!head || typeof head !== 'object' || Array.isArray(head)) return { error: 'parse' };
+      n = Array.isArray(head.messages) ? head.messages.length : 0;
+    } else { try { head = BC().headOf(buf, st); n = BC().elCount(st); } catch { return { error: 'parse' }; } }
+    return { head: { id: head.id, title: head.title, agentId: head.agentId, createdAt: head.createdAt, updatedAt: head.updatedAt, pinned: head.pinned }, n, messages: Array.isArray(head.messages) };
+  },
+  // (round 84, bigchat84) Earlier versions: a GIANT chat restored here, in the order of this chat's saves (the main
+  // process held seconds parsing the version and the chat, keeping it, cloning it and sending it to the window): the
+  // version read (a cloud copy made this computer's, a kept copy taken out of its wrapper), the chat as it is now read
+  // (one there that can't be read: nothing is done, never "no chat"), kept first (keep.file: what versionsmain keep()
+  // writes), then the restored chat written as a whole save writes it (versions-core restoreValue; an Undo merges what
+  // the restore changed back onto the chat as it is now, as versionsmain undoOnto does)
+  chatRestore({ file, src, keep, at, over }) {
+    const S = require('./sync-merge'); const VC = require('./versions-core');
+    const load = (x) => { // → the chat (a fresh copy), or null (gone / not a chat)
+      let t; try { t = fs.readFileSync(x.file, 'utf8'); } catch { return null; }
+      let v; try { v = S.parseJson(t); } catch { return null; }
+      if (x.ctx) v = S.fromCloud(v, x.ctx);
+      if (x.wrapped) v = v?.thing;
+      return VC.KINDS.chat.pick(v);
+    };
+    const thing = load(src);
+    if (!thing) return { ok: false, error: 'That version isn\'t there any more (open the list again).' };
+    let cur = null; let curText = null;
+    if (fs.existsSync(file)) {
+      try { curText = SS.readRetry(dfs, file).replace(/^﻿/, ''); cur = JSON.parse(curText); } catch { cur = null; }
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, held: true, code: 'EHELD', error: 'This chat can\'t be read just now. Nothing was changed; try again in a moment.' };
+    }
+    let kept = false;
+    if (cur && keep?.file) { // (the chat's bytes as they are inside the wrapper: parsed back, the same copy JSON.stringify writes)
+      fs.mkdirSync(path.dirname(keep.file), { recursive: true });
+      const tmp = `${keep.file}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      const fd = fs.openSync(tmp, 'w');
+      try {
+        fs.writeSync(fd, `{"v":1,"kind":"chat","id":${JSON.stringify(String(keep.id))},"at":${Number(at)},"machine":${JSON.stringify(String(keep.machine || ''))},"thing":`);
+        fs.writeSync(fd, curText.trim()); fs.writeSync(fd, '}');
+        try { fs.fsyncSync(fd); } catch { /* a disk that can't */ }
+      } finally { fs.closeSync(fd); }
+      renameRetry(tmp, keep.file); kept = true;
+    }
+    let target = thing;
+    if (over && cur) { // an Undo: the chat as that restore left it, made again from what it was made of
+      const was = load(over.src); const before = load({ file: over.before, wrapped: true });
+      if (was && before) { try { const v = S.merge3(restoredChat(was, before, over.at), thing, structuredClone(cur)).value; if (v && typeof v === 'object') target = v; } catch { /* the version as it is */ } }
+    }
+    const next = restoredChat(target, cur, at);
+    const w = OPS.write({ file, value: next, chatDir: true });
+    return { ok: true, kept, title: next.title, n: next.messages.length, bytes: w?.bytes || 0 };
   },
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {

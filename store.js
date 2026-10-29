@@ -45,18 +45,24 @@ async function renameSoon(from, to) {
     }
   }
 }
-function listTrash() {
+// (round 84, bigchat84) a GIANT chat in the trash is listed from its own fields and its count (the files thread cuts
+// it: chatHead), never parsed here (≈ 0.7 s of the main process for 60 MB each time Recently deleted opened)
+async function listTrash() {
   const cutoff = Date.now() - TRASH_DAYS * 864e5;
   const out = [];
   for (const f of fs.readdirSync(TRASH_DIR).filter((x) => x.endsWith('.json'))) {
     const file = path.join(TRASH_DIR, f);
-    const deletedAt = fs.statSync(file).mtimeMs;
+    const st = fs.statSync(file); const deletedAt = st.mtimeMs;
     if (deletedAt < cutoff) { fs.rmSync(file, { force: true }); continue; }
+    const h = st.size >= BIGCHAT && thread() ? await chatHead(file) : null;
+    if (h) { if (h.head) out.push({ id: h.head.id, agentId: h.head.agentId, title: h.head.title, messages: h.n || 0, deletedAt }); continue; }
     const chat = readJson(file, null);
     if (chat) out.push({ id: chat.id, agentId: chat.agentId, title: chat.title, messages: chat.messages?.length || 0, deletedAt });
   }
   return out.sort((a, b) => b.deletedAt - a.deletedAt);
 }
+// → { head, n } | { error } from the files thread, or null (no thread: read it here)
+function chatHead(file) { return runOff('chatHead', { file }).then((r) => (r && (r.head || r.error) ? r : null), () => null); }
 function restoreChat(id) {
   if (!SAFE_ID.test(id)) throw new Error(`bad chat id: ${id}`);
   const file = path.join(TRASH_DIR, `${id}.json`);
@@ -335,6 +341,16 @@ function saveChat(chat, o = {}) {
 }
 // a chat read after its changes on their way are on disk (versions, exports)
 async function getChatFresh(id) { const file = chatPath(id); if (deltaFiles.has(file)) await idle(); return readJson(file, null); }
+// (round 84, bigchat84) Earlier versions: a giant chat restored on the store thread, after this chat's saves on their
+// way (storework.js chatRestore: read, kept first, written as a whole save). null: the usual way (no thread, sync's
+// guard wants this chat, it is held or in doubt: those saves merge with the disk, whole)
+async function restoreChatBig({ id, src, keep, at, over }) {
+  const file = chatPath(id);
+  if (!thread() || guardWants(file) || held.has(file) || doubts.has(file)) return null;
+  const r = await ask({ op: 'chatRestore', file, src, keep, at, over });
+  if (r?.ok) { seen.add(file); wstats.writes += 1; }
+  return r;
+}
 
 function allChats() {
   return chatNames()
@@ -662,6 +678,7 @@ module.exports = {
   projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
   getChatFresh, openChat, openPart, saveChatDelta, // (round 82, bigchat82)
+  restoreChatBig, chatHead, BIGCHAT, // (round 84, bigchat84)
   saveChat,
   deleteChat: (id) => trashChat(id),
   listTrash,
