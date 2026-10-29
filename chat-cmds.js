@@ -1393,6 +1393,12 @@ const ChatCmds = (() => {
     complete: () => ONOFF,
     run: (args, ctx) => { const on = onOff(args, store.get('chat.autoFold', true) !== false); store.set('chat.autoFold', on); Native.refresh(ctx.agentId, { keepScroll: true }); return on ? 'Long replies start folded.' : 'Replies always show in full.'; },
   });
+  // (round 86, chatwindow86) Settings › Chats › "Keep only the newest part of very long chats in memory" (chatwin.js)
+  R({
+    name: 'long-chats', area: 'View', args: '[on | off]', desc: 'Very long chats keep only their newest part in memory; older messages load from disk as you scroll up (on by default)',
+    complete: () => ONOFF,
+    run: (args) => { const on = onOff(args, store.get('chat.window86', true) !== false); store.set('chat.window86', on); if (!on) Native._rest?.W?.x?.all(); return on ? 'Very long chats keep only their newest part in memory; older messages load as you scroll up (from the next time one opens).' : 'Very long chats are held whole in memory again.'; },
+  });
   R({
     name: 'spell', aliases: ['spellcheck'], area: 'Compose', args: '[on | off]', desc: 'Spell checking in the message box',
     complete: () => ONOFF,

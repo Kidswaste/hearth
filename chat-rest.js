@@ -122,6 +122,8 @@ const ChatRest = (() => {
     if (list.awake?.has(b)) return false;
     v.waking = true;
     try {
+      // (round 86, chatwindow86) a windowed giant chat: the block's messages read from the store thread first
+      if (Native.isWin?.(chat)) { try { await R.W.x.ensure(chat, b * R.BLOCK, (b + 1) * R.BLOCK); } catch (err) { console.warn('chat rest', err); return false; } if (v.list !== list || H.activeChat[agentId] !== chat.id) return false; }
       const msgs = chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK);
       const texts = msgs.filter((m) => m.role === 'assistant' || m.role === 'opinion').map((m) => m.text);
       const media = Promise.all(mediaOf(msgs).map(measure));
@@ -179,6 +181,7 @@ const ChatRest = (() => {
     const cache = v.nodes?.get(chat.id); const texts = [];
     for (const m of chat.messages.slice(b * R.BLOCK, (b + 1) * R.BLOCK)) { cache?.delete(m); if (m.role !== 'user') texts.push(m.text); }
     window.Md?.forget?.(texts);
+    if (Native.isWin?.(chat)) R.W.x.release(chat, b * R.BLOCK, (b + 1) * R.BLOCK); // (round 86) its messages let go too (they're on disk)
     watch(agentId, v);
     for (const fn of hooks.blocks) { try { fn(agentId, v, chat); } catch (err) { console.warn(err); } }
   }
@@ -253,9 +256,12 @@ const ChatRest = (() => {
   // (the name chat-ux.js / native.js used before round 76: the node put back in view once its neighbours had drawn)
   const settle = (agentId, node, block = 'center') => hold(agentId, node, { block });
   // find in chat (chat-ux.js): the resting messages of the open chat that hold `q` (their text or thinking)
-  function restingHits(agentId, q) {
+  // (round 86, chatwindow86) a windowed giant chat asks the store thread (chatFind: the same test on every message of the
+  // file); again() runs the find again when its answer is in
+  function restingHits(agentId, q, again) {
     const v = views.get(agentId); const id = H.activeChat[agentId]; const chat = id && chats.get(id); const needle = String(q || '').toLowerCase();
     if (!v?.list.awake || !chat || !needle) return [];
+    if (Native.isWin?.(chat)) { const from = R.shownFrom(chat, R.unreadFrom.get(id)); return R.W.x.hits(chat, needle, (i) => i < from && !v.list.awake.has(Math.floor(i / R.BLOCK)) && !chat.messages[i]?.compactReq, again); }
     const out = [];
     for (let i = 0, from = R.shownFrom(chat, R.unreadFrom.get(id)); i < from; i++) {
       const m = chat.messages[i];

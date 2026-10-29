@@ -308,12 +308,22 @@ function openPart(token, i) {
   if (o.parts.every((x) => x === null)) { clearTimeout(o.t); opened.delete(String(token)); }
   return u ? Buffer.from(u.buffer, u.byteOffset, u.byteLength) : null;
 }
-async function openChat(id) {
+// (round 86, chatwindow86) o.win (the window's characters per line): a giant chat opened WINDOWED → { win: { ver, n,
+// from, head, bytes } } (storework.js chatWinOpen; chatwin.js): its last messages and one record per message, the rest
+// read by range when you scroll up to it (chatWin below). Not while sync's guard wants it (it just arrived: its next
+// save merges whole); a file the thread can't cut or read: the usual way below
+async function openChat(id, o) {
   const file = chatPath(id);
   if (thread() && (deltaFiles.has(file) || pending.has(file))) await idle(); // (what's on its way lands first)
   let size = 0; try { size = fs.statSync(file).size; } catch { /* missing: as getChat */ }
   if (size < BIGCHAT || !thread() || pending.has(file) || held.has(file)) return { chat: readJson(file, null) };
   const ver = `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  if (o?.win && !guardWants(file) && !doubts.has(file)) {
+    try {
+      const r = await ask({ op: 'chatWinOpen', file, ver, cpl: Number(o.win) || 90, tail: 300 });
+      if (r?.bytes) { seen.add(file); return { win: { ver, n: r.n, from: r.from, head: r.head, bytes: Buffer.from(r.bytes.buffer, r.bytes.byteOffset, r.bytes.byteLength) } }; }
+    } catch { /* the usual way */ }
+  }
   try {
     const r = await ask({ op: 'chatOpen', file, ver, part: PART });
     seen.add(file);
@@ -333,6 +343,22 @@ function saveChatDelta(d) {
   return ask({ op: 'chatDelta', file, from: d.from, to: d.to, keys: d.keys, set: d.set, n: d.n, msgs: d.msgs })
     .then((r) => { if (r?.ok) wstats.writes += 1; return r || { ok: false, why: 'none' }; }, (err) => ({ ok: false, why: err.message }))
     .finally(() => { const n = (deltaFiles.get(file) || 1) - 1; if (n > 0) deltaFiles.set(file, n); else deltaFiles.delete(file); });
+}
+// (round 86, chatwindow86) a windowed giant chat's other reads, on the store thread in the order of its saves:
+// range { id, ver, from, to } → { n, same, bytes } · find { id, q } → { hits } · decide { id, agent } → { d }. A file
+// that can't be read answers { error }: the window never takes that as "no messages"
+async function chatWin(op, a) {
+  let file; try { file = chatPath(a?.id); } catch { return { error: 'id' }; }
+  if (!thread()) return { error: 'thread' };
+  try {
+    if (op === 'range') {
+      const r = await ask({ op: 'chatRange', file, ver: String(a.ver || ''), from: Number(a.from) || 0, to: Number(a.to) || 0 });
+      return r?.bytes ? { n: r.n, from: r.from, to: r.to, same: Boolean(r.same), bytes: Buffer.from(r.bytes.buffer, r.bytes.byteOffset, r.bytes.byteLength) } : { error: r?.error || 'read' };
+    }
+    if (op === 'find') return (await ask({ op: 'chatFind', file, q: String(a.q || '') })) || { error: 'read' };
+    if (op === 'decide') return (await ask({ op: 'chatDecide', file, agent: { lighterAt: a.agent?.lighterAt } })) || { error: 'read' };
+  } catch (err) { return { error: err.message || 'read' }; }
+  return { error: 'op' };
 }
 // a whole save of a chat: with the window's version (ver) only when it is written as sent (no merge on the way)
 function saveChat(chat, o = {}) {
@@ -700,7 +726,7 @@ module.exports = {
   recall,
   projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
-  getChatFresh, openChat, openPart, saveChatDelta, // (round 82, bigchat82)
+  getChatFresh, openChat, openPart, saveChatDelta, chatWin, // (round 82, bigchat82; chatWin: round 86, chatwindow86)
   restoreChatBig, chatHead, BIGCHAT, // (round 84, bigchat84)
   adoptChatBig, // (round 85, projbig85)
   saveChat,

@@ -644,6 +644,8 @@ const Native = (() => {
     } else if (chats.size > CHAT_KEEP) { const c = chats.get(id); chats.delete(id); chats.set(id, c); } // most recent last
     return chats.get(id);
   }
+  // (round 86, chatwindow86) every other module's way to a chat (Native.load): a windowed one loaded whole first
+  const loadFull = async (id) => { const c = await loadChat(id); return cw(c) ? W.x.whole(c, 'load') : c; };
   // (round 20, soak) a long session opens many chats: only the last CHAT_KEEP stay in memory (whole histories can be
   // big), never one on screen in an agent, streaming, or used in the last minute; the others load again from disk
   const CHAT_KEEP = 12;
@@ -873,6 +875,7 @@ const Native = (() => {
   const REACTIONS = ['👍', '👎', '❤️', '🔥', '🤔'];
   function react(agentId, index, emoji, note) {
     const chat = chats.get(H.activeChat[agentId]);
+    if (cw(chat) && !W.x.has(chat, index)) return W.x.ensure(chat, index, index + 1).then(() => react(agentId, index, emoji, note)); // (round 86) an old message: its block first
     const m = chat?.messages[index];
     if (!m) return false;
     if (m.reaction?.emoji === emoji && note == null) delete m.reaction;
@@ -883,6 +886,7 @@ const Native = (() => {
   }
   function toggleMark(agentId, index, key, value) {
     const chat = chats.get(H.activeChat[agentId]);
+    if (cw(chat) && !W.x.has(chat, index)) return W.x.ensure(chat, index, index + 1).then(() => toggleMark(agentId, index, key, value));
     const m = chat?.messages[index];
     if (!m) return null;
     const next = value ?? !m[key];
@@ -1530,7 +1534,7 @@ const Native = (() => {
     if (h == null) {
       list.restW ||= list.clientWidth || 760;
       const g = (list.restG ||= new Map()).get(b);
-      h = g?.n === n ? g.h : guessH(chat.messages, b * BLOCK, hi, list.restW);
+      h = g?.n === n ? g.h : cw(chat) ? W.x.guess(chat, b * BLOCK, hi, list.restW) : guessH(chat.messages, b * BLOCK, hi, list.restW);
       list.restG.set(b, { n, h });
     }
     if (sp.restPx !== h) { sp.restPx = h; sp.style.height = `${h}px`; }
@@ -1576,6 +1580,7 @@ const Native = (() => {
     const v = views.get(agentId); const id = H.activeChat[agentId];
     if (!v || !id || fullChats.has(id)) return;
     if (step && typeof ChatRest !== 'undefined') { ChatRest.more(agentId, step); return; }
+    if (cw(chats.get(id))) { Lazy.load('chatrest').then(() => ChatRest.more(agentId, 300)); return; } // (round 86) a windowed chat: 300 more, not thousands
     fullChats.add(id);
     render(agentId, { keepScroll: true }); // (keeps your place: the message at the top stays there)
   }
@@ -1590,7 +1595,7 @@ const Native = (() => {
     // (round 72, chatwindow72) a resting message: its block is woken, then the jump (the chat isn't drawn whole any more)
     const chat = chats.get(H.activeChat[agentId]);
     if (!node && v && chat && index >= 0 && index < shownFrom(chat, unreadFrom.get(chat.id))) {
-      if (typeof ChatRest === 'undefined') { fullChats.add(chat.id); later(); render(agentId); return false; }
+      if (typeof ChatRest === 'undefined') { if (cw(chat)) { Lazy.load('chatrest').then(() => jumpTo(agentId, index)); return true; } fullChats.add(chat.id); later(); render(agentId); return false; }
       ChatRest.wakeAt(agentId, index).then((ok) => { if (ok) jumpTo(agentId, index); });
       return true;
     }
@@ -1904,6 +1909,9 @@ const Native = (() => {
   // copies the rest from the file (byte for byte what a whole save writes). If the thread doesn't hold that version
   // (sync brought a change, another save wrote it whole), the chat is saved whole once and the chain starts again.
   const BIG_MSGS = 800;
+  // (round 86, chatwindow86) a giant chat opened WINDOWED (chatwin.js, lazy group chatwin): its older messages stay on disk
+  // until you scroll up to them; W.x is ChatWin once its group is in
+  const W = { x: null }; const cw = (c) => Boolean(c && W.x?.is(c));
   const shapes = new WeakMap(); // chat → { ver, keys, head: Map(key → shape), msgs: [shape] }
   const shapeOf = (v) => { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return [0, ...v.map(shapeOf)]; const o = [1]; for (const k of Object.keys(v)) o.push(k, shapeOf(v[k])); return o; };
   function sameShape(sh, v) {
@@ -1917,8 +1925,9 @@ const Native = (() => {
   const newVer = () => `w${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const preShapes = new WeakMap(); // (round 84) a chat's messages' shapes made as its slices arrived (parseOff)
   function takeShape(chat, ver) { const head = new Map(); for (const k of Object.keys(chat)) if (k !== 'messages') head.set(k, shapeOf(chat[k])); const pre = preShapes.get(chat); preShapes.delete(chat); shapes.set(chat, { ver, keys: Object.keys(chat), head, msgs: pre?.length === chat.messages.length ? pre : chat.messages.map(shapeOf) }); }
-  function saveWhole(chat) { if (Array.isArray(chat.messages) && window.hub.saveChatDelta) { const ver = newVer(); takeShape(chat, ver); return window.hub.saveChat(chat, { ver }); } return window.hub.saveChat(chat); }
+  function saveWhole(chat) { if (cw(chat)) return W.x.whole(chat, 'save').then(() => saveWhole(chat)); if (Array.isArray(chat.messages) && window.hub.saveChatDelta) { const ver = newVer(); takeShape(chat, ver); return window.hub.saveChat(chat, { ver }); } return window.hub.saveChat(chat); }
   function saveChat(chat) {
+    if (cw(chat)) return W.x.save(chat);
     const s = shapes.get(chat);
     if (!s || !Array.isArray(chat.messages)) return chat.messages?.length >= BIG_MSGS ? saveWhole(chat) : window.hub.saveChat(chat);
     const keys = Object.keys(chat); const set = {}; let n = keys.length !== s.keys.length || keys.some((k, i) => k !== s.keys[i]) ? 1 : 0;
@@ -1927,9 +1936,10 @@ const Native = (() => {
     const ms = chat.messages; const msgs = [];
     for (let k = 0; k < ms.length; k++) if (k >= s.msgs.length || !sameShape(s.msgs[k], ms[k])) { msgs.push([k, ms[k]]); s.msgs[k] = shapeOf(ms[k]); }
     if (!n && !msgs.length && ms.length === s.msgs.length) return Promise.resolve(); // nothing changed
+    const trunc = ms.length < s.msgs.length; // (round 86) shorter on purpose: the store thread refuses a shorter chat without it
     s.msgs.length = ms.length; s.keys = keys;
     const from = s.ver; const to = s.ver = newVer();
-    return window.hub.saveChatDelta({ id: chat.id, from, to, keys, set, n: ms.length, msgs }).then((r) => (r?.ok || shapes.get(chat)?.ver !== to ? r : saveWhole(chat)), () => (shapes.get(chat)?.ver === to ? saveWhole(chat) : null)); // (only the newest change falls back)
+    return window.hub.saveChatDelta({ id: chat.id, from, to, keys, set, n: ms.length, msgs, trunc }).then((r) => (r?.ok || shapes.get(chat)?.ver !== to ? r : saveWhole(chat)), () => (shapes.get(chat)?.ver === to ? saveWhole(chat) : null)); // (only the newest change falls back)
   }
   // a chat as it is on disk: a giant one comes as bytes, parsed off this thread (chatparse-worker.js; here if that fails)
   let parser = null; let parseSeq = 0; const parsing = new Map();
@@ -1957,8 +1967,11 @@ const Native = (() => {
       return p;
     } catch { const list = Array.isArray(bytes) ? bytes : [bytes]; const all = new Uint8Array(list.reduce((n, b) => n + b.length, 0)); let o = 0; for (const b of list) { all.set(b, o); o += b.length; } return Promise.resolve(JSON.parse(new TextDecoder().decode(all))); }
   }
-  async function getChat(id) {
-    const r = window.hub.openChat ? await window.hub.openChat(id) : { chat: await window.hub.getChat(id) };
+  async function getChat(id, whole) {
+    // (round 86, chatwindow86) a giant chat opens windowed (Settings: chat.window86), its heights for this width
+    for (const v of views.values()) { const w = v.list?.restW || v.list?.clientWidth; if (w) { lastCpl = Math.max(30, (w - 90) / 7.4); break; } }
+    const r = window.hub.openChat ? await window.hub.openChat(id, whole || store.get('chat.window86', true) === false ? undefined : { win: lastCpl }) : { chat: await window.hub.getChat(id) };
+    if (r?.win) { try { await Lazy.load('chatwin'); return await W.x.open(id, r.win); } catch (err) { console.warn('chatwin', err); return getChat(id, true); } }
     if (!r?.parts) return r?.chat ?? null;
     const parts = []; for (let i = 0; i < r.parts; i++) parts.push(await window.hub.openChatPart(r.token, i)); // (a few ms of the main process each)
     const chat = parts.every(Boolean) ? await parseOff(parts).catch(() => null) : null;
@@ -2166,6 +2179,7 @@ const Native = (() => {
   async function compactChat(agentId, { auto = false } = {}) {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat || pending.has(chat.id)) return;
+    if (cw(chat)) await W.x.whole(chat, 'compact');
     if (!chat.messages.some((m) => m.role === 'assistant' && !m.compactSummary)) { toast('Nothing to compact yet', { timeout: 1500 }); return; }
     // (round 34, autocompact.js) continue lighter: the cheapest model writes the summary, the last exchanges stay word for word
     if (window.Autocompact?.run) { await Autocompact.run(agentId, { auto }).catch((err) => toast(err.message, { type: 'error' })); return; }
@@ -2220,6 +2234,7 @@ const Native = (() => {
   async function branchFrom(agentId, index) {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat) return;
+    if (cw(chat)) await W.x.whole(chat, 'branch');
     const now = Date.now();
     const copy = {
       id: `${agentId}-${now.toString(36)}`, agentId, title: `${chat.title} (branch)`, createdAt: now, updatedAt: now,
@@ -2414,6 +2429,7 @@ const Native = (() => {
     const chat = chats.get(H.activeChat[agentId]);
     const agent = H.agent(agentId);
     if (!chat || pending.has(chat.id)) return;
+    if (cw(chat)) await W.x.whole(chat, 'opinion');
     const judge = (to && H.agent(to)) || partnerOf(agent);
     const lastUser = [...chat.messages].reverse().find((m) => m.role === 'user')?.text || '';
     const replyMsg = [...chat.messages].reverse().find((m) => m.role === 'assistant');
@@ -2440,11 +2456,12 @@ const Native = (() => {
   async function editMessage(agentId, index) {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat || pending.has(chat.id)) return;
+    if (cw(chat)) await W.x.ensure(chat, index, index + 1);
     const original = chat.messages[index];
     if (chat.compact && index < chat.compact.index) delete chat.compact;
     const next = await Modal.prompt('Edit message', { value: original.text, multiline: true, label: 'Everything after this message will be replaced by a new reply.' });
     if (next == null || !next.trim()) return;
-    chat.messages = chat.messages.slice(0, index);
+    if (cw(chat)) chat.messages.length = index; else chat.messages = chat.messages.slice(0, index); // (round 86: a windowed chat cut in place)
     // the earlier wording is kept (shown on hover over "edited")
     const edits = [...(original.edits || []), original.text].slice(-5);
     chat.messages.push({ ...original, text: next.trim(), sent: original.sent ? original.sent.replace(original.text, next.trim()) : undefined, at: Date.now(), edited: true, edits });
@@ -2458,13 +2475,14 @@ const Native = (() => {
     const lastUser = chat.messages.map((m) => m.role).lastIndexOf('user');
     if (lastUser < 0) return;
     if (chat.compact && lastUser < chat.compact.index) delete chat.compact;
-    chat.messages = chat.messages.slice(0, lastUser + 1);
+    if (cw(chat)) { await W.x.ensure(chat, lastUser, lastUser + 1); chat.messages.length = lastUser + 1; } else chat.messages = chat.messages.slice(0, lastUser + 1);
     chat.session = {};
     await send(agentId, chat.messages[lastUser].text, { fromHistory: true });
   }
 
   function quote(agentId, index) {
     const chat = chats.get(H.activeChat[agentId]);
+    if (cw(chat) && !W.x.has(chat, index)) return W.x.ensure(chat, index, index + 1).then(() => quote(agentId, index));
     const v = views.get(agentId);
     const text = chat?.messages[index]?.text || '';
     const quoted = text.split('\n').slice(0, 30).map((l) => `> ${l}`).join('\n');
@@ -2575,6 +2593,7 @@ const Native = (() => {
   }
   const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
   function chatStats(chat) {
+    if (cw(chat)) return W.x.whole(chat, 'stats').then(() => chatStats(chat));
     const ms = chat.messages;
     const words = (role) => ms.filter((m) => m.role === role).reduce((n, m) => n + (m.text.match(/\S+/g) || []).length, 0);
     const tokIn = ms.reduce((n, m) => n + (m.usage?.input || 0), 0); const tokOut = ms.reduce((n, m) => n + (m.usage?.output || 0), 0);
@@ -2649,7 +2668,7 @@ const Native = (() => {
 
   // Copies a chat to another native agent; the next message sends the history along as context.
   async function continueWith(chatId, targetId) {
-    const chat = await loadChat(chatId);
+    const chat = await loadFull(chatId);
     const from = H.agent(chat.agentId);
     const now = Date.now();
     const copy = {
@@ -2856,7 +2875,7 @@ const Native = (() => {
   }
 
   return { showEarlier, isDraft,
-    chatOf, ensureChat, adopt, save: remember, loadChat, partnerOf, rememberFacts, forgetFacts,
+    chatOf, ensureChat, adopt, save: remember, loadChat: loadFull, partnerOf, rememberFacts, forgetFacts,
     takeAttachments: (agentId) => packAttachments(agentId, ''),
     secondOpinion,
     isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
@@ -2868,9 +2887,9 @@ const Native = (() => {
     note,
     compact: (agentId) => compactChat(agentId), // the token meter's one-click compact
     sendText: (agentId, text) => send(agentId, text).catch((err) => toast(err.message, { type: 'error' })),
-    markdownOf: async (chatId) => chatMarkdown(await loadChat(chatId)),
+    markdownOf: async (chatId) => chatMarkdown(await loadFull(chatId)),
     // additive API for chat-*.js / chat commands
-    hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt,
+    hooks, current, view: (agentId) => views.get(agentId) || null, load: loadFull, save: remember, adopt, isWin: cw,
     compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
     secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, isSpeaking: () => Boolean(speaking), plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
@@ -2881,7 +2900,7 @@ const Native = (() => {
       return (paths || []).length;
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
-    _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine, fillFold }, // (round 72) chat-rest.js
+    _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine, fillFold, W, sv: { shapes, shapeOf, sameShape, newVer, saveWhole } }, // (round 72) chat-rest.js
     mediaSize: (src) => imgSizes.get(src), noteSize, // (round 73, chatsteady73) [w, h] of a picture / video seen before (chat-media.js, chat-rest.js)
     prefetch, // (round 45, chatswitch) a chat you rest on in the chats list is made ready before the click (panel.js)
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat
