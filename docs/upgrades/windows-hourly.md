@@ -107,3 +107,15 @@ job Node / libuv puts them in): no leftover could be shown, so nothing was commi
 - **Checked**: a fresh `git init` + commit folder: `rmSync` failed with EPERM, `rmGitCopy` removed it;
   `dev/deploy-test.js` 12/12 (GitHub Pages failed before); a test copy starts with no page errors.
   Left alone: 9 `hearth-ghpages-` / `hearth-deploy-` / `hearth-rmtest-` folders in Temp from earlier test runs.
+
+Pass 12 (Oct 29) changed nothing: the board's CSV export has no BOM (Excel on Windows would show "RÃ©fÃ©rence"),
+but Excel isn't on this PC to show it, so nothing was committed. Pass 13 (Oct 29) found nothing worth fixing.
+
+## Pass 14 (Oct 29): the backup tests now run on Windows
+- **Why it mattered**: `dev/backupauto-test.js` forced `platform: 'linux'`, so on this PC it joined paths with `/`
+  (`…\Documents/Hearth backups`), the folder check refused them, and the rest of the run never happened: 80/83, the
+  real backup flow (write, check, restore, rotation, older zips) never tested on Windows. Hearth itself was fine (its
+  backups go to `C:\Users\quent\Documents\Hearth backups\…`).
+- **Fix** (test only): this computer's platform; the "older zip" fixture made with Windows' own `tar.exe -a` (there is
+  no `zip` command, and Git's GNU tar, often first on the PATH, makes no zips).
+- **Checked**: 107/107 on this PC (the 20 checks that never ran here pass).

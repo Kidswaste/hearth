@@ -205,7 +205,8 @@ const DAY = 864e5; const HOUR = 36e5; const MIN = 6e4;
   const big = Buffer.alloc(21 * 1048576, 7);
   w('captures/take.mp4', big);
   const BA = require(path.join(ROOT, 'backupautomain.js'));
-  BA._test.set({ dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, platform: 'linux', home: path.join(T, 'home'), getWin: () => null });
+  // (windows hourly 14) this computer's platform, not 'linux': on Windows a linux run joined the paths with / and checkDir refused them
+  BA._test.set({ dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, platform: process.platform, home: path.join(T, 'home'), getWin: () => null });
   const ipc = { handle: () => {} };
   BA.register(ipc, { dataDir: data, configPath: path.join(app, 'config.json'), themePath: path.join(app, 'theme.css'), appDir: app, getWin: () => null });
   try {
@@ -216,7 +217,7 @@ const DAY = 864e5; const HOUR = 36e5; const MIN = 6e4;
     check(r1.ok && fs.existsSync(r1.path) && /hearth-backup-\d{4}-\d\d-\d\d-\d\d-\d\d-/.test(r1.name), 'a backup is written', r1);
     check(r1.counts.scenes === 3 && r1.counts.chats === 2 && r1.counts.agents === 2 && r1.counts.memory === 1 && r1.counts.media === 1, 'with its counts', r1.counts);
     const card = JSON.parse(fs.readFileSync(path.join(dir, '.hearth', `${r1.name}.json`), 'utf8'));
-    check(card.ok === true && card.reason === 'auto' && card.machine?.platform === 'linux' && card.media.length === 1, 'its card: checked, why, which computer, the big file', card);
+    check(card.ok === true && card.reason === 'auto' && card.machine?.platform === process.platform && card.media.length === 1, 'its card: checked, why, which computer, the big file', card);
     const mediaFiles = fs.readdirSync(path.join(dir, '.hearth', 'media'));
     check(mediaFiles.length === 1 && fs.statSync(path.join(dir, '.hearth', 'media', mediaFiles[0])).size === big.length, 'the big video went once to the media store');
     check(fs.statSync(r1.path).size < 2 * 1048576, 'the zip itself stays small (no big media in it)', fs.statSync(r1.path).size);
@@ -273,7 +274,10 @@ const DAY = 864e5; const HOUR = 36e5; const MIN = 6e4;
     check(fs.existsSync(path.join(data, 'captures', 'take2.mp4')) && fs.statSync(path.join(data, 'captures', 'take2.mp4')).size === big.length, 'restore: it is back');
     // an older zip (no card): looked into once
     const legacy = path.join(dir, 'hearth-backup-2020-01-01-10-00.zip');
-    require('child_process').execFileSync('zip', ['-qr', legacy, 'data/kv/three-sketches.json', 'data/chats', 'config.json'], { cwd: app });
+    // (windows hourly 14) Windows has no zip command: its tar.exe makes the zip (-a: the format from the .zip name)
+    // (System32's own: Git's GNU tar can come first on the PATH, and it makes no zips)
+    if (process.platform === 'win32') require('child_process').execFileSync(path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-a', '-cf', legacy, 'data/kv/three-sketches.json', 'data/chats', 'config.json'], { cwd: app, windowsHide: true });
+    else require('child_process').execFileSync('zip', ['-qr', legacy, 'data/kv/three-sketches.json', 'data/chats', 'config.json'], { cwd: app });
     const ins = await BA.inspect(legacy);
     check(ins.legacy && ins.counts.scenes === 3 && ins.counts.chats === 2 && ins.counts.agents === 2, 'an older backup: what\'s inside, read once', ins);
     const z = await BA.recoverZips(8);
