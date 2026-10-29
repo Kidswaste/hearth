@@ -3,7 +3,7 @@
 // messages lives on the store thread (storework.js op recall, recall-core.js) and is built in idle moments only:
 // never at startup (the first pass waits ~45 s, then one ~12 ms slice per idle moment, never while you type, drag
 // or scroll), and once it has caught up nothing runs at all; a question catches up the chats that changed since.
-// (round 83, idleburst83) a pause ≥ 4× each slice after it, and the index kept on disk between starts (storework.js).
+// (round 83, idleburst83) 30 ms slices with a pause ≥ 8× each after it, and the index kept on disk between starts (storework.js).
 //   · the chats panel's search box: a "Find the answer" row when what you typed is a question
 //   · ◎ Missions › "Remind me what we decided": your message becomes the question; nothing is sent
 //   · /decided <question> (the app's internal API; /recall is taken: /drafts' alias)
@@ -54,11 +54,11 @@ const RecallHooks = (() => {
   function slice() {
     if (state !== 'building') return;
     if (window.Jank?.busy?.() || document.hidden) { setTimeout(() => idle(slice), 1500); return; }
-    Promise.resolve(window.hub?.recall?.({ budgetMs: 12 })).then((r) => {
+    Promise.resolve(window.hub?.recall?.({ budgetMs: 30 })).then((r) => {
       if (!r || !r.left) { state = 'ready'; return; }
-      // (round 83, idleburst83) a pause after each slice (≥ 4× its time): the store thread works ≤ ~20 % of a CPU on it,
-      // not back to back (an idle page asks again at once: a whole CPU for minutes after every start on a big profile)
-      setTimeout(() => idle(slice), Math.max(60, (Number(r.ms) || 12) * 4));
+      // (round 83, idleburst83) slices of 30 ms (fewer round trips through the main process) with a pause ≥ 8× each after it:
+      // the store thread works ≤ ~11 % of a CPU on it, not back to back (an idle page asks again at once: a whole CPU for minutes)
+      setTimeout(() => idle(slice), Math.max(200, (Number(r.ms) || 30) * 8));
     }).catch(() => { state = 'wait'; }); // no store thread: a question does it
   }
   function build() { if (state === 'wait' && window.hub?.recall) { state = 'building'; idle(slice); } return state; }
