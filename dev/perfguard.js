@@ -164,7 +164,7 @@ function startup(m, tag, side = THIS) {
     const sp = Object.entries(run.splash || {}).filter(([, v]) => Number.isFinite(v)).sort((a, b) => a[1] - b[1]);
     sp.forEach(([k, v], i) => { if (i && !/features/.test(k)) addW(`start phase: ${sp[i - 1][0].replace('splash:', '')} → ${k.replace('splash:', '')}`, v - sp[i - 1][1]); });
     for (const [ch, x] of Object.entries(run.ipc || {})) if (!/^engine:/.test(ch)) addW(`ipc answered: ${ch} ×${x[0]}`, x[1]); // (engine:* look for the CLIs: seconds, in the background)
-    for (const [ty, ms] of Object.entries(run.cpu?.ready || {})) if (ty !== 'total') addW(`CPU to the first screen: ${ty} process`, ms);
+    for (const [ty, ms] of Object.entries(run.cpu?.ready || {})) if (ty === 'browser' || ty === 'renderer') addW(`CPU to the first screen: ${ty} process`, ms); // (not the GPU process: SwiftShader here)
   }
   addTops(m, 'startup', [...waits].map(([k, v]) => [k, median(v)]), AB ? N.rounds : 1);
   if (!profiled) return;
