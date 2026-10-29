@@ -186,10 +186,39 @@ const Jam = (() => {
     const s = m.list.filter((R) => R.build).map((R) => `R${R.n} ${NAME[R.build.by]}: ${cap(R.build.text, 60)}${R.dir ? ` → ${NAME[R.dir.by]}: ${cap(R.dir.text, 50)}` : ''}`).join(' · ');
     return s.length > 240 ? `…${s.slice(-239)}` : s;
   }
+  // ---------- the mood board ----------
+  // (Oct 29) the jam reads one board's look once (the board the idea names, by its name as whole words, the longest
+  // name first; else the first board of the jam's project) and every build and direction gets it: the builders had
+  // the board tools but nothing said to look, and the directions only saw a screenshot. The text stays here (the
+  // card keeps only the board's name and id); a reload reads it again.
+  const looks = new Map(); // jam id → the board's look (text)
+  const LOOK_MAX = 1200;
+  async function boardLook(idea, proj) {
+    try {
+      await Lazy.load('board'); await Board.ready();
+      const list = Board.boards().filter((b) => b.name && b.name.trim().length >= 3);
+      const words = ` ${String(idea || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+      const key = (s) => ` ${s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()} `;
+      let e = list.slice().sort((a, b) => b.name.length - a.name.length).find((b) => words.includes(key(b.name))) || null;
+      if (!e && proj) { const ref = (proj.items || []).find((x) => x.type === 'board')?.ref; e = ref ? list.find((b) => b.id === ref) || null : null; }
+      if (!e) return null;
+      const b = await Board.load(e.id);
+      const text = b ? String(BoardDrawer.vibeText({ board: b, rule: false }) || '').trim() : '';
+      return text ? { id: e.id, name: e.name, text: text.length > LOOK_MAX ? `${text.slice(0, LOOK_MAX - 1)}…` : text } : null;
+    } catch (err) { console.warn('jam: board', err); return null; }
+  }
+  const boardLine = (m) => {
+    if (!m.board) return '';
+    const t = looks.get(m.id);
+    return t ? `The mood board "${m.board.name}" (stay true to its look):\n${t}` : '';
+  };
+
   function buildPrompt(m, R, lead, d, prev) {
     const other = NAME[lead.key === 'claude' ? 'astra' : 'claude'];
     const out = [`Jam · round ${R.n}/${m.total} · you build. A jam with ${other}: you take turns on one music visual in the Three.js Lab.`];
     out.push(m.idea ? `Idea: ${m.idea}` : 'No idea given: pick one bold idea that fits the song and the open sketch, and start your reply with "Idea: <a few words> —".');
+    const board = boardLine(m);
+    if (board) out.push(board);
     const song = songLine(d);
     if (song) out.push(song);
     const sum = summary(m);
@@ -205,6 +234,7 @@ const Jam = (() => {
     return [
       `Jam · round ${R.n}/${m.total} · you direct. ${self ? 'You built this yourself: judge it like a strict art director' : `You are the art director; ${NAME[R.build.by]} builds`} (a music visual in a Three.js Lab${m.idea ? `: ${cap(m.idea, 80)}` : ''}).`,
       `Just done: ${cap(R.build.text, 160)} The picture: ${look.strip ? '3 frames over the song, left to right' : 'the frame now'}.`,
+      ...(boardLine(m) ? [boardLine(m), 'Judge the picture against that board too: where it drifts from the board\'s look, say what pulls it back.'] : []),
       'Reply with at most 3 short lines: one bold, concrete change to push and one thing to cut (color, motion, beat sync, composition). No code, no praise.',
     ].join('\n');
   }
@@ -547,11 +577,15 @@ const Jam = (() => {
     const copy = S?.get(before.sketchId) ? S.duplicate(before.sketchId, m.sketch) : null;
     // (Oct 29) a jam started in a project lands in it: its chat and its copy were nowhere in the project ("my jam
     // doesn't appear anywhere"); the project open now, else the one holding the scene the jam copied
+    let proj = null;
     try {
       const P = window.Projects;
-      const proj = P?.here?.() || (before.sketchId ? P?.ofItem?.('scene', before.sketchId)?.[0] : null) || null;
+      proj = P?.here?.() || (before.sketchId ? P?.ofItem?.('scene', before.sketchId)?.[0] : null) || null;
       if (proj) { P.add(proj, 'chat', chat.id, 'Jam'); if (copy) P.add(proj, 'scene', copy.id, m.sketch); }
     } catch (err) { console.warn('jam: project', err); }
+    // (Oct 29) the mood board the idea names (else the project's): its look goes into every build and direction
+    const look = await boardLook(m.idea, proj);
+    if (look) { m.board = { id: look.id, name: look.name }; looks.set(m.id, look.text); m.notes.push(`Every turn sees the mood board "${look.name}".`); }
     if (copy && S.open(copy.id)) await sleep(1200);
     else await d.restore(before, { asNew: m.sketch, wait: 1.2 });
     m.sketchId = d.capture().sketchId;
@@ -791,6 +825,7 @@ const Jam = (() => {
     start: (idea = '', opts = {}) => start({ idea: typeof idea === 'string' ? idea : '', ...(typeof idea === 'object' ? idea : {}), ...opts }),
     stop, again, keep, running: () => Boolean(J), latest, cardEl,
     share,
+    _test: { buildPrompt, directPrompt }, // (dev/checks/jam-board.js)
     // the chat a jam is working in (chat-scenes.js shows Claude + Astra on that chat's scene tag)
     activeFor: (chatId) => Boolean(J && (J.chat?.id || J.chat) === chatId),
     // chat-scenes.js routeThree: a jam turn's Lab calls (they carry the turn's own id) go to the jam's sketch, on
