@@ -96,3 +96,14 @@ job Node / libuv puts them in): no leftover could be shown, so nothing was commi
 - **Checked**: a `.cmd` tool that never ends, 2 s timeout: still waiting after 12 s with the tool running before;
   "Timed out." after 2.5 s and nothing left after. `dev/deploy-test.js`: every part passes except GitHub Pages,
   which fails the same way without this change (removing its temporary git folder: EPERM on Windows): next pass.
+
+## Pass 11 (Oct 29): a GitHub Pages deploy said it failed after it had gone through
+- **What you'd see**: 🚀 Publish to GitHub Pages pushed the page, then ended with an EPERM error, and a
+  `hearth-ghpages-…` folder stayed in Temp each time.
+- **Why**: the deploy works in a temporary git repository; git makes its object files read-only, and Windows won't
+  delete a read-only file, so removing the folder (Node's `rmSync`) failed, in the `finally` after the push.
+- **Fix** (`deploymain.js`, `rmGitCopy`): on EPERM / EACCES on Windows the folder's files are made writable and it is
+  removed again; a temporary folder that still can't go is logged and never turns the deploy into a failure.
+- **Checked**: a fresh `git init` + commit folder: `rmSync` failed with EPERM, `rmGitCopy` removed it;
+  `dev/deploy-test.js` 12/12 (GitHub Pages failed before); a test copy starts with no page errors.
+  Left alone: 9 `hearth-ghpages-` / `hearth-deploy-` / `hearth-rmtest-` folders in Temp from earlier test runs.
