@@ -570,6 +570,7 @@ const Native = (() => {
         if (saved) toast(`Saved ${saved.split(/[\\/]/).pop()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(saved) } });
       }
       if (codeAction.dataset.act === 'three') ThreeLab.openCode(code);
+      if (codeAction.dataset.act === 'apply') { const chatId = H.activeChat[agentId]; const m = chats.get(chatId)?.messages[Number(pre.closest('.msg')?.dataset.index)]; (window.Lazy ? Lazy.load('lab') : Promise.resolve()).then(() => LabChatLink.menu(agentId, chatId, code, codeAction, m ? (m.at || 0) - (m.ms || 0) : 0)).catch((err) => toast(err.message, { type: 'error' })); } // (round 92, labchat92) tools/three-chatlink.js
       if (codeAction.dataset.act === 'ae') (async () => { await window.Lazy?.load?.('adobe'); const r = Adobe.aeJob ? await Adobe.aeJob(code, 'From chat') : await Adobe.run('aftereffects', code, { label: 'From chat' }); toast(r.ok ? 'Running in After Effects: keep working, Hearth tells you when it is done (one undo in AE takes it back)' : r.error, { type: r.ok ? undefined : 'error', timeout: r.ok ? 3500 : 9000 }); })().catch((err) => toast(err.message, { type: 'error' }));
       if (codeAction.dataset.act === 'shader') ThreeLab.openShader(code);
       return;
@@ -673,7 +674,7 @@ const Native = (() => {
       const lang = (pre.dataset.lang || '').toLowerCase();
       const lines = code.split('\n').length;
       const bar = el('span', { class: 'code-acts' }, el('button', { class: 'code-act', text: 'Save', title: 'Save as a file', dataset: { act: 'save' } }));
-      if (/^(js|javascript|mjs)$/.test(lang) && /three|THREE\./.test(code)) bar.append(el('button', { class: 'code-act', text: 'Open in Three.js Lab', dataset: { act: 'three' } }));
+      if (/^(js|javascript|mjs)$/.test(lang) && /three|THREE\./.test(code)) bar.append(...(/import[^;\n]*['"]three['"]/.test(code) && /setAnimationLoop|requestAnimationFrame/.test(code) ? [el('button', { class: 'code-act', text: '▶ Apply to scene', title: 'Put this layer into the chat\'s Lab scene: replace a layer or add it (one click to undo)', dataset: { act: 'apply' } })] : []), el('button', { class: 'code-act', text: 'Open in Three.js Lab', dataset: { act: 'three' } })); // (round 92) ▶ Apply
       if (/^(glsl|frag|shader)$/.test(lang) || (/gl_FragColor|fragColor|void main\s*\(/.test(code) && !/import /.test(code))) bar.append(el('button', { class: 'code-act', text: 'Shader playground', dataset: { act: 'shader' } }));
       if (/^(jsx|extendscript)$/.test(lang) || /app\.project|CompItem|app\.beginUndoGroup/.test(code)) bar.append(el('button', { class: 'code-act', text: 'Run in After Effects', dataset: { act: 'ae' } }));
       if (hasNodes()) bar.append(el('button', { class: 'code-act', text: 'Nodes', title: 'Open in the node view', dataset: { act: 'nodes' } }));

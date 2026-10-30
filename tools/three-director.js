@@ -750,6 +750,17 @@ const ThreeDirector = (() => {
     return after;
   }
 
+  // (round 92, labchat92) a whole-layer rewrite (set_code, update_layer with code) that would silently drop what the
+  // owner typed in that layer since this AI last saw it: refused in words (it reads again, then edits its part). The
+  // owner's own ▶ Apply from a reply passes (tools/three-chatlink.js asks them first when they typed).
+  function handGuard(B, L, args) {
+    const lab = typeof ThreeLab !== 'undefined' ? ThreeLab.director : null;
+    if (!L || !lab?.handAt || typeof LabChatCore === 'undefined') return null;
+    if (args?._owner && args._owner === window.LabChatLink?.ownerToken) return null;
+    const at = lab.handAt(L.sketchId, L.id);
+    if (!LabChatCore.staleRewrite({ handAt: at, seenText: seenOf(B, codeKey(L))?.text ?? null, code: L.code })) return null;
+    return { ok: false, error: LabChatCore.staleError(L.name, Date.now() - at) };
+  }
   // ctx.chatId: the chat whose run made the call (tools/three.js passes it; backstage routes carry it in d.route)
   async function handle(tool, args, d, ctx = {}) {
     if (!d.codeOf) return null; // an older Lab without the hooks: its own handler answers
@@ -813,6 +824,7 @@ const ThreeDirector = (() => {
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };
       const before = d.codeOf();
+      const held = handGuard(B, before, args); if (held) return held; // (round 92)
       if (!d.backstage) toast('Three Director updated the sketch', { timeout: 1500 });
       const r = await d.setCode(String(args.code), Number(args.wait) || 2.5);
       record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool });
@@ -845,7 +857,7 @@ const ThreeDirector = (() => {
     if (tool === 'three_update_layer') {
       const patch = { ...(args.settings || {}) };
       let before = null;
-      if (args.code != null) { patch.code = args.code; before = d.codeOf(args.layer); }
+      if (args.code != null) { patch.code = args.code; before = d.codeOf(args.layer); const held = handGuard(B, before, args); if (held) return held; } // (round 92)
       if (args.order != null) patch.order = args.order;
       const r = await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5));
       if (before) { record({ sketchId: before.sketchId, sketch: before.sketch, layerId: before.id, layer: before.name, before: before.code, after: String(args.code), tool }); see(B, codeKey(before), String(args.code), 'wrote'); }
@@ -952,7 +964,7 @@ const ThreeDirector = (() => {
       // (report: 'full', as three_add_layer has): since the lean text below (round 37) their layer lookups threw
       // ("v?.layers?.find is not a function") and a layer they had just added wasn't found
       if (args.report === 'full') return { ok: true, value: r };
-      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, note: r.note };
+      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, ...(r.picked ? { picked: r.picked } : {}), note: r.note }; // (round 92) picked: the object the owner picked in the scene editor
       const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
       return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };
     }

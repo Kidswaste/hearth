@@ -390,6 +390,9 @@ function plan(prompt, engine = 'claude') {
   else if (p.summarize) parts.push('- Point one of the summary\n- Point two\n- Point three');
   else parts.push(`Fake reply to: “${short}”.`);
   if (p.code) parts.push('Here is a sketch:\n\n```js\nimport * as THREE from \'three\';\nconst scene = new THREE.Scene();\nconst cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());\nscene.add(cube);\n```\n\nAnd a shell line:\n\n```bash\necho hello\n```');
+  // (round 92, labchat92) "layercode": a reply proposing a whole Lab layer in a js block (a pink-green torus);
+  // "layercode-bad": the same with a syntax error on its line 9 (the chat's ▶ Apply to … button tries it)
+  if (/\blayercode(-bad)?\b/i.test(msg)) parts.push(`Here is the layer:\n\n\`\`\`js\n${LAYER_CODE(/layercode-bad/i.test(msg))}\n\`\`\``);
   if (p.table) parts.push('| Name | Value |\n| --- | ---: |\n| alpha | 1 |\n| beta | 22 |\n\n- [x] done task\n- [ ] open task\n\n> [!NOTE]\n> A callout note.\n\nInline math: $E = mc^2$.');
   // (round 33, swarmlean) FAKE_REPLY_CHARS: plain replies padded to a typical length (dev/mission-tokens.js)
   const typical = Number(process.env.FAKE_REPLY_CHARS || 0);
@@ -401,6 +404,19 @@ function plan(prompt, engine = 'claude') {
   if (p.progress) { const a = Math.max(1, Math.floor(parts.length / 3)); parts.splice(a, 0, '<progress pct="35" note="drafting"/>'); parts.splice(Math.max(a + 1, Math.floor((parts.length * 2) / 3)), 0, '<progress pct="75" note="polishing the end"/>'); }
   return { p, text: parts.join('\n\n'), thinking: p.think ? 'Let me think about this.\n\nFirst, consider the request. Then decide on a compact answer.' : '' };
 }
+
+// (round 92, labchat92) a whole Lab layer, as a model proposes it in a reply (bad: a syntax error on line 9)
+const LAYER_CODE = (bad) => ['import * as THREE from \'three\';',
+  'const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });',
+  'renderer.setSize(innerWidth, innerHeight);',
+  'document.body.append(renderer.domElement);',
+  'const scene = new THREE.Scene();',
+  'const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);',
+  'camera.position.z = 5;',
+  'const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.3, 16, 64), new THREE.MeshBasicMaterial({ color: \'#33ff99\' }));',
+  bad ? 'scene.add(mesh;' : 'scene.add(mesh);',
+  'console.log(\'applied92 ready\');',
+  'renderer.setAnimationLoop((now) => { mesh.rotation.z = now / 1000; renderer.render(scene, camera); });'].join('\n');
 
 // Splits text into small pieces like a model streams tokens.
 function pieces(text, p) { return text.match(p?.huge ? /[\s\S]{1,16}/g : /[\s\S]{1,12}/g) || []; }
