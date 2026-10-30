@@ -276,7 +276,7 @@
     const c = lb.cue(args); return c ? `Cue "${c.name}" at ${fmtMs(c.t)}` : null;
   }, (a) => pick(['Intro', 'Verse', 'Build', 'Drop', 'Break', 'Chorus', 'Outro'], a), { aliases: ['section'] });
   reg('cues', 'List the song\'s cues', '', async () => { const l = (await lab(false)).cues(); return l.length ? l.map((c, i) => `${i + 1}. ${c.name} · ${fmtMs(c.time)}${c.looks?.length ? ` ✦ ${c.looks.map((x) => x.name).join(', ')}` : ''}`).join('\n') : 'No cues yet (/cue Drop, /sections)'; });
-  reg('song', 'The song: play, pause, seek <time>, speed <1|0.75|0.5|0.25>, mute, load, zoom <a> <b> | all, keep (a copy with the scene for your other computer)', '<play|pause|seek|speed|mute|load [path]|zoom|keep> …', async (args) => {
+  reg('song', 'The song: play, pause, seek <time>, speed <1|0.75|0.5|0.25>, mute, load, zoom <a> <b> | all, keep', '<play|pause|seek|speed|mute|load [path]|zoom|keep> …', async (args) => {
     const c = await lab(); const w = words(args); const sub = (w[0] || '').toLowerCase();
     if (!sub) { const st = c.state; return st.song ? `♪ ${st.song.split(/[\\/]/).pop()}${st.playing ? ' · playing' : ''}${st.bpm ? ` · ${Math.round(st.bpm)} BPM` : ''}` : 'No song loaded: /song load'; }
     if (sub === 'play' || sub === 'pause') { c.play(sub === 'play'); return null; }
