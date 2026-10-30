@@ -19,6 +19,13 @@
 // more: "standard" finds MeshStandardMaterial). Every word must match (AND). Score = the words' best matches × the
 // doc's weight (a scene's / layer's / file's name above its code, a chat title above a message) + the whole phrase
 // found + a little for recent. Accents and case don't matter (café = CAFE), offsets stay those of the original text.
+//
+// (round 92, findmem92) A GIANT chat (env.big.lean: 8 MB+) is kept LEAN: its messages' words are indexed as before,
+// but their text isn't kept. Each message doc keeps where its bytes are in the file (s, e) and its first folded
+// characters (head); the few a query shows (its best matches, read whole for the phrase and the snippet) are read back
+// from the file then (env.big.text: leanReader below). Every source's words are kept compact (one list of words, their
+// doc numbers in one typed array) instead of a Map of arrays. Same hits, same order, same snippets; a giant chat that
+// can't be read back when asked is left out of that query and named in `unread` (never "nothing found").
 (function (root, make) { if (typeof module === 'object' && module.exports) module.exports = make(); else root.ProjFindCore = make(); })(typeof self !== 'undefined' ? self : this, () => {
   const GROUPS = [
     { id: 'chat', label: 'Messages', icon: '✳' },
@@ -71,6 +78,10 @@
     return [...new Set(long.length ? long : all)];
   }
   const cap = (s, n) => { const t = String(s ?? ''); return t.length > n ? t.slice(0, n) : t; };
+  // (round 92, findmem92) a string of its own: a short part cut from a long text (a regex match, a slice) can keep that
+  // whole text alive behind it; a lean source must hold none of its messages' texts
+  const sigma = (t) => t.replace(/ς/g, 'σ'); // (the one letter whose lowercase depends on what follows it: Σ → σ / ς)
+  const own = (t) => (t.length < 13 ? t : JSON.parse(JSON.stringify(t)));
   // a short, stable fingerprint of a text (the window's notes / names: re-indexed only when they change)
   function hash(s) { let h = 2166136261 >>> 0; s = String(s); for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return `${s.length}:${h.toString(36)}`; }
 
@@ -167,6 +178,9 @@
     const src = new Map(); // key → { sig, docs, inv: Map(word → [doc n]), words: string[], chars, used }
     const scenes = { fileSig: null, file: null, parsed: null, parsedSig: null, reading: null }; // the Lab's one file (kept parsed only while scenes wait; reading: in slices, bigchat82)
     let chars = 0;
+    // (round 92, findmem92) the lean docs' texts read back lately (doc → { t, key }), oldest first, BACK_CHARS at most:
+    // typing a few more letters asks for mostly the same best matches again
+    const backs = new Map(); let backChars = 0; const BACK_CHARS = 1.2e6;
     // a source's docs and words, built doc by doc (a giant chat's over several slices: bigchat82)
     const builder = () => ({ docs: [], inv: new Map(), chars: 0 });
     function addDoc(b, d) { addPart(b, d, 0, d.text.length); }
@@ -178,13 +192,33 @@
     }
     const PART = 6000;
     const partEnd = (text, from) => { if (text.length - from <= PART * 1.5) return text.length; const nl = text.lastIndexOf('\n', from + PART); if (nl > from + PART / 2) return nl + 1; const sp = text.lastIndexOf(' ', from + PART); return sp > from + PART / 2 ? sp + 1 : from + PART; };
-    function install(key, sig, b, now) { drop(key); src.set(key, { sig, docs: b.docs, inv: b.inv, words: [...b.inv.keys()], chars: b.chars, used: now }); chars += b.chars; }
+    // (round 92, findmem92) a source's words kept compact: words[j]'s docs are post[pos[j] … pos[j + 1]) (in doc order)
+    function compact(inv, nd) {
+      let n = 0; for (const a of inv.values()) n += a.length;
+      const words = new Array(inv.size); const pos = new Uint32Array(inv.size + 1); const post = nd < 65536 ? new Uint16Array(n) : new Uint32Array(n);
+      let j = 0; let at = 0; let wc = 0;
+      for (const [t, a] of inv) { words[j] = own(t); pos[j] = at; post.set(a, at); at += a.length; wc += t.length; j += 1; }
+      pos[j] = at;
+      return { words, pos, post, wc };
+    }
+    function install(key, sig, b, now, lean = false) {
+      drop(key);
+      const c = compact(b.inv, b.docs.length);
+      const held = lean ? c.wc + c.post.length : b.chars; // (a lean source holds its words, not its messages' text)
+      src.set(key, { sig, sig0: sig, docs: b.docs, words: c.words, pos: c.pos, post: c.post, chars: held, used: now, lean });
+      chars += held;
+    }
     function put(key, sig, docs, now = Date.now()) { const b = builder(); for (const d of docs) addDoc(b, d); install(key, sig, b, now); }
     // (round 82, bigchat82) sources being built, a slice at a time: key → { sig, b (builder), docs + i (words still to
     // index) | r (a bigchat-core reader: a long chat still being read), extra (fields the source gets once installed) }.
     // The source as it was stays searchable until the new one is whole
     const building = new Map();
-    function drop(key) { const s = src.get(key); if (s) { chars -= s.chars; src.delete(key); } }
+    function drop(key) {
+      const s = src.get(key);
+      if (!s) return;
+      chars -= s.chars; src.delete(key);
+      if (s.lean) for (const [d, v] of backs) if (v.key === key) { backs.delete(d); backChars -= v.t.length; }
+    }
     // a file saved here: the source(s) it feeds are looked at again next time (by the store thread, right after the write)
     function stale(file) {
       const f = String(file || '');
@@ -293,7 +327,9 @@
         if (x.kind === 'chat' && env.big && Number(sig.split(':')[0]) >= env.big.min) { // (round 82, bigchat82) a long chat: read in slices
           if (!job) {
             const b = builder(); const ref = x.id;
-            job = { sig, b, r: env.big.open(x.file, (m, k) => { const d = msgDoc(m, k, '', 0, ref); if (d) addDoc(b, d); }), extra: { file: x.file } };
+            // (round 92, findmem92) a giant one is kept lean: its words indexed, its text left in the file (where: s, e)
+            const lean = Boolean(env.big.text) && env.big.lean != null && Number(sig.split(':')[0]) >= env.big.lean;
+            job = { sig, b, lean, r: env.big.open(x.file, (m, k, s, e) => { const d = msgDoc(m, k, '', 0, ref); if (!d) return; addDoc(b, d); if (lean) { d.text = null; d.head = own(d.head); d.s = s; d.e = e; } }), extra: { file: x.file } };
             building.set(x.key, job);
           }
           if (over()) { left += 1; continue; }
@@ -305,7 +341,7 @@
             const h = job.r.head || {}; const title = cap(h.title || 'Chat', 200);
             for (const d of job.b.docs) { d.title = title; if (!d.at) d.at = h.updatedAt || 0; }
             addDoc(job.b, titleDoc({ ...h, id: x.id }, title));
-            install(x.key, sig, job.b, env.now()); src.get(x.key).file = x.file;
+            install(x.key, sig, job.b, env.now(), job.lean); Object.assign(src.get(x.key), { file: x.file, title });
             built += 1;
             continue;
           }
@@ -329,10 +365,27 @@
       for (const [k] of [...src].filter(([k2]) => !keep.has(k2)).sort((a, b) => a[1].used - b[1].used)) { drop(k); if (chars <= maxChars) break; }
     }
     // → { groups: [{ id, label, icon, total, hits }], words, total }
-    function query(spec, dirs, q, { limit = 20, now = Date.now(), join = (a, b) => `${a}/${b}` } = {}) {
+    // (round 92, findmem92) o.text: a lean source's messages read back (leanReader); o.skip: sources left out (a lean one
+    // that couldn't be read back: the query runs again without it, and says so in `unread`)
+    function query(spec, dirs, q, o = {}) {
+      const { limit = 20, now = Date.now(), join = (a, b) => `${a}/${b}`, text = null, skip = null } = o;
       const ws = words(q);
       const groups = GROUPS.map((g) => ({ ...g, total: 0, hits: [] }));
       if (!ws.length) return { groups: groups.filter((g) => g.total), words: ws, total: 0 };
+      const unread = () => [...(skip || [])].map((k) => ({ ref: k.slice(5), title: src.get(k)?.title || 'Chat' }));
+      // a lean source's docs' text, from its file (null: it can't be read back now)
+      const back = (key, docs) => {
+        const out = new Map(); const need = [];
+        for (const d of docs) { const v = backs.get(d); if (v) { backs.delete(d); backs.set(d, v); out.set(d, v.t); } else need.push(d); }
+        if (!need.length) return out;
+        const s = src.get(key);
+        const got = text && s ? text(s.file, s.sig0, need) : null;
+        if (!got) return null;
+        for (const [d, t] of got) { out.set(d, t); backs.set(d, { t, key }); backChars += t.length; }
+        for (const [d, v] of backs) { if (backChars <= BACK_CHARS) break; backs.delete(d); backChars -= v.t.length; }
+        return out;
+      };
+      const again = (key) => query(spec, dirs, q, { ...o, skip: new Set([...(skip || []), key]) });
       const phrase = fold(String(q).trim().replace(/\s+/g, ' '));
       const keys = plan(spec, dirs, join).map((x) => x.key);
       // scored in two steps: every match by its words, its start and its age, as the docs are met (no copy of their text,
@@ -343,6 +396,7 @@
       const byScore = (a, b) => b.score - a.score || (b.d.at || 0) - (a.d.at || 0);
       const day30 = 30 * 864e5;
       for (const key of keys) {
+        if (skip?.has(key)) continue;
         const s = src.get(key);
         if (!s || !s.docs.length) continue;
         s.used = now;
@@ -350,16 +404,16 @@
         // array (a doc missing one word drops to 0)
         const nd = s.docs.length;
         let acc = null; let alive = 0;
+        const sw = s.words; const pos = s.pos; const post = s.post;
         for (const w of ws) {
           const best = new Uint8Array(nd); let any = false;
-          const exact = s.inv.get(w);
-          if (exact) { for (const i of exact) best[i] = 3; any = true; }
-          for (const t of s.words) {
-            if (t === w || t.length < w.length) continue;
-            const how = t.startsWith(w) ? 2 : w.length >= 3 && t.includes(w) ? 1 : 0;
+          for (let j = 0; j < sw.length; j++) {
+            const t = sw[j];
+            if (t.length < w.length) continue;
+            const how = t === w ? 3 : t.startsWith(w) ? 2 : w.length >= 3 && t.includes(w) ? 1 : 0;
             if (!how) continue;
             any = true;
-            for (const i of s.inv.get(t)) if (best[i] < how) best[i] = how;
+            for (let p = pos[j], pe = pos[j + 1]; p < pe; p++) { const i = post[p]; if (best[i] < how) best[i] = how; }
           }
           if (!any) { acc = null; break; }
           if (!acc) { acc = new Uint16Array(best); alive = 1; } else { alive = 0; for (let i = 0; i < nd; i++) { if (!acc[i]) continue; if (best[i]) { acc[i] += best[i]; alive = 1; } else acc[i] = 0; } }
@@ -370,12 +424,21 @@
           if (!acc[i]) continue;
           const d = s.docs[i];
           let score = acc[i] * d.w;
-          if (d.what !== 'code' && (phrase.length <= HEAD ? d.head.startsWith(phrase) : fold(d.text.slice(0, phrase.length)) === phrase)) score += 1;
+          let starts = false;
+          if (d.what === 'code') starts = false;
+          else if (phrase.length <= HEAD) starts = d.head.startsWith(phrase);
+          else if (d.text != null) starts = fold(d.text.slice(0, phrase.length)) === phrase;
+          else if (d.head.length === HEAD && sigma(d.head.slice(0, HEAD - 1)) === sigma(phrase.slice(0, HEAD - 1))) { // (a lean doc whose first words could be the phrase: its text read back)
+            const got = back(key, [d]);
+            if (!got) return again(key);
+            starts = fold(got.get(d).slice(0, phrase.length)) === phrase;
+          }
+          if (starts) score += 1;
           if (d.at) score += 0.5 * Math.exp(-Math.max(0, now - d.at) / day30);
           const P = per.get(d.g);
           P.g.total += 1;
           const top = P.top;
-          const f = { d, score };
+          const f = { d, score, key };
           if (top.length === CAND && byScore(f, top[CAND - 1]) >= 0) continue;
           let lo = 0; let hi = top.length;
           while (lo < hi) { const mid = (lo + hi) >> 1; if (byScore(f, top[mid]) < 0) hi = mid; else lo = mid + 1; }
@@ -383,14 +446,29 @@
           if (top.length > CAND) top.pop();
         }
       }
+      // (round 92, findmem92) the lean docs kept: their text read back, a file at a time
+      const lean = new Map();
+      for (const { top } of per.values()) for (const f of top) if (f.d.text == null) { const a = lean.get(f.key); if (a) a.push(f.d); else lean.set(f.key, [f.d]); }
+      const texts = new Map();
+      for (const [key, docs] of lean) {
+        const got = back(key, docs);
+        if (!got) return again(key);
+        for (const [d, t] of got) texts.set(d, t);
+      }
       for (const { g, top } of per.values()) {
         if (!top.length) continue;
-        for (const f of top) { f.low = f.d.what === 'code' ? (f.d.low ||= fold(f.d.text)) : fold(f.d.text); if (ws.length > 1 && f.low.includes(phrase)) f.score += 2 * f.d.w; }
+        for (const f of top) {
+          if (f.d.text == null) f.d = { ...f.d, text: texts.get(f.d) };
+          f.low = f.d.what === 'code' ? (f.d.low ||= fold(f.d.text)) : fold(f.d.text);
+          if (ws.length > 1 && f.low.includes(phrase)) f.score += 2 * f.d.w;
+        }
         if (ws.length > 1) top.sort(byScore);
         g.hits = top.slice(0, limit).map((f) => hitOf(f.d, f.low, ws, phrase, Math.round(f.score * 1000) / 1000));
       }
       const out = groups.filter((g) => g.total);
-      return { groups: out, words: ws, total: out.reduce((a, g) => a + g.total, 0) };
+      const r = { groups: out, words: ws, total: out.reduce((a, g) => a + g.total, 0) };
+      if (skip?.size) r.unread = unread();
+      return r;
     }
     return { put, drop, stale, plan, ensure, query, sweep, has: (k) => src.has(k), size: () => ({ sources: src.size, chars, docs: [...src.values()].reduce((a, s) => a + s.docs.length, 0) }), keys: () => [...src.keys()] };
   }
@@ -456,7 +534,7 @@
     const out = { left: e.left, built: e.built, buildMs: e.ms, size: ix.size() };
     if (msg.q != null && String(msg.q).trim()) {
       const q0 = env.now();
-      const r = ix.query(spec, msg.dirs, msg.q, { limit: msg.limit || 20, now: Date.now(), join: env.join });
+      const r = ix.query(spec, msg.dirs, msg.q, { limit: msg.limit || 20, now: Date.now(), join: env.join, text: env.big?.text || null });
       Object.assign(out, r, { queryMs: Math.round((env.now() - q0) * 10) / 10 });
     }
     ix.sweep(Date.now(), { keep: new Set(ix.plan(spec, msg.dirs, env.join).map((x) => x.key)) });
@@ -464,5 +542,100 @@
     return out;
   }
 
-  return { GROUPS, W, fold, tokens, words, hash, chatDocs, sceneDocs, sceneSig, boardDocs, worktableDocs, notesDocs, itemDocs, createIndex, run, marksIn };
+  // ---------- (round 92, findmem92) a lean chat's messages read back from its bytes (Node only: the store thread, tests) ----------
+  // leanReader(fs, cut?) → text(file, sig, docs) → Map(doc → its text, as msgDoc keeps it) | null when it can't be read
+  // back now (gone, held, cut short, or a message there isn't one any more): the caller never takes that as "nothing".
+  // sig: the file the docs were made from. The file as it is now: by the docs' own offsets; a newer one (saved since,
+  // its new words being read meanwhile): by their place k in it, from cut(file) → { sig, els } (the store thread's
+  // offsets kept per version of the file, chatwindow86) or, without one, the file cut here once per version.
+  // A message's text is taken from its own "text" bytes, only as far as msgDoc keeps it (MSG_CAP characters: at most 6
+  // bytes each), the rest of the message never parsed; any doubt (not a plain string there, the file not the one the
+  // docs were made from): the whole message parsed, as the index did.
+  const BS = 0x5c;
+  // the string at p (its opening quote): its first `lim` bytes, cut never inside a UTF-8 character nor an escape
+  function strHead(buf, p, lim) {
+    let c = p + 1 + lim;
+    while (c > p + 1 && (buf[c] & 0xc0) === 0x80) c -= 1;
+    let j = c - 1; while (j > c - 7 && j > p && buf[j] !== BS) j -= 1;
+    if (buf[j] === BS && j > p) {
+      let i0 = j; while (i0 - 1 > p && buf[i0 - 1] === BS) i0 -= 1;
+      if (!((j - i0) & 1) && j + (buf[j + 1] === 0x75 ? 6 : 2) > c) c = j; // (an escape starts at j and runs past c)
+    }
+    return JSON.parse(`"${buf.toString('utf8', p + 1, c)}"`);
+  }
+  // the message's own "text" string: found from its start when the keys before it hold strings (as the app writes a
+  // message: role, then text) and no other "text" comes after it (JSON.parse would keep the last one); else the whole
+  // message walked (bigchat-core textTok)
+  const TEXT_KEY = typeof Buffer !== 'undefined' ? Buffer.from('"text"') : null;
+  function quickTok(buf, n, BC) {
+    const ws = (p) => { while (p < n && buf[p] <= 0x20) p += 1; return p; };
+    let p = ws(0);
+    if (buf[p] !== 0x7b) return null;
+    for (let i = 0; i < 4; i++) {
+      p = ws(p + 1);
+      if (buf[p] !== 0x22) return null;
+      const kq = BC.strEnd(buf, p, n); if (kq < 0) return null;
+      const isText = kq - p === 5 && buf.toString('latin1', p + 1, kq) === 'text';
+      p = ws(kq + 1); if (buf[p] !== 0x3a) return null;
+      p = ws(p + 1); if (buf[p] !== 0x22) return null;
+      const vq = BC.strEnd(buf, p, n); if (vq < 0) return null;
+      if (isText) return buf.subarray(0, n).indexOf(TEXT_KEY, vq + 1) >= 0 ? null : [p, vq + 1];
+      p = ws(vq + 1); if (buf[p] !== 0x2c) return null;
+    }
+    return null;
+  }
+  function capText(buf, n, BC) {
+    const at = quickTok(buf, n, BC) || BC.textTok(buf, 0, n)?.text;
+    if (!at || at[1] - at[0] < 2 || buf[at[0]] !== 0x22 || buf[at[1] - 1] !== 0x22) return null;
+    const p = at[0]; const len = at[1] - p - 2;
+    // most text is a byte a character: a little past MSG_CAP bytes first; then at most 6 bytes a character (an escape)
+    for (const lim of [MSG_CAP + 2048, MSG_CAP * 6 + 16]) {
+      if (len <= lim) return cap(JSON.parse(buf.toString('utf8', p, at[1])), MSG_CAP);
+      const t = strHead(buf, p, lim);
+      if (t.length >= MSG_CAP) return cap(t, MSG_CAP);
+    }
+    return null;
+  }
+  function leanReader(fs, cut) {
+    const BC = require('./bigchat-core');
+    let mine = null;
+    cut ||= (file) => {
+      const st = fs.statSync(file); const sig = `${st.size}:${st.mtimeMs}`;
+      if (mine?.file === file && mine.sig === sig) return mine;
+      const buf = fs.readFileSync(file); const c = BC.scanBuf(buf);
+      if (c.bad || c.arrS < 0) return null;
+      mine = { file, sig, els: c.els };
+      return mine;
+    };
+    return function text(file, sig, docs) {
+      let fd = null;
+      try {
+        fd = fs.openSync(file, 'r');
+        const st = fs.fstatSync(fd); const now = `${st.size}:${st.mtimeMs}`;
+        let at = (d) => [d.s, d.e];
+        if (now !== sig) {
+          const c = cut(file);
+          if (!c || c.sig !== now || !c.els) return null;
+          at = (d) => (d.k * 2 + 1 < c.els.length ? [c.els[d.k * 2], c.els[d.k * 2 + 1]] : null);
+        }
+        const out = new Map(); let buf = Buffer.allocUnsafe(64 * 1024);
+        for (const d of docs) {
+          const r = at(d);
+          if (!r || r[1] <= r[0] || r[1] > st.size) return null;
+          const n = r[1] - r[0];
+          if (buf.length < n) buf = Buffer.allocUnsafe(n);
+          if (fs.readSync(fd, buf, 0, n, r[0]) !== n) return null;
+          const quick = now === sig ? capText(buf, n, BC) : null;
+          if (quick != null) { out.set(d, quick); continue; }
+          const m = JSON.parse(buf.toString('utf8', 0, n));
+          const t = typeof m?.text === 'string' ? m.text : '';
+          if (!t.trim() || (m.role !== 'user' && m.role !== 'assistant')) return null;
+          out.set(d, cap(t, MSG_CAP));
+        }
+        return out;
+      } catch { return null; } finally { if (fd !== null) { try { fs.closeSync(fd); } catch { /* closed */ } } }
+    };
+  }
+
+  return { GROUPS, W, fold, tokens, words, hash, chatDocs, sceneDocs, sceneSig, boardDocs, worktableDocs, notesDocs, itemDocs, createIndex, run, marksIn, leanReader };
 });
