@@ -117,6 +117,14 @@ const AppUIDialogs = (() => {
       for (const b of syncSec.querySelectorAll('.button-row > button:not([title])')) b.title = 'Keeps your Mac and PC the same through a cloud drive folder you already use (iCloud Drive, Google Drive, Dropbox, OneDrive)';
       syncSec.querySelector('label.check')?.setAttribute('title', 'Very big captures and renders travel too, in pieces that resume after a break');
       syncSec.querySelector('.two-here')?.setAttribute('title', 'The name this computer goes by in sync and in your chats');
+      // (round 89, packs89) off by default; sends only the newest part of a very long chat (16 MB or more) through the
+      // cloud folder. Used only while BOTH computers have it on (Hearth checks); else everything syncs as before.
+      const pkIn = el('input', { type: 'checkbox' }); const pkHint = el('span', { class: 'hint inline' });
+      const pkRow = el('label', { class: 'check sync-packs', title: 'A very long chat (thousands of messages) sends only its newest part each time, instead of the whole chat. Turn it on on both computers.' }, pkIn, 'Send very long chats in pieces (both computers need this update)', pkHint);
+      const pkShow = (p) => { pkIn.checked = Boolean(p?.on); pkHint.textContent = !p?.on ? '' : p.gate?.ok ? ' On: in use.' : p.gate?.why === 'older' || p.gate?.why === 'alone' || p.gate?.why === 'unreadable' ? ' On here: waiting for your other computer to have it on too (until then everything syncs as before).' : ''; };
+      pkIn.addEventListener('change', () => window.hub.sync.packs?.(pkIn.checked).then(pkShow).catch(() => {}));
+      window.hub.sync.status?.().then((st) => { pkRow.hidden = !st?.on; pkShow(st?.packs); }).catch(() => { pkRow.hidden = true; });
+      (syncSec.querySelector('label.check')?.after ? syncSec.querySelector('label.check').after(pkRow) : syncSec.append(pkRow));
     }
     pcSec.append(
       // (round 45, backupauto) "Last backup: 2 h ago ✓" with Backups… (backupauto.js; loaded right after the first screen)

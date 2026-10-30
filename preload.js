@@ -265,6 +265,7 @@ contextBridge.exposeInMainWorld('hub', {
     kinds: call('sync:kinds'), freeable: call('sync:freeable'), free: call('sync:free'), // (round 73, syncmedia73) What syncs · Free up space
     fix: call('sync:fix'), // (round 74, synchard74) a blocked file's fix button
     aside: call('sync:aside'), // (round 78, guardloss78) conflicts' losing sides kept aside (sync panel)
+    packs: call('sync:packs'), // (round 89, packs89) Send very long chats in pieces (Settings › Sync)
   },
   video: {
     tools: call('video:tools'),

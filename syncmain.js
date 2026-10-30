@@ -16,6 +16,11 @@ const { createEngine, hearthIn } = require('./sync-engine');
 const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
 const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
 const SAmain = require('./storeackmain'); // (round 77, storeack77) stores the main process holds in memory
+// (round 89, packs89) Settings › Sync › "Send very long chats in pieces": off by default. Off at start: no pack lane at all
+// (the engine runs exactly as before). Turned off while running: the lane stays but does nothing (its machine record
+// says so at once, so the other computer stops too). HEARTH_PACKS89=force (tests only) turns it on.
+const packsOn = () => Boolean(settings.packs) || process.env.HEARTH_PACKS89 === 'force';
+let packLane = null;
 
 let engine = null; let opts = null; let getWin = () => null;
 let watchers = []; let timer = null; let tick = null; let lastStatus = null;
@@ -76,7 +81,9 @@ const downloadAsked = new Map();
 function start() {
   stop();
   if (!settings.on || !settings.root) return;
+  packLane = packsOn() ? require('./syncpack').createPackLane({ on: packsOn, runOff: opts.store?.runOff ? (op, a) => opts.store.runOff(op, a) : undefined, log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); } }) : null; // (round 89, packs89)
   engine = createEngine({
+    ...(packLane ? { packs: packLane } : {}), // (round 89, packs89)
     dataDir: opts.dataDir, configPath: opts.configPath, themePath: opts.themePath, cloudRoot: settings.root,
     big: settings.big !== false,
     // (round 73, syncmedia73) kinds turned off on this computer are left alone; big files move on their own lane (a pass
@@ -353,6 +360,7 @@ function publicStatus() {
     transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
     scope: st?.scope || null, // (round 79, syncscope79) the last pass: scoped or whole (why), how much it looked at
     aside: st?.aside || [], // (round 78, guardloss78) the losing sides of conflicts settled by themselves, kept aside (the sync panel)
+    packs: { on: packsOn(), ...(st?.packs ? { gate: st.packs.gate, published: st.packs.published, took: st.packs.took, bytesUp: st.packs.bytesUp } : {}) }, // (round 89, packs89) Send very long chats in pieces
     ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
@@ -391,6 +399,15 @@ function register(ipcMain, win, o) {
   h('sync:conflicts', async () => (engine ? engine.conflicts() : []));
   h('sync:resolve', async (id, keep) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolve(String(id), ['theirs', 'both', 'merge'].includes(keep) ? keep : 'mine'); schedule(500, 'resolve'); return r; });
   h('sync:resolveAll', async (mode) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.resolveAll(['auto', 'newest', 'mine', 'theirs'].includes(mode) ? mode : 'auto'); schedule(500, 'resolve-all'); return { ok: true, ...r }; });
+  // (round 89, packs89) Send very long chats in pieces: undefined → the state; true / false → set. On: the engine starts
+  // again with the pack lane; off: the lane stays shut until the next start (its record no longer says "packs")
+  h('sync:packs', (on) => {
+    if (on !== undefined) {
+      settings = { ...settings, packs: Boolean(on) }; saveSettings();
+      if (on && engine && !packLane) start(); else schedule(300, 'packs');
+    }
+    return publicStatus().packs;
+  });
   h('sync:autoResolve', (on) => { if (on !== undefined) { settings = { ...settings, autoResolve: Boolean(on) }; saveSettings(); } return settings.autoResolve !== false; });
   h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict
   // (round 78, guardloss78) a conflict's losing side kept aside: the notes (no id), or one note's compare / both / theirs / dismiss

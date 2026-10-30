@@ -56,6 +56,16 @@ Your job: check the things below on real Windows and report back plain results (
 - Leave a scene running in live coding for 10 minutes on the PC and watch the sync panel / OneDrive activity: only small Lab files should move, not a big "three-history" file on every run.
 - First start after the update: open History (Sketch ▾ → Earlier versions) on an old scene. Are its earlier versions all there?
 
+## 4f. Very long chats in pieces (round 89) — only once BOTH the PC and the Mac have this update
+- Settings › This computer & sync: "Send very long chats in pieces (both computers need this update)" is there and **unticked**. Tick it on the PC only: the line should say it is waiting for your other computer. Everything keeps syncing as before.
+- Tick it on the Mac too. After a sync (Sync now on both), the PC's line should say "On: in use".
+- In your longest chat (ideally one over 16 MB; the sync panel / Settings' What syncs shows sizes), send a few messages on the PC. Watch OneDrive's activity: each reply should upload well under a megabyte, not the whole chat. On the Mac, does each reply arrive within the usual few seconds?
+- Leave that chat alone for 5 minutes: the whole chat file should upload once (a big upload, once).
+- Reply on the Mac in the same chat, then on the PC: the messages should all be there, in order, on both. Nothing doubled, nothing missing.
+- Edit the chat's title on both computers while one is offline (Wi-Fi off), then bring it back: one title wins on both, and the sync panel shows "Kept aside" for the other version (Compare works).
+- Untick it on the Mac: within a sync or two the PC's line goes back to "waiting", and the last replies still arrive (the whole file goes at once). Tick it again afterwards if you like.
+- Report: the upload size per reply you saw, how long a reply took to show on the other computer, and anything in the sync panel's "Waiting" list that stayed for more than a minute.
+
 ## 5. Projects (rounds 72–76)
 - Switch between 3 projects with the name ▾ switcher: does it feel instant? Any reload flashes?
 - First project opened after restarting Hearth: time to usable.
