@@ -27,16 +27,30 @@ const mainOf = (r) => (r?.delay ? { max: r.delay.max, blocks: (r.blocks || []).m
 const blocksOver = (r, ms) => (r?.blocks || []).filter((b) => b.ms >= ms);
 const key = async (k, code, mods = 0) => { for (const type of ['rawKeyDown', 'keyUp']) await smoke({ cdp: 'Input.dispatchKeyEvent', params: { type, key: k, code, modifiers: mods, windowsVirtualKeyCode: k.length === 1 ? k.toUpperCase().charCodeAt(0) : k === 'Enter' ? 13 : k === 'Escape' ? 27 : 0 } }); };
 // a step: what it took (ms), the window's longest tasks, the main process's busy stretches
+// (round 88, checkfix88) load-aware, as chatwindow86: each step runs under a light trace of the window's tasks
+// (dev/smoke.js { trace: 'start', tasks }), and each long task the observer saw over the budget is judged by its OWN CPU
+// time and the thread's wait for a CPU (dev/trace-stats.js longTasks): over on CPU (script, layout, GC) or blocked off
+// the CPU (a sync read) fails; over only because the box was busy is "can't tell" (out.cantTell), not a failure.
+// Without a trace: the wall time as before. window.BC_TRACECATS / BC_DUMP: extra categories / a file prefix per step.
+out.cantTell = [];
 async function step(name, fn, { taskBudget = BUDGET.task } = {}) {
   await lag(`before-${name}`);
+  const traced = await smoke({ trace: 'start', tasks: true, cats: window.BC_TRACECATS || '' }).then((r) => !r?.error).catch(() => false);
+  performance.mark(`bc84:${name}`);
   const t = performance.now();
   const res = await fn();
   const ms = r0(performance.now() - t);
   await wait(1500);
   const l = await lag(name);
+  const observed = longs.filter((x) => x.at >= t).map((x) => ({ at: x.at - t, ms: x.ms }));
+  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 50, budget: taskBudget, mark: `bc84:${name}`, observed }, ...(window.BC_DUMP ? { dump: `${window.BC_DUMP}-${name}.json` } : {}) }).catch(() => null) : null;
   const s = { ms, windowLong: longsSince(t).slice(0, 6), main: mainOf(l) };
+  if (lt) s.tasks = { verdict: lt.verdict, cpuMs: lt.cpuMs, runDelayMs: lt.runDelayMs, stealPct: lt.stealPct, long: (lt.tasks || []).slice(0, 4).map((x) => `${x.at}+${x.ms}ms (cpu ${x.cpuMs})`) };
   out[name] = Object.assign(s, res && typeof res === 'object' ? res : {});
-  if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
+  if (lt && ['ok', 'over', 'load'].includes(lt.verdict)) {
+    if (lt.verdict === 'over') out.problems.push(`${name}: the window held ${lt.tasks[0]?.ms} ms in one task (budget ${taskBudget}): ${lt.why}`);
+    else if (lt.verdict === 'load') out.cantTell.push(`${name}: a ${lt.tasks[0]?.ms} ms task over the ${taskBudget} ms budget, but the box, not the app: ${lt.why}`);
+  } else if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
   if (blocksOver(l, BUDGET.mainBlock).length) out.problems.push(`${name} held the main process: ${s.main.blocks.join('; ')}`);
   return s;
 }

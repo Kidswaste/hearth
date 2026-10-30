@@ -53,17 +53,33 @@ const cwStats = () => { const s = CW()?.stats?.(); return s ? { windowed: s.wind
 let wholesSeen = 0;
 const newWholes = () => { const w = CW()?.stats?.().wholes || []; const n = w.slice(wholesSeen); wholesSeen = w.length; return n; };
 // a step: what it took (ms), the window's longest tasks, the main process's busy stretches
+// (round 88, checkfix88) load-aware: each step runs under a light trace of the window's tasks (dev/smoke.js { trace:
+// 'start', tasks }), so a task over the budget is judged by its OWN CPU time and the thread's wait for a CPU
+// (dev/trace-stats.js longTasks): over on CPU (script, layout, GC) or blocked off the CPU (a sync read) fails; over
+// only because the box was busy is "can't tell" (out.cantTell), not a failure. The tasks judged are the ones the
+// window's own long-task observer saw, as before (the trace adds what each cost). Where no trace can be taken: the
+// wall time as before. window.CW86_TRACECATS: extra trace categories, window.CW86_DUMP: a file prefix for each step's
+// trace (to see what a long task was: Layout, GC, a reply received…).
+out.cantTell = [];
 async function step(name, fn, { taskBudget = BUDGET.task, wholeOk = false } = {}) {
   await lag(`before-${name}`);
   newWholes();
+  const traced = await smoke({ trace: 'start', tasks: true, cats: window.CW86_TRACECATS || '' }).then((r) => !r?.error).catch(() => false);
+  performance.mark(`cw86:${name}`);
   const t = performance.now();
   const res = await fn();
   const ms = r0(performance.now() - t);
   await wait(1500);
   const l = await lag(name);
+  const observed = longs.filter((x) => x.at >= t).map((x) => ({ at: x.at - t, ms: x.ms }));
+  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 50, budget: taskBudget, mark: `cw86:${name}`, observed }, ...(window.CW86_DUMP ? { dump: `${window.CW86_DUMP}-${name}.json` } : {}) }).catch(() => null) : null;
   const s = { ms, windowLong: longsSince(t).slice(0, 6), main: mainOf(l), deltas: ipcN(l, /chats:delta$/), wholeSaves: ipcN(l, /chats:save$/), ranges: ipcN(l, /chats:win$/) };
+  if (lt) s.tasks = { verdict: lt.verdict, cpuMs: lt.cpuMs, runDelayMs: lt.runDelayMs, stealPct: lt.stealPct, long: (lt.tasks || []).slice(0, 4).map((x) => `${x.at}+${x.ms}ms (cpu ${x.cpuMs})`) };
   out[name] = Object.assign(s, res && typeof res === 'object' ? res : {});
-  if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
+  if (lt && ['ok', 'over', 'load'].includes(lt.verdict)) {
+    if (lt.verdict === 'over') out.problems.push(`${name}: the window held ${lt.tasks[0]?.ms} ms in one task (budget ${taskBudget}): ${lt.why}`);
+    else if (lt.verdict === 'load') out.cantTell.push(`${name}: a ${lt.tasks[0]?.ms} ms task over the ${taskBudget} ms budget, but the box, not the app: ${lt.why}`);
+  } else if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
   if (blocksOver(l, BUDGET.mainBlock).length) out.problems.push(`${name} held the main process: ${s.main.blocks.join('; ')}`);
   const w = newWholes();
   if (!OFF && w.length && !wholeOk) out.problems.push(`${name} loaded the giant chat whole: ${w.map((x) => x.why).join(', ')}`);
@@ -226,7 +242,9 @@ await step('panels', async () => {
   r.safeReadMs = r0(performance.now() - t3);
   if (c) {
     ChatSafe.reader(c);
-    const dlg = await until(() => document.querySelector('dialog.chatsafe-reader .chatsafe-msg') && document.querySelector('dialog.chatsafe-reader'), 300);
+    // (round 88, checkfix88) the first page in whole before "Show earlier" (its button is off while a page goes in: a
+    // click then did nothing, and "afterEarlier" only counted the first page still arriving)
+    const dlg = await until(() => document.querySelector('dialog.chatsafe-reader .chatsafe-msg') && !document.querySelector('dialog.chatsafe-reader .chatsafe-earlier')?.disabled && document.querySelector('dialog.chatsafe-reader'), 300);
     const rows0 = dlg?.querySelectorAll('.chatsafe-msg').length || 0; mark('safeShown');
     const t4 = performance.now();
     dlg?.querySelector('.chatsafe-earlier')?.click();
