@@ -5,7 +5,7 @@
 const SyncPanel = (() => {
   let box = null; let anchor = null; let off = null; let sig = ''; let busy = false;
   let mode = 'main'; let kindsOpen = false; let freeList = null; let freeDone = null; // (round 73, syncmedia73) What syncs · Free up space
-  const api = () => window.hub?.sync;
+  let api = () => window.hub?.sync; // (round 92, syncpanel92) checks swap it (_setApi), as Sync's
   const MAC = /Mac/.test(navigator.platform); const WIN = /Win/.test(navigator.platform);
   const PLAT = { darwin: 'Mac', win32: 'PC', linux: 'Linux' };
   const HERE = MAC ? 'Mac' : WIN ? 'PC' : 'this computer';
@@ -21,7 +21,7 @@ const SyncPanel = (() => {
 
   // ---------- what is waiting, in plain words ----------
   const WHY = {
-    'cloud-only': 'only in the cloud for now',
+    'cloud-only': (st, rel) => (/^(refs|templates)\//.test(rel || '') ? 'a Lab file only in the cloud for now: it downloads by itself' : 'only in the cloud for now (online-only): “Download” below brings it here'), // (round 92, syncpanel92) what to do
     arriving: (st) => `on its way${st.peers?.[0]?.name ? ` from ${st.peers[0].name}` : ''}`,
     writing: 'being saved here; it goes up in a moment',
     deleting: 'deleted on the other computer; that is still arriving',
@@ -35,7 +35,7 @@ const SyncPanel = (() => {
     moving: 'moving now',
     pieces: (st) => `a very long chat: its newest part is still coming${st.peers?.[0]?.name ? ` from ${st.peers[0].name}` : ''}; it stays as it is here until all of it has arrived`, // (round 89, packs89)
   };
-  const whyText = (w, st) => { const v = WHY[w]; return typeof v === 'function' ? v(st) : v || 'waiting'; };
+  const whyText = (w, st, rel) => { const v = WHY[w]; return typeof v === 'function' ? v(st, rel) : v || 'waiting'; };
   WHY['disk-full'] = 'the disk is full: it waits for room'; // (round 74)
 
   // ---------- (round 74, synchard74) files that can't sync, in plain words, each with its fix ----------
@@ -67,7 +67,7 @@ const SyncPanel = (() => {
       const btn = w.fix && how ? el('button', { type: 'button', class: 'ghost small sp-fix', text: w.fix, dataset: { rel: b.rel, how }, title: how === 'rename' ? 'Renames it on this computer; links to it in your chats and scenes follow' : '', on: { click: (e) => fixOne(b, how, w.fix, e.currentTarget) } }) : null;
       return el('li', { class: 'sp-blk', dataset: { why: b.why } }, el('div', { class: 'sp-tr-top' }, el('span', { class: 'sp-name', text: Sync.nameOf(b.rel), title: b.rel }), btn), el('span', { class: 'hint', text: w.text }));
     });
-    const old = (st.peersOld || []).map((x) => el('p', { class: 'hint sp-old', text: `Hearth on ${x.name || 'the other computer'} is an older version: update it there too (⬆ Update), so it handles these cases as well.` }));
+    const old = (st.peersOld || []).map((x) => el('p', { class: 'hint sp-old', text: `Hearth on ${x.name || 'your other computer'} is an older version. Update it there (⬆ Update on that computer) so both keep files the same way; syncing goes on meanwhile.` })); // (round 92) plainer
     return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: `Can't sync (${list.length})` }) : null,
       list.length ? el('span', { class: 'hint', text: 'Each stays as it is on this computer: nothing is lost.' }) : null,
       list.length ? el('ul', { class: 'sp-wait' }, ...rows) : null, list.length > 8 ? el('span', { class: 'hint', text: `…and ${list.length - 8} more` }) : null, ...old);
@@ -292,7 +292,8 @@ const SyncPanel = (() => {
       list = (await Promise.all(raw.slice(0, 12).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || raw[i]);
     }
     const auto = Sync.lastAuto();
-    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, // (round 74) + what can't sync st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000),
+    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, /* (round 74) + what can't sync */ st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000), // (round 92, syncpanel92) these were inside the comment: a new conflict with the same count, or "checked 2 min ago", didn't redraw
+      (st.skippedBig || []).length, st.big, (st.peers || []).map((x) => `${x.name}:${Math.floor((x.lastSeen || 0) / 864e5)}`), st.need,
       mode, kindsOpen, freeList, freeDone, (st.aside || []).map((n) => n.id), [...asideOpen.keys()], /* (round 78) + kept aside */ (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
     if (my !== seq || !box) return;
     if (s === sig) { paintBars(st); return; } // nothing it shows changed: the DOM stays as it is (only the bars move)
@@ -303,7 +304,7 @@ const SyncPanel = (() => {
       el('div', { class: 'sp-title' }, el('h2', { text: Sync.shortLine() }),
         el('span', { class: 'hint', text: [st.on ? `with ${Sync.where()}` : '', st.at ? `checked ${ago(st.at)}` : '', Sync.peersLine()].filter(Boolean).join(' · ') })),
       el('button', { type: 'button', class: 'ghost small sp-x', text: '×', title: 'Close', attrs: { 'aria-label': 'Close the sync panel' }, on: { click: close } }));
-    const parts = [head];
+    const parts = [head, stateSec(st), peersSec(st)]; // (round 92, syncpanel92) what to do when sync stopped by itself · a computer gone quiet
     // the deletions guard
     if (st.held) parts.push(el('div', { class: 'sp-sec sp-warn' }, el('p', { text: `${st.held.deletes} files were deleted at once. Sync waits for your yes before deleting them everywhere.` }),
       el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: 'Review them by name…', on: { click: () => { close(); Sync.held(); } } }))));
@@ -331,15 +332,17 @@ const SyncPanel = (() => {
     const waiting = (st.waiting || []).filter((x) => !(lane.has(x.rel) && (x.why === 'moving' || x.why === 'queued')));
     const pendingRest = Math.max(0, (st.pending || 0) - (st.moving || 0));
     if (waiting.length || pendingRest) {
-      const cloudOnly = waiting.filter((x) => x.why === 'cloud-only').length;
+      const cloudOnly = waiting.filter((x) => x.why === 'cloud-only' && !/^(refs|templates)\//.test(x.rel)).length; // (round 92) a Lab file comes by itself
       parts.push(el('div', { class: 'sp-sec' }, el('b', { text: `Waiting (${Math.max(pendingRest, waiting.length)})` }),
-        el('ul', { class: 'sp-wait' }, ...waiting.slice(0, 6).map((x) => el('li', {}, el('span', { class: 'sp-name', text: Sync.nameOf(x.rel) }), el('span', { class: 'hint', text: whyText(x.why, st) })))),
+        el('ul', { class: 'sp-wait' }, ...waiting.slice(0, 6).map((x) => el('li', {}, el('span', { class: 'sp-name', text: Sync.nameOf(x.rel) }), el('span', { class: 'hint', text: whyText(x.why, st, x.rel) })))),
         waiting.length > 6 || pendingRest > waiting.length ? el('span', { class: 'hint', text: `…and ${Math.max(pendingRest, waiting.length) - Math.min(6, waiting.length)} more` }) : null,
         cloudOnly ? el('div', { class: 'sp-row' }, el('button', { type: 'button', class: 'ghost small', text: `Download ${cloudOnly === 1 ? 'it' : `those ${cloudOnly}`} now`, title: 'Big files your cloud drive keeps online only are never downloaded unless you ask', on: { click: async (e) => { e.currentTarget.disabled = true; await Sync.download(); sig = ''; render(); } } })) : null));
     }
     parts.push(transfersSec(st), kindsSec(st)); // (round 73, syncmedia73)
     if (auto && Date.now() - auto.at < 864e5) parts.push(el('p', { class: 'hint sp-auto', text: `Settled ${auto.done} conflict${auto.done === 1 ? '' : 's'} by itself ${ago(auto.at)} (merged; the other versions are in Deleted files).` }));
-    if (st.skippedBig?.length) parts.push(el('p', { class: 'hint', text: `${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer (Sync big videos is off).` }));
+    if (st.skippedBig?.length) parts.push(el('div', { class: 'sp-sec sp-big' }, el('span', { class: 'hint', text: `${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer only: “Sync big videos” is off.` }), // (round 92) + the button that changes it
+      st.big === false ? el('div', { class: 'sp-row' }, act('Sync big videos', () => Sync.big(true), 'Captures and renders over 100 MB go across too, in resumable pieces')) : null));
+    parts.push(detailsSec(st)); // (round 92, syncpanel92) the technical side, folded, with Copy details for Claude
     // the actions
     const now = el('button', { type: 'button', class: 'primary sp-now', text: 'Sync now', on: { click: async () => { now.disabled = true; now.textContent = 'Syncing…'; try { await Sync.now({ quiet: true }); } finally { now.disabled = false; now.textContent = 'Sync now'; sig = ''; render(); } } } });
     parts.push(el('div', { class: 'sp-foot' }, st.on ? now : el('button', { type: 'button', class: 'primary', text: 'Turn on sync…', on: { click: () => { close(); Sync.setup(); } } }),
@@ -351,6 +354,75 @@ const SyncPanel = (() => {
     box.replaceChildren(...parts.filter(Boolean));
     box.scrollTop = keepScroll;
     place();
+  }
+  // ---------- (round 92, syncpanel92) when sync stopped by itself: what happened and the button that fixes it ----------
+  // (the chip and the title say it short; this says it whole, as the menu and Sync now's note do: Sync.line())
+  function act(text, fn, title = '', primary = false) {
+    return el('button', { type: 'button', class: primary ? 'primary small sp-do' : 'ghost small sp-do', text, title, on: { click: async (e) => { e.currentTarget.disabled = true; try { await fn(); } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error', raw: err }); } finally { sig = ''; render(); } } } });
+  }
+  function stateSec(st) {
+    if (!st.on) return null;
+    const say = (warn, ...buttons) => el('div', { class: `sp-sec sp-state${warn ? ' sp-warn' : ''}` }, el('p', { text: Sync.line() }), buttons.length ? el('div', { class: 'sp-row' }, ...buttons) : null);
+    const pick = () => act('Pick the folder again…', () => { close(); return Sync.setup({ change: true }); }, 'Choose your cloud drive, or its folder, again (if it moved or has a new name)');
+    if (st.paused || st.state === 'paused') return say(false, act('Resume sync', () => Sync.pause(false), '', true));
+    if (st.state !== 'offline') return null;
+    if (st.error === 'missing' || st.error === 'emptied') {
+      return say(true, act('Start the cloud copy again from here', () => Sync.now({ fresh: true, quiet: true }), 'Makes the Hearth folder in your cloud drive again from this computer. Nothing here is deleted; your other computer merges with it when it syncs.', true), pick());
+    }
+    if (st.error === 'old-version') return say(true, act('Check for updates…', () => { close(); return window.Lazy.load('updater').then(() => Updater.check({ loud: true })); }, '', true));
+    if (st.error === 'held') return say(false); // it tries again by itself (Sync now is below)
+    return say(false, pick());
+  }
+  // a computer that hasn't synced for a week: it may be gone for good (Settings › Your computers can forget it)
+  function peersSec(st) {
+    const quiet = (st.peers || []).filter((p) => p.lastSeen && Date.now() - p.lastSeen > 7 * 864e5);
+    if (!st.on || !quiet.length) return null;
+    const days = (p) => Math.round((Date.now() - p.lastSeen) / 864e5);
+    return el('div', { class: 'sp-sec sp-peers' },
+      ...quiet.slice(0, 3).map((p) => el('span', { class: 'hint', text: `${p.name || 'A computer'} hasn't synced for ${days(p)} days. If it's gone for good, forget it in Your computers, so the others stop waiting for it.` })),
+      el('div', { class: 'sp-row' }, act('Your computers…', openComputers, 'Settings › This computer & sync › Your computers: every computer, when it was last seen, Forget this computer…')));
+  }
+  async function openComputers() {
+    close();
+    await AppUI.openSettings('');
+    for (let i = 0; i < 80; i++) { // (the fold shows once it has asked whether sync is on)
+      const f = document.querySelector('dialog.settings-dialog[open] .dv-fold');
+      if (f && !f.hidden) { f.open = true; f.scrollIntoView({ block: 'center' }); return; }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  // the technical side (paths, codes, the engine's words), folded: what a report or Claude needs, never the main text
+  let techOpen = false;
+  const when = (t) => (t ? new Date(t).toISOString().replace('T', ' ').slice(0, 19) : 'not yet');
+  function techLines(st) {
+    const L = [`state: ${st.paused ? 'paused' : st.state}${st.error && st.state !== 'error' ? ` (${st.error})` : ''} · checked ${when(st.at)} · last full sync ${when(st.lastOk)}`,
+      `cloud folder: ${st.cloudDir || st.root || 'not set'}${st.provider ? ` (${st.provider})` : ''}`];
+    if (st.machine) L.push(`this computer: ${typeof st.machine === 'string' ? st.machine : st.machine.name} (${navigator.platform})`);
+    for (const p of st.peers || []) L.push(`other computer: ${p.name} (${p.platform}) last seen ${when(p.lastSeen)}`);
+    for (const p of st.peersOld || []) L.push(`older sync format: ${p.name} (format ${p.format})`);
+    if (st.need) L.push(`the cloud copy needs sync format ${st.need}: this Hearth is older`);
+    if (st.state === 'error' && st.error) L.push(`error: ${st.error}`);
+    if (st.lastError) L.push(`last problem: ${[st.lastError.op, st.lastError.rel, st.lastError.code].filter(Boolean).join(' ')}: ${st.lastError.message}`);
+    if (st.held) L.push(`deletions waiting for a yes: ${st.held.deletes}`);
+    if (st.conflicts) L.push(`conflicts: ${st.conflicts}`);
+    for (const b of (st.blocked || []).slice(0, 20)) L.push(`can't sync: ${b.rel} (${b.why}${b.where ? `, ${b.where}` : ''})`);
+    for (const w of (st.waiting || []).slice(0, 20)) L.push(`waiting: ${w.rel} (${w.why})`);
+    for (const t of (st.transfers || []).slice(0, 10)) L.push(`big file: ${t.op} ${t.rel} ${t.done || 0}/${t.total || 0} bytes${t.moving ? ', moving' : ''}`);
+    for (const a of (st.aside || []).slice(0, 8)) L.push(`kept aside: ${a.rel} (${a.why}, ${a.side})`);
+    if (st.skippedBig?.length) L.push(`big videos kept here: ${st.skippedBig.length}`);
+    if (st.packs) L.push(`very long chats in pieces: ${st.packs.on ? 'on' : 'off'}${st.packs.gate?.why ? ` (waits: ${st.packs.gate.why})` : ''}`);
+    if (st.scope) L.push(`last look: ${st.scope.mode}${st.scope.why ? ` (${st.scope.why})` : ''}, ${st.scope.looked || 0} items`);
+    return L;
+  }
+  function detailsSec(st) {
+    if (!st.on) return null;
+    const text = techLines(st).join('\n');
+    const d = el('details', { class: 'sp-details', ...(techOpen ? { open: true } : {}) },
+      el('summary', { text: 'Details', title: 'The technical side: folders, codes, what the sync engine said (for a report)' }),
+      el('pre', { class: 'sp-tech', text }),
+      el('button', { type: 'button', class: 'ghost small sp-copy', text: 'Copy details for Claude', title: 'Puts these lines on your clipboard (nothing is sent anywhere): paste them into a chat with Claude', on: { click: () => copyText(`Hearth sync details, ${when(Date.now())} (for Claude):\n${text}`, 'Sync details copied') } }));
+    d.addEventListener('toggle', () => { techOpen = d.open; });
+    return d;
   }
   // ---------- (round 78, guardloss78) kept aside ----------
   // Where both computers changed the same thing and sync picked one version by itself (a save right after the other
@@ -432,5 +504,5 @@ const SyncPanel = (() => {
     box?.remove(); box = null; sig = ''; mode = 'main'; freeList = null; freeDone = null;
   }
   const toggle = (at) => (box ? (close(), null) : open(at));
-  return { open, close, toggle, isOpen: () => Boolean(box), render: () => { sig = ''; return render(); } };
+  return { open, close, toggle, isOpen: () => Boolean(box), render: () => { sig = ''; return render(); }, _setApi: (fn) => { api = fn || (() => window.hub?.sync); } };
 })();

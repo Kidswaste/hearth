@@ -156,6 +156,12 @@ const SyncConflicts = (() => {
     return dialog;
   }
 
+  // (round 92, syncpanel92) "2026-10-29" → "yesterday" / "on 29 Oct"
+  function dayWord(day) {
+    const d = new Date(`${day}T12:00:00`); if (Number.isNaN(d.getTime())) return day || '';
+    const n = Math.round((new Date().setHours(12, 0, 0, 0) - d.getTime()) / 864e5);
+    return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `on ${d.toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+  }
   // deleted files (from any computer): restorable for 30 days
   async function trash() {
     const list = await api().trash();
@@ -166,12 +172,13 @@ const SyncConflicts = (() => {
       const f = q.value.trim().toLowerCase();
       const l = list.filter((t) => !f || t.rel.toLowerCase().includes(f) || nameOf(t.rel).toLowerCase().includes(f)).slice(0, 200);
       rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
-        el('div', { class: 'sync-row-main' }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? `${t.rel} · saved before the last incoming sync` : `${t.rel} · deleted ${t.day}${t.where === 'here' ? ' (removed here because the other computer deleted it)' : ''}` })),
+        // (round 92, syncpanel92) the name and when in words; the path only on hover (it was the first thing on each row)
+        el('div', { class: 'sync-row-main', title: t.rel }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : `deleted ${dayWord(t.day)}${t.where === 'here' ? ' (removed here because your other computer deleted it)' : ''}` })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
           let r = await api().restore(t.id);
           // (round 19) undoing a conflict choice: the version in place goes to the trash, this one comes back
           if (!r.ok && r.exists && await Modal.confirm('Put this version back?', `${nameOf(t.rel)} is there now. Put this version back? The one in place goes to Deleted files (it can come back too).`, { ok: 'Put it back' })) r = await api().restore(t.id, { replace: true });
-          if (!r.ok) { if (!r.exists) toast(r.error, { type: 'error' }); return; }
+          if (!r.ok) { if (!r.exists) toast(window.calmError ? calmError(r.error, { where: 'sync' }) : r.error, { type: 'error', raw: r.error }); return; } // (round 92) plain words, the raw reason under Details
           e.target.disabled = true; e.target.textContent = 'Restored';
           toast(`Restored ${nameOf(r.rel)}`, { timeout: 2500 });
         } } }))))
@@ -179,7 +186,8 @@ const SyncConflicts = (() => {
     };
     q.addEventListener('input', draw);
     draw();
-    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files & previous versions' }), list.length > 10 ? q : null, rows,
+    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files & previous versions' }),
+      el('p', { class: 'hint', text: 'Kept for 30 days. Restore brings one back here, and sync takes it to your other computer.' }), list.length > 10 ? q : null, rows, // (round 92)
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dialog.close() } }))));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);

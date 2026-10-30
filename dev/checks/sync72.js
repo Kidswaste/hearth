@@ -77,7 +77,7 @@ await until(() => /waiting/.test(chip()) && /Waiting/.test(panel()?.textContent 
 const cs = dot()?.querySelector('.sync-chip');
 step('a file still arriving: "↻ 1 waiting" in the rail, whole (not cut off)', /^↻ 1 waiting$/.test(chip()) && cs.scrollWidth <= cs.clientWidth + 1, { chip: chip(), scroll: cs?.scrollWidth, client: cs?.clientWidth, dot: dot()?.getBoundingClientRect().width, rail: document.getElementById('rail').clientWidth });
 const waitRow = [...(panel()?.querySelectorAll('.sp-wait li') || [])].map((li) => li.textContent).join(' | ');
-step('the panel names it and says why, in words', /Waiting \(1\)/.test(panel().textContent) && /sync72-arriving|Arriving/.test(waitRow) && /on its way from Studio Mac/.test(waitRow), waitRow);
+step('the panel names it and says why, in words', /Waiting \(1\)/.test(panel().textContent) && /sync72-arriving|Arriving|A chat/.test(waitRow) && /on its way from Studio Mac/.test(waitRow), waitRow);
 // it arrives whole: the journal now says its real size
 const size = (await window.hub.fs.stat(F('chats/sync72-arriving.json'))).size;
 await window.hub.fs.write(`${CLOUD}/Hearth/.sync/journal/${MAC.id}.jsonl`, `${JSON.stringify({ t: Date.now() - 10, op: 'put', rel: 'chats/sync72-arriving.json', h: 'x', s: 99999 })}\n${JSON.stringify({ t: Date.now(), op: 'put', rel: 'chats/sync72-arriving.json', s: size })}\n`);

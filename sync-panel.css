@@ -71,3 +71,8 @@
 .sp-blk .sp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sp-fix { flex: none; padding: 1px 8px; }
 .sp-old { margin: 4px 0 0; }
+/* (round 92, syncpanel92) what to do when sync stopped by itself · the technical side, folded */
+.sp-state > p { margin: 0; }
+.sp-details { border-top: 1px solid var(--line, #333); padding-top: 6px; }
+.sp-details > summary { cursor: pointer; color: var(--muted, #999); font-size: 12px; }
+.sp-tech { margin: 6px 0; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 11px; color: var(--muted, #999); }
