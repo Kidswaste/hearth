@@ -11,6 +11,21 @@
 //     the timeline plays the copy, and the copy reaches the cloud folder
 //   node dev/smoke.js --check-timeout 240000 --lib dev/checks/journey-lib.js --script dev/checks/labsync88.js
 const { step, wait, until } = J;
+// (round 93, tidy93) this check once hit an uncaught "ResizeObserver loop completed with undelivered notifications" that
+// six later runs (under 4–8 busy CPUs, with a probe on every observer) didn't hit again. If it comes back, the run says
+// which observers' callbacks ran in that frame: each observer made from here on (the Lab's) is named by where it was made.
+// Nothing changes for them: the callback is called as it is, no layout is read.
+const roSeen = { frame: [], loops: [] };
+{
+  const RO = window.ResizeObserver; // (the callbacks of one frame's delivery run together, right before its loop error)
+  window.ResizeObserver = class extends RO {
+    constructor(cb) {
+      const at = (new Error().stack.split('\n')[2] || '').trim().replace(/^at /, '').replace(/\(?(?:file|https?):\/\/\S*\/([^/]+:\d+):\d+\)?/, '($1)');
+      super((entries, obs) => { const t = performance.now(); roSeen.frame = roSeen.frame.filter((x) => t - x.t < 50).concat({ t, at, n: entries.length }); return cb(entries, obs); });
+    }
+  };
+  addEventListener('error', (e) => { if (/ResizeObserver loop/.test(e.message || '')) roSeen.loops.push(roSeen.frame.filter((x) => performance.now() - x.t < 50).map((x) => `${x.at} ×${x.n}`)); }, true);
+}
 const ls = (k, d) => { try { const v = localStorage.getItem(`hub.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } }; // the Lab's storage (ui.js store)
 const api = window.hub.sync;
 const T0 = Date.now();
@@ -118,4 +133,5 @@ await until(async () => (await window.hub.fs.stat(cloudOf(`refs/${copyName}`)).c
 step('…and the copy reaches the cloud folder (the other computer gets it)', (await window.hub.fs.stat(cloudOf(`refs/${copyName}`)).catch(() => null))?.size > 0, copyName);
 
 await api.off();
+step('no ResizeObserver loop (else: the observers whose callbacks ran in that frame)', !roSeen.loops.length, roSeen.loops.slice(0, 3));
 return J.done();

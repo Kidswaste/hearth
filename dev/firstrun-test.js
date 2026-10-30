@@ -59,6 +59,14 @@ const eng = (report, problems = []) => ({ report: { label: 'Claude Code', semver
   await ok('sync: on, the Hearth from the other computer to join, a drive to use, no drive, inside the drive', () => {
     assert.strictEqual(row({ sync: { status: { on: true, state: 'synced' }, line: 'Everything is synced' } }, 'sync').state, 'ok');
     assert.strictEqual(row({ sync: { status: { on: true, state: 'offline', error: 'missing' } } }, 'sync').state, 'fix');
+    // (round 93, tidy93) emptied / too old are "to fix" too (each with its button); held (records unreadable) and plain offline aren't
+    const emptied = row({ sync: { status: { on: true, state: 'offline', error: 'emptied' }, line: 'The Hearth folder in iCloud Drive is empty right now' } }, 'sync');
+    assert.strictEqual(emptied.state, 'fix'); assert.strictEqual(emptied.action.kind, 'sync'); assert.strictEqual(emptied.text, 'The Hearth folder in iCloud Drive is empty right now');
+    const old = row({ sync: { status: { on: true, state: 'offline', error: 'old-version' } } }, 'sync');
+    assert.strictEqual(old.state, 'fix'); assert.deepStrictEqual(old.action, { kind: 'update', label: 'Check for updates…' });
+    const held = row({ sync: { status: { on: true, state: 'offline', error: 'held' } } }, 'sync');
+    assert.strictEqual(held.state, 'note', 'a read failure waits by itself: Good to know, never Ready'); assert.strictEqual(held.action, undefined);
+    assert.strictEqual(row({ sync: { status: { on: true, state: 'offline' } } }, 'sync').state, 'ok', 'plain offline');
     const j = row({ sync: { status: { on: false }, detect: { proposed: { label: 'iCloud Drive', root: '/x', hearth: { machines: [{ name: 'Studio Mac' }] } } } } }, 'sync');
     assert.strictEqual(j.state, 'fix'); assert.strictEqual(j.action.label, 'Use this Hearth'); assert.match(j.text, /Studio Mac/);
     assert.strictEqual(row({ sync: { status: { on: false }, detect: { proposed: { label: 'Dropbox', root: '/d' } } } }, 'sync').state, 'optional');
