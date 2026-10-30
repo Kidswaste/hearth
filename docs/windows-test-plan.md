@@ -44,6 +44,11 @@ Your job: check the things below on real Windows and report back plain results (
 ## 4c. Engines and first Play (round 79)
 - After a restart, open the doctor (Claude / Astra) — engines found? Then ▶ Play a game you played recently: did the window freeze at all?
 
+## 4d. Lab between PC and Mac (round 87)
+- Import a big model or texture (over 8 MB, ideally ~50 MB) into a Lab scene on the PC. On the Mac, open that scene: does the model appear by itself (no "Download the big files now" needed)? Time it.
+- Delete a scene on one computer: does it show in the other computer's Deleted sketches without a restart?
+- Make a trigger preset or saved palette on one computer: does it appear on the other?
+
 ## 5. Projects (rounds 72–76)
 - Switch between 3 projects with the name ▾ switcher: does it feel instant? Any reload flashes?
 - First project opened after restarting Hearth: time to usable.
