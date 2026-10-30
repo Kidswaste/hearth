@@ -91,6 +91,18 @@ Your job: check the things below on real Windows and report back plain results (
 - If anything sticks: right-click ▶ Play › 📈 Test play performance on the same scene and paste the report, plus the
   `/lab perf` line.
 
+## 8. Shaders made mid-scene and 4K pictures in slices (round 90, labcompile90)
+- Run the check if Node is available: `node dev/run-checks.js --exact labcompile90` (about 2 min). Report the result
+  line and, from `labcompile90.log` in the output folder, for each stretch (`runtime:mats`, `runtime:swap`,
+  `runtime:light`, `runtime:glass`, `glass:shown`, `texture`): `p50`, `p99`, `max`, `visibleInFrameCompiles` (should
+  be 0), `compiles`, `over2x`, `over2xApp`, and `khr` (true on the 4080). From the `lc` block: `maxWait`, `waits`,
+  `done`, `late` (should be 0) and `khr`. From `texture`: `biggestUploadMP` (≤ 4.2), and `slices` (`pictures`,
+  `slices`, `ms`, `maxMs`: the longest single slice on the real card).
+- By eye, in Hearth, preview on Auto: in a playing scene, add a light from the Director ("add a red point light") and
+  a glass sphere ("add a glass ball"): does the picture stick for even a moment, or does the new thing just appear?
+  Drop a 4K photo into a scene's references and use it: is there a jolt when it shows?
+- In `/lab perf`, paste the line after doing the above.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.

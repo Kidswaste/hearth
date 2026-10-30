@@ -115,6 +115,51 @@ check(iCap > 0 && iLock > iCap, 'a show (Present / ▶ Play lock) still draws at
     Promise.all(ps).then(() => check(true, 'every hand-over resolves (a render\'s exact frame waits on it)'));
   }
 }
+// (round 90, labcompile90) a 4K picture in slices: its memory first, then ~2 MP a frame, mipmaps with the last, then the
+// scene's texture takes it over (nothing uploaded again); two renderers drawing it: one piece, as before
+{
+  const src = /const UPQ = \{[\s\S]*?\nfunction upFlush\(k\) \{[\s\S]*?\n\}\n/.exec(html)?.[0];
+  check(Boolean(src && /function upSlice\(/.test(src)), 'the slices are in the uploads\' queue');
+  if (src) {
+    class Source { constructor(d) { this.data = d; this.dataReady = true; this.version = 0; } }
+    class Texture { constructor(img) { this.source = new Source(img); this.version = 0; this.flipY = true; this.generateMipmaps = true; this.minFilter = 1008; this.colorSpace = 'srgb'; } get image() { return this.source.data; } set image(v) { this.source.data = v; } set needsUpdate(v) { if (v) { this.version += 1; this.source.version += 1; } } dispose() { this.disposed = true; } }
+    class Vector2 { constructor() { this.x = 0; this.y = 0; } set(x, y) { this.x = x; this.y = y; return this; } }
+    class Box2 { constructor(a, b) { this.min = a; this.max = b; } }
+    class ImageBitmap { constructor(w, h) { this.width = w; this.height = h; } }
+    const mkEnv = (nR) => {
+      const frames = []; const after = []; const log = [];
+      const tex = new Texture(); tex.wrapS = 1001;
+      const bmp = new ImageBitmap(4096, 4096);
+      const mkR = (id) => ({ __lastScene: { traverse: (fn) => fn({ material: { map: tex } }) }, capabilities: { maxTextureSize: 16384 }, getContext: () => ({ isContextLost: () => false }),
+        initTexture: (t) => log.push({ id, op: 'init', t, ready: t.source.dataReady, ver: t.source.version }), copyTextureToTexture: (s, d, box, at) => log.push({ id, op: 'copy', y0: box.min.y, y1: box.max.y, w: box.max.x - box.min.x, at: at.y, mips: d.generateMipmaps, d }) });
+      const env = { XP_PAGE: false, realRAF: (f) => frames.push(f), realSetTimeout: (f, ms) => { if (ms === 0) after.push(f); return 1; }, realClearTimeout: () => {}, realNow: () => 0, THREE: { Texture, Box2, Vector2 }, ImageBitmap, renderers: new Set(Array.from({ length: nR }, (_, i) => mkR(i))) };
+      const { upRelease, UPQ } = new Function(...Object.keys(env), `${src}\nreturn { upRelease, UPQ };`)(...Object.values(env));
+      const tick = () => { const l = frames.splice(0); for (const f of l) f(); const a = after.splice(0); for (const f of a) f(); };
+      return { upRelease, UPQ, tex, bmp, log, tick };
+    };
+    const E = mkEnv(1); let one = 0; let resolved = false;
+    E.upRelease(() => { one += 1; }, 4096 * 4096, E.tex, E.bmp).then(() => { resolved = true; });
+    let n = 0; const per = [];
+    for (; n < 30 && !E.log.some((x) => x.op === 'init' && x.t === E.tex); n++) { const k = E.log.length; E.tick(); per.push(E.log.slice(k).filter((x) => x.t !== E.tex).length); }
+    const copies = E.log.filter((x) => x.op === 'copy');
+    const alloc = E.log[0];
+    check(alloc?.op === 'init' && alloc.t !== E.tex && alloc.ready === false, 'a 4K picture: its memory made first, no pixels (one gap)', alloc && { op: alloc.op, ready: alloc.ready });
+    check(copies.length === 8 && copies.every((c, i) => c.y0 === i * 512 && c.y1 === c.y0 + 512 && c.at === c.y0 && c.w === 4096), 'then 8 slices of 4096 × 512 (2.1 MP), in order, each at its own rows', copies.map((c) => `${c.y0}-${c.y1}`));
+    check(per.length === 9 && per.every((k) => k === 1), 'one upload a frame (the memory, then a slice per gap after a frame)', per);
+    check(copies.slice(0, -1).every((c) => c.mips === false) && copies.at(-1).mips === true, 'the mipmaps made once, with the last slice', copies.map((c) => c.mips));
+    const take = E.log.at(-1);
+    check(take?.op === 'init' && take.t === E.tex && E.tex.source === copies[0].d.source && E.tex.version === 1 && take.ver === copies[0].d.source.version && E.tex.flipY === false, 'then the scene\'s texture takes it over (same source, its version unchanged: nothing uploaded again)', { ver: E.tex.version });
+    check(copies[0].d.disposed === true && E.tex.source.dataReady === true, 'the slices\' texture let go, the picture marked ready for a later upload');
+    check(one === 0 && E.UPQ.q.length === 0, 'the one-piece hand-over never ran', one);
+    setTimeout(() => check(resolved, 'the hand-over resolves when the last slice is in (an exact frame waits on it)'), 0);
+    const F = mkEnv(2); let one2 = 0;
+    F.upRelease(() => { one2 += 1; }, 4096 * 4096, F.tex, F.bmp); F.tick();
+    check(one2 === 1 && !F.log.some((x) => x.op === 'copy'), 'two renderers drawing it: one piece, as before', { one2 });
+    const G = mkEnv(1); let one3 = 0;
+    G.upRelease(() => { one3 += 1; }, 1500 * 1000, G.tex, new ImageBitmap(1500, 1000)); G.tick();
+    check(one3 === 1, 'a picture under 4 MP: one piece, as before', { one3 });
+  }
+}
 // ---------- ▶ Play's wiring ----------
 const gm = fs.readFileSync(path.join(ROOT, 'gamemode.js'), 'utf8'); const gmm = fs.readFileSync(path.join(ROOT, 'gamemodemain.js'), 'utf8'); const gp = fs.readFileSync(path.join(ROOT, 'game-preload.js'), 'utf8');
 check(/quality: qualityPref\(\)/.test(gm) && /label: `Quality: \$\{qualityPref\(\) === 'full' \? 'Full' : 'Auto'\}`/.test(gm), '▶ Play: the choice goes with the game, and ▶ Play\'s menu shows Quality: Auto / Full');

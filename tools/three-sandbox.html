@@ -577,32 +577,37 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // timeline; then, while presenting, 100 % quality is held (RDY.lock: no adaptive steps, no doze, no Light mode, no fps
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
-const RDY = { lock: false, rec: null, pend: 0, reveal: 0, revealed: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
+const RDY = { lock: false, rec: null, pend: 0, reveal: 0, revealed: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0, inF: 0, waitF: 0 } };
 // (round 56, readyspeed) when ▶ Play's pictures arrived, were decoded (off the page's thread) and transcoded (KTX2, in workers): page times, ms
 const RDYT = { refsAt: null, decodeFrom: null, decodeTo: null, decodeN: 0, ktxFrom: null, ktxTo: null, ktxN: 0 };
 const rdyT = (k, t0) => { const t = realNow(); if (RDYT[`${k}From`] == null || t0 < RDYT[`${k}From`]) RDYT[`${k}From`] = t0; if (RDYT[`${k}To`] == null || t > RDYT[`${k}To`]) RDYT[`${k}To`] = t; RDYT[`${k}N`] += 1; };
 for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
   if (!P) continue;
   const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
-  wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; return f.call(this, sh); });
-  wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; return f.call(this, pr); });
+  // (round 90, labcompile90) and how many of them ran inside one of the page's frame callbacks (FR.inRaf): a compile in
+  // the gap after a frame doesn't make a frame late on a graphics card that compiles in the background
+  wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; if (FR.inRaf) RDY.gl.inF += 1; return f.call(this, sh); });
+  wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; if (FR.inRaf) RDY.gl.inF += 1; return f.call(this, pr); });
   // (round 52, gameready) time the page waits for the GPU's shader work (a status read blocks until it's compiled /
   // linked; programs from Chromium's shader disk cache come back sooner): ms, cumulative
-  wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { RDY.gl.waitMs += realNow() - t; } });
+  wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { const d = realNow() - t; RDY.gl.waitMs += d; if (FR.inRaf) RDY.gl.waitF += d; } });
   // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame).
   // (round 55, labplay55) the texture is asked for at the upload (the context keeps its bindings: no GPU round trip)
   // instead of following every activeTexture / bindTexture call: those run many times a frame in a game, uploads rarely
   // (round 60, gcchurn60) a game's canvas / data texture is uploaded every frame: `arguments` only handed on (strict: the
   // optimiser passes them through; `...a` made an array on every upload)
-  const up = (f) => function (tg) {
+  // (round 90, labcompile90) while the hitch recorder is on, the biggest single upload that carried pixels (a whole 4K
+  // picture, or one slice of it: see "big pictures in slices"), inside a frame or not
+  const up = (f, m) => function (tg) {
     'use strict';
     const gl = this;
+    if (HX.on) { const mp = hxCall(m, arguments); if (mp > HX.big) HX.big = mp; if (FR.inRaf && mp > HX.bigF) HX.bigF = mp; }
     const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
     let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
     if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; if (HX.on) { const mp = hxPx(arguments); HX.px += mp; if (FR.inRaf) HX.pxF += mp; } } else RDY.gl.reuploads += 1;
     return f.apply(this, arguments);
   };
-  for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
+  for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, (f) => up(f, m));
 }
 // models (and textures) loading through three.js's default manager: how many are still on their way
 try {
@@ -722,10 +727,177 @@ function replayDraw(r, renderFn, scene, camera) {
   const lvBack = EL && mode === 'sketch' && !r.__helper ? lvRender(r, scene, camera, EL) : null;
   const camBack = EL && SQ.cam ? sqCamFx(EL, camera) : null;
   const rfBack = RF.on && !r.__helper ? rfApply(camera) : null;
-  try { renderFn.call(r, scene, camera); } finally { rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+  const lp = r.__lcP; const lcOn = lp != null && lp.scene === scene && lcHide(r, lp); // (round 90: what still compiles waits here too)
+  LC.inR += 1;
+  try { renderFn.call(r, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
   r.domElement.__dE = FR.E; r.domElement.__dR = FR.inRaf;
   if (!FR.inRaf && !FR.armed) { FR.armed = true; realRAF(frArm); }
 }
+// ---------- shaders first made while a scene runs (round 90, labcompile90) ----------
+// Round 89 compiles a layer's scene before its first frame, hidden things included. What a scene makes WHILE it runs
+// still compiled inside the first frame that drew it: a mesh added with a new material, a mesh given a new one, a
+// light added (every lit material needs a new program for it), glass (transmission: three draws the scene once more
+// into a buffer, with other variants of every opaque material). Now:
+//  - what can bring a new program is noticed as it happens: Object3D.add of something drawable or a light, a material
+//    made or told needsUpdate (three bumps its `version` both times: read through an accessor on the prototype). While
+//    nothing changes, a render compares one number.
+//  - the next render of that scene finds its new things (materials this renderer has no program for, lights it hasn't
+//    seen) and they wait: a new mesh is hidden, a mesh given a new material keeps drawing with its old one, a new light
+//    stays off. The rest of the scene draws as before.
+//  - their programs are made in a task right after that frame (the gap before the next one: at 60 on a 240 Hz screen,
+//    three free refreshes). With background compiling (KHR_parallel_shader_compile) through compileAsync: they show
+//    when the graphics card says they're ready. Without: compiled and linked there, they show on the next frame. Never
+//    more than 2.5 s.
+//  - glass: the variants three's transmission pass draws with (into a target: no tone mapping, linear colours, the
+//    back faces of double-sided glass) are compiled too, here and in round 89's compile before the first frame.
+//  - a scene that changes on most frames (a game spawning things with new materials) stops being watched for a while
+//    (3 s, then 12 s, 48 s, at most 2 min): its new things show at once, compiled in their frame, as before.
+// Not covered (compiled in the frame that first needs them, as before): a light removed or shown again, a shadow
+// caster's first shadow pass, a second scene drawn by the same renderer, materials made inside three's render.
+const LC = { ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0 };
+try {
+  const OP = THREE.Object3D.prototype; const add0 = OP.add;
+  if (typeof add0 === 'function') {
+    OP.add = function (o) {
+      'use strict';
+      if (!LC.inR && arguments.length === 1 && o && o.parent !== this && (o.isLight || o.material || o.children?.length)) LC.ver += 1;
+      return add0.apply(this, arguments);
+    };
+  }
+  const MP = THREE.Material.prototype;
+  if (!Object.getOwnPropertyDescriptor(MP, 'version')) {
+    Object.defineProperty(MP, 'version', {
+      configurable: true,
+      get() { return this.__lcv; },
+      set(v) { this.__lcv = v; if (!LC.inR) LC.ver += 1; }, // (a plain field: nothing made per material)
+    });
+  }
+} catch { /* compiled on first use, as before */ }
+// a material (or each of a list) this renderer already has a program for
+function lcHas(props, m) {
+  if (Array.isArray(m)) { for (let i = 0; i < m.length; i++) if (m[i] && !lcHas(props, m[i])) return false; return true; }
+  return props.has(m) && props.get(m).currentProgram !== undefined;
+}
+// the first look at a scene: everything in it is what it starts with (round 89 compiled it)
+function lcInit(scene) {
+  scene.__lcVer = LC.ver;
+  const lit = scene.__lcLit || (scene.__lcLit = new WeakSet());
+  scene.traverse((o) => { if (o.isLight) lit.add(o); else if (o.material) o.__lcM = o.material; });
+}
+function lcCheck(r, scene, camera) {
+  scene.__lcVer = LC.ver;
+  const now = realNow();
+  if (scene.__lcOff > now) return;
+  // how often it changes: checked on most frames (≈ 5 in a row: a game spawning things) → not watched for 3 s, then
+  // 12 s, 48 s… (each time 4× longer, at most 2 min)
+  const k = frameTick - (scene.__lcT ?? -1e9); scene.__lcT = frameTick;
+  scene.__lcRate = (scene.__lcRate || 0) * 0.8 ** Math.min(k, 60) + 1;
+  if (scene.__lcRate > 3.2) { scene.__lcOffN = (scene.__lcOffN || 0) + 1; scene.__lcOff = now + Math.min(120000, 3000 * 4 ** (scene.__lcOffN - 1)); scene.__lcRate = 0; LC.off += 1; return; }
+  const props = r.properties;
+  if (typeof props?.has !== 'function') return;
+  LC.checks += 1;
+  const lit = scene.__lcLit || (scene.__lcLit = new WeakSet());
+  const objs = []; const swap = []; const lights = []; let glass = false;
+  scene.traverse((o) => {
+    if (o.isLight) { if (!lit.has(o)) { lit.add(o); if (o.visible) lights.push(o); } return; }
+    const m = o.material;
+    if (!m || !(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
+    if (!glass && (Array.isArray(m) ? m.some((x) => x?.transmission > 0) : m.transmission > 0)) glass = true;
+    if (lcHas(props, m)) { o.__lcM = m; return; }
+    if (o.__lcM && o.__lcM !== m && lcHas(props, o.__lcM)) swap.push(o); else objs.push(o);
+  });
+  const old = r.__lcP;
+  if (old && old.scene === scene) for (const l of old.lights) if (!lights.includes(l)) lights.push(l);
+  if (!objs.length && !swap.length && !lights.length) { if (old && old.scene === scene) lcDone(r, old); return; }
+  // (a mesh with a light inside: compile() on it would count that light twice, so the whole scene is compiled)
+  const whole = lights.length > 0 || objs.length + swap.length > 24 || objs.some((o) => o.children.length > 0 && o.getObjectsByProperty('isLight', true).length > 0);
+  const P = { scene, camera, rt: r.getRenderTarget?.() || null, objs, swap, lights, glass, whole, tick: frameTick, t: now, vis: [], mats: [], lv: [] };
+  if (old) LC.pending = Math.max(0, LC.pending - 1);
+  r.__lcP = P; LC.pending += 1; LC.found += 1; LC.hidden += objs.length; LC.swapped += swap.length; LC.lights += lights.length;
+  realSetTimeout(() => lcAhead(r, P), 0); // (from inside the frame: the task right after it)
+}
+// in the gap after the frame: the new things' programs made
+function lcAhead(r, P) {
+  if (r.__lcP !== P) return;
+  let gone = r.__stale; try { gone = gone || r.getContext().isContextLost(); } catch { gone = true; }
+  if (gone) { lcDone(r, P); return; }
+  const khr = typeof r.compileAsync === 'function' && r.extensions?.has?.('KHR_parallel_shader_compile') === true;
+  const what = P.whole ? [P.scene] : P.objs.concat(P.swap);
+  const n0 = r.info?.programs?.length ?? 0; const l0 = RDY.gl.links;
+  const waits = khr ? [] : null;
+  const rt0 = r.getRenderTarget();
+  LC.inR += 1; // (three's own needsUpdate toggles while compiling aren't changes)
+  try {
+    if (P.rt !== rt0) r.setRenderTarget(P.rt);
+    for (const o of what) { if (waits) waits.push(r.compileAsync(o, P.camera, P.scene)); else r.compile(o, P.camera, P.scene); }
+    if (P.glass) lcGlass(r, P.scene, P.camera, P.whole || !P.scene.__lcGlass ? null : what, waits); // (the scene's first glass: every opaque thing's variant)
+  } catch { /* its frame compiles what's left */ } finally {
+    try { if (r.getRenderTarget() !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
+    LC.inR -= 1;
+  }
+  LC.ahead += RDY.gl.links - l0;
+  if (waits) { LC.khr += 1; const done = () => lcDone(r, P); Promise.all(waits).then(done, done); realSetTimeout(done, 2500); return; }
+  // no background compile: each new program's status read here (the wait for the driver happens in this gap), so the
+  // next frame finds them linked
+  const ps = r.info?.programs || [];
+  for (let i = n0; i < ps.length; i++) { try { ps[i].getUniforms(); } catch { /* its frame reports it */ } }
+  lcDone(r, P);
+}
+// glass: the programs three's transmission pass draws the opaque things with (into a target: linear colours, no tone
+// mapping), and the back faces of double-sided glass there. Compiled under a 1×1 target, the see-through things set
+// aside for the moment. roots: the new things only (null: the whole scene, if it has glass) → whether it compiled
+function lcGlass(r, scene, camera, roots, waits) {
+  const all = !roots; roots = roots || [scene];
+  const off = []; const back = []; let glass = false;
+  for (const root of roots) {
+    root.traverse((o) => {
+      const m = o.material;
+      if (!m || Array.isArray(m)) return;
+      if (m.transmission > 0) { glass = true; off.push(o); if (m.side === THREE.DoubleSide) back.push(o); } else if (m.transparent) off.push(o);
+    });
+  }
+  if (all && !glass) return false;
+  if (all) scene.__lcGlass = true;
+  const rt = r.__lcRT || (r.__lcRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
+  const rt0 = r.getRenderTarget(); const keep = off.map((o) => o.material);
+  LC.inR += 1;
+  try {
+    r.setRenderTarget(rt);
+    for (const o of off) o.material = null;
+    try { for (const root of roots) { if (waits) waits.push(r.compileAsync(root, camera, scene)); else r.compile(root, camera, scene); } } finally { off.forEach((o, i) => { o.material = keep[i]; }); }
+    for (const o of back) {
+      const m = o.material; m.side = THREE.BackSide; m.needsUpdate = true;
+      try { if (waits) waits.push(r.compileAsync(o, camera, scene)); else r.compile(o, camera, scene); } finally { m.side = THREE.DoubleSide; m.needsUpdate = true; }
+    }
+    LC.glass += 1;
+  } catch { /* its first glass frame compiles them */ } finally { try { r.setRenderTarget(rt0); } catch { /* gone */ } LC.inR -= 1; }
+  return true;
+}
+// while they wait, for one render: new meshes hidden, swapped ones on their old material, new lights off (→ on)
+function lcHide(r, P) {
+  if (realNow() - P.t > 2500) { LC.late += 1; lcDone(r, P); return false; }
+  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights;
+  for (let i = 0; i < o1.length; i++) { P.vis[i] = o1[i].visible; o1[i].visible = false; }
+  for (let i = 0; i < s1.length; i++) { P.mats[i] = s1[i].material; s1[i].material = s1[i].__lcM; }
+  for (let i = 0; i < l1.length; i++) { P.lv[i] = l1[i].visible; l1[i].visible = false; }
+  return true;
+}
+function lcShow(P) {
+  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights;
+  for (let i = 0; i < l1.length; i++) l1[i].visible = P.lv[i];
+  for (let i = 0; i < s1.length; i++) s1[i].material = P.mats[i];
+  for (let i = 0; i < o1.length; i++) o1[i].visible = P.vis[i];
+}
+function lcDone(r, P) {
+  if (r.__lcP !== P) return;
+  r.__lcP = null; LC.pending = Math.max(0, LC.pending - 1); LC.done += 1;
+  const w = frameTick - P.tick; LC.waits += w; if (w > LC.maxWait) LC.maxWait = w;
+  for (const o of P.swap) o.__lcM = o.material;
+  for (const o of P.objs) o.__lcM = o.material;
+  PACE.poke += 1; // (the frame that shows them draws: the still gate would keep the picture without them)
+  if (DOZE.on) dozeWake('shown');
+}
+window.__labCompile = { state: () => ({ ...LC, waiting: [...renderers].filter((r) => r.__lcP).length }) };
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
@@ -759,14 +931,18 @@ function instrument(renderFn) {
           const n = this.__renders;
           realRAF(() => realRAF(() => { const sk = this.__lastSkip; this.__lastSkip = null; if (sk && this.__renders === n && !this.__stale) { try { this.render(sk[0], sk[1]); } catch { /* gone */ } } }));
         };
-        try { this.compileAsync(scene, camera).then(done, done); } catch { done(); }
+        // (round 90, labcompile90: and the glass variants three's transmission pass draws with)
+        try { const w = [this.compileAsync(scene, camera)]; lcGlass(this, scene, camera, null, w); Promise.all(w).then(done, done); } catch { done(); }
         realSetTimeout(done, 1500);
         perfNote.warm += 1;
         if (this.__warm === 'pending') return;
       } else if (warmOk && !this.getRenderTarget?.() && typeof this.compile === 'function' && !this.__helper) {
-        try { this.compile(scene, camera); rdyTextures(this, scene); perfNote.precompiled = (perfNote.precompiled || 0) + 1; } catch { /* its frame compiles what it draws */ }
+        try { this.compile(scene, camera); lcGlass(this, scene, camera, null, null); rdyTextures(this, scene); perfNote.precompiled = (perfNote.precompiled || 0) + 1; } catch { /* its frame compiles what it draws */ }
       }
     }
+    // (round 90, labcompile90) something new in the scene since its last look: what needs a program waits for it (see
+    // "shaders first made while a scene runs")
+    if (scene !== undefined && scene !== null && scene.__lcVer !== LC.ver && this.__warm === true && !LC.inR && scene.isScene === true && EL && !this.__helper && !fullRes() && !SQ.off) { if (scene.__lcVer === undefined) lcInit(scene); else lcCheck(this, scene, camera); }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
@@ -795,7 +971,9 @@ function instrument(renderFn) {
     const rfBack = RF.on && !this.__helper ? rfApply(camera) : null; // (round 33, multiformat) a format's pan / zoom
     if (this.shadowMap?.enabled && scene?.isObject3D) shGate(this, scene); // (round 50 "lab240gpu": maps only when they can change)
     const ccBack = CC.on || CC.permed.size ? ccCull(this, scene, camera) : null; // (round 74, labdraw74: a big crowd draws the copies a view can see)
-    try { renderFn.call(this, scene, camera); } finally { ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+    const lp = this.__lcP; const lcOn = lp != null && lp.scene === scene0 && lcHide(this, lp); // (round 90: new things still compiling wait)
+    LC.inR += 1;
+    try { renderFn.call(this, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     FT60[0] = realNow() - t0;
@@ -1907,7 +2085,17 @@ window.__labPace = {
 // its gap, the layers' render work in it, and what the GPU was asked for in it (shader compiles / links, the ms the page
 // waited on a program's status, first uploads and the pixels they carried). Typed arrays made once at start: nothing
 // per frame, nothing at all while off. window.__labHitch.start() / mark(label) / stop() → JSON text.
-const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, px: 0, pxF: 0 };
+const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, cf: null, sf: null, bx: null, bxf: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, cf0: 0, sf0: 0, px: 0, pxF: 0, big: 0, bigF: 0 };
+// (round 90, labcompile90) megapixels one upload call carried: texImage2D / texSubImage2D from a picture (its size) or
+// from data (the width × height asked for: a slice); texStorage carries none (memory only)
+function hxCall(m, a) {
+  if (m === 'texStorage2D' || m === 'texStorage3D') return 0;
+  const src = a[a.length - 1];
+  if (m === 'texSubImage2D' && a.length >= 9) return (Number(a[4]) * Number(a[5])) / 1e6 || 0;
+  if (m === 'texImage2D' && a.length >= 9) return src ? (Number(a[3]) * Number(a[4])) / 1e6 || 0 : 0;
+  if (src && typeof src === 'object' && !ArrayBuffer.isView(src)) return ((src.videoWidth || src.naturalWidth || src.displayWidth || src.width || 0) * (src.videoHeight || src.naturalHeight || src.displayHeight || src.height || 0)) / 1e6;
+  return 0;
+}
 // megapixels a first upload carried (texImage2D's two shapes, texImage3D / texStorage: width × height (× depth))
 function hxPx(a) {
   const s = a.length === 6 && typeof a[5] === 'object' ? a[5] : null;
@@ -1929,18 +2117,21 @@ function hxTick(t, drew) {
   HX.u[i] = gl.uploads - HX.u0; HX.u0 = gl.uploads;
   HX.p[i] = HX.px - HX.p0; HX.p0 = HX.px;
   HX.f[i] = HX.pxF - HX.f0; HX.f0 = HX.pxF;
+  HX.cf[i] = gl.inF - HX.cf0; HX.cf0 = gl.inF; // (round 90: compiles / links inside the frame's callbacks, ms waited there)
+  HX.sf[i] = gl.waitF - HX.sf0; HX.sf0 = gl.waitF;
+  HX.bx[i] = HX.big; HX.bxf[i] = HX.bigF; HX.big = 0; HX.bigF = 0; // (round 90: the biggest single upload since the last frame)
 }
 window.__labHitch = {
   start: (max = 6000) => {
-    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max) });
-    HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF;
+    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max), cf: new Uint16Array(max), sf: new Float32Array(max), bx: new Float32Array(max), bxf: new Float32Array(max), big: 0, bigF: 0 });
+    HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF; HX.cf0 = RDY.gl.inF; HX.sf0 = RDY.gl.waitF;
     return realNow();
   },
   mark: (label) => { if (HX.on) HX.marks.push([HX.n, String(label)]); return HX.n; },
   stop: () => {
     HX.on = false;
     const k = HX.n; const r = (a, d = 1) => Array.from(a.subarray(0, k), (x) => Math.round(x * d) / d);
-    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
+    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), compilesInFrame: r(HX.cf), waitInFrame: r(HX.sf, 10), bigUp: r(HX.bx, 100), bigUpInFrame: r(HX.bxf, 100), lc: window.__labCompile?.state?.() || null, slices: window.__labUploads().slices ?? null, swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
   },
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
@@ -4611,13 +4802,84 @@ const UPQ = { q: [], tok: 0, seq: 0, t: 0, held: 0, frames: 0, ahead: 0 };
 // upload made there (initTexture on the renderers whose scene uses the texture): it used to wait for the next render
 // of the layer, inside the frame. With the preview at 60 on a fast screen there are free refreshes after each frame;
 // the upload lands there instead of making the next frame late.
-function upRelease(fn, px, tex = null) {
+function upRelease(fn, px, tex = null, bmp = null) {
   if (XP_PAGE || !(px >= 1e6)) { fn(); return undefined; }
   UPQ.held += 1;
   return new Promise((res) => {
-    UPQ.q.push(() => { try { fn(); if (tex) upAhead(tex); } finally { res(); } });
+    UPQ.q.push(() => { if (bmp && tex && upSlice(tex, bmp, fn, res)) return; try { fn(); if (tex) upAhead(tex); } finally { res(); } });
     upArm();
   });
+}
+// (round 90, labcompile90) big pictures in slices: a picture of 4 MP or more (a 4K photo: 16.7 MP, 67 MB) still went to
+// the graphics card in one call, ~2 s of a software GPU's time and several ms of a real card's in one gap. Now, when
+// one renderer draws it: its texture's memory is made first (one gap), then it is filled ~2 MP at a time, one slice in
+// each gap after a frame (three's copyTextureToTexture: texSubImage2D of a band of the decoded picture, nothing copied
+// on the page's thread), the mipmaps made once with the last slice, and only then does the scene's texture take it
+// over (same picture, same settings: nothing uploaded again). Until then it shows what it showed before the picture
+// arrived. Two renderers drawing it, a picture already shown once, or anything going wrong: one piece, as before.
+// KTX2 copies (▶ Play, round 53) are transcoded in workers and already go up mip by mip.
+const UPS = { pictures: 0, slices: 0, active: 0, fell: 0, ms: 0, maxMs: 0 };
+function upSlice(tex, bmp, fn, res) {
+  const W = bmp.width; const H = bmp.height;
+  if (!(W * H >= 4e6) || tex.version !== 0 || typeof ImageBitmap === 'undefined' || !(bmp instanceof ImageBitmap)) return false;
+  let r = null;
+  for (const x of renderers) {
+    if (x.__stale || !x.__lastScene || typeof x.copyTextureToTexture !== 'function') continue;
+    let uses = false; try { uses = sceneUses(x.__lastScene, tex); } catch { return false; }
+    if (uses) { if (r) return false; r = x; }
+  }
+  if (!r || Math.max(W, H) > (r.capabilities?.maxTextureSize || 0)) return false;
+  const rows = Math.max(16, Math.min(H, Math.floor(2.1e6 / W)));
+  const full = new THREE.Texture(bmp);
+  for (const k of ['wrapS', 'wrapT', 'magFilter', 'minFilter', 'anisotropy', 'internalFormat', 'format', 'type', 'generateMipmaps', 'premultiplyAlpha', 'unpackAlignment', 'colorSpace']) full[k] = tex[k];
+  full.flipY = false;
+  const gm = full.generateMipmaps;
+  const src = new THREE.Texture(bmp); src.flipY = false;
+  const box = new THREE.Box2(new THREE.Vector2(), new THREE.Vector2()); const at = new THREE.Vector2();
+  let y = 0; let over = false;
+  UPS.pictures += 1; UPS.active += 1;
+  const end = () => { if (over) return true; over = true; UPS.active -= 1; return false; };
+  const fail = () => {
+    if (end()) return;
+    UPS.fell += 1;
+    try { full.dispose(); } catch { /* gone */ }
+    try { fn(); upAhead(tex); } catch { /* the texture is gone */ } finally { res(); }
+  };
+  const gone = () => { try { return r.__stale || r.getContext().isContextLost(); } catch { return true; } };
+  const timed = (f) => { const t = realNow(); f(); const d = realNow() - t; UPS.ms += d; if (d > UPS.maxMs) UPS.maxMs = d; };
+  const next = () => { UPQ.q.unshift(step); };
+  // each one in a gap after a frame (the queue hands out one a frame)
+  const step = () => {
+    if (over) return;
+    if (gone()) { fail(); return; }
+    try {
+      if (y === 0 && full.version === 0) {
+        // its memory, every mip level, no pixels yet (the slices fill it)
+        // (three reads generateMipmaps three times here: its cache key and its mip levels need the real value; the
+        // third would make mipmaps of the empty memory, a full pass over 67 MB on a software GPU: skipped)
+        full.source.dataReady = false; full.needsUpdate = true;
+        let reads = 0; Object.defineProperty(full, 'generateMipmaps', { configurable: true, get: () => { reads += 1; return gm && reads < 3; }, set: () => {} });
+        try { timed(() => r.initTexture(full)); } finally { delete full.generateMipmaps; full.generateMipmaps = gm; }
+        UPQ.ahead += 1; // (its upload starts here, right after a frame)
+        next(); return;
+      }
+      const h = Math.min(rows, H - y); const last = y + h >= H;
+      box.min.set(0, y); box.max.set(W, y + h); at.set(0, y);
+      full.generateMipmaps = last ? gm : false; // (the mipmaps once, with the last slice)
+      timed(() => r.copyTextureToTexture(src, full, box, at));
+      y += h; UPS.slices += 1;
+      if (!last) { next(); return; }
+      // the scene's texture takes it over: same picture, same settings, so three finds it made and uploads nothing
+      tex.source = full.source; tex.flipY = false;
+      full.source.dataReady = true;
+      tex.version += 1;
+      timed(() => r.initTexture(tex));
+      full.dispose(); // (its hold on that memory: the scene's texture has it now)
+      end(); res();
+    } catch { fail(); }
+  };
+  step();
+  return true;
 }
 const sceneUses = (sc, tex) => {
   if (sc.background === tex || sc.environment === tex) return true;
@@ -4646,7 +4908,7 @@ function upFlush(k) {
   if (fn) { UPQ.frames += 1; try { fn(); } catch { /* the texture is gone */ } }
   upArm();
 }
-window.__labUploads = () => ({ held: UPQ.held, frames: UPQ.frames, waiting: UPQ.q.length, ahead: UPQ.ahead });
+window.__labUploads = () => ({ held: UPQ.held, frames: UPQ.frames, waiting: UPQ.q.length, ahead: UPQ.ahead, slices: { ...UPS, ms: Math.round(UPS.ms), maxMs: Math.round(UPS.maxMs) } });
 globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   const url = refs[key];
   if (!url) throw new Error(`No reference "${key}". This sketch's references: ${Object.keys(refs).join(', ') || 'none (add some with the References button)'}`);
@@ -4673,7 +4935,7 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
       const dec = (kept || createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' })).then((bmp) => {
         rdyT('decode', dt0); if (who && !kept) ownNote(who, 'bmp', bmp);
         // (round 72, labfps72) a big picture goes to the graphics card in a frame of its own (see "uploads one at a time")
-        return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height, tex);
+        return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height, tex, bmp);
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
       // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
       const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
