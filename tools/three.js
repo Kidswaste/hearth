@@ -175,7 +175,7 @@ const ThreeLab = (() => {
     addEventListener('message', listener);
     const RUNS = /^(run-layers|swap-layers)$/;
     const post = (m) => {
-      live.sent(name, m.type);
+      live.sent(name, m.type, m.layer?.id);
       if (ready) { deliver(m); return; }
       // a newer whole run replaces the runs still waiting for the page (each would run every layer again)
       if (RUNS.test(m.type)) queue = queue.filter((x) => !RUNS.test(x.type) && x.type !== 'hot-layer' && x.type !== 'remove-layer');
@@ -347,13 +347,13 @@ const ThreeLab = (() => {
     let why = null;
     const onReload = new Set(); // (round 72, labbridge72) (name) => …: a page that reloads drops what it was answering
     const COUNTED = /^(hot-layer|swap-layers|run-layers|remove-layer|layer-props|media-unload)$/;
-    const note = (what) => { c.log.push({ at: Date.now(), what, why: why || 'ui' }); if (c.log.length > 200) c.log.splice(0, c.log.length - 200); };
+    const note = (what, layer) => { c.log.push({ at: Date.now(), what, why: why || 'ui', ...(layer ? { layer } : {}) }); if (c.log.length > 200) c.log.splice(0, c.log.length - 200); };
     return {
       reload(name) { c.reloads[name] = (c.reloads[name] || 0) + 1; note(`reload ${name}`); for (const fn of onReload) { try { fn(name); } catch (err) { console.warn(err); } } },
       onReload(fn) { onReload.add(fn); return () => onReload.delete(fn); },
       retune(name) { c.retunes = (c.retunes || 0) + 1; note(`retune ${name}`); }, // (round 37, labboot) fit ⇄ exact size in place
       gl(what, name) { const g = (c.gl ||= {}); g[what] = (g[what] || 0) + 1; note(`gpu ${what} ${name}`); }, // (round 43, glrecover) lost / restored / stuck
-      sent(name, type) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k); },
+      sent(name, type, layer) { if (!COUNTED.test(type)) return; const k = `${name} ${type}`; c.sent[k] = (c.sent[k] || 0) + 1; if (type !== 'layer-props') note(k, layer); }, // (round 93, tidy93) + which layer a hot run was
       set why(v) { why = v; }, get why() { return why; },
       counts: () => JSON.parse(JSON.stringify(c)),
     };

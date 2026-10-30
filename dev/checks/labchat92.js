@@ -268,12 +268,22 @@ try {
   const t0 = Date.now();
   await until(() => HubBridge.log().some((e) => e.tool === 'three_edit_code' && e.running), 30000);
   ta.focus(); await type('/*busy*/', 120);
-  await tMany; await until(() => !Native.isBusy(askChat), 120000); await wait(300);
+  await tMany; await until(() => !Native.isBusy(askChat), 120000); const tIdle = Date.now(); await wait(300);
   const runs1 = ThreeLab.live.counts();
+  // (round 93, tidy93) where the time goes: each call's start + length (ms from the send), the last call's hops (page:ran =
+  // the layer's code loaded in the preview), and the reply's tail after the last call (the fake engine streams its report)
+  const calls8 = HubBridge.log().filter((e) => e.tool === 'three_edit_code' && e.chatId === askChat).slice(-8);
+  out.manyTime = { calls: calls8.map((e) => `${e.at - t0}+${e.ms}`).join(' '), lastSteps: HubBridge.hopsOf?.(calls8.at(-1))?.steps, tail: calls8.length ? tIdle - (calls8.at(-1).at + calls8.at(-1).ms) : null };
   const callMs = HubBridge.log().filter((e) => e.tool === 'three_edit_code' && e.chatId === askChat).slice(-8).map((e) => e.ms).sort((x, y) => x - y);
-  out.many = { ms: Date.now() - t0, medianCallMs: callMs[4], hotRuns: (runs1.sent?.['preview hot-layer'] || 0) - (runs0.sent?.['preview hot-layer'] || 0), ringSize: /size: \{ value: ([\d.]+),/.exec(codeIn(A, 'Ring'))?.[1], busy: codeIn(A, 'Base').includes('/*busy*/'), selected: d.layers().selected };
+  // (round 93, tidy93) which layer each hot run was, and when (Ring: the AI's 8 edits; Base: the owner's typing, once after
+  // their last key, 700 ms debounce, plus once more without sliders when their half-typed code doesn't parse)
+  const hotLog = runs1.log.filter((e) => e.at >= t0 - 50 && e.what === 'preview hot-layer');
+  const nameOf = (id) => d.layers().layers?.find?.((x) => x.id === id)?.name || ThreeLab.search?.layers?.().find((x) => x.id === id)?.name || id;
+  const runsBy = hotLog.reduce((m, e) => { const k = nameOf(e.layer); m[k] = (m[k] || 0) + 1; return m; }, {});
+  out.many = { ms: Date.now() - t0, medianCallMs: callMs[4], callMs, runsBy, runsAt: hotLog.map((e) => `${nameOf(e.layer)}@${e.at - t0}`).join(' '), hotRuns: (runs1.sent?.['preview hot-layer'] || 0) - (runs0.sent?.['preview hot-layer'] || 0), ringSize: /size: \{ value: ([\d.]+),/.exec(codeIn(A, 'Ring'))?.[1], busy: codeIn(A, 'Base').includes('/*busy*/'), selected: d.layers().selected };
   ok(out.many.ringSize === '1.8', `all 8 quick edits landed (${out.many.ringSize})`);
   ok(out.many.busy && out.many.selected === 'Base', 'the owner\'s typing during them stayed in their layer');
+  ok((runsBy.Base || 0) <= 3 && runsBy.Ring === 8, `the owner's layer isn't re-run per key while they type (Base ${runsBy.Base || 0}, Ring ${runsBy.Ring})`); // (round 93, tidy93)
   ta.blur();
 
   // ---------- 6. switching scenes on screen while a reply works ----------
