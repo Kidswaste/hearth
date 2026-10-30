@@ -195,6 +195,7 @@ function msgAt(file, k, e) {
   } catch { return undefined; } finally { if (fd !== null) fs.closeSync(fd); }
 }
 let findIdx = null; let findT = null; // (round 81, projsearch81) projfind-core.js's index: made on the first find, let go 20 min after the last
+let findText = null; // (round 92, findmem92) its giant chats' messages read back from their bytes (projfind-core leanReader)
 // (round 82, bigchat82) giant chats the window holds: file → { vers (the versions handed out for the file as it is: a
 // window's copy and anyone else's who opened it since), sig (the file as this thread left / read it), head, els (each
 // message's bytes in it; null until the first change needs them) }. Small: no messages are kept here, only where they
@@ -1004,8 +1005,11 @@ const OPS = {
     const PF = require('./projfind-core');
     findIdx ||= PF.createIndex();
     clearTimeout(findT); findT = setTimeout(() => { findIdx = null; }, 20 * 60000); findT.unref?.();
+    // (round 92, findmem92) a GIANT chat (≥ BIG) is kept lean: its words only, the messages a query shows read back from
+    // its bytes (by their offsets; a newer file by its offsets kept here per version, bigCut)
+    findText ||= PF.leanReader(fs, (file) => { try { const e = bigCut(file); return e.error ? null : e; } catch { return null; } });
     return PF.run(findIdx, msg, { stat, join: path.join, now: () => performance.now(), read: (f) => { try { return JSON.parse(SS.readRetry(dfs, f)); } catch { return null; } },
-      big: { min: FIND_BIG, open: (file, onMessage, o) => BC().reader(fs, file, { ...o, onMessage, chunk: 512 * 1024 }) } }); // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed in slices
+      big: { min: FIND_BIG, lean: BIG, text: findText, open: (file, onMessage, o) => BC().reader(fs, file, { ...o, onMessage, chunk: 512 * 1024 }) } }); // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed in slices
   },
   // (round 83, idleburst83) 🧭 Cost coach's look at one chat (costcoachmain.js scan): parsed here, only its per-reply
   // records go back (a long chat's JSON.parse held the main process 70–140 ms)
@@ -1022,7 +1026,7 @@ const OPS = {
     try { if (!gcFn) { require('v8').setFlagsFromString('--expose_gc'); gcFn = require('vm').runInNewContext('gc'); } gcFn(); gcFn(); } catch { /* no gc: reads higher */ }
     const h = require('v8').getHeapStatistics();
     const snapshot = snap ? require('v8').writeHeapSnapshot(String(snap)) : undefined; // (a by-constructor diff)
-    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, find: findIdx ? 1 : 0, winCalc: winCalc.chat ? 1 : 0 } };
+    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, find: findIdx ? 1 : 0, findChars: findIdx ? findIdx.size().chars : 0, winCalc: winCalc.chat ? 1 : 0 } };
   },
 };
 let gcFn = null; // (round 91, longrun91) _mem's gc, made on its first (test-only) use

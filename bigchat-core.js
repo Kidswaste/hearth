@@ -646,4 +646,4 @@ function deltaWrite(fs, file, tmp, e, d, o = {}) {
 // the summary the chats list shows, from a head
 const sumOf = (h) => ({ id: h.id, agentId: h.agentId, title: h.title, updatedAt: h.updatedAt, pinned: Boolean(h.pinned), model: h.model });
 
-module.exports = { BIG, searchIndex, searchBig, digestBytes, digestValue, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST };
+module.exports = { BIG, searchIndex, searchBig, digestBytes, digestValue, cloudForm, localFromCloud, mergeChat, prettyInto, deltaWrite, sumOf, fastCut, scanInit, scanStep, scanBuf, headOf, elCount, reader, compactInto, prettyOf, topFields, prettyMsg, shell, listParts, prettyLayout, strEnd, LIST, textTok }; // (textTok: round 92, findmem92's read-back of a message's text)

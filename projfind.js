@@ -131,15 +131,17 @@ const ProjFind = (() => {
       // the same results again (the index caught up with nothing new, a repaint): the rows on screen stay as they are
       // (round 90, checkfix90) "still reading" is only the status line once there are rows: the catch-up finishing with
       // the same rows changes that line, never the rows (a repaint took the row under the mouse and the arrow-key choice)
-      const sig = r ? JSON.stringify([q.trim(), r.total ? false : building, [...S.more], r.groups.map((g) => [g.id, g.total, g.hits.map((h) => `${h.ref}|${h.k ?? h.item ?? h.line ?? h.path ?? h.field ?? h.layer ?? ''}|${h.snip}`)])]) : '';
-      if (sig === painted && S.list.childElementCount === (r ? Math.max(1, r.groups.length) : 0)) { S.last = r; S.status.textContent = r && building ? 'Still reading this project… results fill in as it goes.' : ''; return; }
+      const sig = r ? JSON.stringify([q.trim(), r.total ? false : building, [...S.more], (r.unread || []).map((u) => u.ref), r.groups.map((g) => [g.id, g.total, g.hits.map((h) => `${h.ref}|${h.k ?? h.item ?? h.line ?? h.path ?? h.field ?? h.layer ?? ''}|${h.snip}`)])]) : '';
+      if (sig === painted && S.list.childElementCount === (r ? Math.max(1, r.groups.length + (r.total && r.unread?.length ? 1 : 0)) : 0)) { S.last = r; S.status.textContent = r && building ? 'Still reading this project… results fill in as it goes.' : ''; return; }
       painted = sig; S.stats.paints = (S.stats.paints || 0) + 1;
       S.last = r; S.rows = []; S.sel = -1;
       if (!r) { S.list.replaceChildren(); S.status.textContent = ''; S.list.hidden = true; return; }
       S.list.hidden = false;
       S.status.textContent = building ? 'Still reading this project… results fill in as it goes.' : '';
-      if (!r.total) { S.list.replaceChildren(el('p', { class: 'pf-empty', text: building ? `Nothing yet for “${q.trim()}”.` : `Nothing in this project matches “${q.trim()}”. Try fewer or shorter words.` })); return; }
-      const sections = [];
+      // (round 92, findmem92) a giant chat that couldn't be read back just now is said so, never taken for "nothing found"
+      const unread = r.unread?.length ? el('p', { class: 'pf-empty pf-unread', attrs: { role: 'alert' }, text: `Couldn’t read ${r.unread.map((u) => `“${u.title}”`).join(', ')} just now, so ${r.unread.length > 1 ? 'their' : 'its'} messages aren’t in these results. Try again in a moment.` }) : null;
+      if (!r.total) { S.list.replaceChildren(unread || el('p', { class: 'pf-empty', text: building ? `Nothing yet for “${q.trim()}”.` : `Nothing in this project matches “${q.trim()}”. Try fewer or shorter words.` })); return; }
+      const sections = unread ? [unread] : [];
       for (const g of r.groups) {
         const shown = S.more.has(g.id) ? g.hits : g.hits.slice(0, FIRST);
         const rows = shown.map((h) => {

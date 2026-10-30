@@ -54,7 +54,7 @@ const Hints = (() => {
   const editable = (t) => Boolean(t && (t.isContentEditable || /^(TEXTAREA|SELECT)$/.test(t.tagName) || (t.tagName === 'INPUT' && !/^(button|checkbox|radio|range|color|file|submit|reset)$/i.test(t.type || ''))));
   addEventListener('keydown', (e) => { if (editable(e.target) && !e.ctrlKey && !e.metaKey) lastKey = Date.now(); }, true);
   addEventListener('pointerdown', () => { down = Date.now(); }, true);
-  const up = () => { down = 0; dragging = false; };
+  const up = () => { down = 0; dragging = false; wake(); };
   addEventListener('pointerup', up, true); addEventListener('pointercancel', up, true); addEventListener('blur', up);
   addEventListener('dragstart', () => { dragging = true; }, true); addEventListener('dragend', up, true); addEventListener('drop', up, true);
   const streaming = () => { try { return (H.agents?.() || []).some((a) => a.mode === 'native' && Native.isAgentBusy?.(a.id)); } catch { return false; } };
@@ -178,22 +178,34 @@ const Hints = (() => {
     // (round 41, smooth41) nothing waiting fits here (a Lab tip while you're in a chat): no page queries every 0.7 s;
     // moving elsewhere looks again at once (hearth:view), a slow tick still drops what waited too long
     if (!ready.length) { schedule(C('idle')); return null; }
-    schedule();
     const why = busy();
     // a line in a chat or a panel: as soon as you aren't typing and no reply streams (it covers nothing, so an open
     // dialog or AI setup doesn't hold it: a change made there is said in the chat right away)
     const line = ready.find((q) => q.kind === 'inline');
-    if (line && (force || !why || why === 'dialog' || why === 'busy')) { show(line); return line.id; }
-    if (why && !force) return null;
-    if (visible() && !force) return null;
+    if (line && (force || !why || why === 'dialog' || why === 'busy')) { schedule(); show(line); return line.id; }
+    if (!force && (why || visible())) { hold(why || 'card'); return null; }
+    held = 0;
     const since = now - T0;
     const pick = ready.find((q) => (force || since >= (q.kind === 'tip' ? C('start') : C('startNotice'))) && (force || q.kind !== 'tip' || now - lastAt() >= C('gap')));
     // (round 44, idlecpu) only waiting for the start's calm or the gap between two tips (3 min): look again when the
     // first one is due, not every 0.7 s until then (a reply, typing or a place change look sooner)
     if (!pick) { const dueIn = Math.min(...ready.map((q) => Math.max(T0 + (q.kind === 'tip' ? C('start') : C('startNotice')), q.kind === 'tip' ? lastAt() + C('gap') : 0) - now)); schedule(Math.max(C('tick'), Math.min(dueIn + 20, C('idle')))); return null; }
-    show(pick);
+    schedule(); show(pick);
     return pick.id;
   }
+  // (round 92, findmem92) the way is held (you type, a dialog or the sync panel is open, a card is up, a reply streams):
+  // not a look every 0.7 s until it clears (≈ 1.5 wake-ups a second) but when it should: the last key's quiet ends,
+  // a click / Esc / Enter / a dialog closing (wake), else less and less often (0.7 → 1.4 → 2.8 s, then 5 s for a
+  // dialog or a card, which a click or a key closes)
+  let held = 0;
+  function hold(why) {
+    held += 1;
+    if (why === 'typing') { schedule(Math.max(50, lastKey + C('quiet') - Date.now() + 20)); return; }
+    schedule(Math.min(C('tick') * 2 ** Math.min(held - 1, 3), why === 'dialog' || why === 'card' ? C('idle') : C('tick') * 4));
+  }
+  const wake = () => { if (held && queue.length) { held = 0; schedule(60); } };
+  addEventListener('keyup', (e) => { if (e.key === 'Escape' || e.key === 'Enter') wake(); }, true);
+  addEventListener('close', wake, true); // (a dialog closed: 'close' doesn't bubble, it is caught on its way down)
   // an essential note (an error with its fix, sign-in, offline, a usage limit): at once, whatever the queue does, only
   // kept off what you're working on
   function essential(show) {
