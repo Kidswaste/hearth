@@ -70,8 +70,13 @@ const FirstRunCore = (() => {
     const s = f.sync;
     if (!s?.status) return checking(t.id, t.icon, t.title);
     if (s.status.on) {
-      const bad = s.status.state === 'error' || (s.status.state === 'offline' && s.status.error === 'missing');
-      return { ...t, state: bad ? 'fix' : 'ok', text: s.line || `On: ${s.status.label || 'your cloud drive'}.`, action: bad ? { kind: 'sync', label: 'Choose the drive…', change: true } : undefined };
+      // (round 93, tidy93) sync stopped by itself: the folder missing or emptied, or this Hearth too old for the cloud copy
+      // (as the panel's "⚠ Folder" / "⚠ Update"). A read failure of its own records ('held') waits and retries by itself:
+      // "Good to know", never "Ready" (and never "empty")
+      const off = s.status.state === 'offline' ? s.status.error : '';
+      const bad = s.status.state === 'error' || ['missing', 'emptied', 'old-version'].includes(off);
+      const action = !bad ? undefined : off === 'old-version' ? { kind: 'update', label: 'Check for updates…' } : { kind: 'sync', label: 'Choose the drive…', change: true };
+      return { ...t, state: bad ? 'fix' : off === 'held' ? 'note' : 'ok', text: s.line || `On: ${s.status.label || 'your cloud drive'}.`, action };
     }
     const d = s.detect;
     if (!d) return checking(t.id, t.icon, t.title);

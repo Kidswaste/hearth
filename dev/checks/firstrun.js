@@ -81,6 +81,40 @@ try {
   await shot('ready');
   out.after = document.querySelector('.fr-sum')?.textContent;
   ok(!FirstRun.rows().some((r) => ['claude', 'codex', 'folders'].includes(r.id) && r.state !== 'ok'), 'Claude, Codex and the folders are all Ready');
+
+  // (round 93, tidy93) sync stopped by itself, as the sync panel says it: the folder emptied or missing, this Hearth too old
+  // → "To do" with its button; its own records unreadable → "Good to know" (waits by itself), never "Ready". Made-up
+  // engine statuses through Sync._setApi (window.hub.sync is read-only); nothing is read or written.
+  {
+    const real = window.hub.sync; let FAKE = null;
+    const fake = new Proxy({}, { get: (t, k) => (FAKE && (k === 'status' || k === 'now') ? async () => ({ ...FAKE }) : typeof real[k] === 'function' ? (...a) => real[k](...a) : real[k]) });
+    const BASE = { on: true, paused: false, root: '/tmp/fr93-cloud', label: 'iCloud Drive', provider: 'icloud', machine: 'Test PC', state: 'offline', at: Date.now(), lastOk: Date.now() - 60000, pending: 0, conflicts: 0, peers: [], kinds: [], transfers: [], aside: [], cloudOnly: [], skippedBig: [], unreadable: [], waiting: [], blocked: [], peersOld: [] };
+    Sync._setApi(() => fake);
+    const syncCase = async (error) => {
+      FAKE = { ...BASE, error }; await FirstRun.recheck('sync'); await wait(200);
+      const r = rowOf('sync'); return { state: stateOf('sync'), text: r?.querySelector('.fr-x')?.textContent || '', btn: r?.querySelector('.fr-b')?.textContent || '' };
+    };
+    try {
+      FAKE = { ...BASE, error: 'emptied' }; // (set before the list's own first look, so no real status lands after a made-up one)
+      FirstRun.open(); await until(() => rowOf('sync') && FirstRun.rows().every((r) => r.state !== 'checking'), 40000);
+      const sc = out.syncStopped = {};
+      sc.emptied = await syncCase('emptied');
+      ok(sc.emptied.state === 'fix' && /is empty right now/.test(sc.emptied.text) && sc.emptied.btn === 'Choose the drive…', 'sync: the cloud folder emptied → "To do", the panel\'s sentence, Choose the drive…');
+      sc.missing = await syncCase('missing');
+      ok(sc.missing.state === 'fix' && /isn't there/.test(sc.missing.text) && sc.missing.btn === 'Choose the drive…', 'sync: the cloud folder missing → "To do"');
+      sc.old = await syncCase('old-version');
+      ok(sc.old.state === 'fix' && sc.old.btn === 'Check for updates…', 'sync: this Hearth too old → "To do", Check for updates…');
+      sc.held = await syncCase('held');
+      ok(sc.held.state === 'note' && !sc.held.btn && !/empty|offline/i.test(sc.held.text), 'sync: its records unreadable → "Good to know", no button, never "empty"');
+      FirstRun.close(); await wait(150);
+      // the first launch ("Set up this computer") shows the same line
+      FAKE = { ...BASE, error: 'emptied' };
+      store.set('firstrun.seen', false);
+      FirstRun.auto({}, { test: false, chats: 0 });
+      ok(await until(() => stateOf('sync') === 'fix', 15000) && /is empty right now/.test(rowOf('sync')?.textContent || ''), 'Set up this computer: the emptied folder is "To do" there too');
+      FirstRun.close(); await wait(150);
+    } finally { FAKE = null; Sync._setApi(null); await Sync.refresh(); store.set('firstrun.seen', false); }
+  }
   FirstRun.close(); await wait(200);
 
   // ---- the first launch ----

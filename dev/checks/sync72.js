@@ -59,12 +59,19 @@ await until(() => btn(/^Sync now$/) && !btn(/^Sync now$/).disabled, 8000);
 step('Sync now from the panel: still synced', Sync.status().state === 'synced');
 
 // 2. nothing polls while it is open (it redraws on the engine's own status messages only)
+// (round 93, tidy93) window.hub.sync is read-only (contextBridge): assigning to it did nothing, so this step could never
+// see a poll. Every call Sync and the panel make goes through their _setApi seam (as syncpanel92 does), counted here.
 const calls = { status: 0, conflicts: 0, preview: 0 };
-const orig = { status: api.status, conflicts: api.conflicts, preview: api.preview };
-for (const k of Object.keys(calls)) api[k] = (...a) => { calls[k] += 1; return orig[k](...a); };
+const other = {};
+const counted = new Proxy({}, { get: (t, k) => (typeof api[k] === 'function' ? (...a) => { if (k in calls) calls[k] += 1; else other[k] = (other[k] || 0) + 1; return api[k](...a); } : api[k]) });
+const seam = typeof SyncPanel !== 'undefined' && typeof SyncPanel._setApi === 'function' && typeof Sync._setApi === 'function';
+if (seam) { Sync._setApi(() => counted); SyncPanel._setApi(() => counted); }
+const probe = { calls: 0 }; // the seam really carries the calls: one status read through it is counted
+if (seam) { await Sync.refresh(); probe.calls = calls.status; calls.status = 0; }
 await wait(4000);
-for (const k of Object.keys(calls)) api[k] = orig[k];
-step('open for 4 s with nothing changing: no status / conflict calls (no polling)', !calls.status && !calls.conflicts && !calls.preview, calls);
+if (seam) { Sync._setApi(null); SyncPanel._setApi(null); }
+step('the poll counter sees calls (Sync / SyncPanel._setApi seam, one status read counted)', seam && probe.calls === 1, { seam, probe });
+step('open for 4 s with nothing changing: no status / conflict calls (no polling)', seam && !calls.status && !calls.conflicts && !calls.preview, { calls, other });
 
 // 3. something on its way: the other computer's journal announces a bigger file than the cloud holds so far
 const arriving = { id: 'sync72-arriving', agentId: claude.id, title: 'Arriving from the Mac', updatedAt: Date.now(), messages: [{ role: 'user', at: 2, text: 'still downloading' }] };
