@@ -95,7 +95,7 @@ a scene and a moodboard in the headless box.
   `unit:projects-test unit:projbundle-test unit:projopen86-test unit:desk89-test unit:projsearch81-test
   unit:sync72-test unit:datasafe-scan unit:winmac-test unit:errorcalm-scan unit:storeack-scan unit:chatsafe-scan
   unit:boot-test unit:lazymanifest-test`, plus `unit:sync-test unit:projsync76-test unit:guardloss78-test` for the
-  merge changes. Results are in the round's final report.
+  merge changes: all passed (5/5, 5/5 and 17/17). `dev/lazy-manifest.js --check`: up to date.
 - Real machines only: `docs/windows-test-plan.md` §9 (drops from Explorer / Finder, a rename on both with Wi-Fi off,
   a cover across computers).
 
