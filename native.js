@@ -2608,21 +2608,10 @@ const Native = (() => {
       else { unfolded.add(key); node.classList.remove('collapsed'); node.querySelector('.show-more-msg')?.remove(); }
     }
   }
-  const plural = (n, one, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  // (round 93, perf93) the counting and its message live in chat-cmds.js (ChatCmds.stats, an asap group): ≈ 1 KB off the first screen
   function chatStats(chat) {
     if (cw(chat)) return W.x.whole(chat, 'stats').then(() => chatStats(chat));
-    const ms = chat.messages;
-    const words = (role) => ms.filter((m) => m.role === role).reduce((n, m) => n + (m.text.match(/\S+/g) || []).length, 0);
-    const tokIn = ms.reduce((n, m) => n + (m.usage?.input || 0), 0); const tokOut = ms.reduce((n, m) => n + (m.usage?.output || 0), 0);
-    const time = ms.reduce((n, m) => n + (m.ms || 0), 0);
-    const first = ms.find((m) => m.at)?.at; const last = [...ms].reverse().find((m) => m.at)?.at;
-    Modal.alert('Chat stats', [
-      plural(ms.filter((m) => m.role === 'user').length, 'message') + ` from you (${plural(words('user'), 'word')})`,
-      plural(ms.filter((m) => m.role === 'assistant').length, 'reply', 'replies') + ` (${plural(words('assistant'), 'word')})`,
-      tokIn || tokOut ? `${tokIn.toLocaleString()} tokens in · ${tokOut.toLocaleString()} out` : null,
-      time ? `${Math.round(time / 1000)} s spent answering` : null,
-      first ? `From ${new Date(first).toLocaleString()} to ${new Date(last).toLocaleString()}` : null,
-    ].filter(Boolean).join('\n')) ?? toast('Stats unavailable');
+    return (window.Lazy ? Lazy.load('chatcmds') : Promise.resolve()).then(() => ChatCmds.stats(chat));
   }
   // 🔊 read a reply aloud (the system voice); clicking again stops. /read rate 1.3 and /read voice <name> tune it.
   let speaking = null;

@@ -1499,5 +1499,20 @@ const ChatCmds = (() => {
       row('Font', 'font', Object.keys(ChatUX.FONTS), cap(Object.keys(ChatUX.FONTS))),
     ] };
   }
-  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle, boxRows, messageLook };
+  // (round 93, perf93) Chat stats (Native.stats, the ⋯ menu): moved here from native.js, unchanged (a whole chat)
+  function stats(chat) {
+    const ms = chat.messages;
+    const words = (role) => ms.filter((m) => m.role === role).reduce((n, m) => n + (m.text.match(/\S+/g) || []).length, 0);
+    const tokIn = ms.reduce((n, m) => n + (m.usage?.input || 0), 0); const tokOut = ms.reduce((n, m) => n + (m.usage?.output || 0), 0);
+    const time = ms.reduce((n, m) => n + (m.ms || 0), 0);
+    const first = ms.find((m) => m.at)?.at; const last = [...ms].reverse().find((m) => m.at)?.at;
+    Modal.alert('Chat stats', [
+      plural(ms.filter((m) => m.role === 'user').length, 'message') + ` from you (${plural(words('user'), 'word')})`,
+      plural(ms.filter((m) => m.role === 'assistant').length, 'reply', 'replies') + ` (${plural(words('assistant'), 'word')})`,
+      tokIn || tokOut ? `${tokIn.toLocaleString()} tokens in · ${tokOut.toLocaleString()} out` : null,
+      time ? `${Math.round(time / 1000)} s spent answering` : null,
+      first ? `From ${new Date(first).toLocaleString()} to ${new Date(last).toLocaleString()}` : null,
+    ].filter(Boolean).join('\n')) ?? toast('Stats unavailable');
+  }
+  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle, boxRows, messageLook, stats };
 })();
