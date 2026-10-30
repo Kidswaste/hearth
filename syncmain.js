@@ -438,7 +438,12 @@ function register(ipcMain, win, o) {
     if (r.ok) schedule(300, 'forget'); // (the packs gate is looked at again in the next pass)
     return r;
   });
-  h('sync:packSpace', async () => { const w = dvWhere(); if (!w) return null; return DV.space(fs.promises, { ...w, now: Date.now() }); });
+  h('sync:packSpace', async () => {
+    const w = dvWhere(); if (!w) return null;
+    const now = Date.now(); const s = await DV.space(fs.promises, { ...w, now });
+    const d = await DV.freeUp(fs.promises, { ...w, now, dry: true }); // (what Free up would move: never a named piece; nothing when a manifest can't be read)
+    return { ...s, freeable: d.ok ? d.bytes : 0, held: d.ok ? '' : d.held };
+  });
   h('sync:packFree', async () => {
     const w = dvWhere(); if (!w) return { ok: false, held: 'off' };
     return DV.freeUp(fs.promises, { ...w, now: Date.now(), trashItem: dvTrash });

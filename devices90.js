@@ -96,9 +96,10 @@ const Devices90 = (() => {
       const rows = [
         el('p', { class: 'dv-line', text: total ? `In your cloud folder: ${fmt(s.cloud.bytes)} of pieces (the newest state of each very long chat). On this computer: ${fmt(s.base.bytes)} kept for merging, and ${fmt(s.trash.bytes)} of old pieces kept aside (Hearth keeps them 30 days, then lets them go)${s.trash.old ? `, ${fmt(s.trash.old)} of them older than 7 days` : ''}.` : 'No pieces yet: very long chats haven\'t been sent in pieces from this computer.' }),
       ];
-      if (s.trash.old > 0) {
-        const btn = el('button', { type: 'button', class: 'ghost small dv-free', text: `Free up ${fmt(s.trash.old)}: remove kept-aside pieces older than 7 days`, title: `Moves them to this computer's ${bin()}. Pieces a chat still needs are never touched.`,
-          on: { click: () => confirmIn(space, `Move ${fmt(s.trash.old)} of old pieces to this computer's ${bin()}? They are copies Hearth set aside after tidying; no chat needs them. Any piece a chat still names stays where it is.`, 'Move to ' + bin(), async () => {
+      if (s.held && s.trash.old > 0) rows.push(el('p', { class: 'hint dv-held', text: HELD[s.held] ? HELD[s.held].replace(', so nothing was removed', ', so old pieces can\'t be freed just now').replace(' Try again later.', '') : 'Old pieces can\'t be freed just now.' }));
+      if (s.freeable > 0) {
+        const btn = el('button', { type: 'button', class: 'ghost small dv-free', text: `Free up ${fmt(s.freeable)}: remove kept-aside pieces older than 7 days`, title: `Moves them to this computer's ${bin()}. Pieces a chat still needs are never touched.`,
+          on: { click: () => confirmIn(space, `Move ${fmt(s.freeable)} of old pieces to this computer's ${bin()}? They are copies Hearth set aside after tidying; no chat needs them. Any piece a chat still names stays where it is.`, 'Move to ' + bin(), async () => {
             let r; try { r = await api().packFree(); } catch (err) { r = { ok: false, held: 'folder', error: err.message }; }
             if (r?.ok) toast(r.moved ? `Freed ${fmt(r.bytes)}: old pieces are in the ${bin()}.${r.failed?.length ? ` ${r.failed.length} couldn't move and stayed where they were.` : ''}` : 'Nothing to free: no old pieces left.', { timeout: 7000 });
             else toast(HELD[r?.held] || 'Nothing was removed.', { type: 'error', timeout: 9000 });
