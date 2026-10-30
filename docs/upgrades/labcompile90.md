@@ -123,9 +123,12 @@ Nothing is compiled inside a frame.
 ³ The new picture layer's own programs, in its one setup frame. Without background compiling that is allowed, as in
 labfps89. With it, they compile behind the old picture (round 89).
 
-Slices on this machine: 2 pictures, 16 slices, 2.2–3.5 s of the software GPU's time in all. The longest single call
-was 0.9–1.6 s: the empty mip chain made with the memory, or the mipmaps made with the last slice. labfps89's texture
-stretch on this branch: p99 933 ms (1967 in round 89's write-up), 0 MP inside frames, `ahead` 2.
+Slices on this machine: 2 pictures, 16 slices. They took 1.2–1.6 s of the software GPU's time in all. The longest
+single call was 0.7–0.9 s, the mipmaps made with the last slice. The texture's memory is now made without mipmapping
+the empty texture: three's third read of `generateMipmaps` there is answered false, and its cache key and mip levels
+keep the real value. Before that change it took 2.2–3.5 s, and in one run under load the 111 ms of CPU for that memory
+landed in a frame. labfps89's texture stretch on this branch: p99 800 ms (1967 in round 89's write-up), 0 MP inside
+frames, `ahead` 2 (counted when a sliced picture's upload starts, right after a frame).
 
 ## Item 3: heavy setup in a scene's own code (left alone)
 - **The Chrome blob** (`tools/three-gallery-data.js`, `chrome-blob`) builds its reflections with `PMREMGenerator
@@ -155,7 +158,9 @@ stretch on this branch: p99 933 ms (1967 in round 89's write-up), 0 MP inside fr
 
 ## Runs on this branch (`flock /tmp/hearth-run.lock node dev/run-checks.js --exact …`, ≤ 5 a run)
 - labcompile90 ✓, with can't-tell lines: frames where the preview waited for the software GPU on a busy box;
-- labfps89 ✓, labpace ✓, labboot ✓, labstartfast ✓, labshader ✓;
+- labfps89 ✓, labpace ✓, labboot ✓, labstartfast ✓, labshader ✓. (A container restart killed one batch. In its rerun,
+  labfps89 failed once on a texture stretch that ended before the slices were done. That led to the memory fix above,
+  and labfps89 and labcompile90 were run again afterwards: ✓.)
 - nodes-shader ✓, gpuload84 ✓, lazy ✓, gcchurn60 ✓ (Lab: 706 B a frame);
 - unit: labfps72-test, datasafe-scan, winmac-test, errorcalm-scan, storeack-scan, chatsafe-scan, boot-test,
   lazymanifest-test ✓.
