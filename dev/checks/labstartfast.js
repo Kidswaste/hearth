@@ -208,10 +208,21 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = 
   const first = mine.find((x) => x.type === 'stack-drawn');
   let win = null;
   if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
-  const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: Math.max(0, mine.filter((x) => /^size /.test(x.type)).length - 1), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
+  const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: lateResizes(mine), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
   T0 = 0;
   return r;
 }
+// (round 88, checkfix88) the preview's size changes that cost something: after the scene's first layer run (its canvases
+// exist from then on; each change resizes every one of them). Since round 86 (projopen86) the Lab's first start paints
+// a frame before it opens the scene, so the observer sees the frame from that empty frame on: the media bar taking its
+// height for the song came in as 1–2 "resizes" 150–250 ms before the scene had run at all (nothing to resize). Counted
+// from the first size seen, as before, when no layer run came (the stretch then fails on that anyway).
+const lateResizes = (mine) => {
+  const sizes = mine.filter((x) => /^size /.test(x.type));
+  const ran = mine.find((x) => x.type === 'ran');
+  if (!ran) return Math.max(0, sizes.length - 1);
+  return sizes.slice(1).filter((x) => x.t > ran.t).length; // (the first one is the observer's own first look)
+};
 const pressLab = async () => {
   const btn = RAIL.button('tool:three'); await wait(50); // (round 74) the rail's way to the Lab today (dev/checks/rail-lib.js)
   const r = btn.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
