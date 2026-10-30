@@ -85,7 +85,9 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 // reported, so the caller can keep their whole version as a conflict copy.
 const ABSENT = Symbol('absent');
 // (round 76, projsync76) + opened: a project opened on both computers (Desk, a card, Continue) was "⚠ 1 conflict"
-const TIME_KEY = /(^|[a-z])(At|Time|Ts)$|^(updated|modified|lastSeen|last|mtime|seen|since|opened)$/;
+// (round 91, projaudit91) + at: the same chat put in a project on both computers (each stamps when it joined) was a
+// conflict that the auto-resolve settled by bringing back what the other computer had taken out
+const TIME_KEY = /(^|[a-z])(At|Time|Ts)$|^(updated|modified|lastSeen|last|mtime|seen|since|opened|at)$/;
 function merge3(base, ours, theirs, opts = {}) {
   base = compactProjects(base); ours = compactProjects(ours); theirs = compactProjects(theirs);
   const conflicts = [];
@@ -299,7 +301,12 @@ function mergeArr(b, o, t, p, c, opt, noBase) {
 // Everything from both versions; where they differ, this computer's value stays and the other one is added beside it:
 // an item of a list with ids (a Lab scene, a board, a project) as a copy named "… (from Mac)", text as both texts.
 // Anything else that differs keeps this computer's value (the other version waits in Deleted files, as always).
-function keepBoth(ours, theirs, from = 'the other computer', id = () => Math.random().toString(36).slice(2, 7)) {
+// (round 91, projaudit91) opt.inPlace(segs) → true: a list whose items are kept as ONE item with both values (its
+// differing texts joined) instead of a copy beside it. The projects store's projects and their things: a copy of a
+// project renamed two ways was a second project grouping the very same chat, scene and moodboard (inPlaceOf(rel)).
+const IN_PLACE = { 'kv/projects.json': (segs) => (segs.length === 1 && segs[0] === 'list') || (segs.length === 3 && segs[0] === 'list' && segs[2] === 'items') };
+const inPlaceOf = (rel) => IN_PLACE[String(rel || '')] || null;
+function keepBoth(ours, theirs, from = 'the other computer', id = () => Math.random().toString(36).slice(2, 7), opt = {}) {
   const r = merge3(null, ours, theirs, { keepAll: true });
   const out = r.value;
   const done = new Set();
@@ -320,6 +327,7 @@ function keepBoth(ours, theirs, from = 'the other computer', id = () => Math.ran
         const find = (list) => list.findIndex((x) => { const k = keyOf(x); return k !== null && k.replace(/^\w+:/, '') === seg; });
         const io = find(o); const it = find(t);
         const key = segs.slice(0, i + 1).join('.');
+        if (io >= 0 && it >= 0 && opt.inPlace?.(segs.slice(0, i))) { o = o[io]; t = t[it]; if (i === segs.length - 1) break; continue; } // (round 91, projaudit91)
         if (io >= 0 && it >= 0 && !done.has(key)) { done.add(key); o.splice(io + 1, 0, copyOf(t[it])); }
         break;
       }
@@ -527,7 +535,7 @@ function proposeCloud(list) {
 module.exports = {
   parseJson, watchIgnored,
   ignoredName, localOnly, dirLocalOnly, isJsonRel, isWorkspaceRel, HEAVY_DIRS, isCounterRel, MEDIA,
-  eq, clone, merge3, keyOf, mergeText, PROSE_KEY, keepBoth,
+  eq, clone, merge3, keyOf, mergeText, PROSE_KEY, keepBoth, inPlaceOf, /* (round 91, projaudit91) */
   toCloud, fromCloud, strToCloud, strFromCloud, withExt, isWinPath,
   portableConfig, applyPortable, stripMachine,
   detectClouds, proposeCloud,

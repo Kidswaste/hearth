@@ -1907,7 +1907,7 @@ function createEngine(o) {
           const theirs = await theirsValue();
           if (ours) remember(rec.rel, ours);
           await keepHere(rec.rel, file);
-          await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(ours ? S.keepBoth(ours, theirs, from) : theirs, ctx), statSync(file) ? { file } : null));
+          await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(ours ? S.keepBoth(ours, theirs, from, undefined, { inPlace: S.inPlaceOf(rec.rel) }) /* (round 91, projaudit91) */ : theirs, ctx), statSync(file) ? { file } : null));
           made = rec.rel;
         }
         if (m) {
@@ -2085,7 +2085,7 @@ function createEngine(o) {
     if (isJson) {
       let ours = null; try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
       const kept = S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
-      const v = how === 'both' && ours ? S.keepBoth(ours, kept, fromName) : kept;
+      const v = how === 'both' && ours ? S.keepBoth(ours, kept, fromName, undefined, { inPlace: S.inPlaceOf(n.rel) }) /* (round 91, projaudit91) one project with both names */ : kept;
       // the guard's base for the window's next save: its copy as it last saved it (its change waiting since then merges
       // with this version; the line it had won stays replaced), else this version's predecessor on the disk
       if (pulledPrev.has(n.rel) && guardOurs.has(n.rel)) pulledPrev.set(n.rel, guardOurs.get(n.rel)); else if (ours) remember(n.rel, ours);

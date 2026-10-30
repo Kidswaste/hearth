@@ -46,9 +46,9 @@ const ProjectsHome = (() => {
     S.search = ProjectsSearch.view({ input, list: results, chips, empty: '' });
     // (round 75, projbundle75) a .hearthproject dropped on Projects is imported (the check card comes first)
     const bundleDrag = (e) => [...(e.dataTransfer?.items || [])].some((x) => x.kind === 'file') && e.dataTransfer.types?.includes('Files');
-    S.root.addEventListener('dragover', (e) => { if (!bundleDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; S.root.classList.add('pb-drop'); });
+    S.root.addEventListener('dragover', (e) => { if (!bundleDrag(e) && !(S.open && window.ProjAudit?.deskDrag(e))) return; // (round 91, projaudit91) a chat from the list on a project's Desk e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; S.root.classList.add('pb-drop'); });
     S.root.addEventListener('dragleave', (e) => { if (!S.root.contains(e.relatedTarget)) S.root.classList.remove('pb-drop'); });
-    S.root.addEventListener('drop', (e) => { S.root.classList.remove('pb-drop'); const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length) return; e.preventDefault(); if (!fs.some((f) => /\.hearthproject$/i.test(f.name))) { toast('Drop a .hearthproject file here to import a project', { timeout: 3500 }); return; } P.bundle((B) => B.dropFiles(fs)); });
+    S.root.addEventListener('drop', (e) => { S.root.classList.remove('pb-drop'); if (S.open && window.ProjAudit?.deskDrop(e, S.open)) return; /* (round 91, projaudit91) files / a chat dropped on a project's Desk join it */ const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length) return; e.preventDefault(); if (!fs.some((f) => /\.hearthproject$/i.test(f.name))) { toast('Drop a .hearthproject file here to import a project', { timeout: 3500 }); return; } P.bundle((B) => B.dropFiles(fs)); });
     input.addEventListener('input', () => { const on = Boolean(input.value.trim()); S.root.querySelector('.pj-home-find').hidden = !on; S.body.hidden = on; });
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;deskSig=null;S.stale = true; if (visible()) paintSoon(); });

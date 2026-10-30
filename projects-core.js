@@ -101,7 +101,12 @@ const ProjectsCore = (() => {
         seen.add(signature); items.push(item); if (item !== original) altered = true;
       }
       if (!altered) return p;
-      changed = true; return { ...p, items };
+      changed = true;
+      // (round 91, projaudit91) the cover names an item by its id, and a capture's / file's id holds its path: it follows
+      // the id made again from the ref (sync rewrites the path for the other computer), else the cover was lost there
+      const moved = p.cover && p.items.find((x) => x && x.id === p.cover);
+      const cover = moved && typeof moved.ref === 'string' && TYPES[moved.type] ? (identities ? itemId(moved.type, moved.ref) : moved.id) : p.cover;
+      return { ...p, items, ...(cover !== p.cover ? { cover } : {}) };
     });
     return changed ? { ...d, list } : d;
   }
@@ -136,6 +141,14 @@ const ProjectsCore = (() => {
     p.updated = at;
     return p;
   }
+  // (round 91, projaudit91) a cover whose id holds a path from the other computer (saved before round 91): the item of
+  // the same kind whose path ends the same way (its folder and name), else none
+  function coverHere(p) {
+    const m = /^(\w+):(.*)$/s.exec(String(p.cover || ''));
+    const tail = (s) => String(s).replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/').toLowerCase();
+    const hits = m && m[2].length > 2 ? p.items.filter((x) => x.type === m[1] && tail(x.ref) === tail(m[2])) : [];
+    return hits.length === 1 ? hits[0].id : null;
+  }
   function normalize(d) {
     d = compact(d, { identities: true });
     const all = Array.isArray(d?.trash) ? d.trash.filter((p) => p && typeof p.id === 'string' && p.ident && Array.isArray(p.items)) : [];
@@ -145,6 +158,7 @@ const ProjectsCore = (() => {
     const trash = all.filter((p) => !list.some((x) => x.id === p.id && !x.revived)).slice(0, TRASH_KEEP);
     for (const p of [...list, ...trash]) {
       p.items = p.items.filter((x) => x && TYPES[x.type] && x.ref != null).map((x) => ({ ...x, id: itemId(x.type, x.ref) }));
+      if (p.cover && !p.items.some((x) => x.id === p.cover)) p.cover = coverHere(p); // (round 91, projaudit91) a cover saved with the other computer's path
       if (!STATUS[p.status]) p.status = 'active';
       p.name = cap(p.name || 'Project', 48);
       p.notes = typeof p.notes === 'string' ? p.notes : '';

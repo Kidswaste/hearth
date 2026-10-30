@@ -168,6 +168,7 @@ const AppSearch = (() => {
     for (const it of base) {
       if (it.kind === 'Agent') out.push({ id: `ag:${it.label}`, kind: 'agent', label: it.label, hint: 'open', path: 'The rail', keys: it.keys, tags: 'ai agent open chat', run: it.run });
       else if (it.kind === 'Tool') out.push({ id: `tl:${it.label}`, kind: 'tool', label: it.label, hint: 'open', path: 'The rail', keys: it.keys, tags: 'tool open', run: it.run });
+      else if (it.kind === 'Project') out.push({ id: `pj:${it.id}`, kind: 'project', label: it.label, hint: it.hint || 'open', path: 'Projects', tags: 'project open switch workspace desk', run: it.run }); // (round 91, projaudit91) a project by its name: switch to it
       else if (it.chat || /\schat$/.test(it.kind || '')) {
         const id = `ch:${it.kind}|${it.label}`;
         if (seenChat.has(id)) continue;
@@ -240,7 +241,7 @@ const AppSearch = (() => {
 
   // ---------- searching ----------
   const recentMap = () => { try { return new Map((store.get(RECENT, []) || []).map((id, i) => [id, i])); } catch { return new Map(); } };
-  const KIND_TEXT = { setting: 'Settings', aisetup: 'AI setup', menu: 'Menu', mission: 'Mission', agent: 'AI', tool: 'Tool', chat: 'Chat', msg: 'In a chat', action: 'Action', cmd: 'Action', lab: 'Lab', news: 'What\'s new', help: 'How to', ask: 'Ask' };
+  const KIND_TEXT = { setting: 'Settings', aisetup: 'AI setup', menu: 'Menu', mission: 'Mission', agent: 'AI', tool: 'Tool', chat: 'Chat', project: 'Project', msg: 'In a chat', action: 'Action', cmd: 'Action', lab: 'Lab', news: 'What\'s new', help: 'How to', ask: 'Ask' };
   function rowOf(r) {
     const it = r.item;
     return { kind: KIND_TEXT[it.kind] || 'Action', label: `${it.checked ? '✓ ' : ''}${it.label}`, detail: [it.path, it.hint].filter(Boolean).join(' · ').slice(0, 160), keys: it.keys || '', id: it.id, score: r.score, run: () => runItem(it) };
@@ -261,7 +262,7 @@ const AppSearch = (() => {
     // the same thing found twice (a menu row and its Ctrl/⌘+K action): once
     const seen = new Set(); const out = [];
     for (const r of res) {
-      const k = norm(r.item.label);
+      const k = `${r.item.kind === 'project' ? 'project ' : ''}${norm(r.item.label)}`; // (round 91) a project and its chat share a name: both stay
       if (seen.has(k)) continue;
       seen.add(k); out.push(r);
       if (out.length >= limit) break;
