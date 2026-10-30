@@ -122,7 +122,7 @@ window.__lc90 = {
 renderer.setAnimationLoop((t) => { knot.rotation.y = t / 1500; group.rotation.y = t / 3000; renderer.render(scene, camera); });`;
 
 if (want('runtime')) await safe('runtime', async () => {
-  await D.newSketch('labcompile90 runtime', SCENE.replace('__GLASS__', 'false'), 1);
+  await D.newSketch('labcompile90 runtime', SCENE.replace('__GLASS__', 'false').replace('glass.visible = false; scene.add(glass);', ''), 1); // (no glass at the start: the first glass comes mid-scene)
   await ready(); await wait(2500);
   for (const k of ['mats', 'swap', 'light', 'glass']) {
     const s0 = await lcState();
@@ -180,8 +180,9 @@ if (S.texture) {
   step('texture: … in slices (≥ 4 a picture), none inside a frame', sl?.pictures >= 2 && sl.slices >= 8 && S.texture.biggestInFrameMP < 1, { slices: sl, inFrame: S.texture.biggestInFrameMP });
   step('texture: the picture shows once its slices are in', Array.isArray(S.texture.pixel) && S.texture.pixel[0] + S.texture.pixel[1] + S.texture.pixel[2] > 30, S.texture.pixel);
 }
+// (texture adds a layer: without background compiles its programs are made in its one setup frame, as labfps89 allows)
 for (const [k, s] of Object.entries(S)) {
-  const n = s.over2xCpu + s.over2xCompile;
+  const n = s.over2xCpu + (s.khr || k !== 'texture' ? s.over2xCompile : 0);
   step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
 }
 const all = Object.values(S);

@@ -829,7 +829,7 @@ function lcAhead(r, P) {
   try {
     if (P.rt !== rt0) r.setRenderTarget(P.rt);
     for (const o of what) { if (waits) waits.push(r.compileAsync(o, P.camera, P.scene)); else r.compile(o, P.camera, P.scene); }
-    if (P.glass) lcGlass(r, P.scene, P.camera, P.whole ? null : what, waits);
+    if (P.glass) lcGlass(r, P.scene, P.camera, P.whole || !P.scene.__lcGlass ? null : what, waits); // (the scene's first glass: every opaque thing's variant)
   } catch { /* its frame compiles what's left */ } finally {
     try { if (r.getRenderTarget() !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
     LC.inR -= 1;
@@ -857,6 +857,7 @@ function lcGlass(r, scene, camera, roots, waits) {
     });
   }
   if (all && !glass) return false;
+  if (all) scene.__lcGlass = true;
   const rt = r.__lcRT || (r.__lcRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
   const rt0 = r.getRenderTarget(); const keep = off.map((o) => o.material);
   LC.inR += 1;
