@@ -193,6 +193,17 @@ async function main() {
     ok(CW.pxAt(CW.profOf(null), 90) === 0 && CW.pxAt(CW.profOf({ role: 'user', compactReq: true, text: 'x' }), 90) === 0, 'heights: nothing / a compact request: 0');
   }
 
+  // ---------- a reply's things ride in its record ("Made here" on a windowed chat, first try) ----------
+  {
+    const few = [{ k: 'image', path: '/a/b.png', name: 'b.png' }, { k: 'video', path: '/a/c.mp4', name: 'c.mp4', w: 1920, h: 1080 }];
+    const many = Array.from({ length: 40 }, (_, i) => ({ k: 'image', path: `/a/very/long/folder/name/for/a/picture-${i}.png`, name: `picture-${i}.png`, src: 'three_screenshot' }));
+    const rec = (things) => CW.recOf(CW.metaOf({ role: 'assistant', text: 'x'.repeat(5000), things }, 90));
+    const stub = (r) => CW.stubOf(r, 7, { miss: (k, key) => { throw new CW.NotLoaded(k, key); }, write: () => { throw new Error('no'); } });
+    ok(JSON.stringify(stub(rec(few)).things) === JSON.stringify(few) && !rec(few).includes('xxxx'), 'records: a reply\'s few things are in its record (its text never)');
+    let threw = false; try { void stub(rec(many)).things; } catch (e) { threw = e.code === 'ENOTLOADED'; }
+    ok(JSON.stringify(many).length > 4000 && threw, 'records: a things list ≥ 4 KB is not: it throws NotLoaded (never "none")');
+  }
+
   // ---------- the store thread ----------
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cc87-'));
   const T = thread();
