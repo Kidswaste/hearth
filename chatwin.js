@@ -25,7 +25,7 @@ const ChatWin = (() => {
   const S = new WeakMap(); // chat → its window: { id, a (chatwin-core makeArray), meta, cpl, … }
   const TAIL = 300; // the last messages always held
   const PART = 400; // messages per range when the whole chat is read
-  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0, refused: [] };
+  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0, refused: [], calcs: [], reguessed: 0 };
   const live = (chat) => { const st = chat && S.get(chat); return st && chat.messages === st.px ? st : null; };
   const is = (chat) => Boolean(live(chat));
   const text = (b) => new TextDecoder().decode(b);
@@ -277,6 +277,7 @@ const ChatWin = (() => {
     if (had?.key === key) return had.p;
     const a = agentOf(chat) || {};
     const p = window.hub.chatWin('calc', { id: chat.id, what: [kind], agent: { id: a.id, mode: a.mode, engine: a.engine, lighterAt: a.lighterAt, model: a.model }, tools, upto }).then((r) => {
+      if (stat.calcs.push({ kind, ms: r?.ms ?? null, how: r?.how || (r?.error ? `error ${r.error}` : '') }) > 40) stat.calcs.shift(); // (round 87: the store thread's time, kept records or not)
       const v = r && !r.error ? r[kind] ?? null : null;
       const e = c.get(kind); if (e?.key === key) { e.v = v; e.done = true; if (v == null) c.delete(kind); }
       return v;
@@ -293,6 +294,58 @@ const ChatWin = (() => {
     return null;
   }
 
+  // ---------- (round 87, chatcalc87) what the panels read from older messages, on the first try ----------
+  // chat-things' "Made here" (ofChat): the loaded messages' things and the others' from their records (a reply's few
+  // cards ride in its record: chatwin-core metaOf), no stub made. A record without them (a list ≥ 4 KB) throws NotLoaded
+  // as before: the chat loads whole and the next try works. The same list as ofChat on the whole chat (app check)
+  function things(chat) {
+    const st = live(chat);
+    if (!st) return null;
+    const out = [];
+    for (let k = 0; k < st.a.t.length; k++) {
+      if (st.a.gone.has(k)) continue; // (a hole: forEach skips it, as on any array)
+      let list;
+      if (st.a.loaded(k)) list = st.a.t[k].things;
+      else {
+        const r = st.r[k]; if (typeof r === 'string' && !r.includes('"things"')) continue;
+        const x = typeof r === 'string' ? JSON.parse(r) : r;
+        if (x[0] === null) list = x[1].things; else if (!x[0].includes('things')) continue; else if (Object.prototype.hasOwnProperty.call(x[1], 'things')) list = x[1].things; else miss(chat, st, k, 'things');
+      }
+      for (const t of list || []) if (!t.gone) out.push({ ...t, index: k });
+    }
+    return out;
+  }
+  // chat-refs' @file list: the window's walk from the end (chatwin-core SCAN[kind] on each message until `max` are seen):
+  // the loaded messages here, each run that isn't loaded on the store thread from the file (chatScan). A read that fails
+  // throws (never "no files"); the chat changed meanwhile: null (the caller asks the usual way)
+  async function scan(chat, kind, max) {
+    const st = live(chat);
+    if (!st) return null;
+    const fn = C.SCAN[kind]; const seen = [];
+    for (let k = st.a.t.length - 1; k >= 0 && seen.length < max;) {
+      if (st.a.loaded(k)) { for (const p of fn(st.a.t[k])) if (!seen.includes(p)) seen.push(p); k -= 1; continue; }
+      let j = k; while (j > 0 && !st.a.loaded(j - 1)) j -= 1;
+      const r = await window.hub.chatWin('scan', { id: chat.id, ver: SV.shapes.get(chat)?.ver, kind, from: j, to: k + 1, seen, max });
+      if (!Array.isArray(r?.seen)) throw new Error('This long chat\'s older messages can\'t be read just now. Nothing was changed; try again in a moment.');
+      if (live(chat) !== st || !r.same) return null;
+      seen.splice(0, seen.length, ...r.seen); k = j - 1;
+    }
+    return seen;
+  }
+  // the width changed: the heights of the messages that aren't loaded made again for it on the store thread (each
+  // message's profile, kept since it opened: none read again). Not the version on disk, or no answer: the old guesses
+  // stay (each block is measured when it wakes, as before). → true when they changed
+  async function reguess(chat, w) {
+    const st = live(chat);
+    const cpl = Math.max(30, (w - 90) / 7.4);
+    if (!st || cpl === st.cpl) return false;
+    const r = await window.hub.chatWin('heights', { id: chat.id, ver: SV.shapes.get(chat)?.ver, cpl }).catch(() => null);
+    if (!Array.isArray(r?.h) || !r.same || live(chat) !== st || r.h.length !== st.a.t.length) return false;
+    for (let k = 0; k < r.h.length; k++) if (!st.a.loaded(k)) st.h[k] = r.h[k];
+    st.cpl = cpl; stat.reguessed += 1;
+    return true;
+  }
+
   const on = () => store.get('chat.window86', true) !== false;
   // turned off: every windowed chat loads whole now
   function all() { for (const c of R.chats.values()) if (is(c)) whole(c, 'off').catch((err) => console.warn('chatwin', err)); }
@@ -301,7 +354,7 @@ const ChatWin = (() => {
     for (const c of R.chats.values()) { const st = live(c); if (st) { windowed += 1; loaded += st.a.keys().length; total += st.a.t.length; } }
     return { ...stat, windowed, loaded, total };
   }
-  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, bad, replaced, all, stats, rewindow, on, TAIL };
+  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, things, scan, reguess, bad, replaced, all, stats, rewindow, on, TAIL };
   R.W.x = api;
   return api;
 })();

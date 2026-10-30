@@ -18,17 +18,59 @@ const ChatSafe = (() => {
 
   // ---------- the chat itself, read-only ----------
   const SHOWN = 60; // the last messages shown (↑ shows the rest)
+  const shown = (m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'opinion') && !m.compactReq;
+  const rowEl = (m, name) => el('div', { class: `chatsafe-msg ${m.role}` },
+    el('div', { class: 'chatsafe-who', text: m.role === 'user' ? 'You' : m.role === 'opinion' ? `${m.from || 'Second opinion'}` : (m.compactSummary ? 'Summary' : name) }),
+    el('div', { class: 'chatsafe-text', text: String(m.text || '').slice(0, 40000) }));
   function messagesEl(chat, name, all = false) {
+    if (chat?.big) return bigEl(chat, name);
     const box = el('div', { class: 'chatsafe-msgs' });
-    const msgs = (chat?.messages || []).filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'opinion') && !m.compactReq);
+    const msgs = (chat?.messages || []).filter(shown);
     const from = all ? 0 : Math.max(0, msgs.length - SHOWN);
     if (from) box.append(el('button', { type: 'button', class: 'ghost small chatsafe-earlier', text: `↑ Show ${from} earlier message${from === 1 ? '' : 's'}`, on: { click: () => box.replaceWith(messagesEl(chat, name, true)) } }));
     if (!msgs.length) box.append(el('p', { class: 'hint', text: 'No messages in this chat yet.' }));
-    for (const m of msgs.slice(from)) {
-      box.append(el('div', { class: `chatsafe-msg ${m.role}` },
-        el('div', { class: 'chatsafe-who', text: m.role === 'user' ? 'You' : m.role === 'opinion' ? `${m.from || 'Second opinion'}` : (m.compactSummary ? 'Summary' : name) }),
-        el('div', { class: 'chatsafe-text', text: String(m.text || '').slice(0, 40000) })));
+    for (const m of msgs.slice(from)) box.append(rowEl(m, name));
+    return box;
+  }
+  // (round 87, chatcalc87) a GIANT chat (≥ 8 MB) isn't read whole for this: its own fields and count from the store
+  // thread (the main process parsed all of it here: ≈ 1 s held for 60 MB), its last messages by range, and "Show
+  // earlier" a page more by range each time (drawing all 6,000 at once held the window ≈ 30 s). A read that fails says
+  // so and can be tried again: never "No messages"
+  async function read(id) {
+    const h = window.hub.chatWin ? await window.hub.chatWin('head', { id }).catch(() => null) : null;
+    if (!h?.big || !h.head) return window.hub.getChat(id).catch(() => null);
+    return { ...h.head, id: h.head.id || id, messages: null, big: { n: Number(h.n) || 0 } };
+  }
+  const PAGE = 300;
+  function bigEl(chat, name) {
+    const box = el('div', { class: 'chatsafe-msgs' });
+    const st = { lo: chat.big.n, busy: false, rows: 0 };
+    const btn = el('button', { type: 'button', class: 'ghost small chatsafe-earlier', text: '↑ Show earlier messages', on: { click: () => more(PAGE) } });
+    const note = el('p', { class: 'hint', text: 'Opening…' });
+    box.append(btn, note);
+    async function more(count, first = false) {
+      if (st.busy || st.lo <= 0) return;
+      st.busy = true; btn.disabled = true;
+      try {
+        const from = Math.max(0, st.lo - count);
+        const r = await window.hub.chatWin('range', { id: chat.id, from, to: st.lo }).catch(() => null);
+        const msgs = r?.bytes ? JSON.parse(new TextDecoder().decode(r.bytes)).messages : null;
+        if (!Array.isArray(msgs) || msgs.length !== st.lo - from) throw new Error('read');
+        st.lo = from;
+        const add = msgs.filter(shown).map((m) => rowEl(m, name));
+        st.rows += add.length;
+        btn.after(...add);
+        btn.textContent = '↑ Show earlier messages';
+        if (!st.lo) btn.remove();
+        note.remove();
+        if (!st.rows && !st.lo) box.append(el('p', { class: 'hint', text: 'No messages in this chat yet.' }));
+        if (first) { const sc = box.closest('.chatsafe-body'); if (sc) sc.scrollTop = sc.scrollHeight; else box.lastElementChild?.scrollIntoView?.({ block: 'end' }); }
+      } catch {
+        if (first) note.textContent = 'This chat couldn\'t be read just now (nothing was changed). Try again in a moment.';
+        else btn.textContent = '↑ The earlier messages couldn\'t be read just now (nothing was changed): try again';
+      } finally { st.busy = false; btn.disabled = false; }
     }
+    if (st.lo) more(Math.round(SHOWN * 1.5), true); else { btn.remove(); note.textContent = 'No messages in this chat yet.'; }
     return box;
   }
   const note = (id) => {
@@ -42,7 +84,7 @@ const ChatSafe = (() => {
   const picks = new Map(); // toolId -> the chat to show when its dock panel is drawn
   async function open(chatId, { agentId = null, quiet = false } = {}) {
     let aid = agentId || (H.chats || []).find((c) => c.id === chatId)?.agentId || null;
-    if (!aid) { const c = await window.hub.getChat(chatId).catch(() => null); aid = c?.agentId || null; }
+    if (!aid) { const c = await read(chatId); aid = c?.agentId || null; }
     if (!aid) return false;
     if (isOn(aid)) { Native.open(aid, chatId); return true; } // its AI is back: the real chat
     const w = who(aid);
@@ -54,7 +96,7 @@ const ChatSafe = (() => {
       return true;
     }
     if (quiet) return false;
-    const chat = await window.hub.getChat(chatId).catch(() => null);
+    const chat = await read(chatId);
     if (!chat) { toast('That chat couldn\'t be read just now: nothing was changed, try again in a moment', { type: 'error' }); return false; }
     reader(chat);
     return true;
@@ -106,7 +148,7 @@ const ChatSafe = (() => {
       d.sel ? el('button', { type: 'button', class: 'ghost small', text: 'Continue with Claude…', on: { click: () => continueElsewhere(d.sel).catch(fail) } }) : null);
     d.root.replaceChildren(head, rows, body, foot);
     if (!d.sel) return;
-    const chat = await window.hub.getChat(d.sel).catch(() => null);
+    const chat = await read(d.sel);
     if (seq !== d.seq) return;
     body.replaceChildren(chat ? messagesEl(chat, w.name) : el('p', { class: 'hint', text: 'This chat couldn\'t be read just now (nothing was changed). Try again in a moment.' }));
     body.scrollTop = body.scrollHeight;
@@ -179,5 +221,5 @@ const ChatSafe = (() => {
     });
   }
 
-  return { open, mountDock, refreshDock, bringBack, continueElsewhere, reader };
+  return { open, mountDock, refreshDock, bringBack, continueElsewhere, reader, read };
 })();

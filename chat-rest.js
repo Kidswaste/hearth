@@ -18,7 +18,35 @@ const ChatRest = (() => {
     const seen = list.restSeen ||= new Set();
     for (const s of seen) if (!s.isConnected) { list.restIO.unobserve(s); seen.delete(s); }
     for (const s of list.querySelectorAll(':scope > .msg-rest')) if (!seen.has(s)) { seen.add(s); list.restIO.observe(s); }
+    // (round 87, chatcalc87) the list's width changed: its resting blocks' heights made again (rewidth, in the next tick)
+    if (!list.restRO) { list.restRO = new ResizeObserver(() => { if (list === v.list && list.restW && Math.abs(list.clientWidth - list.restW) >= 24) soon(agentId, 250); }); list.restRO.observe(list); }
     soon(agentId, 400);
+  }
+  // (round 87, chatcalc87) a windowed giant chat at a new width: the messages that aren't loaded kept the height guessed
+  // at the width it opened with. Their records' heights are made again for this width on the store thread (chatwin.js
+  // reguess: each message's profile, none read again), then each resting block's spacer takes its new guess; a block
+  // measured when it was drawn is rescaled by how its guess changed. What's at the top of the view stays put
+  async function rewidth(agentId, v, chat) {
+    const list = v.list; const w = list.clientWidth; const old = list.restW;
+    if (!w || !old || v.rewidth) return;
+    v.rewidth = true;
+    try {
+      const win = Native.isWin?.(chat); const W = R.W.x; const B = R.BLOCK;
+      const g0 = new Map(); if (win) for (const [b, x] of list.restH || []) g0.set(b, W.guess(chat, b * B, b * B + x.n, old));
+      const changed = win ? await W.reguess(chat, w) : false;
+      if (v.list !== list || H.activeChat[agentId] !== chat.id || chats.get(chat.id) !== chat) return;
+      list.restW = w;
+      if (!changed) return; // (a chat held whole: blocks guessed from now on take the new width; the others as before)
+      for (const [b, g] of list.restG || []) list.restG.set(b, { n: g.n, h: W.guess(chat, b * B, b * B + g.n, w) });
+      for (const [b, x] of list.restH || []) { const a0 = g0.get(b); if (a0 > 0) list.restH.set(b, { n: x.n, h: Math.round(x.h * W.guess(chat, b * B, b * B + x.n, w) / a0) }); }
+      const a = anchor(list);
+      for (const sp of list.querySelectorAll(':scope > .msg-rest')) {
+        const b = Number(sp.dataset.block); const x = list.restH?.get(b); const g = list.restG?.get(b);
+        const h = x && (!g || x.n === g.n) ? x.h : g?.h;
+        if (h != null && sp.restPx !== h) { sp.restPx = h; sp.style.height = `${h}px`; }
+      }
+      if (a) R.keepAnchor(list, a);
+    } finally { v.rewidth = false; }
   }
   function soon(agentId, ms) {
     const v = views.get(agentId);
@@ -34,6 +62,7 @@ const ChatRest = (() => {
     if (v.drawing) { soon(agentId, 200); return; }
     const r = list.getBoundingClientRect(); const vh = r.height;
     if (!vh) return;
+    if (list.restW && Math.abs(list.clientWidth - list.restW) >= 24) await rewidth(agentId, v, chat); // (round 87)
     // the nearest resting block within a screen of the view wakes, then the next tick looks again
     let near = null; let nd = vh;
     for (const s of list.querySelectorAll(':scope > .msg-rest')) { const q = s.getBoundingClientRect(); const d = Math.max(q.top - r.bottom, r.top - q.bottom, 0); if (d < nd) { nd = d; near = s; } }

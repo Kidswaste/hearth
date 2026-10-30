@@ -110,8 +110,10 @@ async function bench() {
       ver = `b${i}`; n += 2;
       await calc(`chatCalc after reply ${i}`);
     }
-    // the whole way, for comparison
-    const t0 = performance.now(); CC.whole(JSON.parse(fs.readFileSync(file, 'utf8')), { what: ALL, agent, tools: true }); console.log(`${'the whole way on this thread (parse + calc)'.padEnd(44)} ${Math.round(performance.now() - t0)} ms`);
+    // the whole way, for comparison (and the same answers)
+    const last = await T.op({ op: 'chatCalc', file, what: ALL, agent, tools: true });
+    const t0 = performance.now(); const w = CC.whole(JSON.parse(fs.readFileSync(file, 'utf8')), { what: ALL, agent, tools: true, now: last.lean.now }); console.log(`${'the whole way on this thread (parse + calc)'.padEnd(44)} ${Math.round(performance.now() - t0)} ms`);
+    console.log(`the same answers as the whole way: ${['n', 'lighter', 'preview', 'lean'].every((k) => JSON.stringify(w[k]) === JSON.stringify(last[k]))}`);
     const t1 = performance.now(); await T.op({ op: 'chatHeights', file, ver, cpl: 60 }); console.log(`${'chatHeights at another width'.padEnd(44)} ${Math.round(performance.now() - t1)} ms`);
   } finally { T.end(); fs.rmSync(dir, { recursive: true, force: true }); }
 }
@@ -212,19 +214,25 @@ async function main() {
     ok(a.how === 'built', `chatCalc: the first ask makes the records (${a.how})`);
     const b = await onFile('(again)');
     ok(b.how === 'kept', `chatCalc: the next ask reads them (${b.how})`);
-    // saves by change: the records follow, the file is never parsed whole again
-    let ver = 'v0'; let n = 1300; let allKept = true;
+    // saves by change: the records follow, the file is never parsed whole again; each file = a whole save, byte for byte
+    let ver = 'v0'; let n = 1300; let allKept = true; let bytes = true;
+    const want = clone(chat);
     for (let i = 1; i <= 12; i++) {
       const kind = i % 4; let d;
       if (kind === 3) { const at = n - int(5, 40); d = { n: at + 1, msgs: [[at, message(at)]], trunc: true }; }
-      else if (kind === 2) { const at = int(0, 900); const m = { ...JSON.parse(fs.readFileSync(file, 'utf8')).messages[at], reaction: { emoji: '🔥', at: i } }; d = { n, msgs: [[at, m]] }; }
+      else if (kind === 2) { const at = int(0, 900); d = { n, msgs: [[at, { ...want.messages[at], reaction: { emoji: '🔥', at: i } }]] }; }
       else d = { n: n + 2, msgs: [[n, message(n)], [n + 1, message(n + 1)]] };
-      const res = await T.op({ op: 'chatDelta', file, from: ver, to: `v${i}`, keys: Object.keys(chat), set: i === 6 ? { compact: { summary: 'a summary', index: 1000, tail: 995, at: 1 } } : {}, ...d });
+      const set = {};
+      if (i === 6) want.compact = set.compact = { summary: 'a summary', index: 1000, tail: 995, at: 1 };
+      want.messages.length = d.n; for (const [k, m] of d.msgs) want.messages[k] = clone(m);
+      const res = await T.op({ op: 'chatDelta', file, from: ver, to: `v${i}`, keys: Object.keys(want), set, ...d });
       if (!res.ok) { ok(false, `chatDelta #${i}: ${res.why}`); break; }
       ver = `v${i}`; n = d.n;
+      if (fs.readFileSync(file, 'utf8') !== JSON.stringify(want, null, 2)) bytes = false;
       const r = await onFile(`after change #${i} (kind ${kind})`, i % 2 ? undefined : n - 1);
       if (r.how !== 'kept') allKept = false;
     }
+    ok(bytes, 'saves by change with the records kept: each file = a whole save of the chat, byte for byte (12 changes: exchanges, cuts with trunc, reactions on old messages, its own fields)');
     ok(allKept, 'chatCalc after each save by change: read from the kept records (never the file parsed whole)');
     // a file changed another way (a whole save, sync): read again
     const disk = JSON.parse(fs.readFileSync(file, 'utf8')); disk.messages.push(message(9999)); disk.title = 'Changed elsewhere'; fs.writeFileSync(file, JSON.stringify(disk, null, 2));

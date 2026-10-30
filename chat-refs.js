@@ -56,8 +56,11 @@ const ChatRefs = (() => {
     }
     if (kind === 'file') {
       // files this chat mentioned or was given, newest first, then the picker
-      const seen = [];
-      for (const m of [...(chat?.messages || [])].reverse()) {
+      // (round 87, chatcalc87) a windowed giant chat: the same walk, its older messages read on the store thread (chatwin.js
+      // scan: first try, never "no files" for what isn't loaded); null (it changed meanwhile): the usual walk
+      const won = Native.isWin?.(chat) ? await Native._rest.W.x.scan(chat, 'paths', 12) : null;
+      const seen = won || [];
+      if (!won) for (const m of [...(chat?.messages || [])].reverse()) {
         for (const p of String(m.sent || m.text || '').match(/(?:[A-Za-z]:\\|\/)(?:[^\s"'<>|*?\n]+[\\/])*[^\s"'<>|*?\n]+\.[A-Za-z0-9]{1,5}\b/g) || []) if (!seen.includes(p)) seen.push(p);
         if (seen.length >= 12) break;
       }
