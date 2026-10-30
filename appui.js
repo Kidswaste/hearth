@@ -110,6 +110,9 @@ const AppUI = (() => {
   // ---------- command palette ----------
   const actions = [];
   function addAction(label, run, keys = '') { actions.push({ label, run, keys }); }
+  // (round 91, projaudit91) rows made fresh each time the palette opens, ahead of the others (projects: projaudit91.js)
+  const sources = [];
+  const addSource = (fn) => { if (typeof fn === 'function') sources.push(fn); };
   // (round 29, fastboot) a big batch (every chat command as a "/name — what it does" line) keeps its place in the list
   // but is made when something first reads the actions (the palette), or in an idle moment: not at the first frame
   let later = 0;
@@ -150,6 +153,7 @@ const AppUI = (() => {
 
   function paletteItems() {
     const items = [];
+    for (const src of sources) { try { items.push(...(src() || [])); } catch (err) { console.warn('palette source', err); } }
     for (const a of H.agents()) items.push({ kind: 'Agent', label: a.name, keys: H.railKey?.(a.id) || '', run: () => activate(a.id) });
     for (const t of Tools.all()) { // (round 53) the tools off the rail too: Ctrl/⌘+K still opens them
       items.push({ kind: 'Tool', label: t.name, keys: H.railKey?.(`tool:${t.id}`) || '', run: () => activate(`tool:${t.id}`) });
@@ -582,7 +586,7 @@ const AppUI = (() => {
 
   // (round 37, appsearch) what it shows, again (rows that joined: a chat's messages, the Lab's things, patch notes)
   const paletteRefresh = () => { if (pal?.box.isConnected && !pal.input.value.startsWith('?')) paletteRender(); };
-  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, paletteRefresh, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory,
+  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, addSource, paletteRefresh, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory,
     // (round 83) for appui-dialogs.js only
     _dialogs: { THEMES, SPELL_LANGS, loadFind, createShortcuts, packForMac, backupNow, exportData, downloads, dlHistory, clearLog: () => { dlLog = []; }, setView: (fn) => { dlView = fn; } } };
 })();

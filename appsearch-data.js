@@ -65,7 +65,7 @@ const AppSearchData = (() => {
     ['several ais', 'swarm side by side ask everyone'], ['second opinion', 'second opinion only review'],
   ];
   // how much each kind leans ahead among equals: a place to set something up first, then actions, then the rest
-  const KIND = { setting: 0.22, aisetup: 0.24, menu: 0.16, mission: 0.12, agent: 0.3, tool: 0.28, chat: 0.1, msg: 0.02, action: 0.06, cmd: -0.04, lab: 0.12, news: -0.2, help: -0.02, ask: -9 };
+  const KIND = { setting: 0.22, aisetup: 0.24, menu: 0.16, mission: 0.12, agent: 0.3, tool: 0.28, project: 0.32 /* (round 91, projaudit91) above its own chat of the same name */, chat: 0.1, msg: 0.02, action: 0.06, cmd: -0.04, lab: 0.12, news: -0.2, help: -0.02, ask: -9 };
 
   // ---------- Settings (besides SettingsFind's switches) ----------
   // [id, section, label, find (on screen), tags, hint, sel?]; section = the name of the part it sits in (a fold's own

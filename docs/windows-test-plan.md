@@ -112,6 +112,20 @@ Your job: check the things below on real Windows and report back plain results (
   spotlight that casts shadows": does the picture stick for a moment? Save a 4K photo used by a scene again from
   Photoshop (or replace the file): is there a jolt when the new one appears?
 
+## 9. Projects on both computers, by hand (round 91, projaudit91)
+Only real machines with the real cloud drive can show these; the checks use a temp folder and a simulated provider.
+- Drag a file from Explorer onto a project's Desk (not onto its chat): a toast says it is in the project and it shows
+  under Project files. Do the same on the Mac from Finder. Drop a `.hearthproject` on Projects: still the import card.
+- Drag a chat from the chats list onto a project's Desk: it joins the project.
+- Ctrl/⌘+K, type a project's name: the first row is the project ("Project" on its right); Enter opens it.
+- Rename the same project on the PC and on the Mac while one of them is offline (Wi-Fi off), then bring it back:
+  one name on both; the computer that settled it shows "Mac's/PC's version of Projects kept aside — compare" in the
+  sync panel, and Keep both makes ONE project named "A / B" (not two). The other computer shows a toast
+  "“A” is now “B” …" with "Use “A”".
+- Set a capture as a project's cover on the PC; on the Mac, after sync, the same cover shows.
+- With a project open in the Lab (its Scene tab), Sketch ▾ › Duplicate: the copy is listed in the project's files.
+- Report what you saw for each line (works / what happened instead).
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
