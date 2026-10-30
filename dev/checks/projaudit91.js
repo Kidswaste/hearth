@@ -64,7 +64,7 @@ await click('.space-chats');
 const rowSel = `#chat-groups .item[data-key="${CSS.escape(loose.id)}"]`;
 await until(() => J.visible(document.querySelector(rowSel)), 8000);
 await click(rowSel, { right: true });
-const pjMenu = await pickMenu(/^Project$/);
+const pjMenu = await pickMenu(/^Project›?$/);
 const newFromChat = pjMenu && await pickMenu(/^＋ New project…$/);
 const typed = newFromChat && await answer('Audit Delta');
 await until(() => byName('Audit Delta'), 4000);
@@ -82,7 +82,7 @@ const card = [...document.querySelectorAll('dialog.sb-dialog[open] .sb-grid > *'
 step('the Lab\'s Sketches opens with its cards', Boolean(card), document.querySelector('dialog.sb-dialog[open]')?.textContent?.slice(0, 80));
 if (card) {
   await click(card, { right: true });
-  const m1 = await pickMenu(/^Project$/); const m2 = m1 && (await pickMenu(/^＋ New project…$/)); const m3 = m2 && (await answer('Audit Epsilon')); const ok3 = m3;
+  const m1 = await pickMenu(/^Project›?$/); const m2 = m1 && (await pickMenu(/^＋ New project…$/)); const m3 = m2 && (await answer('Audit Epsilon')); const ok3 = m3;
   await until(() => byName('Audit Epsilon'), 4000);
   step('Lab › Sketches › right-click a scene › Project › ＋ New project… makes a project with the scene', Boolean(ok3 && byName('Audit Epsilon')?.items.some((x) => x.type === 'scene')), { m1, m2, m3, items: byName('Audit Epsilon')?.items, menu: [...document.querySelectorAll('#menu button')].map((b) => b.textContent.trim()).slice(0, 14) });
   document.querySelector('dialog.sb-dialog[open]')?.close();
@@ -160,8 +160,8 @@ await section('6. move things in and out; drops on the Desk', async () => {
   const p = Projects.get(pb.id);
   const other = { id: `pa91-other-${Date.now().toString(36)}`, agentId: claude.id, title: 'Other chat for the desk', createdAt: Date.now(), updatedAt: Date.now() + 5, messages: [] };
   await window.hub.saveChat(other); Native.adopt(other, { openIt: false });
-  await click([...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => /＋ Add/.test(b.textContent)));
-  await pickMenu(/^A chat$/);
+  { const a = [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => /＋ Add/.test(b.textContent)); a?.scrollIntoView({ block: 'center' }); await wait(200); await click(a); }
+  await pickMenu(/^A chat›?$/);
   const inOk = await pickMenu(/^Other chat for the desk/);
   await wait(300);
   step('＋ Add › A chat › a chat puts it in the project', inOk && Projects.get(pb.id).items.some((x) => x.ref === other.id), Projects.get(pb.id).items.map((x) => x.id));
@@ -214,9 +214,10 @@ await section('8. archive / unarchive', async () => {
 {
   await J.shot('pa91-desk-before-archive');
   const dots = [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯');
+  dots?.scrollIntoView({ block: 'center' }); await wait(200); // (the Desk comes back where it was scrolled: the owner scrolls up to its head)
   step('the Desk\'s ⋯ can be clicked (nothing over it)', dots && J.hitOk(dots), { hit: document.elementFromPoint(dots.getBoundingClientRect().left + 5, dots.getBoundingClientRect().top + 5)?.className, rect: JSON.stringify(dots.getBoundingClientRect()) });
   await click(dots);
-  const ok8 = (await pickMenu(/^Status$/)) && (await pickMenu(/^Archived$/));
+  const ok8 = (await pickMenu(/^Status›?$/)) && (await pickMenu(/^Archived$/));
   await wait(300);
   step('⋯ › Status › Archived archives it', ok8 && Projects.get(pb.id).status === 'archived');
   await click(nameBtn()); await until(() => menuItem(/^All projects$/), 3000);
@@ -234,7 +235,7 @@ await section('9. delete → Undo; delete → Deleted things › Restore', async
   await onDesk(pb.id);
 {
   const items = JSON.stringify(Projects.get(pb.id).items);
-  await click([...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯'));
+  { const d = [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯'); d?.scrollIntoView({ block: 'center' }); await wait(200); await click(d); }
   await pickMenu(/^Delete the project…$/);
   await wait(400);
   step('⋯ › Delete the project… deletes it (its chats stay)', !Projects.get(pb.id) && H.chats.some((c) => c.id === loose.id));

@@ -59,7 +59,7 @@ const ProjAudit = (() => {
   function deskDrop(e, id) {
     const p = P.get(id);
     if (!p) return false;
-    const files = [...(e.dataTransfer?.files || [])].map((f) => { let path = ''; try { path = window.hub.pathForFile?.(f) || f.path || ''; } catch { /* not a real file */ } return { name: f.name, path }; });
+    const files = [...(e.dataTransfer?.files || [])].map((f) => { let path = ''; try { path = window.hub.pathForFile?.(f) || ''; } catch { /* not a File from a drop */ } return { name: f.name, path: path || (typeof f.path === 'string' ? f.path : '') }; });
     let chatId = '';
     try { chatId = e.dataTransfer?.getData('application/x-hearth-chat') || ''; } catch { /* none */ }
     const d = A.dropped(files, { types: e.dataTransfer?.types || [], chatId });
