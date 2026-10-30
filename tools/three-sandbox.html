@@ -4855,8 +4855,12 @@ function upSlice(tex, bmp, fn, res) {
     try {
       if (y === 0 && full.version === 0) {
         // its memory, every mip level, no pixels yet (the slices fill it)
+        // (three reads generateMipmaps three times here: its cache key and its mip levels need the real value; the
+        // third would make mipmaps of the empty memory, a full pass over 67 MB on a software GPU: skipped)
         full.source.dataReady = false; full.needsUpdate = true;
-        timed(() => r.initTexture(full));
+        let reads = 0; Object.defineProperty(full, 'generateMipmaps', { configurable: true, get: () => { reads += 1; return gm && reads < 3; }, set: () => {} });
+        try { timed(() => r.initTexture(full)); } finally { delete full.generateMipmaps; full.generateMipmaps = gm; }
+        UPQ.ahead += 1; // (its upload starts here, right after a frame)
         next(); return;
       }
       const h = Math.min(rows, H - y); const last = y + h >= H;
@@ -4871,7 +4875,6 @@ function upSlice(tex, bmp, fn, res) {
       tex.version += 1;
       timed(() => r.initTexture(tex));
       full.dispose(); // (its hold on that memory: the scene's texture has it now)
-      UPQ.ahead += 1;
       end(); res();
     } catch { fail(); }
   };
