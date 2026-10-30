@@ -305,7 +305,18 @@ async function cdpConnect(dir) {
       send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
     };
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
-    let traceEvents = []; let traceDone = null; let snapChunks = null;
+    let traceEvents = []; let traceDone = null; let snapChunks = null; let traceDelay0 = null;
+    // (round 88, checkfix88) how long each process's main thread has waited for a CPU so far (Linux schedstat's run delay,
+    // ms; null elsewhere): a busy box shows as run delay, a slow app as CPU time
+    const runDelays = () => {
+      if (process.platform !== 'linux') return null;
+      const out = {};
+      try { for (const p of fs.readdirSync('/proc')) { if (!/^\d+$/.test(p)) continue; try { out[p] = Number(fs.readFileSync(`/proc/${p}/schedstat`, 'utf8').split(' ')[1]) / 1e6; } catch { /* gone */ } } } catch { return null; }
+      // (a virtual machine's CPUs can be taken by the host: "steal", ms per CPU, which a thread's own CPU time includes)
+      try { out._steal = (Number(fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/)[8]) * 10) / os.cpus().length; } catch { /* none */ }
+      out._t = Date.now();
+      return out;
+    };
     const sheets = new Map(); // styleSheetId → header (--coverage)
     const pageSocks = {}; // (round 53, gameinput) pageCdp: one socket per other page
     const coverage = opt('--coverage');
@@ -327,10 +338,25 @@ async function cdpConnect(dir) {
         fs.writeFileSync(req.snapshot, snapChunks.join('')); result = { saved: req.snapshot, bytes: snapChunks.reduce((a, c) => a + c.length, 0) }; snapChunks = null;
       } else if (req.trace === 'start') {
         // (detail: also the top-level tasks and frame events, for dev/trace-stats.js: long tasks, forced layouts, input → paint)
-        traceEvents = []; result = (await send('Tracing.start', { categories: `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}${req.cats ? `,${req.cats}` : ''}`, transferMode: 'ReportEvents' })).result || {};
+        // (round 88, checkfix88) { trace: 'start', tasks: true }: a light trace (top-level tasks with their thread times and
+        // the page's marks only) and the threads' CPU-wait counters now, for { trace: 'stop', tasks: {…} } below
+        traceEvents = []; traceDelay0 = req.tasks ? runDelays() : null;
+        result = (await send('Tracing.start', { categories: req.tasks ? `toplevel,blink.user_timing${req.cats ? `,${req.cats}` : ''}` : `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}${req.cats ? `,${req.cats}` : ''}`, transferMode: 'ReportEvents' })).result || {};
       } else if (req.trace === 'stop') {
         const done = new Promise((r) => { traceDone = r; });
         await send('Tracing.end'); await done;
+        if (req.tasks) {
+          // (round 88, checkfix88) the window's long tasks: wall vs its own CPU, judged against tasks.budget with the
+          // thread's wait for a CPU over the trace (dev/trace-stats.js longTasks)
+          const d1 = runDelays(); const delays = {};
+          if (traceDelay0 && d1) for (const [k, v] of Object.entries(d1)) if (traceDelay0[k] != null) delays[k] = v - traceDelay0[k];
+          const steal = delays._t > 0 && delays._steal >= 0 ? Math.min(0.9, delays._steal / delays._t) : 0;
+          result = require('./trace-stats.js').longTasks(traceEvents, { ...req.tasks, delays: traceDelay0 && d1 ? delays : null, steal });
+          if (req.dump) fs.writeFileSync(req.dump, JSON.stringify(traceEvents));
+          traceEvents = []; traceDelay0 = null;
+          send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
+          return;
+        }
         const paints = traceEvents.filter((e) => e.name === 'Paint' && e.args?.data?.clip);
         const c = (n) => Math.max(0, Math.min(4096, n)); // a layer's clip can be 'infinite' (2^25 px): count what can be on screen
         const area = (q) => Math.abs((c(q[2]) - c(q[0])) * (c(q[5]) - c(q[1])));

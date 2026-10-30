@@ -59,13 +59,19 @@ const ChatSafe = (() => {
         st.lo = from;
         const add = msgs.filter(shown);
         st.rows += add.length;
-        // put in a few at a time (newest first, just under the button), each batch its own task
-        for (let i = add.length; i > 0; i -= 10) { btn.after(...add.slice(Math.max(0, i - 10), i).map((m) => rowEl(m, name))); if (i > 10) await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); }
+        // put in a few at a time (newest first, just under the button), each batch its own task. (round 88, checkfix88)
+        // The first page keeps the end in view from its first batch on: the older batches then go in above what is on
+        // screen, where content-visibility leaves them unlaid-out. Scrolled to the end only after the last batch, each
+        // batch went in at the visible top and its long replies were laid out there: 60–100 ms tasks for rows that
+        // ended up off screen anyway.
+        const toEnd = () => { const sc = box.closest('.chatsafe-body'); if (sc) sc.scrollTop = sc.scrollHeight; else if (box.scrollHeight > box.clientHeight) box.scrollTop = box.scrollHeight; else box.lastElementChild?.scrollIntoView?.({ block: 'end' }); };
+        if (first) note.remove();
+        for (let i = add.length; i > 0; i -= 10) { btn.after(...add.slice(Math.max(0, i - 10), i).map((m) => rowEl(m, name))); if (first) toEnd(); if (i > 10) await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); }
         btn.textContent = '↑ Show earlier messages';
         if (!st.lo) btn.remove();
         note.remove();
         if (!st.rows && !st.lo) box.append(el('p', { class: 'hint', text: 'No messages in this chat yet.' }));
-        if (first) { const sc = box.closest('.chatsafe-body'); if (sc) sc.scrollTop = sc.scrollHeight; else box.lastElementChild?.scrollIntoView?.({ block: 'end' }); }
+        if (first) toEnd();
       } catch {
         if (first) note.textContent = 'This chat couldn\'t be read just now (nothing was changed). Try again in a moment.';
         else btn.textContent = '↑ The earlier messages couldn\'t be read just now (nothing was changed): try again';

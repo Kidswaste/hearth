@@ -153,4 +153,66 @@ function stats(events, opts = {}) {
   }
   return out;
 }
-module.exports = { stats };
+// (round 88, checkfix88) Load-aware long tasks: the window's top-level tasks with their wall time (dur) AND the thread's
+// own CPU time in them (tdur), plus how long that thread waited for a CPU over the trace (Linux schedstat run delay,
+// read by dev/smoke.js at the trace's start and stop). A busy box makes a task wait for a CPU; it barely makes it cost
+// more CPU. Judged against a budget, a task over it is
+//   'over'  its own CPU time is over the budget (real work: script, layout, GC…), or it was off the CPU for longer than
+//           the thread waited for one (a sync read, a lock: real slowness too)
+//   'load'  its CPU time fits and the rest is no more than the thread's wait for a CPU: the box, not the app ("can't tell")
+// opts: { min (ms, 50), budget (ms), mark (a performance.mark name set in the window: picks its thread and is time 0),
+// observed ([{ at, ms }]: the long tasks the page's own PerformanceObserver saw, ms after the mark: when given, exactly
+// those are judged — the check keeps its own idea of a long task, the trace only says what each one cost; a task
+// the observer reports can show in the trace as a task and the microtask checkpoint after it: their CPU is summed),
+// delays ({ pid: run delay ms over the trace }), steal (the share of the CPUs a virtual machine's host took over the
+// trace, 0–0.9: a thread's own CPU time includes it, so a task's CPU is counted without it) }.
+// Without thread times in the trace: verdict 'unknown'.
+function longTasks(events, opts = {}) {
+  const min = opts.min ?? 50; const budget = opts.budget ?? Infinity;
+  const names = {}; for (const e of events) if (e.ph === 'M' && e.name === 'thread_name') names[`${e.pid}:${e.tid}`] = e.args?.name;
+  const isMain = (e) => e.ph === 'X' && names[`${e.pid}:${e.tid}`] === 'CrRendererMain';
+  const busy = {};
+  for (const e of events) if (isMain(e)) busy[`${e.pid}:${e.tid}`] = (busy[`${e.pid}:${e.tid}`] || 0) + (e.dur || 0);
+  const marked = opts.mark ? events.find((e) => e.cat?.includes('user_timing') && e.name === opts.mark && busy[`${e.pid}:${e.tid}`] !== undefined) : null;
+  const main = marked ? `${marked.pid}:${marked.tid}` : Object.entries(busy).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!main) return { verdict: 'unknown', why: 'no renderer main thread in the trace', tasks: [] };
+  // the thread's outermost events (a task, the microtask checkpoint run after it, a reply received…): never nested
+  const all = events.filter((e) => e.ph === 'X' && `${e.pid}:${e.tid}` === main).sort((a, b) => a.ts - b.ts || b.dur - a.dur);
+  const top = []; for (const t of all) { const p = top.at(-1); if (p && t.ts < p.ts + p.dur) continue; top.push(t); }
+  const t0 = marked ? marked.ts : top[0]?.ts || 0;
+  const hasCpu = top.some((t) => Number.isFinite(t.tdur));
+  const [pid] = main.split(':');
+  const delayMs = opts.delays ? (opts.delays[main] ?? opts.delays[pid] ?? null) : null;
+  let tasks;
+  if (Array.isArray(opts.observed)) {
+    // each observed task: the CPU of the outermost events inside its span (±1 ms)
+    tasks = opts.observed.filter((o) => o.ms >= min).sort((a, b) => b.ms - a.ms).map((o) => {
+      const a = t0 + (o.at - 1) * 1000; const b = t0 + (o.at + o.ms + 1) * 1000;
+      const inside = top.filter((t) => t.ts >= a && t.ts + t.dur <= b);
+      return { at: r1(o.at), ms: r1(o.ms), cpuMs: inside.length && hasCpu ? r1(inside.reduce((x, t) => x + (t.tdur || 0), 0) / 1000) : null, traced: inside.length ? r1(inside.reduce((x, t) => x + t.dur, 0) / 1000) : 0 };
+    });
+  } else {
+    tasks = top.filter((t) => t.dur / 1000 >= min).sort((a, b) => b.dur - a.dur)
+      .map((t) => ({ at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: Number.isFinite(t.tdur) ? r1(t.tdur / 1000) : null }));
+  }
+  const over = tasks.filter((t) => t.ms > budget);
+  const out = { thread: main, n: top.length, cpuMs: hasCpu ? r1(top.reduce((a, t) => a + (t.tdur || 0), 0) / 1000) : null, runDelayMs: delayMs == null ? null : r1(delayMs), tasks: tasks.slice(0, 8), verdict: 'ok', why: '' };
+  if (!over.length) return out;
+  if (!hasCpu) return { ...out, verdict: 'unknown', why: 'no thread times in the trace' };
+  const steal = Math.max(0, Math.min(0.9, opts.steal || 0)); out.stealPct = Math.round(steal * 100);
+  for (const t of over) {
+    if (t.cpuMs == null) { t.judged = 'unknown'; t.why = 'not found in the trace'; continue; }
+    const own = steal ? r1(t.cpuMs * (1 - steal)) : t.cpuMs;
+    if (own > budget) { t.judged = 'over'; t.why = `${t.cpuMs} ms of its own CPU time${steal ? ` (${own} ms without the host's ${out.stealPct} % steal)` : ''}`; continue; }
+    if (t.cpuMs > budget) { t.judged = 'load'; t.why = `${t.cpuMs} ms CPU, but ${own} ms once the host's ${out.stealPct} % steal is taken out`; continue; }
+    const off = t.ms - t.cpuMs;
+    if (delayMs == null) { t.judged = 'unknown'; t.why = `${t.cpuMs} ms CPU, ${r1(off)} ms off the CPU (no run-delay figure here)`; continue; }
+    if (off <= delayMs + 5) { t.judged = 'load'; t.why = `${t.cpuMs} ms CPU; the other ${r1(off)} ms ≤ the ${r1(delayMs)} ms the thread waited for a CPU`; continue; }
+    t.judged = 'over'; t.why = `${t.cpuMs} ms CPU but ${r1(off)} ms off the CPU, more than the ${r1(delayMs)} ms it waited for one (a sync read / lock?)`;
+  }
+  out.verdict = over.some((t) => t.judged === 'over') ? 'over' : over.some((t) => t.judged === 'unknown') ? 'unknown' : 'load';
+  const worst = over.find((t) => t.judged === out.verdict) || over[0];
+  out.why = `${worst.ms} ms task: ${worst.why}`;
+  return out;
+}
+module.exports = { stats, longTasks };
