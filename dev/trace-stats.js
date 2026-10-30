@@ -197,6 +197,13 @@ function longTasks(events, opts = {}) {
   }
   const over = tasks.filter((t) => t.ms > budget);
   const out = { thread: main, n: top.length, cpuMs: hasCpu ? r1(top.reduce((a, t) => a + (t.tdur || 0), 0) / 1000) : null, runDelayMs: delayMs == null ? null : r1(delayMs), tasks: tasks.slice(0, 8), verdict: 'ok', why: '' };
+  // (round 89, desk89) opts.marked: a mark's name (performance.mark in the page) → the task each such mark fell in, long
+  // or not ({ at, ms, cpuMs }: the outermost event on the window's thread around it), for a check that times one piece
+  // of work below the long-task line too
+  // (several names: { name: [...] })
+  const markedOf = (name) => events.filter((e) => e.cat?.includes('user_timing') && e.name === name && `${e.pid}:${e.tid}` === main).sort((a, b) => a.ts - b.ts)
+    .map((m) => { const t = top.find((x) => x.ts <= m.ts && m.ts <= x.ts + x.dur); return t ? { at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: Number.isFinite(t.tdur) ? r1(t.tdur / 1000) : null } : null; });
+  if (opts.marked) out.marked = Array.isArray(opts.marked) ? Object.fromEntries(opts.marked.map((n) => [n, markedOf(n)])) : markedOf(opts.marked);
   if (!over.length) return out;
   if (!hasCpu) return { ...out, verdict: 'unknown', why: 'no thread times in the trace' };
   const steal = Math.max(0, Math.min(0.9, opts.steal || 0)); out.stealPct = Math.round(steal * 100);

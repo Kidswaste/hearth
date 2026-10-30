@@ -38,6 +38,9 @@ const ProjFind = (() => {
     if (S.job?.pid === p.id) { S.job.again = true; return S.job.done; }
     const job = { pid: p.id, again: false };
     job.done = (async () => {
+      // (round 89, desk89) the Desk's own catch-up starts after the Desk has painted: its first call (the project's spec,
+      // 1,069 names for Clink, sent to the store thread) cost 2–18 ms of the task that drew the Desk
+      if (why === 'desk') await new Promise((res) => (window.requestIdleCallback ? requestIdleCallback(res, { timeout: 200 }) : setTimeout(res, 16)));
       const t0 = performance.now(); let calls = 0; let workerMs = 0; let built = 0;
       for (let i = 0; i < 400; i++) {
         const cur = P.get(job.pid);
