@@ -82,6 +82,7 @@ function start() {
     // (round 73, syncmedia73) kinds turned off on this computer are left alone; big files move on their own lane (a pass
     // after each); Free up space asks the cloud drive itself (cloud-evict.js)
     skip: K.skipper(settings.kinds),
+    allowDownload: K.needed, // (round 87, labsync87) a big Lab reference / template file online-only in the cloud drive is still brought down
     onLane: () => schedule(300, 'lane'),
     evict: (file) => Evict.evict(file, { provider: settings.provider, root: settings.root }),
     // (round 74, synchard74) OneDrive refuses Windows-illegal names on a Mac too; the version in the machine record
@@ -398,7 +399,7 @@ function register(ipcMain, win, o) {
   h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });
   // the big files that are still only in the cloud: downloaded now (you asked)
-  h('sync:download', async () => { if (!engine) return publicStatus(); engine.set({ allowDownload: new Set(publicStatus().cloudOnly) }); await run({ force: true }); engine?.set({ allowDownload: null }); return publicStatus(); });
+  h('sync:download', async () => { if (!engine) return publicStatus(); engine.set({ allowDownload: K.needed.with(new Set(publicStatus().cloudOnly)) }); await run({ force: true }); engine?.set({ allowDownload: K.needed }); /* (round 87, labsync87) */ return publicStatus(); });
   // (round 73, syncmedia73) What syncs: a kind on / off on this computer. Off never deletes anything: the files stay
   // where they are here and in the cloud; sync just leaves them alone until it is on again.
   h('sync:kinds', (id, on) => {
