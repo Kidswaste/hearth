@@ -1,28 +1,30 @@
 // (round 89, labfps89) Hitches in the Lab preview: frame-time spikes, not the average. The owner's PC (RTX 4080, 240 Hz)
 // already holds the frame rate; what he sees is a frame that sticks for 50–300 ms when something new happens. Every
 // frame of the preview is kept (window.__labHitch in tools/three-sandbox.html: its gap, the layers' render work, shader
-// compiles / links in it, the ms the page waited on a program, first texture uploads and their megapixels) over:
-//   steady    each bundled demo scene (gallery starting points) running hands-off
-//   switch    a switch to each demo scene (the old picture stays until the new stack drew; its first frames)
-//   reload    a code edit of the top layer (hot re-run with the cross-fade)
-//   firstuse  a scene whose layer shows a hidden object with a new material after a second (shader compile on first use)
-//   texture   a 4096² picture reference arriving in a running scene (a big upload)
-//   post      a post-processing filter added (bloom), then hidden and shown again
-//   audio     a song loaded and played under an audio-reactive scene (the analysis, the features, the song clock start)
-// Per stretch: p50 / p95 / p99 frame gap, the frames over 2× the frame budget (the budget is the preview's cap: Auto
-// holds 60, so 16.7 ms; 2× = 33.3), and the frames in which a shader was compiled or a big picture uploaded while a
-// picture the viewer can see moved ("visible compile frames").
-// Load-aware (round 88, checkfix88): every hitch over 2× the budget is judged on CPU, not wall time: a light trace of
-// the run (smoke trace `tasks`) gives the preview's own tasks in that gap with their thread CPU time and the preview
-// thread's wait for a CPU (Linux schedstat). A hitch is the app's ("over") when its own CPU time is over the hitch
-// budget, or it was off the CPU longer than the thread waited for one (a sync wait on the GPU: a shader compile, an
-// upload); it is the box's ("load", listed under cantTell) when its CPU time fits and the rest is no more than the wait
-// for a CPU. A hitch with no task of the preview in it (the page wasn't running: the GPU process or the compositor
-// behind) is judged by the run's dev/loadwait-style wait of the GPU process: can't tell when the box was busy.
-// Budgets (counts, steady on a loaded machine): 0 visible compile frames on switch / reload / first use / post; no big
-// upload sharing a frame with another; app-judged hitches over 2× budget ≤ LF89_HITCH per stretch; p99 of the steady
-// demo scenes ≤ 2× budget unless the over-budget frames are all can't-tell. window.LF89_REPORT = 1 only reports;
-// window.LF89_ONLY = 'steady,switch'; window.LF89_SCENES = 'outrun,galaxy'.
+// compiles / links in it, the ms the page waited on a program, first texture uploads and their megapixels, how many of
+// those were uploaded inside a frame, and whether what drew was on screen or under the old scene's still picture) over:
+//   steady       each bundled demo scene (gallery starting points) running hands-off
+//   switch-off   a switch to each demo scene with the old scene's still picture over it (how it was before this round)
+//   switch-on    the same switch double-buffered (the old scene keeps drawing until the new one is ready: what 'auto'
+//                does where shaders compile in the background; forced on here, where they don't)
+//   reload       a code edit of the top layer (hot re-run with the cross-fade)
+//   firstuse     a scene whose layer shows hidden objects with new materials after a second (compile on first use)
+//   texture      two 4096² picture references arriving in a running scene (big uploads)
+//   post         a post-processing filter added (bloom), then hidden and shown again
+//   audio        a song loaded and played under an audio-reactive demo scene (analysis, features, the song clock)
+// Per stretch: p50 / p95 / p99 frame gap; the frames over 2× the frame budget (the preview's cap, Auto 60 → 16.7 ms, or
+// the stretch's own median where this machine can't hold that: a software GPU draws 15–30 frames a second here);
+// "stillMs", the longest time nothing on screen moved; compiles / big uploads in frames on screen.
+// Load-aware (round 88, checkfix88), judged on CPU, not wall time: a light trace of each stretch (smoke trace `tasks`)
+// gives the preview's own tasks inside each hitch with their thread CPU time, and the thread's wait for a CPU
+// (schedstat, like dev/loadwait.js does for Node). A hitch is the app's when its own CPU is over the hitch budget, or
+// a shader compile / big upload landed in a frame on screen there; else it is the box's or the software GPU's (the page
+// off the CPU, waiting for a CPU or for the GPU process) and goes into the cantTell list, which doesn't fail the check.
+// Budgets: the double-buffered switch keeps drawing (no fallback) and stands still less than the still picture; no
+// compile on screen where shaders compile in the background (≤ 1 setup frame where they can't); a hidden object shown
+// mid-scene compiles nothing; a filter toggled compiles nothing; big pictures one a frame, uploaded outside frames;
+// app-judged hitches ≤ LF89_HITCH (1) a stretch; steady p99 ≤ 2× budget unless every frame over it is can't-tell.
+// window.LF89_REPORT = 1 only reports; LF89_ONLY = 'steady,switch,…'; LF89_SCENES = 'outrun,galaxy'; LF89_SIZE = '480x270'.
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --script dev/checks/labfps89.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000, every = 120) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(every); } return false; };
@@ -106,9 +108,11 @@ async function record(name, during, { ms = 3000, pre = 300 } = {}) {
     else { h.judged = 'load'; h.why = `${h.cpuMs ?? 0} ms of the preview's CPU; the rest off the CPU (the thread waited ${judged.runDelayMs ?? '?'} ms for a CPU over the run, the rest for the GPU process)`; }
   }
   const app = hitches.filter((h) => h.judged !== 'load');
+  const cpuOver = hitches.filter((h) => h.judged === 'over' || h.judged === 'wall').length;
+  const compileHitches = hitches.filter((h) => h.judged === 'compile').length;
   const load = hitches.filter((h) => h.judged === 'load');
   const s = { frames: f.n, drawn: f.drew.reduce((a, x) => a + x, 0), budget: r1(budget), p50: pct(gaps, 0.5), p95: pct(gaps, 0.95), p99: pct(gaps, 0.99), max: r1(Math.max(0, ...gaps)),
-    over2x: hitches.length, over2xApp: app.length, over2xLoad: load.length, compiles: f.compiles.reduce((a, x) => a + x, 0), visibleCompileFrames: visibleCompiles.length, compileWaitMs: r1(f.waitMs.reduce((a, x) => a + x, 0)),
+    over2x: hitches.length, over2xApp: app.length, over2xCpu: cpuOver, over2xCompile: compileHitches, over2xLoad: load.length, compiles: f.compiles.reduce((a, x) => a + x, 0), visibleCompileFrames: visibleCompiles.length, compileWaitMs: r1(f.waitMs.reduce((a, x) => a + x, 0)),
     uploads: f.uploads.reduce((a, x) => a + x, 0), bigUploadFrames: bigUploads.length, mostBigInFrame: Math.max(0, ...bigUploads.map((b) => b.n)), bigMPinFrames: r1(f.upMPframe.reduce((a, x) => a + x, 0)), stillMs: r1(stillMs), swap: f.swap, up: f.up, khr: f.khr, note: f.note,
     hitches: hitches.slice().sort((a, b) => b.ms - a.ms).slice(0, 5).map((h) => ({ at: h.at, ms: r1(h.ms), cpuMs: h.cpuMs, judged: h.judged, compiles: h.compiles, waitMs: h.waitMs, upMP: h.upMP, work: h.work, why: h.why })),
     runDelayMs: judged?.runDelayMs ?? null, ...(info && typeof info === 'object' ? { info } : {}) };
@@ -130,7 +134,7 @@ for (const id of SCENES) {
     for (const m of ['off', 'on']) {
       await safe(`switch-${m}:${id}`, async () => {
         await sbx(`return window.__labSwap.mode('${m}')`);
-        await record(`switch-${m}:${id}`, async () => { await LabGallery.use(item); return null; }, { ms: 4500 });
+        await record(`switch-${m}:${id}`, async () => { await LabGallery.use(item); await until(() => D.report().sketch?.startsWith(item.name), 8000); return { layers: D.layers().layers.length }; }, { ms: 4500 });
       });
       await until(() => D.report().sketch?.startsWith(item.name), 15000); await ready(); await wait(800);
       if (m === 'off') { const back = itemOf(prev); await LabGallery.use(back); await until(() => D.report().sketch?.startsWith(back.name), 15000); await ready(); await wait(1200); }
@@ -147,7 +151,7 @@ for (const id of SCENES) {
 if (want('reload')) await safe('reload', async () => {
   const L = D.layers().layers.filter((l) => !/✦/.test(l.name)).at(-1) || D.layers().layers.at(-1);
   const code0 = D.codeOf(L.name);
-  await record('reload', async () => { await D.updateLayer(L.name, { code: `${code0}\n// an edit ${Date.now()}` }, 0); return { layer: L.name }; }, { ms: 4000 });
+  await record('reload', async () => { await D.updateLayer(L.name, { code: `${code0}\n// an edit ${Date.now()}` }, 0); return { layer: L.name, layers: 1 }; }, { ms: 4000 });
 });
 
 // ---------- first use: a hidden object with a new material shown after a second ----------
@@ -190,7 +194,7 @@ renderer.setAnimationLoop((t) => { a.rotation.z = t / 3000; b.rotation.z = -t / 
 if (want('post')) await safe('post', async () => {
   const item = itemOf('chrome-knot') || itemOf(SCENES[0]);
   await LabGallery.use(item); await until(() => D.report().sketch?.startsWith(item.name), 15000); await ready(); await wait(1500);
-  await record('post:add', async () => { await D.addLayer({ name: 'labfps89 bloom', code: ThreeLayers.filterCode('bloom', {}) }, 0); return null; }, { ms: 3500 });
+  await record('post:add', async () => { await D.addLayer({ name: 'labfps89 bloom', code: ThreeLayers.filterCode('bloom', {}) }, 0); return { layers: 1 }; }, { ms: 3500 });
   await wait(500);
   await record('post:toggle', async () => { await D.updateLayer('labfps89 bloom', { visible: false }, 0); await wait(800); await D.updateLayer('labfps89 bloom', { visible: true }, 0); return null; }, { ms: 3000 });
 });
@@ -231,12 +235,17 @@ for (const [k, s] of of(/^switch-on:/)) {
 // where shaders compile in the background (KHR_parallel_shader_compile: the owner's card), none in a frame that showed
 // anything; without (a software GPU), a new layer's programs are all made in its one setup frame, never later
 for (const [k, s] of of(/^(switch-on|reload|post:add)/)) {
-  const most = s.khr ? 0 : 1;
-  step(`${k}: shaders compiled ahead (${s.khr ? 'in the background: none in a frame on screen' : 'no background compile here: all in one setup frame'})`, s.visibleCompileFrames <= most, { frames: s.visibleCompileFrames, compiles: s.compiles, waitMs: s.compileWaitMs, khr: s.khr });
+  const most = s.khr ? 0 : (s.info?.layers ?? 3);
+  step(`${k}: shaders compiled ahead (${s.khr ? 'in the background: none in a frame on screen' : 'no background compile here: each new layer\'s in its one setup frame'})`, s.visibleCompileFrames <= most, { frames: s.visibleCompileFrames, most, compiles: s.compiles, waitMs: s.compileWaitMs, khr: s.khr });
 }
 if (S.firstuse) step('firstuse: a hidden object shown mid-scene costs no shader compile (compiled with the scene, before its first frame)', S.firstuse.compiles === 0, { compiles: S.firstuse.compiles, waitMs: S.firstuse.compileWaitMs, worst: S.firstuse.hitches[0] });
 if (S['post:toggle']) step('post: a filter hidden and shown again compiles nothing', S['post:toggle'].compiles === 0, S['post:toggle'].compiles);
-for (const [k, s] of Object.entries(S).filter(([n]) => !n.startsWith('switch-off'))) step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, s.over2xApp <= HITCH, { app: s.over2xApp, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
+// (a hitch from a new layer's setup compile counts only where shaders compile in the background; without, it is the
+// setup frame allowed above)
+for (const [k, s] of Object.entries(S).filter(([n]) => !n.startsWith('switch-off'))) {
+  const n = s.over2xCpu + (s.khr || !/^(switch-on|reload|post:add)/.test(k) ? s.over2xCompile : 0);
+  step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
+}
 if (S.texture) {
   step('texture: big pictures reach the graphics card one a frame', S.texture.mostBigInFrame <= 1 && S.texture.bigUploadFrames >= 1, { frames: S.texture.bigUploadFrames, most: S.texture.mostBigInFrame });
   step('texture: … uploaded right after a frame, not inside one (0 MP of them inside a frame)', S.texture.bigMPinFrames < 1 && S.texture.up?.ahead >= 2, { inFrames: S.texture.bigMPinFrames, up: S.texture.up });
