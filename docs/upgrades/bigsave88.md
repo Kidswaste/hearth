@@ -194,8 +194,9 @@ again near zero.
   unit:bigchat84-test, unit:store-thread-test, unit:sync72-test, unit:versions75-test, unit:projbundle-test,
   unit:datasafe-scan, unit:winmac-test, unit:errorcalm-scan, unit:storeack-scan, unit:chatsafe-scan,
   unit:chatwin-scan, unit:boot-test, unit:lazymanifest-test: **17 / 17 pass**.
-- App (under `flock /tmp/hearth-run.lock`): see the commit for the results of chatwindow86 (`CHATWINDOW86=1`),
-  bigchat84 (`BIGCHAT84=1`), sync72, versions75, chatkeep, lazy.
+- App (under `flock /tmp/hearth-run.lock`): chatwindow86 (`CHATWINDOW86=1`), sync72, versions75, chatkeep, lazy pass.
+  bigchat84 (`BIGCHAT84=1`) failed once on a timing budget (one 80 ms window task against 60 ms, box load 13–16 with
+  other streams running) and passed when run again. No app code changed this round.
 - First screen: unchanged (no first-screen code added; boot-test passes).
 
 ## Files
