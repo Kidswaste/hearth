@@ -729,7 +729,7 @@ function replayDraw(r, renderFn, scene, camera) {
   const rfBack = RF.on && !r.__helper ? rfApply(camera) : null;
   const lp = r.__lcP; const lcOn = lp != null && lp.scene === scene && lcHide(r, lp); // (round 90: what still compiles waits here too)
   LC.inR += 1;
-  try { renderFn.call(r, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+  try { renderFn.call(r, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); lcOut(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
   r.domElement.__dE = FR.E; r.domElement.__dR = FR.inRaf;
   if (!FR.inRaf && !FR.armed) { FR.armed = true; realRAF(frArm); }
 }
@@ -752,11 +752,25 @@ function replayDraw(r, renderFn, scene, camera) {
 //    back faces of double-sided glass) are compiled too, here and in round 89's compile before the first frame.
 //  - a scene that changes on most frames (a game spawning things with new materials) stops being watched for a while
 //    (3 s, then 12 s, 48 s, at most 2 min): its new things show at once, compiled in their frame, as before.
-// Not covered (compiled in the frame that first needs them, as before): a light removed or shown again, a shadow
-// caster's first shadow pass, a second scene drawn by the same renderer, materials made inside three's render.
-const LC = { ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0 };
+// (round 91, labshadow91) and what round 90 left in the frame that needed it:
+//  - a light hidden or taken out (light.visible = false, scene.remove(light)) stays drawn at intensity 0 until the lit
+//    materials' programs without it are made; a light shown again or put back stays off until they're made with it.
+//    The picture is the one without it meanwhile: an intensity-0 light adds nothing. (Light.visible is read through an
+//    accessor on Light.prototype, Object3D.remove of a light or a group noticed, like add.)
+//  - shadow maps: three's own depth / distance materials (made inside its shadow pass) are compiled in the same gap,
+//    by one draw of the scene into a 1×1 target with an override material (lcShadows): the shadow pass runs as it will
+//    in the frame, the main pass costs one cheap program. At a layer's start (background compiling) and whenever a new
+//    thing or light in a scene with shadow maps arrives.
+//  - a second scene drawn by the same renderer (a menu → level switch, a scene drawn into a texture): its first draw
+//    is held while it compiles in the gap (the canvas keeps the last picture), then it draws (lcScene).
+//  - a material made inside three's render (a mesh's onBeforeRender giving it a new one, drawn from the next frame):
+//    noticed and handled like one made outside it, on the next render.
+// Not covered (compiled in the frame that first needs them, as before): a light's castShadow switched on, a group
+// holding a light hidden, materials made and drawn in the same render (three's nested renders: a mirror's), a
+// scene's background drawn inside the glass pass.
+const LC = { ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, dark: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0, shadows: 0, scenes: 0, sceneWait: 0, madeIn: 0, made: 0, raw: 0 };
 try {
-  const OP = THREE.Object3D.prototype; const add0 = OP.add;
+  const OP = THREE.Object3D.prototype; const add0 = OP.add; const rm0 = OP.remove;
   if (typeof add0 === 'function') {
     OP.add = function (o) {
       'use strict';
@@ -764,25 +778,50 @@ try {
       return add0.apply(this, arguments);
     };
   }
+  // (round 91) a light taken out, or a group that may hold one: the lit materials' programs change
+  if (typeof rm0 === 'function') {
+    OP.remove = function (o) {
+      'use strict';
+      if (!LC.inR) for (let i = 0; i < arguments.length; i++) { const x = arguments[i]; if (x && x.parent === this && (x.isLight || x.children?.length)) { LC.ver += 1; break; } }
+      return rm0.apply(this, arguments);
+    };
+  }
   const MP = THREE.Material.prototype;
   if (!Object.getOwnPropertyDescriptor(MP, 'version')) {
     Object.defineProperty(MP, 'version', {
       configurable: true,
       get() { return this.__lcv; },
-      set(v) { this.__lcv = v; if (!LC.inR) LC.ver += 1; }, // (a plain field: nothing made per material)
+      // (a plain field: nothing made per material) (round 91: one made inside three's render, its first set, is
+      // counted and noticed when that render ends; three's own bumps there, glass toggling its side, are not)
+      set(v) { if (!LC.inR) LC.ver += 1; else if (this.__lcv === undefined) LC.madeIn += 1; this.__lcv = v; },
+    });
+  }
+  // (round 91) a light shown or hidden: its own visible flag, through an accessor (lights are few; a plain field kept)
+  const LP = THREE.Light.prototype;
+  if (!Object.getOwnPropertyDescriptor(LP, 'visible')) {
+    Object.defineProperty(LP, 'visible', {
+      configurable: true,
+      get() { return this.__lcVis; },
+      set(v) { if (this.__lcVis !== v) { if (this.__lcVis !== undefined && !LC.inR) LC.ver += 1; this.__lcVis = v; } },
     });
   }
 } catch { /* compiled on first use, as before */ }
+// (round 91) a render that made materials: looked at on the next render (only once the outermost render has ended)
+function lcOut() { if (LC.madeIn && !LC.inR) { LC.madeIn = 0; LC.made += 1; LC.ver += 1; } }
 // a material (or each of a list) this renderer already has a program for
 function lcHas(props, m) {
   if (Array.isArray(m)) { for (let i = 0; i < m.length; i++) if (m[i] && !lcHas(props, m[i])) return false; return true; }
   return props.has(m) && props.get(m).currentProgram !== undefined;
 }
+// (round 91) the lights three counts in a scene's programs: the ones it draws (an ambient light changes no program)
+function lcLights(scene) { const on = []; scene.traverseVisible((o) => { if (o.isLight && !o.isAmbientLight) on.push(o); }); return on; }
+// (round 91) whether three reaches a light from the scene (in it, under shown groups only)
+function lcReach(scene, l) { let p = l.parent; while (p && p !== scene) { if (!p.visible) return false; p = p.parent; } return p === scene; }
 // the first look at a scene: everything in it is what it starts with (round 89 compiled it)
 function lcInit(scene) {
   scene.__lcVer = LC.ver;
-  const lit = scene.__lcLit || (scene.__lcLit = new WeakSet());
-  scene.traverse((o) => { if (o.isLight) lit.add(o); else if (o.material) o.__lcM = o.material; });
+  scene.__lcOn = lcLights(scene);
+  scene.traverse((o) => { if (!o.isLight && o.material) o.__lcM = o.material; });
 }
 function lcCheck(r, scene, camera) {
   scene.__lcVer = LC.ver;
@@ -796,24 +835,34 @@ function lcCheck(r, scene, camera) {
   const props = r.properties;
   if (typeof props?.has !== 'function') return;
   LC.checks += 1;
-  const lit = scene.__lcLit || (scene.__lcLit = new WeakSet());
-  const objs = []; const swap = []; const lights = []; let glass = false;
+  const objs = []; const swap = []; let glass = false; let cast = false;
   scene.traverse((o) => {
-    if (o.isLight) { if (!lit.has(o)) { lit.add(o); if (o.visible) lights.push(o); } return; }
+    if (o.isLight) return;
     const m = o.material;
     if (!m || !(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
     if (!glass && (Array.isArray(m) ? m.some((x) => x?.transmission > 0) : m.transmission > 0)) glass = true;
     if (lcHas(props, m)) { o.__lcM = m; return; }
+    if (o.castShadow) cast = true;
     if (o.__lcM && o.__lcM !== m && lcHas(props, o.__lcM)) swap.push(o); else objs.push(o);
   });
-  const old = r.__lcP;
-  if (old && old.scene === scene) for (const l of old.lights) if (!lights.includes(l)) lights.push(l);
-  if (!objs.length && !swap.length && !lights.length) { if (old && old.scene === scene) lcDone(r, old); return; }
+  // (round 91) lights: shown / put back since the last look (held off), hidden / taken out (held on at intensity 0)
+  const old = r.__lcP && r.__lcP.scene === scene ? r.__lcP : null;
+  const on0 = scene.__lcOn || []; const on1 = lcLights(scene); scene.__lcOn = on1;
+  const lights = []; const dark = [];
+  for (const l of on1) if (!on0.includes(l) && !(old && old.dark.includes(l))) lights.push(l);
+  for (const l of on0) if (!on1.includes(l)) dark.push(l);
+  if (old) {
+    for (const l of old.lights) if (on1.includes(l) && !lights.includes(l)) lights.push(l);
+    for (const l of old.dark) if (!on1.includes(l) && !dark.includes(l)) dark.push(l);
+  }
+  if (!objs.length && !swap.length && !lights.length && !dark.length) { if (old) lcDone(r, old); return; }
   // (a mesh with a light inside: compile() on it would count that light twice, so the whole scene is compiled)
-  const whole = lights.length > 0 || objs.length + swap.length > 24 || objs.some((o) => o.children.length > 0 && o.getObjectsByProperty('isLight', true).length > 0);
-  const P = { scene, camera, rt: r.getRenderTarget?.() || null, objs, swap, lights, glass, whole, tick: frameTick, t: now, vis: [], mats: [], lv: [] };
-  if (old) LC.pending = Math.max(0, LC.pending - 1);
-  r.__lcP = P; LC.pending += 1; LC.found += 1; LC.hidden += objs.length; LC.swapped += swap.length; LC.lights += lights.length;
+  const whole = lights.length > 0 || dark.length > 0 || objs.length + swap.length > 24 || objs.some((o) => o.children.length > 0 && o.getObjectsByProperty('isLight', true).length > 0);
+  // (round 91) three's depth materials too, when the scene draws shadow maps and something new casts or lights them
+  const shadow = r.shadowMap?.enabled === true && (cast || lights.some((l) => l.castShadow));
+  const P = { scene, camera, rt: r.getRenderTarget?.() || null, objs, swap, lights, dark, dm: dark.map((l) => l.shadow?.map || null), glass, whole, shadow, tick: frameTick, t: now, vis: [], mats: [], lv: [], dv: [], di: [], dp: [] };
+  if (r.__lcP) LC.pending = Math.max(0, LC.pending - 1);
+  r.__lcP = P; LC.pending += 1; LC.found += 1; LC.hidden += objs.length; LC.swapped += swap.length; LC.lights += lights.length; LC.dark += dark.length;
   realSetTimeout(() => lcAhead(r, P), 0); // (from inside the frame: the task right after it)
 }
 // in the gap after the frame: the new things' programs made
@@ -835,6 +884,7 @@ function lcAhead(r, P) {
     try { if (r.getRenderTarget() !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
     LC.inR -= 1;
   }
+  if (P.shadow) lcShadows(r, P.scene, P.camera); // (round 91: three's depth materials for the new casters / lights)
   LC.ahead += RDY.gl.links - l0;
   if (waits) { LC.khr += 1; const done = () => lcDone(r, P); Promise.all(waits).then(done, done); realSetTimeout(done, 2500); return; }
   // no background compile: each new program's status read here (the wait for the driver happens in this gap), so the
@@ -874,19 +924,37 @@ function lcGlass(r, scene, camera, roots, waits) {
   return true;
 }
 // while they wait, for one render: new meshes hidden, swapped ones on their old material, new lights off (→ on)
+// (round 91) and lights hidden / taken out drawn at intensity 0 (put back in the scene's list for the render when
+// three wouldn't reach them: taken out, or under a hidden group)
 function lcHide(r, P) {
   if (realNow() - P.t > 2500) { LC.late += 1; lcDone(r, P); return false; }
-  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights;
-  for (let i = 0; i < o1.length; i++) { P.vis[i] = o1[i].visible; o1[i].visible = false; }
-  for (let i = 0; i < s1.length; i++) { P.mats[i] = s1[i].material; s1[i].material = s1[i].__lcM; }
-  for (let i = 0; i < l1.length; i++) { P.lv[i] = l1[i].visible; l1[i].visible = false; }
+  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights; const d1 = P.dark;
+  LC.inR += 1; // (its own visibility writes aren't changes)
+  try {
+    for (let i = 0; i < o1.length; i++) { P.vis[i] = o1[i].visible; o1[i].visible = false; }
+    for (let i = 0; i < s1.length; i++) { P.mats[i] = s1[i].material; s1[i].material = s1[i].__lcM; }
+    for (let i = 0; i < l1.length; i++) { P.lv[i] = l1[i].visible; l1[i].visible = false; }
+    for (let i = 0; i < d1.length; i++) {
+      const l = d1[i]; P.dp[i] = lcReach(P.scene, l) ? 0 : 1;
+      P.dv[i] = l.visible; P.di[i] = l.intensity; l.visible = true; l.intensity = 0;
+      if (P.dp[i]) P.scene.children.push(l);
+    }
+  } finally { LC.inR -= 1; }
   return true;
 }
 function lcShow(P) {
-  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights;
-  for (let i = 0; i < l1.length; i++) l1[i].visible = P.lv[i];
-  for (let i = 0; i < s1.length; i++) s1[i].material = P.mats[i];
-  for (let i = 0; i < o1.length; i++) o1[i].visible = P.vis[i];
+  const o1 = P.objs; const s1 = P.swap; const l1 = P.lights; const d1 = P.dark;
+  LC.inR += 1;
+  try {
+    for (let i = d1.length - 1; i >= 0; i--) {
+      const l = d1[i];
+      if (P.dp[i]) { const k = P.scene.children.lastIndexOf(l); if (k >= 0) P.scene.children.splice(k, 1); }
+      l.intensity = P.di[i]; l.visible = P.dv[i];
+    }
+    for (let i = 0; i < l1.length; i++) l1[i].visible = P.lv[i];
+    for (let i = 0; i < s1.length; i++) s1[i].material = P.mats[i];
+    for (let i = 0; i < o1.length; i++) o1[i].visible = P.vis[i];
+  } finally { LC.inR -= 1; }
 }
 function lcDone(r, P) {
   if (r.__lcP !== P) return;
@@ -894,13 +962,106 @@ function lcDone(r, P) {
   const w = frameTick - P.tick; LC.waits += w; if (w > LC.maxWait) LC.maxWait = w;
   for (const o of P.swap) o.__lcM = o.material;
   for (const o of P.objs) o.__lcM = o.material;
+  // (round 91) a light taken out that had no shadow map then got one while held: let it go (its owner may have
+  // disposed of it; nothing draws it any more)
+  for (let i = 0; i < P.dark.length; i++) {
+    const l = P.dark[i]; const m = l.shadow?.map;
+    if (m && !P.dm[i] && !lcReach(P.scene, l)) { try { m.dispose(); } catch { /* gone */ } l.shadow.map = null; }
+  }
   PACE.poke += 1; // (the frame that shows them draws: the still gate would keep the picture without them)
   if (DOZE.on) dozeWake('shown');
 }
-window.__labCompile = { state: () => ({ ...LC, waiting: [...renderers].filter((r) => r.__lcP).length }) };
+// (round 91) three's own shadow-pass materials (depth / distance, a variant per kind of caster: instanced, skinned,
+// alpha-tested…) are made inside its shadow pass, so compile() never makes them. In the gap after a frame the scene
+// is drawn once into a 1×1 target with an override material: the shadow pass runs as it will in the next frame (its
+// programs made and linked here), the main pass draws with one cheap program, and no glass pass runs (three skips it
+// under an override). The shadow maps it draws are the scene as it is now, as the next frame would draw them. Not
+// when the sketch drives its maps itself (shadowMap.autoUpdate = false), nor in XR. → whether it drew
+function lcShadows(r, scene, camera) {
+  const sm = r.shadowMap;
+  if (sm?.enabled !== true || r.xr?.isPresenting || typeof r.render !== 'function') return false;
+  if (!(sm.__gate ? sm.__gate.au : sm.autoUpdate !== false)) return false;
+  let any = false; scene.traverseVisible((o) => { if (!any && o.isLight && o.castShadow && o.shadow) any = true; });
+  if (!any) return false;
+  const dA = Object.getOwnPropertyDescriptor(sm, 'autoUpdate'); const dN = Object.getOwnPropertyDescriptor(sm, 'needsUpdate');
+  const rt = r.__lcRT || (r.__lcRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
+  const ov = r.__lcOv || (r.__lcOv = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+  const rt0 = r.getRenderTarget(); const ov0 = scene.overrideMaterial; const bg0 = scene.background;
+  let ok = false;
+  LC.inR += 1; LC.raw += 1;
+  try {
+    Object.defineProperty(sm, 'autoUpdate', { configurable: true, writable: true, value: true }); // (the shadow gate's own say: this one draw makes the maps)
+    Object.defineProperty(sm, 'needsUpdate', { configurable: true, writable: true, value: true });
+    scene.overrideMaterial = ov; scene.background = null;
+    r.setRenderTarget(rt);
+    r.render(scene, camera);
+    ok = true; LC.shadows += 1;
+  } catch { /* its frame makes them, as before */ } finally {
+    scene.overrideMaterial = ov0; scene.background = bg0;
+    try { if (dA) Object.defineProperty(sm, 'autoUpdate', dA); else delete sm.autoUpdate; if (dN) Object.defineProperty(sm, 'needsUpdate', dN); else delete sm.needsUpdate; } catch { /* fine */ }
+    try { r.setRenderTarget(rt0); } catch { /* gone */ }
+    LC.raw -= 1; LC.inR -= 1;
+  }
+  return ok;
+}
+// (round 91) a second scene for a renderer (a menu → level switch, a scene drawn into a texture each frame): its first
+// draws are skipped while its programs are made in the gap after the frame (the canvas keeps its last picture: a frame
+// that draws nothing to it changes nothing on screen), at most 2.5 s. Only inside a frame callback (a sketch that
+// draws once, on a click, draws as before), one scene at a time per renderer, and a renderer that keeps meeting new
+// scenes (a fresh Scene every frame) isn't watched for 10 s. → true: skip this draw
+function lcScene(r, scene, camera) {
+  const N = r.__lcN; const now = realNow();
+  if (N && N.scene === scene) { if (now - N.t <= 2500) { LC.sceneWait += 1; return true; } LC.late += 1; lcSceneDone(r, N); return false; }
+  if (N || !FR.inRaf || (r.__lcNoff || 0) > now) return false;
+  r.__lcNk = (r.__lcNk || 0) * 0.5 ** Math.max(0, (now - (r.__lcNt || 0)) / 1000) + 1; r.__lcNt = now;
+  if (r.__lcNk > 4) { r.__lcNoff = now + 10000; r.__lcNk = 0; LC.off += 1; return false; }
+  const props = r.properties;
+  if (typeof props?.has !== 'function') return false;
+  let need = false;
+  scene.traverse((o) => { if (!need && o.material && (o.isMesh || o.isPoints || o.isLine || o.isSprite) && !lcHas(props, o.material)) need = true; });
+  if (!need) return false;
+  const P = r.__lcN = { scene, camera, rt: r.getRenderTarget?.() || null, t: now, tick: frameTick };
+  LC.scenes += 1; LC.pending += 1; LC.sceneWait += 1;
+  realSetTimeout(() => lcSceneAhead(r, P), 0);
+  return true;
+}
+function lcSceneAhead(r, P) {
+  if (r.__lcN !== P) return;
+  let gone = r.__stale; try { gone = gone || r.getContext().isContextLost(); } catch { gone = true; }
+  if (gone) { lcSceneDone(r, P); return; }
+  const khr = typeof r.compileAsync === 'function' && r.extensions?.has?.('KHR_parallel_shader_compile') === true;
+  const n0 = r.info?.programs?.length ?? 0; const l0 = RDY.gl.links;
+  const waits = khr ? [] : null;
+  const rt0 = r.getRenderTarget();
+  LC.inR += 1;
+  try {
+    if (P.rt !== rt0) r.setRenderTarget(P.rt);
+    if (waits) waits.push(r.compileAsync(P.scene, P.camera)); else r.compile(P.scene, P.camera);
+    lcGlass(r, P.scene, P.camera, null, waits);
+  } catch { /* its frame compiles what's left */ } finally {
+    try { if (r.getRenderTarget() !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
+    LC.inR -= 1;
+  }
+  lcShadows(r, P.scene, P.camera);
+  LC.ahead += RDY.gl.links - l0;
+  if (waits) { LC.khr += 1; const done = () => lcSceneDone(r, P); Promise.all(waits).then(done, done); realSetTimeout(done, 2500); return; }
+  const ps = r.info?.programs || [];
+  for (let i = n0; i < ps.length; i++) { try { ps[i].getUniforms(); } catch { /* its frame reports it */ } }
+  lcSceneDone(r, P);
+}
+function lcSceneDone(r, P) {
+  if (r.__lcN !== P) return;
+  r.__lcN = null; LC.pending = Math.max(0, LC.pending - 1); LC.done += 1;
+  const w = frameTick - P.tick; LC.waits += w; if (w > LC.maxWait) LC.maxWait = w;
+  if (P.scene.__lcVer === undefined) lcInit(P.scene);
+  PACE.poke += 1;
+  if (DOZE.on) dozeWake('shown');
+}
+window.__labCompile = { state: () => ({ ...LC, waiting: [...renderers].filter((r) => r.__lcP || r.__lcN).length }) };
 function instrument(renderFn) {
   return function render(scene, camera) {
     if (this.__stale) return; // (round 21: a gone module's renderer draws nothing, and isn't counted back in)
+    if (LC.raw) return renderFn.call(this, scene, camera); // (round 91: lcShadows' draw in the gap, nothing of the frame's)
     if (FR.replay) return replayDraw(this, renderFn, scene, camera); // (round 56, labcanvas56: its last frame again, see "the layers' canvases")
     const scene0 = scene; const camera0 = camera;
     if (this.__gm && gmRender(this, scene, camera)) return; // (round 52, gamemode) a merged layer's frame: drawn in z order with the others
@@ -932,7 +1093,12 @@ function instrument(renderFn) {
           realRAF(() => realRAF(() => { const sk = this.__lastSkip; this.__lastSkip = null; if (sk && this.__renders === n && !this.__stale) { try { this.render(sk[0], sk[1]); } catch { /* gone */ } } }));
         };
         // (round 90, labcompile90: and the glass variants three's transmission pass draws with)
-        try { const w = [this.compileAsync(scene, camera)]; lcGlass(this, scene, camera, null, w); Promise.all(w).then(done, done); } catch { done(); }
+        // (round 91, labshadow91: and three's shadow-pass materials, in the gap after this frame)
+        try {
+          const w = [this.compileAsync(scene, camera)]; lcGlass(this, scene, camera, null, w);
+          if (this.shadowMap?.enabled) w.push(new Promise((res) => realSetTimeout(() => { try { if (this.__warm === 'pending' && !this.__stale) lcShadows(this, scene, camera); } finally { res(); } }, 0)));
+          Promise.all(w).then(done, done);
+        } catch { done(); }
         realSetTimeout(done, 1500);
         perfNote.warm += 1;
         if (this.__warm === 'pending') return;
@@ -942,7 +1108,12 @@ function instrument(renderFn) {
     }
     // (round 90, labcompile90) something new in the scene since its last look: what needs a program waits for it (see
     // "shaders first made while a scene runs")
-    if (scene !== undefined && scene !== null && scene.__lcVer !== LC.ver && this.__warm === true && !LC.inR && scene.isScene === true && EL && !this.__helper && !fullRes() && !SQ.off) { if (scene.__lcVer === undefined) lcInit(scene); else lcCheck(this, scene, camera); }
+    // (round 91, labshadow91) a scene this renderer hasn't drawn before, after its first one: held while it compiles
+    if (scene !== undefined && scene !== null && scene.__lcVer !== LC.ver && this.__warm === true && !LC.inR && scene.isScene === true && EL && !this.__helper && !fullRes() && !SQ.off) {
+      if (scene.__lcVer !== undefined) lcCheck(this, scene, camera);
+      else if (this.__lcS1 && this.__lcS1 !== scene && lcScene(this, scene, camera)) return;
+      else { lcInit(scene); if (!this.__lcS1) this.__lcS1 = scene; }
+    }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
     if (EL?.adCovered && EL.drawnGen === EL.gen && !adFull()) { perfNote.covered = (perfNote.covered || 0) + 1; EL.dzSkip = frameTick; return; }
     if (EL?.props?.overrides) applyOverrides(EL, scene, camera);
@@ -973,7 +1144,7 @@ function instrument(renderFn) {
     const ccBack = CC.on || CC.permed.size ? ccCull(this, scene, camera) : null; // (round 74, labdraw74: a big crowd draws the copies a view can see)
     const lp = this.__lcP; const lcOn = lp != null && lp.scene === scene0 && lcHide(this, lp); // (round 90: new things still compiling wait)
     LC.inR += 1;
-    try { renderFn.call(this, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
+    try { renderFn.call(this, scene, camera); } finally { LC.inR -= 1; if (lcOn) lcShow(lp); lcOut(); ccBack?.(); rvBack?.(); rfBack?.(); camBack?.(); lvBack?.(); cmBack?.(); }
     if (this.domElement?.__lcf && !this.getRenderTarget()) { glNote(this, scene0, camera0); if (this.__adProbe) adProbeNow(this); } // (round 56, labcanvas56)
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     FT60[0] = realNow() - t0;
@@ -4802,11 +4973,13 @@ const UPQ = { q: [], tok: 0, seq: 0, t: 0, held: 0, frames: 0, ahead: 0 };
 // upload made there (initTexture on the renderers whose scene uses the texture): it used to wait for the next render
 // of the layer, inside the frame. With the preview at 60 on a fast screen there are free refreshes after each frame;
 // the upload lands there instead of making the next frame late.
-function upRelease(fn, px, tex = null, bmp = null) {
+// (round 91, labshadow91) again: a picture changed on disk while shown (round 42's reload) comes through here too, in
+// slices when it can be (again(prev) once the scene's texture has the new picture: prev is the picture it let go)
+function upRelease(fn, px, tex = null, bmp = null, again = null) {
   if (XP_PAGE || !(px >= 1e6)) { fn(); return undefined; }
   UPQ.held += 1;
   return new Promise((res) => {
-    UPQ.q.push(() => { if (bmp && tex && upSlice(tex, bmp, fn, res)) return; try { fn(); if (tex) upAhead(tex); } finally { res(); } });
+    UPQ.q.push(() => { if (bmp && tex && upSlice(tex, bmp, fn, res, again)) return; try { fn(); if (tex) upAhead(tex); } finally { res(); } });
     upArm();
   });
 }
@@ -4818,10 +4991,16 @@ function upRelease(fn, px, tex = null, bmp = null) {
 // over (same picture, same settings: nothing uploaded again). Until then it shows what it showed before the picture
 // arrived. Two renderers drawing it, a picture already shown once, or anything going wrong: one piece, as before.
 // KTX2 copies (▶ Play, round 53) are transcoded in workers and already go up mip by mip.
-const UPS = { pictures: 0, slices: 0, active: 0, fell: 0, ms: 0, maxMs: 0 };
-function upSlice(tex, bmp, fn, res) {
+// (round 91, labshadow91) the slice size follows the time a slice takes on the page's thread: ~UPS.target ms each
+// (the ms per MP of the slices so far, smoothed), between 1 and 4 MP (2.1 to begin with). A fast card fills a 4K
+// picture in 4–5 gaps, a slow one in up to 17 lighter ones. The last slice (with the mipmaps) isn't counted.
+// A picture changed on disk while shown (again): the scene's texture keeps drawing the old one until the last slice,
+// then lets three's record of the old memory go (dispose: deleted on the graphics card) and takes the new one over.
+const UPS = { pictures: 0, slices: 0, active: 0, fell: 0, ms: 0, maxMs: 0, mp: 2.1, msMP: 0, target: 6, again: 0 };
+function upSlice(tex, bmp, fn, res, again = null) {
   const W = bmp.width; const H = bmp.height;
-  if (!(W * H >= 4e6) || tex.version !== 0 || typeof ImageBitmap === 'undefined' || !(bmp instanceof ImageBitmap)) return false;
+  if (!(W * H >= 4e6) || typeof ImageBitmap === 'undefined' || !(bmp instanceof ImageBitmap)) return false;
+  if (tex.version !== 0 && !(again && tex.flipY === false)) return false;
   let r = null;
   for (const x of renderers) {
     if (x.__stale || !x.__lastScene || typeof x.copyTextureToTexture !== 'function') continue;
@@ -4829,7 +5008,6 @@ function upSlice(tex, bmp, fn, res) {
     if (uses) { if (r) return false; r = x; }
   }
   if (!r || Math.max(W, H) > (r.capabilities?.maxTextureSize || 0)) return false;
-  const rows = Math.max(16, Math.min(H, Math.floor(2.1e6 / W)));
   const full = new THREE.Texture(bmp);
   for (const k of ['wrapS', 'wrapT', 'magFilter', 'minFilter', 'anisotropy', 'internalFormat', 'format', 'type', 'generateMipmaps', 'premultiplyAlpha', 'unpackAlignment', 'colorSpace']) full[k] = tex[k];
   full.flipY = false;
@@ -4846,7 +5024,7 @@ function upSlice(tex, bmp, fn, res) {
     try { fn(); upAhead(tex); } catch { /* the texture is gone */ } finally { res(); }
   };
   const gone = () => { try { return r.__stale || r.getContext().isContextLost(); } catch { return true; } };
-  const timed = (f) => { const t = realNow(); f(); const d = realNow() - t; UPS.ms += d; if (d > UPS.maxMs) UPS.maxMs = d; };
+  const timed = (f) => { const t = realNow(); f(); const d = realNow() - t; UPS.ms += d; if (d > UPS.maxMs) UPS.maxMs = d; return d; };
   const next = () => { UPQ.q.unshift(step); };
   // each one in a gap after a frame (the queue hands out one a frame)
   const step = () => {
@@ -4863,19 +5041,27 @@ function upSlice(tex, bmp, fn, res) {
         UPQ.ahead += 1; // (its upload starts here, right after a frame)
         next(); return;
       }
+      const rows = Math.max(16, Math.floor((UPS.mp * 1e6) / W));
       const h = Math.min(rows, H - y); const last = y + h >= H;
       box.min.set(0, y); box.max.set(W, y + h); at.set(0, y);
       full.generateMipmaps = last ? gm : false; // (the mipmaps once, with the last slice)
-      timed(() => r.copyTextureToTexture(src, full, box, at));
+      const d = timed(() => r.copyTextureToTexture(src, full, box, at));
       y += h; UPS.slices += 1;
-      if (!last) { next(); return; }
+      if (!last) {
+        if (d > 0) { const per = d / ((h * W) / 1e6); UPS.msMP = UPS.msMP ? UPS.msMP * 0.6 + per * 0.4 : per; UPS.mp = Math.min(4, Math.max(1, UPS.target / UPS.msMP)); } // (round 91)
+        next(); return;
+      }
       // the scene's texture takes it over: same picture, same settings, so three finds it made and uploads nothing
+      // (round 91: a picture shown before first lets go of its old memory; the same settings would otherwise keep it)
+      const prev = tex.image;
+      if (tex.version !== 0) { tex.dispose(); UPS.again += 1; }
       tex.source = full.source; tex.flipY = false;
       full.source.dataReady = true;
       tex.version += 1;
       timed(() => r.initTexture(tex));
       full.dispose(); // (its hold on that memory: the scene's texture has it now)
       end(); res();
+      if (again) { try { again(prev); } catch { /* fine */ } }
     } catch { fail(); }
   };
   step();
@@ -4975,9 +5161,11 @@ function updateRef(it) {
       v.addEventListener('loadedmetadata', () => { try { v.currentTime = Math.min(t, (v.duration || t) - 0.01); } catch { /* fine */ } if (playing) v.play().catch(() => {}); }, { once: true });
       continue;
     }
-    const was = tex.image;
-    const done = (img) => { tex.image = img; tex.needsUpdate = true; if (was && was !== img) { try { was.close?.(); } catch { /* fine */ } } };
-    if (typeof createImageBitmap === 'function' && it.kind === 'image') createImageBitmap(b, { imageOrientation: tex.flipY === false ? 'flipY' : 'none', premultiplyAlpha: 'none' }).then(done).catch(() => new THREE.ImageLoader().load(url, done));
+    const let1 = (was, img) => { if (was && was !== img) { try { was.close?.(); } catch { /* fine */ } } };
+    const done = (img) => { const was = tex.image; tex.image = img; tex.needsUpdate = true; let1(was, img); };
+    // (round 91, labshadow91) through the uploads' queue: a big one right after a frame, a 4K one in slices while the
+    // old picture keeps showing (it used to go up whole inside the next frame)
+    if (typeof createImageBitmap === 'function' && it.kind === 'image') createImageBitmap(b, { imageOrientation: tex.flipY === false ? 'flipY' : 'none', premultiplyAlpha: 'none' }).then((img) => upRelease(() => done(img), img.width * img.height, tex, img, (was) => let1(was, img))).catch(() => new THREE.ImageLoader().load(url, done));
     else new THREE.ImageLoader().load(url, done);
   }
   realSetTimeout(() => { if (!Object.values(refs).includes(old)) URL.revokeObjectURL(old); }, 5000);

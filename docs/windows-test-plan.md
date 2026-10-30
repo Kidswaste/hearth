@@ -102,6 +102,15 @@ Your job: check the things below on real Windows and report back plain results (
   a glass sphere ("add a glass ball"): does the picture stick for even a moment, or does the new thing just appear?
   Drop a 4K photo into a scene's references and use it: is there a jolt when it shows?
 - In `/lab perf`, paste the line after doing the above.
+- (round 91, labshadow91) The same check now has more stretches: `light:first`, `light:off`, `light:on`,
+  `light:remove`, `light:readd`, `shadow:light`, `shadow:caster`, `scene2`, `inrender` and `reload`. Run
+  `node dev/run-checks.js --exact labcompile90 unit:labshadow91-test` (about 3 min) and report for each of them the
+  same numbers as above (`visibleInFrameCompiles` should be 0), and from the `lc` block also `dark`, `shadows`,
+  `scenes`, `made`. From `reload`: `biggestUploadMP` (≤ 4.2), `pixel` (before / after should differ), and from
+  `slices`: `mp` (the slice size the card settled on, 1–4 MP; a fast card should reach 4) and `msMP`.
+- By eye: in a playing scene with shadows, ask the Director to "turn off the sun", then "turn it back on", then "add a
+  spotlight that casts shadows": does the picture stick for a moment? Save a 4K photo used by a scene again from
+  Photoshop (or replace the file): is there a jolt when the new one appears?
 
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
