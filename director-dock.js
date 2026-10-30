@@ -101,7 +101,10 @@ const DirectorDock = (() => {
         : [el('p', { class: 'hint', text: 'No tool calls yet.' })]));
     }
     calls.addEventListener('click', () => { listOpen = !listOpen; list.hidden = !listOpen; paint(); });
-    document.addEventListener('pointerdown', (e) => { if (listOpen && !strip.contains(e.target)) { listOpen = false; list.hidden = true; } });
+    // (round 91, longrun91) taken off again in off(): left on, every re-dock (a project opened, the Lab shown) kept its
+    // old strip, chips and list alive through this listener, with their listeners, for as long as Hearth stayed open
+    const onDocDown = (e) => { if (listOpen && !strip.contains(e.target)) { listOpen = false; list.hidden = true; } };
+    document.addEventListener('pointerdown', onDocDown);
     thumb.addEventListener('click', () => viewImage(HubBridge.lastImage(), agent.id));
     undoBtn.addEventListener('click', () => undoEdit());
     askBtn.addEventListener('click', (e) => { const r = askBtn.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, menuItems()); e.stopPropagation(); });
@@ -176,7 +179,7 @@ const DirectorDock = (() => {
     const entry = {
       s, agentId: agent.id, strip, chips, rail, paint, paintChips, menuItems,
       off() {
-        offCall(); offHist(); mo.disconnect();
+        offCall(); offHist(); mo.disconnect(); document.removeEventListener('pointerdown', onDocDown);
         Native.hooks.send.splice(Native.hooks.send.indexOf(onSend) >>> 0, 1);
         Native.hooks.event.splice(Native.hooks.event.indexOf(onEvent) >>> 0, 1);
         strip.remove(); chips.remove(); rail.remove();

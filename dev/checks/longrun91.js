@@ -104,13 +104,16 @@ if (window.hub.sync?.on) {
 }
 let today = null;
 let sceneIds = [];
+const badProjects = new Set();
 
 // ---------- one cycle of the day ----------
 const parts = {
   async project(c) {
     if (!projects.length) throw new Error('no projects');
-    const id = projects[c % projects.length];
-    await ProjectWorkspace.open(id);
+    // (the fixture keeps one project whose scene hasn't arrived from the other computer: it says so and is left out)
+    const ok = projects.filter((p) => !badProjects.has(p)); if (!ok.length) throw new Error('no project opens');
+    const id = ok[c % ok.length];
+    try { await ProjectWorkspace.open(id); } catch (err) { if (/not available on this computer/.test(err.message)) { badProjects.add(id); out.setup.projectsLeftOut = [...badProjects]; return; } throw err; }
     need(await until(() => ProjectWorkspace.state().phase === 'ready' && ProjectWorkspace.state().project === id, 30000), 'project ready');
     await wait(600);
     // its Desk: Find in this project
@@ -195,7 +198,7 @@ const labHeap = async () => {
   const h = await smoke({ target: 'three-sandbox', cdp: 'Runtime.getHeapUsage' }).catch(() => null);
   return h?.usedSize ?? null;
 };
-const listenersOn = async (expr) => { const o = await cdp('Runtime.evaluate', { expression: expr }); const id = o?.result?.objectId; if (!id) return null; const l = await cdp('DOMDebugger.getEventListeners', { objectId: id }); cdp('Runtime.releaseObject', { objectId: id }); return (l?.listeners || []).length; };
+const listenersOn = async (expr) => { const o = await cdp('Runtime.evaluate', { expression: expr }); const id = o?.result?.objectId; if (!id) return null; const l = await cdp('DOMDebugger.getEventListeners', { objectId: id }); cdp('Runtime.releaseObject', { objectId: id }); const by = {}; for (const x of l?.listeners || []) by[x.type] = (by[x.type] || 0) + 1; return { n: (l?.listeners || []).length, by }; };
 const cpuOf = (m) => { const by = {}; for (const p of m?.procs || []) { const k = p.type === 'Tab' || p.type === 'Renderer' ? `${p.type}` : p.type; by[k] = (by[k] || 0) + (p.cpuS || 0); } return by; };
 let snapped = false;
 async function sample(c) {
@@ -226,7 +229,7 @@ async function sample(c) {
   }
   const s = {
     cycle: c, min: r1((Date.now() - T0) / 60000),
-    win: { heap: heap.usedSize, nodes: dom.nodes, attached, docs: dom.documents, js: dom.jsEventListeners, winL, docL, intervals: live.intervals, observers: live.observers, urls: live.urls, pending: L.pend.size, pendingTop: L.top(6), byInterval: live.byInterval, byObserver: live.byObserver, byListener: live.byListener, ipc: window.hub.ipcListeners?.()?.total ?? null, chats: H.chats?.length },
+    win: { heap: heap.usedSize, nodes: dom.nodes, attached, docs: dom.documents, js: dom.jsEventListeners, winL: winL?.n, docL: docL?.n, winBy: winL?.by, docBy: docL?.by, intervals: live.intervals, observers: live.observers, urls: live.urls, pending: L.pend.size, pendingTop: L.top(6), byInterval: live.byInterval, byObserver: live.byObserver, byListener: live.byListener, ipc: window.hub.ipcListeners?.()?.total ?? null, chats: H.chats?.length },
     lab,
     main: main && { heap: main.heap, rss: main.rss, timers: main.timers, timersN: Object.values(main.timers || {}).reduce((x, v) => x + v, 0), ipc: main.ipc?.total, handles: Object.values(main.handles || {}).reduce((x, v) => x + v, 0), contents: main.contents },
     store: thr.store ? { heap: thr.store.heap, caches: thr.store.caches } : null,
@@ -299,6 +302,7 @@ out.where = {
   windowListeners: diff(first.win.byListener, last.win.byListener, 3),
   windowIntervals: diff(first.win.byInterval, last.win.byInterval, 1),
   windowObservers: diff(first.win.byObserver, last.win.byObserver, 1),
+  windowWinDoc: [...diff(first.win.winBy, last.win.winBy, 1).map((x) => `window ${x}`), ...diff(first.win.docBy, last.win.docBy, 1).map((x) => `document ${x}`)],
   windowPending: diff(Object.fromEntries(first.win.pendingTop || []), Object.fromEntries(last.win.pendingTop || []), 2),
   mainTimers: diff(first.main?.timers, last.main?.timers, 2),
   storeCaches: diff(first.store?.caches, last.store?.caches, 1),
@@ -309,7 +313,7 @@ const errParts = Object.entries(out.errs).map(([k, v]) => `${k}: ${v[0]}`);
 const neverRan = ORDER.filter((p) => (out.acts[p] || 0) > 0 && (out.nfail[p] || 0) * 2 > out.acts[p]);
 if (neverRan.length) out.problems.push(`parts that kept failing: ${neverRan.join(', ')}`);
 try { const f = `${window.LR91_OUT || window.SMOKE_TMP}/longrun91.json`; await window.hub.fs.write(f, JSON.stringify(out, null, 1)); out.file = f; } catch (err) { out.file = `not written: ${err.message}`; }
-const brief = { cycles: CYCLES, every: EVERY, minutes: out.minutes, setup: out.setup, acts: out.acts, msPerPart: Object.fromEntries(Object.entries(out.ms).map(([k, v]) => [k, Math.round(v / (out.acts[k] || 1))])), trend: out.trend, idleCpu: out.idleCpu, idle: S.map((s) => s.idle?.total), where: out.where, curves: out.curves, lastCaches: { store: last.store?.caches, files: last.files?.caches }, file: out.file, partErrors: errParts, partFails: out.nfail };
+const brief = { cycles: CYCLES, every: EVERY, minutes: out.minutes, setup: out.setup, acts: out.acts, msPerPart: Object.fromEntries(Object.entries(out.ms).map(([k, v]) => [k, Math.round(v / (out.acts[k] || 1))])), trend: out.trend, idleCpu: out.idleCpu, idle: S.map((s) => s.idle?.total), idleBy: S.map((s) => s.idle), where: out.where, curves: out.curves, lastCaches: { store: last.store?.caches, files: last.files?.caches }, file: out.file, partErrors: errParts, partFails: out.nfail };
 brief.fails = window.LR91_REPORT ? [] : fails; if (window.LR91_REPORT) brief.wouldFail = fails;
 brief.problems = out.problems;
 brief.pass = !brief.fails.length && !brief.problems.length;
