@@ -181,7 +181,15 @@ context. It checks:
 - A one-off scene drawn into a texture shows its first content a frame late (fix 3).
 
 ## Runs on this branch (`flock /tmp/hearth-run.lock node dev/run-checks.js --exact …`, ≤ 5 a run)
-__RUNS__
+- labcompile90 ✓ (all 16 stretches, its new ones included), unit:labshadow91-test ✓, labpace ✓, labboot ✓. Its
+  can't-tell lines are frames where the preview waited for the software GPU on a busy box.
+- labfps89: failed once on its texture stretch. The new picture layer's one setup frame (3 compiles, no background
+  compiling here, the same as round 90's footnote ³) was counted for two adjacent late frames. Rerun ✓. This round
+  doesn't change that frame.
+- labstartfast ✓, labshader ✓, nodes-shader ✓, gpuload84 ✓, gcchurn60 ✓ (Lab: 779 B a frame of Hearth's own code,
+  budget 1024; 706 in round 90), lazy ✓.
+- unit: labfps72-test, datasafe-scan, winmac-test, errorcalm-scan, storeack-scan, chatsafe-scan, boot-test,
+  lazymanifest-test ✓.
 
 ## Windows test plan section
 `docs/windows-test-plan.md` § 8 has two more items: the new stretches and the numbers to report, and three by-eye
