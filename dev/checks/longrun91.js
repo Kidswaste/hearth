@@ -24,6 +24,8 @@
 //   LONGRUN91=1 node dev/run-checks.js --exact longrun91
 //   by hand: node dev/longrun91.js [--cycles 24] [--every 3] [--snap <dir>] [--report]
 //   node dev/smoke.js --fake-engines --data /tmp/hearth-bigchat84 --wait 1000 --check-timeout 2400000 --script dev/checks/longrun91.js
+//   debug options: LR91_PARTS='project,lab' only those parts · LR91_TRACE=1 / 'raw' what draws during the quiet window ·
+//   LR91_STORESNAP='<dir>' a store-thread heap snapshot at each sample · LR91_IDLE_PRE=<ms> the quiet window later
 //   --eval "window.LR91_CYCLES=9" a short run · window.LR91_SNAP='<dir>' heap snapshots (window, main) after the warm-up
 //   and at the end · window.LR91_REPORT=1 reports without failing
 // ---------- part 1: the counters, in every frame before its own scripts (then the window reloads) ----------
@@ -156,6 +158,7 @@ const parts = {
     if (!today || !H.chats.some((x) => x.id === today)) { Native.newChat(C.id); await wait(300); today = Native.current?.(C.id)?.id || H.activeChat?.[C.id]; } else { await Native.open(C.id, today); await wait(200); }
     Native.sendText(C.id, `cycle ${c}: the fog in the intro scene, a table and some code`);
     await until(() => Native.isAgentBusy(C.id), 5000); need(await until(() => !Native.isAgentBusy(C.id), 90000), 'reply finished');
+    today = H.activeChat?.[C.id] || today; // (a new chat's id is its saved one from its first message on)
   },
   async lab(c) {
     activate('tool:three'); await until(() => typeof ThreeLab !== 'undefined', 30000); await ThreeLab.cmd?.({ show: true });
@@ -217,6 +220,10 @@ async function sample(c) {
   const heap = (await cdp('Runtime.getHeapUsage')) || {};
   const dom = (await cdp('Memory.getDOMCounters')) || {};
   let attached = 0; { const w = document.createTreeWalker(document, NodeFilter.SHOW_ALL); while (w.nextNode()) attached++; }
+  // where the page's elements are: the chat list, each surface, each kept chat list (by chat), the rest
+  const regions = {}; { const add = (k, n) => { regions[k] = (regions[k] || 0) + n; }; const all = document.getElementsByTagName('*').length; let named = 0;
+    for (const n of document.querySelectorAll('#panel, #rail, section.surface, dialog, body > div')) { if (n.parentElement?.closest('#panel, #rail, section.surface, dialog')) continue; const c = n.getElementsByTagName('*').length; named += c; add(n.id ? `#${n.id}` : n.tagName === 'SECTION' ? `surface ${n.dataset.id || n.className.split(' ').slice(0, 3).join('.')}` : `${n.tagName.toLowerCase()}.${String(n.className).split(' ')[0]}`, c); }
+    regions.other = all - named; regions.lists = [...document.querySelectorAll('.messages')].map((m) => `${(m.dataset.chat || m.closest('[data-chat]')?.dataset.chat || '?').slice(-14)}:${m.getElementsByTagName('*').length}${m.checkVisibility() ? '' : '(hidden)'}`); }
   const winL = await listenersOn('window'); const docL = await listenersOn('document');
   const lab = await labHeap();
   const main = (await test({ longrun: {} }).catch(() => null))?.longrun || null;
@@ -258,7 +265,7 @@ async function sample(c) {
   }
   const s = {
     cycle: c, min: r1((Date.now() - T0) / 60000),
-    win: { heap: heap.usedSize, nodes: dom.nodes, attached, docs: dom.documents, js: dom.jsEventListeners, winL: winL?.n, docL: docL?.n, winBy: winL?.by, docBy: docL?.by, intervals: live.intervals, observers: live.observers, urls: live.urls, pending: L.pend.size, pendingTop: L.top(6), byInterval: live.byInterval, byObserver: live.byObserver, byListener: live.byListener, ipc: window.hub.ipcListeners?.()?.total ?? null, chats: H.chats?.length },
+    win: { heap: heap.usedSize, nodes: dom.nodes, attached, regions, docs: dom.documents, js: dom.jsEventListeners, winL: winL?.n, docL: docL?.n, winBy: winL?.by, docBy: docL?.by, intervals: live.intervals, observers: live.observers, urls: live.urls, pending: L.pend.size, pendingTop: L.top(6), byInterval: live.byInterval, byObserver: live.byObserver, byListener: live.byListener, ipc: window.hub.ipcListeners?.()?.total ?? null, chats: H.chats?.length },
     lab,
     main: main && { heap: main.heap, rss: main.rss, timers: main.timers, timersN: Object.values(main.timers || {}).reduce((x, v) => x + v, 0), ipc: main.ipc?.total, handles: Object.values(main.handles || {}).reduce((x, v) => x + v, 0), contents: main.contents },
     store: thr.store ? { heap: thr.store.heap, caches: thr.store.caches } : null,
@@ -287,7 +294,7 @@ const theil = (xy) => { const sl = []; for (let i = 0; i < xy.length; i++) for (
 // [name, get, unit, divisor, max slope per cycle]
 const KB = 1024;
 const SLOPE = [
-  ['window heap', (s) => s.win.heap, 'KB', KB, 120 * KB],
+  ['window heap', (s) => s.win.heap, 'KB', KB, 150 * KB], // (its JIT code still grows ~80 KB/cycle as more of the day's features get used: no object behind it)
   ['window DOM nodes', (s) => s.win.nodes, '', 1, 60],
   ['window DOM nodes kept out of the page', (s) => s.win.nodes - s.win.attached, '', 1, 60],
   ['window JS listeners', (s) => s.win.js, '', 1, 8],
