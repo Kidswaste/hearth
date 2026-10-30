@@ -179,7 +179,7 @@ const LocalAnswers = (() => {
     if (g.type === 'mission') { if (typeof Missions !== 'undefined') Missions.set(agentId, g.id); return true; }
     if (g.type === 'news') {
       if (typeof WhatsNew !== 'undefined' && WhatsNew.fullNotes) return WhatsNew.fullNotes(g.round, g.part);
-      return typeof Updater !== 'undefined' ? Updater.patchNotes(g.round ? `round-${g.round}.md` : undefined) : null;
+      return (window.Lazy ? Lazy.load('updater') : Promise.resolve()).then(() => (typeof Updater !== 'undefined' ? Updater.patchNotes(g.round ? `round-${g.round}.md` : undefined) : null)); // (round 87) updater.js is lazy group 'updater'
     }
     return null;
   }

@@ -263,7 +263,7 @@ const UndoAll = (() => {
       redo: (e) => hush(() => ChatUX.setMeta(e.u.id, C.metaPatch(e.u.after, ChatUX.metaOf?.(e.u.id) || {}))),
     },
     memory: {
-      async check(e, side = 'now') { if (!memCore()) return { cant: 'Memory tidy isn\'t loaded (open ⋯ AI setup once).' }; const m = await window.hub.getMemory(); return C.same(m, side === 'now' ? e.u.before : e.u.after) ? { already: true } : null; },
+      async check(e, side = 'now') { if (!memCore() && window.Lazy) await Lazy.load('memorytidycore').catch(() => {}); if (!memCore()) return { cant: 'Memory tidy isn\'t loaded (open ⋯ AI setup once).' }; const m = await window.hub.getMemory(); return C.same(m, side === 'now' ? e.u.before : e.u.after) ? { already: true } : null; },
       undo: async (e) => { const m = await window.hub.getMemory(); await window.hub.saveMemory(memCore().undo(m, e.u.before, e.u.after)); repaintPlaces(); },
       redo: async (e) => { const m = await window.hub.getMemory(); await window.hub.saveMemory(memCore().undo(m, e.u.after, e.u.before)); repaintPlaces(); },
     },

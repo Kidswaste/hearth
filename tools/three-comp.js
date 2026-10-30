@@ -513,6 +513,7 @@ Parts made by other chats at once: dispatch {parts: [{brief, engine: claude|astr
     try {
       if (op === 'help') return { ok: true, value: HELP };
       if (['dispatch', 'parts', 'feedback', 'again', 'swap', 'redispatch'].includes(op)) {
+        if (typeof CompDispatch === 'undefined' && window.Lazy) await Lazy.load('compdispatch').catch(() => {}); // (round 87) comp-dispatch.js is lazy group 'compdispatch'
         if (typeof CompDispatch === 'undefined') return { ok: false, error: 'Dispatching isn\'t available.' };
         return await CompDispatch.handle(op, args, ctx);
       }
@@ -564,6 +565,7 @@ Parts made by other chats at once: dispatch {parts: [{brief, engine: claude|astr
         const [sub0, ...restW] = String(args || '').trim().split(/\s+/);
         const sub = (sub0 || '').toLowerCase();
         const rest = restW.join(' ');
+        if (['parts', 'feedback', 'again', 'swap'].includes(sub) && typeof CompDispatch === 'undefined' && window.Lazy) await Lazy.load('compdispatch').catch(() => {}); // (round 87)
         if (['parts', 'feedback', 'again', 'swap'].includes(sub)) return typeof CompDispatch !== 'undefined' ? CompDispatch.command(sub, rest, ctx) : 'Dispatching isn\'t available.';
         if (!hostId) return 'Open the Three.js Lab first.';
         const say = (r) => (r.ok === false ? `Error: ${r.error}` : r.value);

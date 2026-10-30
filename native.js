@@ -692,7 +692,15 @@ const Native = (() => {
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
     if (m.role === 'jam' && typeof Jam !== 'undefined') return Jam.cardEl(m, agent, index); // jam.js
     if (m.role === 'intro') return el('div', { class: 'msg note', dataset: { index }, text: `🎬 Video project${m.name ? ` “${m.name}”` : ''} (video projects left with Video Review in round 17; the Lab sequence makes videos now)` });
-    if (m.role === 'comp' && typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index); // comp-dispatch.js (parts in other chats)
+    if (m.role === 'comp') { // comp-dispatch.js (parts in other chats)
+      if (typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index);
+      // (round 87, firstscreen87) lazy group 'compdispatch' (right after the first frame): until it is in, the card's
+      // head, then the whole card (the same node swap its own repaint does)
+      const stand = el('div', { class: 'msg comp-card', dataset: { cid: m.id, host: agent?.id || '', index } }, el('div', { class: 'comp-head' }, el('b', { text: `◫ Comp · ${m.parts?.length || 0} parts` })));
+      const swap = (n) => { if (stand.isConnected) stand.replaceWith(CompDispatch.cardEl(m, agent, index)); else if (n) requestAnimationFrame(() => swap(n - 1)); };
+      if (window.Lazy) Lazy.load('compdispatch').then(() => swap(30)).catch((err) => console.warn('compdispatch', err));
+      return stand;
+    }
     // (round 35, streamrender) `live`: the reply that just finished streaming becomes this message in place: its node
     // and its text (already exactly a full render's, see paintBody) stay where they are, only what's around the text
     // is built again. Drawn as a new node, a long reply was styled and laid out from scratch when it ended (≈ 0.45 s
@@ -1841,7 +1849,10 @@ const Native = (() => {
   }
 
   const knownSaves = new Set(); // (round 38) `${agentId}|fact` saved again but already known (nothing added)
+  const tidyCore = () => (window.Lazy ? Lazy.load('memorytidycore').catch((err) => console.warn('memorytidycore', err)) : null);
   async function rememberFacts(agentId, facts) {
+    // (round 87, firstscreen87) memorytidy-core.js is lazy group 'memorytidycore' (in an idle moment after the first screen)
+    await tidyCore();
     const memory = await window.hub.getMemory();
     // (round 38, memorytidy) a fact that repeats or contradicts one it has replaces it instead of piling up
     if (window.MemoryTidyCore) {
@@ -1857,6 +1868,7 @@ const Native = (() => {
   }
 
   async function forgetFacts(agentId, facts) {
+    await tidyCore();
     const memory = await window.hub.getMemory();
     if (window.MemoryTidyCore) { await window.hub.saveMemory(MemoryTidyCore.unsave(memory, agentId, facts.filter((f) => !knownSaves.has(`${agentId}|${MemoryTidyCore.strip(f)}`)))); return; } // (round 38) puts back what a fact replaced
     const drop = new Set(facts.map((f) => `- ${f}`));
