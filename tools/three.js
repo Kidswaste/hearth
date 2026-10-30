@@ -1181,6 +1181,8 @@ const ThreeLab = (() => {
     // re-applies them every frame. "Bake into code" asks the director to write them into the code.
     let editOn = false;
     let editSel = null;
+    // (round 92, labchat92) the picked object in words, for the chat (three_layers, a chat opened from the Lab)
+    const pickedWords = () => (editSel ? `${editSel.name ? `"${editSel.name}" ` : ''}(${editSel.type || 'object'}) in layer "${sel()?.name || ''}"` : null);
     const editUndo = [];
     const editBtn = btn('✥ Edit', 'Move around the selected layer\'s scene and drag things to move, turn or resize them (E)', () => setEdit(!editOn));
     editBtn.dataset.feature = 'Edit scene';
@@ -1319,7 +1321,22 @@ const ThreeLab = (() => {
       if (player.onKey(e)) e.preventDefault();
     });
     toolbar.prepend(codeBtn, slidersBtn, consoleBtn, focusBtn, presentBtn);
-    const editor = new LabEditor(editorHost, { lang: 'js', onRun: () => runChanged(), onChange: () => { persist(); if (autoRun) autoRunSoon(); } });
+    // (round 92, labchat92) the owner's keystrokes, per scene + layer: an AI edit meanwhile keeps their cursor and their
+    // editor, and an AI's whole-layer rewrite that hasn't seen them is refused (tools/three-director.js)
+    const hand = { at: new Map(), last: 0 };
+    const noteHand = () => { if (!current || !selId) return; hand.last = Date.now(); hand.at.set(`${current.id}:${selId}`, hand.last); if (hand.at.size > 400) hand.at.delete(hand.at.keys().next().value); };
+    const typingNow = () => document.activeElement === editor.area && Date.now() - hand.last < 5000;
+    const editor = new LabEditor(editorHost, { lang: 'js', onRun: () => runChanged(), onChange: () => { persist(); noteHand(); if (autoRun) autoRunSoon(); } });
+    // (round 92) an AI's change to the layer in the editor: the owner's cursor (and scroll) stay where they were
+    function setCodeKeeping(code) {
+      const area = editor.area; const was = editor.value;
+      const focused = document.activeElement === area;
+      const [a, b, top] = [area.selectionStart, area.selectionEnd, area.scrollTop];
+      editor.setValue(code);
+      if (!focused || was === code) return;
+      const map = (p) => (window.LabChatCore ? LabChatCore.caret(was, code, p) : p);
+      try { area.setSelectionRange(map(a), map(b)); area.scrollTop = top; } catch { /* gone */ }
+    }
 
     // ---------- layers ----------
     const layersOf = () => current?.layers || [];
@@ -2604,8 +2621,12 @@ const ThreeLab = (() => {
     // Sends (or drafts) a message to the Three Director docked next to the Lab.
     function askDirector(text, { send = true } = {}) {
       const agent = H.agents().find((a) => a.threeTools);
+      // (round 92, labchat92) no agent with the Lab's tools: Claude gets it as a draft (its ▶ Apply puts code back here)
+      if (!agent && window.LabChatLink && current) { LabChatLink.ask(text, { sceneId: current.id }); return; }
       if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
       activate(agent.id);
+      // (round 92) its open chat works on another scene: a chat for this one (before, that chat fixed its own scene)
+      if (current) window.LabChatLink?.chatFor(agent.id, current.id);
       if (!send) { Native.setDraft(agent.id, text); return; }
       Native.send(agent.id, text).catch((err) => toast(err.message, { type: 'error' }));
     }
@@ -4264,7 +4285,10 @@ ${code}
       const own = errors.filter((e) => !e.layer || e.layer === selId);
       const errText = own.length ? `\n\nIt currently shows these errors:\n${own.map((e) => `- ${e.message}${e.line ? ` (line ${e.line})` : ''}`).join('\n')}` : '';
       const which = layersOf().length > 1 ? ` (the layer "${sel().name}" of a layered sketch: each layer is its own module with its own transparent renderer)` : '';
-      draftToClaude(`Here's my three.js sketch${which} (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
+      // (round 92, labchat92) the chat it starts is linked to this scene (its AI's Lab calls reach it; ▶ Apply on its code).
+      // A Claude with the Lab's tools reads the layer itself: the draft doesn't carry its whole code (≈ 1 token / 4 characters)
+      if (window.LabChatLink && H.claudeAgent()?.threeTools) { LabChatLink.ask(`About the layer "${sel().name}" (read it with three_read_code).${errText}\n\n`, { sceneId: current.id, agentId: H.claudeAgent().id }); return; }
+      (window.LabChatLink ? (t) => LabChatLink.ask(t, { sceneId: current.id, agentId: H.claudeAgent()?.id }) : draftToClaude)(`Here's my three.js sketch${which} (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
     }
 
     picker.addEventListener('change', () => openSketch(picker.value));
@@ -4883,7 +4907,7 @@ ${code}
       async setCode(code, wait = 2.5) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
         snapshot();
-        editor.setValue(code);
+        setCodeKeeping(code); // (round 92) the owner's cursor stays put
         persist();
         renderPicker();
         run({ hot: true, layer: selId }); // one layer or many: it re-runs in place
@@ -4896,7 +4920,10 @@ ${code}
         return report();
       },
       // ---------- layers ----------
-      layers: () => ({ sketch: current?.name, selected: sel()?.name, layers: layersSummary() }),
+      layers: () => ({ sketch: current?.name, selected: sel()?.name, ...(editOn && editSel ? { picked: pickedWords() } : {}), layers: layersSummary() }), // (round 92) + the object picked in the scene editor
+      // (round 92, labchat92) the owner's last keystroke in a layer (ms, 0 = none here) and whether they're typing now
+      handAt: (sketchId, layerId) => hand.at.get(`${sketchId}:${layerId}`) || 0,
+      typing: () => typingNow(),
       async addLayer({ name, code, template, position, props = {} }, wait = 2.5) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
         const Ls = layersOf();
@@ -4914,10 +4941,22 @@ ${code}
         if (Object.keys(props).length) editLayer(L.id, props, { direct: true });
         if (patch.code != null) {
           if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
-          if (selId !== L.id) selectLayer(L.id);
-          snapshot();
-          editor.setValue(String(patch.code));
-          persist();
+          if (selId !== L.id && typingNow()) {
+            // (round 92, labchat92) the owner is typing in another layer: this one changes without taking their editor
+            // (before, the editor switched to it and their next keys landed in this layer)
+            const list = (history[histKey(L)] ||= []);
+            if (L.code.trim() && list[0]?.code !== L.code) { list.unshift({ at: Date.now(), code: L.code }); list.length = Math.min(list.length, 40); saveHistory(current.id); }
+            L.code = String(patch.code);
+            current.code = layersOf()[0]?.code ?? current.code;
+            current.updatedAt = Date.now();
+            save();
+            renderLayers();
+          } else {
+            if (selId !== L.id) selectLayer(L.id);
+            snapshot();
+            setCodeKeeping(String(patch.code));
+            persist();
+          }
           run({ hot: true, layer: L.id });
         }
         if (patch.order != null) {

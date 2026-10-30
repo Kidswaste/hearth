@@ -146,9 +146,13 @@ const LabHealth = (() => {
     chipped.set(chatId, sig);
     const r = list[0];
     const layer = r.layer ? clip(nameOf(sceneId, r.layer), 28) : (S()?.get(sceneId)?.name || 'the scene');
-    const what = r.paused ? 'paused: it threw on every frame' : everyFrame(r) ? 'it throws on every frame' : r.kind === 'shader' ? 'a shader didn\'t compile' : r.kind === 'camera' ? 'its camera went NaN' : r.kind === 'asset' ? 'a file didn\'t load' : 'it threw an error';
+    const what = r.paused ? 'paused: it threw on every frame' : everyFrame(r) ? 'it throws on every frame' : r.kind === 'shader' ? 'a shader didn\'t compile' : r.kind === 'camera' ? 'its camera went NaN' : r.kind === 'asset' ? 'a file didn\'t load'
+      : /^SyntaxError\b/.test(r.message) ? `a syntax error${r.line ? ` on line ${r.line}` : ''}` : `it threw an error${r.line ? ` on line ${r.line}` : ''}`;
+    // (round 92, labchat92) the error itself on a line of its own (before: only "it threw an error"); two lines, so the
+    // chat's error calming (errorcalm.js, one-line notes) leaves the scene's own words alone
+    const detail = r.kind === 'runtime' && !r.paused && !everyFrame(r) ? clip(r.message, 120).replace(/`/g, "'") : '';
     const who = whoOf(c.agentId);
-    const box = Native.note(c.agentId, `⚠ Scene error in **${layer}** · ${what}${list.length > 1 ? ` (+${list.length - 1})` : ''}`, { id: 'scene-health', quiet: false,
+    const box = Native.note(c.agentId, `⚠ Scene error in **${layer}** · ${what}${list.length > 1 ? ` (+${list.length - 1})` : ''}${detail ? `\n\`${detail}\`` : ''}`, { id: 'scene-health', quiet: false,
       actions: [{ label: `Ask ${who} to fix`, title: 'Sends a message with the error and the code around it (you see it in the chat)', run: () => ask(c.agentId, chatId) }] });
     box?.classList.add('scene-health-note');
     stats.chips += 1;
