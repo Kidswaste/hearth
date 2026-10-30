@@ -4556,7 +4556,10 @@ ${code}
         if (!sketches.some((x) => x.id === id)) return false;
         // (round 73, coldopen73) a scene a project closed was saved then (only if changed, round 72): not stamped and
         // rewritten again here when the next project's chat opens its own scene
-        if (id !== current?.id || workspaceReleased) { if (!workspaceReleased) persist(); openSketch(id, { by: 'scene' }); }
+        // (round 90, checkfix90) the scene left is saved only if its code changed here (as close() does since round 72):
+        // a chat with its own scene, opened from the Desk, stamped the untouched scene "updated now" and rewrote every
+        // scene (the whole scenes file, sent to the other computer too) — and Find in this project read it all again
+        if (id !== current?.id || workspaceReleased) { if (!workspaceReleased && current && (sel()?.code !== editor.value || current.code !== (layersOf()[0]?.code ?? editor.value))) persist(); openSketch(id, { by: 'scene' }); }
         return true;
       },
       // id: (round 52, chatkeep) a scene that never reached the disk comes back under its own id (its chat still links it)

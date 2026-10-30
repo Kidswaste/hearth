@@ -228,7 +228,10 @@ if (AREAS.includes('Lab')) {
   const lab = await ThreeLab.cmd(); await wait(1500);
   const L = H.surfaces.get('tool:three').el;
   const pic = [...L.querySelectorAll('.three-preview')].find((n) => n.getBoundingClientRect().width);
-  const sigL = () => JSON.stringify({ s: lab.state, layers: lab.layers?.(), pal: lab.palette?.(), sk: ThreeLab.scenes?.currentId?.(), code: (ThreeLab.director?.codeOf?.().code || '').length });
+  // (round 90, checkfix90) the console's shown state: ` (show / hide the console) was judged only by "more DOM writes
+  // than while idle" (≈ 15 vs 3× idle), and under load the preview's own writes while idle (6–7 per 250 ms) put the bar
+  // at 18–21: dead twice in a row on a busy box. What the key must change is now in the state, as for the other keys
+  const sigL = () => JSON.stringify({ s: lab.state, layers: lab.layers?.(), pal: lab.palette?.(), sk: ThreeLab.scenes?.currentId?.(), code: (ThreeLab.director?.codeOf?.().code || '').length, console: L.querySelector('.three-console-wrap')?.hidden ?? null });
   await runArea('Lab', {
     sig: sigL,
     skip: /^(P|Shift\+F|Ctrl\+Shift\+Enter|Ctrl\+PgDn|Ctrl\+PgUp|Ctrl\+P|Ctrl\+Shift\+P)$/, // fullscreen Present / Focus, a fresh page, sketch switching (journey-lab covers them); ▶ Play's window (playloop.js presses them)

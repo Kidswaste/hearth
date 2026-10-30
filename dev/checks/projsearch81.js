@@ -6,7 +6,8 @@
 //              the background (slices) — this page's own work per task < 16 ms, the main process never busy with it
 //   query      a real click in the box, the words typed (CDP insertText): results grouped by kind in < 100 ms after the
 //              index; again with other words; nothing found → a plain sentence
-//   message    a real click on a Messages row: the chat opens on that message and it stays in view (round 76's hold)
+//   message    a real click on a Messages row: the chat opens on that message and it stays in view (round 76's hold);
+//              the Lab's scene it leaves for the chat's own isn't stamped and rewritten (round 90)
 //   Ctrl+F     on the Desk, a real Ctrl+F puts the caret in the box (the words and results kept across the Desk's repaint)
 //   code       a scene's code line: the Lab opens that scene, that layer selected, the line selected in its code
 //   board      a moodboard note: the board opens with that note selected
@@ -89,6 +90,9 @@ try {
   await selectAllAndType(box(), 'portal'); await until(() => rows('chat').length, 'portal again');
   const mr = rows('chat').find((r) => /AI|you/.test(r.querySelector('.pf-where-t').textContent)) || rows('chat')[0];
   const mh = ProjFind._S.rows[Number(mr.dataset.i)];
+  // (round 90, checkfix90) opening a chat whose scene isn't the Lab's: the scene left untouched is not stamped "updated now"
+  // and rewritten (that rewrote every scene, and this box's next query then found the project "still reading")
+  const labBefore = typeof ThreeLab !== 'undefined' && ThreeLab.scenes ? { cur: ThreeLab.scenes.currentId(), at: Object.fromEntries(ThreeLab.scenes.all().map((s) => [s.id, s.updatedAt])) } : null;
   await realClick(mr, 'a Messages row');
   const c = H.chats.find((x) => x.id === mh.ref);
   const node = await until(() => { const v = Native.view(c.agentId); return H.activeChat[c.agentId] === mh.ref && v?.list?.querySelector(`.msg[data-index="${mh.k}"]`); }, 'the message', 400);
@@ -96,6 +100,11 @@ try {
   const inView = () => { const v = Native.view(c.agentId).list; const n = v.querySelector(`.msg[data-index="${mh.k}"]`); if (!n) return false; const a = n.getBoundingClientRect(); const b = v.getBoundingClientRect(); return a.bottom > b.top + 4 && a.top < b.bottom - 4; };
   out.open.message = { chat: mh.ref, k: mh.k, of: c ? (await Native.load(c.id))?.messages?.length : null, inView: inView(), text: node.textContent.slice(0, 60) };
   need(out.open.message.inView, 'the message is in view after the chat settles');
+  if (labBefore) {
+    const stamped = ThreeLab.scenes.all().filter((s) => labBefore.at[s.id] != null && s.updatedAt !== labBefore.at[s.id]).map((s) => s.id);
+    out.open.message.lab = { before: labBefore.cur, after: ThreeLab.scenes.currentId(), stamped };
+    need(!stamped.length, `opening the chat stamped untouched scenes "updated now" (${stamped.join(', ')}: the whole scenes file rewritten)`);
+  }
   // ---------- back on the Desk: the words and results kept; Ctrl+F puts the caret in the box ----------
   await desk();
   need(box().value === 'portal' && rows('chat').length > 0, `the box keeps its words and results on the Desk (${box().value})`);
