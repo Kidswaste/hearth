@@ -129,8 +129,10 @@ const ProjFind = (() => {
     timed(() => {
       const building = Boolean(r) && r.left > 0; // (what this query's own catch-up left: a background catch-up with nothing new changes nothing on screen)
       // the same results again (the index caught up with nothing new, a repaint): the rows on screen stay as they are
-      const sig = r ? JSON.stringify([q.trim(), building, [...S.more], r.groups.map((g) => [g.id, g.total, g.hits.map((h) => `${h.ref}|${h.k ?? h.item ?? h.line ?? h.path ?? h.field ?? h.layer ?? ''}|${h.snip}`)])]) : '';
-      if (sig === painted && S.list.childElementCount === (r ? Math.max(1, r.groups.length) : 0)) { S.last = r; return; }
+      // (round 90, checkfix90) "still reading" is only the status line once there are rows: the catch-up finishing with
+      // the same rows changes that line, never the rows (a repaint took the row under the mouse and the arrow-key choice)
+      const sig = r ? JSON.stringify([q.trim(), r.total ? false : building, [...S.more], r.groups.map((g) => [g.id, g.total, g.hits.map((h) => `${h.ref}|${h.k ?? h.item ?? h.line ?? h.path ?? h.field ?? h.layer ?? ''}|${h.snip}`)])]) : '';
+      if (sig === painted && S.list.childElementCount === (r ? Math.max(1, r.groups.length) : 0)) { S.last = r; S.status.textContent = r && building ? 'Still reading this project… results fill in as it goes.' : ''; return; }
       painted = sig; S.stats.paints = (S.stats.paints || 0) + 1;
       S.last = r; S.rows = []; S.sel = -1;
       if (!r) { S.list.replaceChildren(); S.status.textContent = ''; S.list.hidden = true; return; }
