@@ -1529,6 +1529,7 @@ function createEngine(o) {
     status.state = 'syncing'; emit();
     laneGo(); // (round 73) a lane stopped with the engine goes on
     await readPeers();
+    if (o.devices) await o.devices.beforePass({ id: machine.id, writeMachine: () => writeMachine(true) }).catch((err) => log('devices', err.message)); // (round 90, devices90) this computer was forgotten (Settings › Your computers) and is back: its record again at once, before anything moves (devices90-core.js rejoin)
     const filesId = await fsp.stat(FILES).then((x) => `${x.dev}:${x.ino}`, () => ''); // (round 74) the cloud folder this pass looks at
     // (round 79, syncscope79) the paths the watchers heard (and what the last pass left open), or everything
     let sc = scopeOf(opts, filesId, nf0); let scan = null;

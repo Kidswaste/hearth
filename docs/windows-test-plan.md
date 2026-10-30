@@ -66,6 +66,11 @@ Your job: check the things below on real Windows and report back plain results (
 - Untick it on the Mac: within a sync or two the PC's line goes back to "waiting", and the last replies still arrive (the whole file goes at once). Tick it again afterwards if you like.
 - Report: the upload size per reply you saw, how long a reply took to show on the other computer, and anything in the sync panel's "Waiting" list that stayed for more than a minute.
 
+## 4g. Your computers and the pieces' space (round 90)
+- Settings › This computer & sync › **Your computers** (open the fold): the PC (this computer) and the Mac are listed, each with its system, when it was last seen, its Hearth version and whether it reads pieces. An old computer or reinstall that hasn't synced for a week shows **Forget this computer…** (the PC and the Mac never do). Forget it only if it is really gone: the line under the list says "Forgotten: …", and if "Send very long chats in pieces" was waiting only for it, it now says "On: in use" after a sync.
+- Under it, "Very long chats' pieces" says how much room the pieces take (cloud folder / kept for merging / kept aside). If **Free up …** shows, click it and confirm: the old pieces go to the Recycle Bin (check it's there), and your longest chat still opens and syncs.
+- Report: anything listed that you don't recognise, and the sizes shown.
+
 ## 5. Projects (rounds 72–76)
 - Switch between 3 projects with the name ▾ switcher: does it feel instant? Any reload flashes?
 - First project opened after restarting Hearth: time to usable.
