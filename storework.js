@@ -636,6 +636,14 @@ const OPS = {
     forms.delete(`l:${file}`); // (its bytes are handed over)
     return { h: cf.h, text: cf.text, __transfer: [cf.text.buffer] };
   },
+  // (round 89, packs89) a giant chat's pieces in the cloud folder (syncpack-core.js: publish / take / text / tidy), for
+  // the pack lane (syncpack.js); big bytes handed over without a copy
+  syncPack(a) {
+    const r = require('./syncpack-core').op(a.kind, fs, { ...a, S: require('./sync-merge') });
+    const own = (b) => b && b.buffer && b.buffer.byteLength > 65536; // (Node's shared pool is 8 KB: a slice of it is copied, never handed over)
+    const tr = [r?.out, r?.buf].filter(own).map((b) => b.buffer);
+    return tr.length ? { ...r, __transfer: tr } : r;
+  },
   // (round 82, bigchat82) Earlier versions of a giant chat: a copy's digest (bigchat-core.js digestBytes), not the copy.
   // ctx: a cloud copy (its paths made this computer's first) · wrapped: a copy kept before a restore ({ thing })
   chatDigest({ file, ctx, wrapped }) {

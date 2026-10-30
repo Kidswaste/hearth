@@ -38,6 +38,7 @@ const sha = (buf) => crypto.createHash('sha1').update(buf).digest('hex');
 const day = (t) => new Date(t).toISOString().slice(0, 10);
 const rand = () => crypto.randomBytes(4).toString('hex');
 const nfc = (s) => s.normalize('NFC');
+const P_safe = (by) => String(by || 'here').replace(/[^\w.-]+/g, '_').slice(0, 64) || 'here'; // (round 89, packs89) a computer's name in a pack (chatpack-core safeBy)
 // These are application databases, not user-deleted documents. Clearing an item
 // is an edit inside its store. A missing cloud/local store must not erase the
 // surviving database (including temporary cloud renames and conflict copies).
@@ -112,6 +113,7 @@ function createEngine(o) {
   const SPECIAL = { 'app/config.json': o.configPath, 'app/theme.css': o.themePath };
   fs.mkdirSync(stateDir, { recursive: true });
   const aside = Aside.createAside({ stateDir, now: () => now(), log: (...a) => log(...a) }); // (round 78, guardloss78)
+  const PK = o.packs || null; // (round 89, packs89) the pack lane (syncpack.js): only when "Send very long chats in pieces" is on; null = as before
 
   // ---------- this computer ----------
   const machineFile = path.join(stateDir, 'machine.json');
@@ -746,11 +748,13 @@ function createEngine(o) {
     journalOut = [];
     await atomicWrite(file, `${lines.slice(-4000).join('\n')}\n`);
   }
+  let machinePk = null; // (round 89, packs89) the packs part of the record last written
   async function writeMachine(force) {
     const file = path.join(META, 'machines', `${machine.id}.json`);
-    if (!force && now() - (state.machineAt || 0) < 10 * 60 * 1000) return;
-    state.machineAt = now();
-    await atomicWrite(file, JSON.stringify({ id: machine.id, name: machine.name, platform, dataDir, home: o.home || os.homedir(), cloudRoot, lastSeen: now(), lastOk: state.lastOk, format: ME, app: o.appVersion || undefined }, null, 2)); // (round 74, synchard74) format: which sync rules this Hearth follows
+    const pk = PK ? JSON.stringify(PK.record()) : ''; // (round 89, packs89) "packs: 1" while the setting is on here (rewritten at once when it changes)
+    if (!force && now() - (state.machineAt || 0) < 10 * 60 * 1000 && (!PK || pk === machinePk)) return;
+    state.machineAt = now(); if (PK) machinePk = pk;
+    await atomicWrite(file, JSON.stringify({ id: machine.id, name: machine.name, platform, dataDir, home: o.home || os.homedir(), cloudRoot, lastSeen: now(), lastOk: state.lastOk, format: ME, app: o.appVersion || undefined, ...(PK ? PK.record() : {}) }, null, 2)); // (round 74, synchard74) format: which sync rules this Hearth follows
   }
 
   // ---------- files ----------
@@ -1659,6 +1663,14 @@ function createEngine(o) {
       if (C?.downloading && (C.cloudUnknown || ch === UNKNOWN || lh !== ch)) { pending += 1; cloudOnly.push(rel); why(rel, 'cloud-only'); continue; }
       if (lh === INFLIGHT || ch === INFLIGHT) { pending += 1; why(rel, lh === INFLIGHT ? 'writing' : 'arriving'); continue; }
       if (lh === BAD || ch === BAD) { unreadable.push(rel); pending += 1; why(rel, 'unreadable'); continue; }
+      // (round 89, packs89) a giant chat whose changes travel in pieces (Hearth/packs): the pack lane says what its WHOLE
+      // cloud file does now: as below (null), not yet (hold: the pieces carry it; written once the chat is quiet), or
+      // adopt (the cloud's version is one this computer already took in: it becomes the base; pushed when quiet)
+      if (PK && L && /^chats\/[^/]+\.json$/.test(rel)) {
+        const pv = await PK.plan({ rel, L, C, lh, ch, bh }).catch((err) => { log('packs plan', rel, err.message); return null; });
+        if (pv?.adopt && C && ch && ch !== bh) setBase(rel, ch, pv.adopt);
+        if (pv?.hold || pv?.adopt) { pendRels.add(rel); if (pv.hold === 'pieces') { pending += 1; why(rel, 'pieces'); } continue; }
+      }
       if (L && C) {
         if (ch === UNKNOWN) { if (lh !== bh) { pending += 1; cloudOnly.push(rel); why(rel, 'cloud-only'); } continue; } // can't know without downloading
         if (lh === ch) { if (bh !== lh) setBase(rel, lh, S.isJsonRel(rel) ? await localText(rel, L) : undefined); continue; }
@@ -1759,6 +1771,12 @@ function createEngine(o) {
     // changes meanwhile; every write above checked its file right before, so nothing was overwritten). The time asleep
     // doesn't count toward any wait, and the pass starts again from a fresh look.
     if (slept) { excuse(slept); again = true; sleepRuns += 1; log('woke mid-pass', slept); } else sleepRuns = 0;
+    // (round 89, packs89) the pack lane: the other computers' pieces taken in, this computer's giant chats published
+    if (PK && !slept && !stopping && !quit) {
+      const pr = await PK.pass({ local }).catch((err) => { log('packs', err.message); return null; });
+      for (const w of pr?.waiting || []) { pending += 1; why(w.rel, w.why); }
+      if (pr) { sum.pulled += pr.took; sum.pushed += pr.published; }
+    }
     for (const cp of copies) if (!o.skip?.(cp.orig) && !(await absorbCopy(cp, local))) { pending += 1; if (!cp.unsure) cloudOnly.push(cp.rel); why(cp.orig, cp.unsure ? 'copy-check' : 'arriving'); }
     await flushJournal().catch((err) => log('journal', err.message));
     await writeMachine(false).catch(() => {});
@@ -1796,7 +1814,7 @@ function createEngine(o) {
     return { ...status, pulledFiles: pulledNow.slice() };
   }
   const emit = () => o.onStatus?.(publicStatus());
-  const publicStatus = () => ({ ...status, scope: { mode: scopeStats.mode, why: scopeStats.lastWhy, looked: scopeStats.looked, lastFull: scopeStats.lastFull, missed: scopeStats.missed }, /* (round 79, syncscope79) */ aside: aside.brief(), /* (round 78, guardloss78) */ transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
+  const publicStatus = () => ({ ...status, ...(PK ? { packs: PK.status() } : {}), /* (round 89, packs89) */ scope: { mode: scopeStats.mode, why: scopeStats.lastWhy, looked: scopeStats.looked, lastFull: scopeStats.lastFull, missed: scopeStats.missed }, /* (round 79, syncscope79) */ aside: aside.brief(), /* (round 78, guardloss78) */ transfers: laneList(), moving: lane.q.length + (lane.cur ? 1 : 0), machine: { id: machine.id, name: machine.name }, cloudRoot, cloudDir, peers: peers.map((p) => ({ name: p.name, platform: p.platform, lastSeen: p.lastSeen, lastOk: p.lastOk })) });
 
   // ---------- trash, conflicts ----------
   async function purge() {
@@ -2088,6 +2106,10 @@ function createEngine(o) {
   function readJsonSync(f) { try { return S.parseJson(SS.readRetry(fs, f)); } catch (err) { return err?.code && SS.BUSY.has(err.code) ? HELD : null; } }
   function writeJsonSync(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${rand()}.tmp`; fs.writeFileSync(t, JSON.stringify(v)); fs.renameSync(t, f); }
 
+  // (round 89, packs89) what the pack lane may use (the engine's own writes, so it follows the same rules)
+  PK?.attach({ cloudDir, stateDir, machineId: () => machine.id, ctx: () => ctx, localPathOf, casWrite: (file, ent, data) => casWrite(file, ent, data, 'pack-take'), afterLocalWrite, notePulled: (rel) => notePulled(rel, kindOf(rel)), asideAdd: (n) => { const r = aside.add(n); setTimeout(emit, 0); return r; }, nameOf: (by) => peers.find((p) => P_safe(p.id) === by)?.name || nameOf(by),
+    dataDir, knows: (rel) => Boolean(state.base[rel]), autoResolve: () => Boolean(o.autoResolve?.()), conflictsDir: CONFL, conflictId: () => `${day(now())}-${rand()}`,
+    conflict: async (c) => { const mid = peers.find((p) => P_safe(p.id) === c.by)?.id || null; await writeConflictRecord({ id: c.id, rel: c.rel, kind: 'json', copy: c.copy, at: now(), by: machine.name, from: nameOf(mid), ...sides(mid, c.oursAt, c.theirsAt), fields: c.fields.slice(0, 20) }); sum.conflicts += 1; } });
   return {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
     laneIdle, freeable: afterLoad(freeable), free: wrote(afterLoad(free)), /* (round 73, syncmedia73) */ fix: wrote(afterLoad(fix)), woke: (ms) => { excuse(ms); needFull = 'wake'; if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => { needFull = 'set'; return Object.assign(o, patch); }, option: (k) => o[k], machine: () => ({ ...machine }),

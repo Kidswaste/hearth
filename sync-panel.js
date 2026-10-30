@@ -33,6 +33,7 @@ const SyncPanel = (() => {
     error: 'couldn\'t be copied; Hearth tries again by itself',
     queued: 'a big file: it goes on its own, after the one moving now (chats don\'t wait for it)', // (round 73)
     moving: 'moving now',
+    pieces: (st) => `a very long chat: its newest part is still coming${st.peers?.[0]?.name ? ` from ${st.peers[0].name}` : ''}; it stays as it is here until all of it has arrived`, // (round 89, packs89)
   };
   const whyText = (w, st) => { const v = WHY[w]; return typeof v === 'function' ? v(st) : v || 'waiting'; };
   WHY['disk-full'] = 'the disk is full: it waits for room'; // (round 74)
