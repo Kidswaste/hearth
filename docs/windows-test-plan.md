@@ -49,6 +49,13 @@ Your job: check the things below on real Windows and report back plain results (
 - Delete a scene on one computer: does it show in the other computer's Deleted sketches without a restart?
 - Make a trigger preset or saved palette on one computer: does it appear on the other?
 
+## 4e. More of the Lab between PC and Mac (round 88)
+- On the PC: pin a scene ("★ Pin to the top" in its menu in All as pictures), star an effect in the effects list, build a stage set list, and set the ⚡ trigger bars for a song that sits in your Music folder (the same song is in Music on the Mac). On the Mac, a few seconds later: are all four there? The bars should show when you open the same song.
+- Unpin that scene on the Mac: is it unpinned on the PC?
+- Load a song from your Downloads or Music folder (one the Mac doesn't have) onto a scene on the PC with sync on. A note should offer "Keep a copy with this scene so it plays on your other computer (size)". Click it, then open the scene on the Mac: does the song play there? The original file on the PC should still be where it was. (/song keep asks again any time.)
+- Leave a scene running in live coding for 10 minutes on the PC and watch the sync panel / OneDrive activity: only small Lab files should move, not a big "three-history" file on every run.
+- First start after the update: open History (Sketch ▾ → Earlier versions) on an old scene. Are its earlier versions all there?
+
 ## 5. Projects (rounds 72–76)
 - Switch between 3 projects with the name ▾ switcher: does it feel instant? Any reload flashes?
 - First project opened after restarting Hearth: time to usable.

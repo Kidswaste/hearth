@@ -68,6 +68,7 @@ const ThreeFX = (() => {
     const f = favs(); const k = keyOf(it);
     if (f.has(k)) f.delete(k); else f.add(k);
     store.set('three.fx.favs', [...f]);
+    window.LabPresets?.changed(); // (round 88, labsync88) favourites on both computers
     return f.has(k);
   }
   const recent = () => store.get('three.fx.recent', []);

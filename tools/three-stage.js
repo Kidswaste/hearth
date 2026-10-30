@@ -36,7 +36,7 @@ const ThreeStage = (() => {
   const S = {
     show: false, busy: false, cued: null, held: null, lastTouched: null, autoLight: false, fpsBefore: null, bad: 0,
     get setlist() { return store.get('three.stage.setlist', []); },
-    set setlist(v) { store.set('three.stage.setlist', v.slice(0, 64)); paintHud(); },
+    set setlist(v) { store.set('three.stage.setlist', v.slice(0, 64)); window.LabPresets?.changed(); paintHud(); }, // (round 88, labsync88) the set list on both computers
     get mode() { return store.get('three.stage.mode', 'fade'); },
     get beats() { return Number(store.get('three.stage.beats', 4)); },
     get quant() { return store.get('three.stage.quant', 'bar'); },
@@ -457,6 +457,7 @@ const ThreeStage = (() => {
     return hud;
   }
   const put = (node, k, v) => { if (node && node[k] !== v) node[k] = v; };
+  addEventListener('hearth:lab-mine', (e) => { if (e.detail?.kinds?.includes('setlist')) { try { paintHud(); } catch { /* shown next time */ } } }); // (round 88) the set list from the other computer
   function paintHud() {
     if (!hud || hud.hidden) return;
     const h = hk();

@@ -11,6 +11,10 @@
 //   mergeInto(…)           bringing scenes back: added next to yours, never replacing one
 //   trashArrived / dedupeTrash / presetsMerge  (round 87, labsync87) a scene deleted on the other computer in this one's
 //                          Lab trash; the Lab presets (trigger presets, saved palettes) across both computers
+//   mineMerge / histSeg* / thumb* / songTravels  (round 88, labsync88) the rest of what you make in the Lab across both
+//                          computers (per-song triggers and loops, pinned scenes, effect favourites, the stage set list,
+//                          each scene's sequence); History's versions one file per scene; a picture saved only when it
+//                          changed; whether a song on the timeline reaches the other computer by itself
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.SceneSafeCore = api;
@@ -384,5 +388,208 @@
     if (!store) out.kvChanged = out.kvChanged || Object.keys(out.kv.items).length > 0;
     return out;
   }
-  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge };
+
+  // ---------- (round 88, labsync88) the rest of what you make in the Lab, across both computers ----------
+  // In the same store as the presets (kv/lab-presets.json: presetsMerge keeps kinds it doesn't know, and so does this),
+  // one item per thing: { kind, key, data: '<value as JSON text>', at }. Unlike presets these have a key that names
+  // WHAT they are about (a song, a scene, an effect), so the same key made on both computers is one thing, not two:
+  //   song     ⚡ a song's own trigger setup (three.triggersBySong)   key: the song's path (sync makes it this computer's)
+  //   loop     a song's loop section (three.loop:<path>)            key: the song's path
+  //   pin      a pinned scene (three.sketchPins)                    key: the scene's id (value true)
+  //   fxfav    an effect favourite (three.fx.favs)                  key: the effect's key (value true)
+  //   setlist  the stage set list (three.stage.setlist)             key: 'main'
+  //   seqpick  the sequence a scene opens with (three.seq.byScene)  key: the scene's id
+  // known: per kind, key → { id, sig } as this computer last saw the store, so a key gone from the store is told apart
+  // from a new one here: deleted there (unchanged here) → deleted here; changed here since → kept (an edit wins over a
+  // delete). Changed on both: this computer's stays here and is sent; the other is never lost — a song's setup goes into
+  // your trigger presets (out.aside), two set lists are joined. No store at all (never made, or gone): nothing in it was
+  // "deleted there"; what's here is put back in it. (An unreadable store never gets here: the Lab merges nothing then.)
+  // local: { kind: { key: value } } → { kv, local, known, kvChanged, localChanged: Set(kinds), aside: [{ kind, key, value }] }
+  const joinList = (a, b) => { const out = Array.isArray(a) ? [...a] : []; for (const x of Array.isArray(b) ? b : []) if (x && !out.some((y) => y && y.id === x.id)) out.push(x); return out.slice(0, 64); };
+  const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); };
+  const MINE_KINDS = { song: { ci: true, aside: true }, loop: { ci: true }, pin: { set: true }, fxfav: { set: true }, setlist: { join: joinList }, seqpick: {} };
+  // a song's path compared the way the two systems do: \ and / alike, and without case (Windows has none; a Mac folder
+  // rarely holds two songs that differ only by case — taken as one here, said in labsync88.md)
+  const mineKey = (kind, key) => (MINE_KINDS[kind]?.ci ? String(key).replace(/\\/g, '/').normalize('NFC').toLowerCase() : String(key));
+  function mineMerge(kv, local, known, now = Date.now(), rand = () => Math.floor(Math.random() * 46656).toString(36)) {
+    const store = kv && typeof kv === 'object' && !Array.isArray(kv) ? kv : null;
+    const items = store?.items && typeof store.items === 'object' && !Array.isArray(store.items) ? store.items : {};
+    const out = { kv: { ...(store || {}), v: 1, items: {} }, local: {}, known: {}, kvChanged: false, localChanged: new Set(), aside: [] };
+    let seq = 0;
+    const newId = () => `m${now.toString(36)}${rand()}${(seq++).toString(36)}`;
+    for (const [id, it] of Object.entries(items)) if (it && !MINE_KINDS[it.kind]) out.kv.items[id] = it; // presets, and kinds a newer Hearth knows: kept
+    for (const [kind, conf] of Object.entries(MINE_KINDS)) {
+      const L = new Map(); // norm key → { key, sig }
+      const lv = local?.[kind] && typeof local[kind] === 'object' && !Array.isArray(local[kind]) ? local[kind] : {};
+      for (const [key, v] of Object.entries(lv)) if (key && v != null && v !== false) L.set(mineKey(kind, key), { key, sig: conf.set ? 'true' : sigOf(v) });
+      // the store's items of this kind, by key; two for one key (made on both before they met): the newest stays (the
+      // same choice on both computers); this computer's own that lost is kept aside (a song's setup) or joined (set list)
+      const K = new Map(); const losers = [];
+      const ent = Object.entries(items).filter(([, it]) => it && it.kind === kind && typeof it.key === 'string' && it.key && typeof it.data === 'string')
+        .sort((a, b) => ((b[1].at || 0) - (a[1].at || 0)) || (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0));
+      for (const [id, it] of ent) { const k = mineKey(kind, it.key); if (K.has(k)) { losers.push([k, it]); out.kvChanged = true; } else K.set(k, [id, it]); }
+      const kn = store && known?.[kind] && typeof known[kind] === 'object' ? known[kind] : {};
+      const nextLocal = {}; const nextKnown = {}; const nextKv = [];
+      let changedHere = false;
+      // known.mine: this computer wrote that value (so one that differs now may have been written THERE at the same time,
+      // and sync's merge kept theirs). it.base: the value from the other computer its writer last built on — the same
+      // as ours: they saw ours and changed it (taken); another: written at the same time as ours (both kept, below)
+      const keep = (k, key, sig, id, it, mine = false) => { nextLocal[key] = conf.set ? true : unsig(sig); nextKnown[k] = { id, sig, ...(mine ? { mine: 1 } : {}) }; nextKv.push([id, it]); };
+      const over = (it, was) => (was?.mine && was.sig === it.data && typeof it.base === 'string' ? it.base : fnv(it.data)); // what a new value written over it builds on
+      const aside = (key, sig) => { if (conf.aside) out.aside.push({ kind, key, value: unsig(sig) }); };
+      const lost = new Set();
+      for (const [k, it] of losers) {
+        const l = L.get(k); const [wid, win] = K.get(k);
+        if (win.data === it.data) continue;
+        if (conf.join) { const j = sigOf(conf.join(unsig(win.data), unsig(it.data))); K.set(k, [wid, { ...win, data: j, at: Math.max(win.at || 0, it.at || 0) }]); lost.add(k); } // the winner holds both (the same on both computers)
+        else if (l && l.sig === it.data) { aside(l.key, l.sig); lost.add(k); } // this computer's own, taken over by the other one: kept aside
+      }
+      for (const k of new Set([...L.keys(), ...K.keys()])) {
+        const l = L.get(k); const kk = K.get(k); const was = kn[k];
+        if (l && kk) {
+          const [id, it] = kk;
+          if (l.sig === it.data) keep(k, l.key, l.sig, id, it, Boolean(was?.mine && was.sig === l.sig));
+          else if (lost.has(k)) { keep(k, l.key, it.data, id, it); changedHere = true; } // lost to the other one (kept aside / joined above)
+          else if (was && was.sig === it.data) { keep(k, l.key, l.sig, id, { ...it, data: l.sig, at: now, base: over(it, was) }, true); out.kvChanged = true; } // changed here
+          else if (was && was.sig === l.sig && (!was.mine || typeof it.base !== 'string' || it.base === fnv(was.sig))) { keep(k, l.key, it.data, id, it); changedHere = true; } // changed there (here's spelling of the path kept)
+          else if (conf.join) { const j = sigOf(conf.join(unsig(l.sig), unsig(it.data))); keep(k, l.key, j, id, { ...it, data: j, at: now, base: fnv(it.data) }, true); out.kvChanged = true; if (j !== l.sig) changedHere = true; } // changed on both: joined
+          else { aside(it.key, it.data); keep(k, l.key, l.sig, id, { ...it, data: l.sig, at: now, base: fnv(it.data) }, true); out.kvChanged = true; } // changed on both: this one, the other kept aside
+        } else if (l) {
+          if (was && was.sig === l.sig) changedHere = true; // deleted there (unchanged here): deleted here
+          else { keep(k, l.key, l.sig, newId(), { kind, key: l.key, data: l.sig, at: now, base: '' }, true); out.kvChanged = true; } // new here (or changed here after a delete there)
+        } else {
+          const [id, it] = kk;
+          if (was && was.sig === it.data) out.kvChanged = true; // deleted here (changed there since: it comes back)
+          else { keep(k, it.key, it.data, id, it); changedHere = true; } // new there
+        }
+      }
+      out.local[kind] = nextLocal;
+      out.known[kind] = nextKnown;
+      for (const [id, it] of nextKv) out.kv.items[id] = it;
+      if (changedHere) out.localChanged.add(kind);
+    }
+    if (!store) out.kvChanged = out.kvChanged || Object.keys(out.kv.items).length > 0;
+    return out;
+  }
+
+  // the whole Lab store (kv/lab-presets.json) against this computer's storage, as tools/three.js LabPresets does it on
+  // start, after a change here and when the other computer's version arrives. here: { presets: { trig, palettes },
+  // presetsKnown, mine: { kind: { key: value } }, mineKnown }. A song setup kept aside becomes a trigger preset named
+  // "<song> (other setup)". → { kv, kvChanged, presets (null: unchanged), presetsKnown, mine, mineChanged: Set, mineKnown, aside }
+  function labStoreMerge(disk, here, now = Date.now(), rand) {
+    const missing = !disk || typeof disk !== 'object' || Array.isArray(disk); // never made, or gone: nothing in it was "deleted there"
+    let r = presetsMerge(disk, here.presets, here.presetsKnown || {}, now, rand);
+    const m = mineMerge(r.kv, here.mine, missing ? {} : here.mineKnown || {}, now, rand);
+    let kvChanged = r.kvChanged || m.kvChanged;
+    let presets = r.localChanged ? r.local : null;
+    if (m.aside.length) {
+      const base0 = presets || here.presets || {};
+      const trig = [...(Array.isArray(base0.trig) ? base0.trig : [])];
+      for (const a of m.aside) {
+        const base = `${String(a.key).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').slice(0, 28)} (other setup)`;
+        let name = base; let n = 2;
+        while (trig.some((x) => x.name === name)) name = `${base} ${n++}`;
+        trig.unshift({ name, cfg: a.value });
+      }
+      const p2 = { ...base0, trig: trig.slice(0, 30) };
+      r = presetsMerge(m.kv, p2, r.known, now, rand);
+      presets = r.localChanged ? r.local : p2;
+      kvChanged = true;
+    } else r = { ...r, kv: m.kv };
+    return { kv: r.kv, kvChanged, presets, presetsKnown: r.known, mine: m.local, mineChanged: m.localChanged, mineKnown: m.known, aside: m.aside };
+  }
+
+  // ---------- (round 88, labsync88) History's versions: one file per scene ----------
+  // kv/three-history.json held every scene's versions (40 per layer) and the trash, rewritten whole — and sent whole to
+  // the other computer — 1.5 s after each run. Now a scene's versions live in kv/three-hv-<scene>.json (only the scene
+  // that ran is written) and three-history.json keeps the trash ({ v: 2, versions: {}, trash }). Before a scene's file
+  // is written it is read: what's there joins what's here (never written over unread); one that can't be read is left
+  // alone and tried again. Versions still in three-history.json (an older Hearth, or before the move) are moved into the
+  // scene files first, and taken out of three-history.json only once every one of those was written.
+  const HIST_MAX = 40;
+  // the file's name: the scene's id when it is plain lowercase (one name on Windows and on a Mac, no case clash);
+  // otherwise a short hash of it (the id is kept inside)
+  const histSegName = (sid) => (/^[a-z0-9_-]{1,60}$/.test(String(sid)) ? `three-hv-${sid}` : `three-hv-h${fnv(String(sid))}`);
+  const histSceneOf = (key) => String(key).split(':')[0];
+  // the versions of one scene (its keys: sceneId, sceneId:layerId)
+  function histSegOf(versions, sid) { const out = {}; for (const [k, list] of Object.entries(versions || {})) if (histSceneOf(k) === sid && Array.isArray(list)) out[k] = list; return out; }
+  // two sets of versions joined: newest first, one per code (its newest time), at most 40 per layer as before
+  function histJoin(a, b, max = HIST_MAX) {
+    const out = {};
+    for (const k of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+      const all = [...(Array.isArray(a?.[k]) ? a[k] : []), ...(Array.isArray(b?.[k]) ? b[k] : [])].filter((v) => v && typeof v.code === 'string');
+      all.sort((x, y) => (y.at || 0) - (x.at || 0));
+      const seen = new Set(); const list = [];
+      for (const v of all) { if (seen.has(v.code)) continue; seen.add(v.code); list.push(v); if (list.length >= max) break; }
+      if (list.length) out[k] = list;
+    }
+    return out;
+  }
+  const histSame = (a, b) => sigOf(a || {}) === sigOf(b || {});
+  const segVersions = (v) => (v && typeof v === 'object' && v.versions && typeof v.versions === 'object' && !Array.isArray(v.versions) ? v.versions : {});
+  // a scene's versions in memory replaced by `versions` (its keys only)
+  function histTake(history, sid, versions) { for (const k of Object.keys(histSegOf(history, sid))) delete history[k]; Object.assign(history, versions); }
+  // one save of History (tools/three.js, dev/labsync88-test.js). st: { history, dirty: Set(scene ids), read: Set, move:
+  // versions still to take out of three-history.json | null, mainDue, trash }. io: { read(name) → { ok, value } (ok
+  // false: couldn't be read — never "empty"), write(name, value) (throws when it didn't) }. Each changed scene: its file
+  // read, joined, written when different; three-history.json written last ({ v: 2, versions: what's left to move, trash })
+  // → { failed, wrote: [names] }
+  async function histFlush(st, io) {
+    let failed = false; const wrote = [];
+    for (const sid of [...st.dirty]) {
+      const r = await io.read(histSegName(sid));
+      if (!r || !r.ok) { failed = true; continue; } // can't be read now: never written over; tried again
+      const disk = segVersions(r.value);
+      const joined = histJoin(histSegOf(st.history, sid), disk);
+      histTake(st.history, sid, joined); st.read.add(sid); st.dirty.delete(sid);
+      if (!histSame(joined, disk)) {
+        try { await io.write(histSegName(sid), { v: 1, id: sid, versions: joined }); wrote.push(histSegName(sid)); } catch { st.dirty.add(sid); failed = true; continue; }
+      }
+      if (st.move) { const ks = Object.keys(histSegOf(st.move, sid)); for (const k of ks) delete st.move[k]; if (ks.length) st.mainDue = true; }
+    }
+    if (st.mainDue) {
+      st.mainDue = false;
+      try { await io.write('three-history', { v: 2, versions: st.move || {}, trash: st.trash }); wrote.push('three-history'); } catch { st.mainDue = true; failed = true; }
+    }
+    return { failed, wrote };
+  }
+
+  // ---------- (round 88, labsync88) a scene's picture saved only when it changed ----------
+  // gray: 72 numbers (9 × 8, row by row) from the picture made small → a 64-bit difference hash, 16 hex digits
+  function thumbHash(gray) {
+    if (!gray || gray.length < 72) return null;
+    let hex = '';
+    for (let r = 0; r < 8; r++) { let nib = 0; for (let c = 0; c < 8; c++) { nib = (nib << 1) | (gray[r * 9 + c] < gray[r * 9 + c + 1] ? 1 : 0); if (c === 3 || c === 7) { hex += nib.toString(16); nib = 0; } } }
+    return hex;
+  }
+  // how many of the 64 bits differ (null: can't tell)
+  function thumbDistance(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return null;
+    let n = 0;
+    for (let i = 0; i < a.length; i++) { let x = parseInt(a[i], 16) ^ parseInt(b[i], 16); while (x) { n += x & 1; x >>= 1; } }
+    return n;
+  }
+  // a new picture is worth saving (and sending to the other computer): none yet, nothing to compare, or it looks
+  // different (more than `tol` of 64 bits: an animated scene's next frame of the same look is not a new picture)
+  const thumbChanged = (old, hash, tol = 6) => { if (!old?.url || !old.h || !hash) return true; const d = thumbDistance(old.h, hash); return d == null || d > tol; };
+
+  // ---------- (round 88, labsync88) does a song on the timeline reach the other computer by itself? ----------
+  // roots (twocomputersmain.js): { platform, data, cloud, drives: [{ id, root }], home } → 'data' (inside Hearth's
+  // folder: synced), 'drive' (in a cloud drive: the drive brings it), or null (the home folder, another disk: it stays
+  // on this computer unless you keep a copy with the scene)
+  function songTravels(p, roots) {
+    if (typeof p !== 'string' || !p || !roots) return null;
+    const f = p.replace(/\\/g, '/').normalize('NFC');
+    const inside = (dir) => {
+      if (!dir) return false;
+      const d = String(dir).replace(/\\/g, '/').replace(/\/+$/, '').normalize('NFC');
+      const ci = roots.platform === 'win32' || /^[A-Za-z]:\//.test(d); // Windows paths compare without case
+      const head = f.slice(0, d.length);
+      return Boolean(d) && (ci ? head.toLowerCase() === d.toLowerCase() : head === d) && (f.length === d.length || f[d.length] === '/');
+    };
+    if (inside(roots.data)) return 'data';
+    if (inside(roots.cloud) || (roots.drives || []).some((x) => x && inside(x.root))) return 'drive';
+    return null;
+  }
+  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge, MINE_KINDS, mineKey, mineMerge, labStoreMerge, histSegName, histSegOf, histSceneOf, histJoin, histSame, histTake, histFlush, segVersions, HIST_MAX, thumbHash, thumbDistance, thumbChanged, songTravels };
 }));
