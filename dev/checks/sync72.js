@@ -33,10 +33,13 @@ await until(() => Sync.status().state === 'synced', 20000);
 await until(() => /Synced/.test(chip()), 4000);
 step('the indicator says "✓ Synced" in the rail, its name says when', /^✓ Synced$/.test(chip()) && /^Sync: Synced (just now|\d+ min ago)$/.test(dot()?.getAttribute('aria-label') || ''), { chip: chip(), name: dot()?.getAttribute('aria-label') });
 
-// the one-time "Welcome to this computer" note (a first sync with another computer) sits where the panel opens: Got it
-await wait(1500);
-const gotIt = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Got it' && J.visible(b));
-if (gotIt) { await click(gotIt); await wait(300); }
+// the one-time "Welcome to this computer" note (a first sync with another computer) sits where the panel opens: Got it.
+// (round 88, checkfix88) waited for, not a fixed 1.5 s: on a busy box it came later, over the open panel, and a click
+// on "Sync now" landed on its "Check Claude" (AI setup opened: "Claude Code isn't installed", three runs in a row).
+// It comes through the hints queue once sync has met the Mac (store two.welcomed is set when it shows).
+await until(() => store.get('two.welcomed', 0) && document.querySelector('.two-welcome'), 10000);
+const gotIt = [...document.querySelectorAll('.two-welcome button')].find((b) => b.textContent.trim() === 'Got it' && J.visible(b));
+if (gotIt) { await click(gotIt); await until(() => !document.querySelector('.two-welcome'), 2000); }
 
 // 1. a click opens the panel: plain words, Sync now
 await click('#sync-dot');
@@ -44,6 +47,12 @@ await until(() => panel()?.querySelector('h2'), 20000); // (its code loads on fi
 step('a click on the indicator opens the sync panel next to it', Boolean(panel()) && panel().getAttribute('role') === 'dialog' && /Synced/.test(panel().querySelector('h2')?.textContent || ''), panel()?.textContent?.slice(0, 160));
 if (!panel()) return J.done();
 step('it says where (the folder), when it checked, and the other computer', /with /.test(panel().textContent) && /checked/.test(panel().textContent) && /Studio Mac \(Mac\)/.test(panel().textContent), panel()?.querySelector('.sp-title .hint')?.textContent);
+// (round 88) a note offered now (the welcome again, an update note…) waits until the panel closes: never over it
+{ // (the box's own busyness — a long task just now on a loaded machine — is set aside: the panel alone must hold them)
+  const jank = window.Jank?.busy; if (jank) window.Jank.busy = () => false;
+  const why = window.Hints?.busy?.(); if (jank) window.Jank.busy = jank;
+  step('while the panel is open, notes that come by themselves wait (hints: "dialog")', why === 'dialog', why);
+}
 step('Sync now, Deleted files, ⋯ More', Boolean(btn(/^Sync now$/)) && Boolean(btn(/Deleted files/)) && Boolean(panel().querySelector('[aria-label="More sync options"]')));
 await click(btn(/^Sync now$/));
 await until(() => btn(/^Sync now$/) && !btn(/^Sync now$/).disabled, 8000);
@@ -148,4 +157,6 @@ const unnamed = [...panel().querySelectorAll('button')].filter((b) => !(b.textCo
 step('every button in the panel has a name', !unnamed.length, unnamed.length);
 SyncPanel.close();
 await api.off();
+// (round 88) every click above reached what it aimed at (J.click notes what covered it otherwise)
+step('nothing covered the panel or the indicator while they were used', !(J.out.misses || []).length, J.out.misses);
 return J.done();

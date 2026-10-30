@@ -58,7 +58,9 @@ const Hints = (() => {
   addEventListener('pointerup', up, true); addEventListener('pointercancel', up, true); addEventListener('blur', up);
   addEventListener('dragstart', () => { dragging = true; }, true); addEventListener('dragend', up, true); addEventListener('drop', up, true);
   const streaming = () => { try { return (H.agents?.() || []).some((a) => a.mode === 'native' && Native.isAgentBusy?.(a.id)); } catch { return false; } };
-  const OPEN = 'dialog[open], #menu:not([hidden]), .opt-sheet, .ms-pop, .tour-card, .splash, .keys-sheet:not([hidden]), .palette:not([hidden])';
+  // (round 88, checkfix88) the sync panel too: the welcome note on a new computer came up over an open sync panel, its
+  // "Check Claude" right where "Sync now" was (a click there opened AI setup instead)
+  const OPEN = 'dialog[open], #menu:not([hidden]), .opt-sheet, .ms-pop, .tour-card, .splash, .keys-sheet:not([hidden]), .palette:not([hidden]), .sync-panel';
   // why not now ('' = calm)
   function busy() {
     if (document.hidden) return 'away';
