@@ -163,6 +163,9 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
     // (round 93, perf93) --cpu-at: every process's CPU at <ms> after the launch (left as is till then: nobody touching it)
     let cpuAtV = null; let cpuAtMs = null;
     if (cpuAt) { const left = spawned + cpuAt - Date.now(); if (left > 0) await wait(left); cpuAtV = await procCpu(); cpuAtMs = Date.now() - spawned; }
+    // (--cpu-also <ms,ms…>: more readings later on, e.g. 65000,75000 for idle at 1 min on a warm profile: cpu.also)
+    const also = [];
+    for (const t of String(opt('--cpu-also', '')).split(',').map(Number).filter((x) => x > 0)) { if (!cpuAt) break; const left = spawned + t - Date.now(); if (left > 0) await wait(left); also.push({ ms: Date.now() - spawned, cpu: await procCpu() }); }
     const page = await c.evaluate(`(() => {
       const m = (n) => { const e = performance.getEntriesByName(n)[0]; return e ? e.startTime : null; };
       const paint = Object.fromEntries(performance.getEntriesByType('paint').map((e) => [e.name, e.startTime]));
@@ -192,7 +195,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
     const profiles = profDir ? summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) : null;
     return {
       settled: toMain(lastLong || page.ready),
-      cpu: { ready: cpuReady, settled: cpuSettled, at: cpuAtV, atMs: cpuAtMs }, // (round 82) every process's CPU ms: at the first screen + its 'soon' groups, and once settled
+      cpu: { ready: cpuReady, settled: cpuSettled, at: cpuAtV, atMs: cpuAtMs, also }, // (round 82) every process's CPU ms: at the first screen + its 'soon' groups, and once settled
       longBeforeReady: cs.longs.filter(([s]) => s < readyAt).map(([, d]) => d),
       longAfterReady: cs.longs.filter(([s]) => s >= readyAt).map(([, d]) => d),
       keys: args.includes('--keys') ? { typed: cs.typed, slow: keysAfter.length, worstHandled: Math.max(0, ...keysAfter.map((k) => k[1])), worstToPaint: Math.max(0, ...keysAfter.map((k) => k[2])) } : null,

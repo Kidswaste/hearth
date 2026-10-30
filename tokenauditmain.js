@@ -69,6 +69,22 @@ function measure(agent, d = { engines: deps.engines(), cost: deps.cost(), Conn: 
 
 // tool calls in the chats of the last `days` days: { since, days: { day: { agentId: { server: n } } } }
 const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// one chat's tool calls into the log (the seed's work per file)
+function addChat(log, chat, from) {
+  for (const m of Array.isArray(chat?.messages) ? chat.messages : []) {
+    if (!m || !m.at) continue;
+    if (m.at < from) { log.since = Math.min(log.since, from); continue; }
+    log.since = Math.min(log.since, m.at);
+    if (m.role !== 'assistant' || !Array.isArray(m.tools) || !chat.agentId) continue;
+    for (const n of m.tools) {
+      const s = /^mcp__(.+?)__/.exec(String(n))?.[1] || /^([\w-]+) · [\w-]+$/.exec(String(n))?.[1];
+      if (!s || /^(Shell|Edited|Edit failed|Web search)$/.test(s)) continue;
+      const day = (log.days[dayKey(m.at)] ||= {});
+      const mine = (day[chat.agentId] ||= {});
+      mine[s] = (mine[s] || 0) + 1;
+    }
+  }
+}
 async function seed(chatsDir, days = 35, now = Date.now()) {
   const from = now - days * 864e5;
   const log = { since: now, days: {}, seeded: now };
@@ -82,20 +98,28 @@ async function seed(chatsDir, days = 35, now = Date.now()) {
     if (st.size > 60e6) continue;
     let chat;
     try { chat = JSON.parse(await fs.promises.readFile(file, 'utf8')); } catch { continue; }
-    for (const m of Array.isArray(chat?.messages) ? chat.messages : []) {
-      if (!m || !m.at) continue;
-      if (m.at < from) { log.since = Math.min(log.since, from); continue; }
-      log.since = Math.min(log.since, m.at);
-      if (m.role !== 'assistant' || !Array.isArray(m.tools) || !chat.agentId) continue;
-      for (const n of m.tools) {
-        const s = /^mcp__(.+?)__/.exec(String(n))?.[1] || /^([\w-]+) · [\w-]+$/.exec(String(n))?.[1];
-        if (!s || /^(Shell|Edited|Edit failed|Web search)$/.test(s)) continue;
-        const day = (log.days[dayKey(m.at)] ||= {});
-        const mine = (day[chat.agentId] ||= {});
-        mine[s] = (mine[s] || 0) + 1;
-      }
-    }
+    addChat(log, chat, from);
     await new Promise((r) => setImmediate(r)); // one chat at a time: the window stays smooth
+  }
+  return log;
+}
+// (round 93, perf93) the same seed on the store's folder thread (storework.js op toolSeed): reading and parsing every
+// chat of the last 35 days (a giant one is ~55 MB of JSON) held the main process ~1 s on a profile without the log
+// yet. The same answer; synchronous there (a thread of its own)
+function seedSync(chatsDir, days = 35, now = Date.now()) {
+  const from = now - days * 864e5;
+  const log = { since: now, days: {}, seeded: now };
+  let names = [];
+  try { names = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json')); } catch { return log; }
+  for (const f of names) {
+    const file = path.join(chatsDir, f);
+    let st;
+    try { st = fs.statSync(file); } catch { continue; }
+    if (st.mtimeMs < from) { log.since = Math.min(log.since, from); continue; }
+    if (st.size > 60e6) continue;
+    let chat;
+    try { chat = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+    addChat(log, chat, from);
   }
   return log;
 }
@@ -103,7 +127,13 @@ async function seed(chatsDir, days = 35, now = Date.now()) {
 // (main.js lazyIpc finds the channels by how they are spelled below: keep the parameter named ipcMain)
 function register(ipcMain, opts = {}) {
   ipcMain.handle('tokenaudit:measure', (_e, agent) => { try { return measure(agent); } catch (err) { return { error: err.message }; } });
-  ipcMain.handle('tokenaudit:seed', async () => { try { return await seed(path.join(opts.dataDir || req('./store')?.DATA_DIR || '.', 'chats')); } catch (err) { return { error: err.message }; } });
+  ipcMain.handle('tokenaudit:seed', async () => {
+    const dir = path.join(opts.dataDir || req('./store')?.DATA_DIR || '.', 'chats');
+    // (round 93, perf93) on the store's folder thread when there is one; here (a chat at a time) when not
+    const off = req('./store')?.runOff;
+    if (off) { try { const r = await off('toolSeed', { dir, days: 35, now: Date.now() }); if (r && r.days) return r; } catch { /* no thread: here */ } }
+    try { return await seed(dir); } catch (err) { return { error: err.message }; }
+  });
 }
 
-module.exports = { register, measure, seed, without, fixedOf, CONNECTOR_TOOL };
+module.exports = { register, measure, seed, seedSync, without, fixedOf, CONNECTOR_TOOL };

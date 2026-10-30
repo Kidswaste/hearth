@@ -1020,6 +1020,8 @@ const OPS = {
   },
   forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); calcs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
+  // (round 93, perf93) tokenaudit's one-time seed of the tool-use log (tokenauditmain.js seedSync), off the main thread
+  toolSeed({ dir, days, now }) { return require('./tokenauditmain').seedSync(dir, days, now); },
   // (round 91, longrun91; tests only: asked only by power:test { threadMem } behind HEARTH_TEST_SAVE_DIR) this thread's
   // JS heap after a full GC and the size of each cache it keeps, for dev/checks/longrun91.js's growth trend
   _mem({ snap } = {}) {
