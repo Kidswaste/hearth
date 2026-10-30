@@ -35,7 +35,8 @@ function createPackLane(o = {}) {
   let api = null; // the engine's (attach)
   let st = null; let broken = ''; let gateNow = { ok: false, why: 'start' };
   const arriving = new Map(); // `${id}:${by}:${seq}` → since (this computer's clock)
-  const stats = { published: 0, took: 0, bytesUp: 0, piecesUp: 0, whole: 0, waits: 0, lastWaiting: [] };
+  const stats = { published: 0, took: 0, bytesUp: 0, piecesUp: 0, whole: 0, waits: 0, lastWaiting: [], publishMs: 0, publishMax: 0, takeMs: 0, takeMax: 0 };
+  const timed = async (k, p) => { const t0 = Date.now(); try { return await p; } finally { const ms = Date.now() - t0; stats[`${k}Ms`] += ms; stats[`${k}Max`] = Math.max(stats[`${k}Max`], ms); } }; // (the files thread's time, as the main side waits for it)
   const run = (kind, a) => (o.runOff ? o.runOff('syncPack', { kind, ...a }) : Promise.resolve().then(() => C.op(kind, fs, { ...a, S })));
 
   const D = () => {
@@ -151,7 +152,7 @@ function createPackLane(o = {}) {
       // the owner turned that off, then listed for a choice as today (a conflict copy in the cloud folder)
       const allowNew = !c.had && !api.knows(rel) && !fs.existsSync(path.join(api.dataDir, 'trash', `${id}.json`));
       const confl = api.autoResolve() ? null : { dir: api.conflictsDir, cid: api.conflictId() };
-      const r = await run('take', { file, ctx, dir, man: x.m, by: x.by, me: me(), base, keepAll, allowNew, confl, recovery: path.join(D0.recovery, `${id}.json`), trash: D0.deleted, now: now(), keepAs: { dir: baseDir, by: `peer-${x.by}` } });
+      const r = await timed('take', run('take', { file, ctx, dir, man: x.m, by: x.by, me: me(), base, keepAll, allowNew, confl, recovery: path.join(D0.recovery, `${id}.json`), trash: D0.deleted, now: now(), keepAs: { dir: baseDir, by: `peer-${x.by}` } }));
       if (r?.gone) continue; // (deleted here meanwhile: the engine decides)
       if (!r || r.wait || r.stale) { out.waiting.push({ rel, why: 'pieces' }); stats.waits += 1; if (r?.wait) log('packs: wait', id, x.by, r.wait); continue; }
       if (r.out) {
@@ -186,7 +187,7 @@ function createPackLane(o = {}) {
     }
     const skips = [c.pub?.wh, ...Object.keys(c.last).map((by) => ms.find((x) => x.by === by)?.m?.wh)].filter(Boolean);
     const seq = Math.max(c.pub?.seq || 0, prev?.seq || 0) + 1;
-    const r = await run('publish', { file, ctx, dir, id, by: me(), took: { ...c.seen }, prev, seq, skips: force ? [] : skips, force, baseDir, cut: o.cut });
+    const r = await timed('publish', run('publish', { file, ctx, dir, id, by: me(), took: { ...c.seen }, prev, seq, skips: force ? [] : skips, force, baseDir, cut: o.cut }));
     if (!r || r.stale || r.bad || r.gone) { if (r?.bad) log('packs: chat not laid out as expected', id); return; }
     c.sig = `${r.sig.size}:${r.sig.mtime}`; dirty = true;
     if (r.same) { know(c, r.h); return; }

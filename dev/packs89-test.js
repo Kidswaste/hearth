@@ -165,6 +165,7 @@ scenario('bench', async () => {
   ok(whole && whole.messages.length === p.pc.json(REL).messages.length && S.eq(whole, S.toCloud(p.pc.json(REL), p.pc.e.ctx())), 'bench: once the chat is quiet, the whole cloud file is written, the very chat (an older Hearth finds it whole)', whole && whole.messages.length);
   const wholeUp = (up(p.pc).files - before.pc) + (up(p.mac).files - before.mac);
   ok(wholeUp > 0 && wholeUp < t.size * 1.5, 'bench: …written once (one computer), not by both', { wholeUp: fmt(wholeUp) });
+  { const s1 = p.pc.lane.status(); const s2 = p.mac.lane.status(); console.log(`    lane time (in this process; the files thread in the app): publish avg ${Math.round((s1.publishMs + s2.publishMs) / Math.max(1, s1.published + s2.published))} ms (max ${Math.max(s1.publishMax, s2.publishMax)}), take avg ${Math.round((s1.takeMs + s2.takeMs) / Math.max(1, s1.took + s2.took))} ms (max ${Math.max(s1.takeMax, s2.takeMax)})`); }
   console.log(`    quiet: the whole file once: ${fmt(wholeUp)}; the first build of the pack: ${fmt(p.u0.pc.packs + p.u0.mac.packs)} (once per chat); first sync in ${p.first} rounds (today ${t.first})`);
   res.packs.summary = { perToday: perT, perPacks: perP };
   global.BENCH = res; // (for the write-up)
