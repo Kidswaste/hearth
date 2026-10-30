@@ -32,7 +32,15 @@ const audit = J.out.audit = {}; // state → what the owner sees (the write-up's
 const see = (name, extra = {}) => { audit[name] = { chip: chip(), title: h2(), text: mainText().slice(0, 600), buttons: [...(panel()?.querySelectorAll('button') || [])].map((b) => b.textContent.trim()).filter(Boolean), ...extra }; console.log(`[SP92] ${name} ${JSON.stringify(audit[name])}`); return audit[name]; };
 const chipWhole = () => { const c = dot()?.querySelector('.sync-chip'); return Boolean(c) && c.scrollWidth <= c.clientWidth + 1; };
 // a click on a button that may not be there: a failed step, not a stop (the rest of the states are still looked at)
-async function tap(b, what) { if (!b || !J.visible(b)) { step(`there is a button to click: ${what}`, false); return false; } await click(b); return true; }
+// (the panel redraws when a status arrives: the button is found again right before the click, once the panel is still)
+async function tap(b, what) {
+  const re = b?.textContent ? new RegExp(`^${b.textContent.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) : null;
+  const root = b?.closest?.('.sync-panel, dialog') || panel();
+  let n = b; let prev = null;
+  for (let i = 0; i < 20 && re; i++) { await wait(100); n = btn(re, root?.isConnected ? root : panel()); if (n && n === prev) break; prev = n; }
+  if (!n || !J.visible(n)) { step(`there is a button to click: ${what}`, false); return false; }
+  await click(n); return true;
+}
 const shot = (n) => smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/sp92-${n}.png` }).catch(() => null);
 async function openPanel() {
   if (panel()) return panel();
