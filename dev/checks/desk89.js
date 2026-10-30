@@ -52,10 +52,11 @@ async function step(name, fn, { budget = BUDGET.desk } = {}) {
   const deskTasks = desk.map((x) => x.task?.ms || 0); const frameTasks = desk.map((x) => x.frame?.ms || 0);
   const judged = []; for (const x of desk) for (const k of ['task', 'frame']) if (x[k] && !judged.includes(x[k])) judged.push(x[k]);
   const observed = judged.map((x) => ({ at: x.at - t, ms: x.ms }));
-  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 0, budget, mark: `d89:${name}`, observed, marked: ['d89:desk', 'd89:frame'] } }).catch(() => null) : null;
+  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 0, budget, mark: `d89:${name}`, observed, marked: ['d89:desk', 'd89:frame', 'd89:click'] } }).catch(() => null) : null;
   // each Desk draw's own task and the frame after it, long or not (from the trace; the long-task list only has those ≥ 50 ms)
   const deskMs = lt?.marked?.['d89:desk']?.map((x) => x?.ms ?? null) || []; const frameMs = lt?.marked?.['d89:frame']?.map((x) => x?.ms ?? null) || [];
-  const s = { draws: mine.length, deskMs, frameMs, deskTask: deskTasks, frameAfter: frameTasks, windowLong: longs.filter((x) => x.at >= t && !sceneTask(x)).map((x) => x.ms).sort((a, b) => b - a).slice(0, 6), ...(res && typeof res === 'object' ? res : {}) };
+  const clickMs = lt?.marked?.['d89:click']?.[0]?.ms ?? null;
+  const s = { draws: mine.length, deskMs, frameMs, ...(clickMs != null ? { clickMs, clickCpu: lt.marked['d89:click'][0].cpuMs } : {}), deskTask: deskTasks, frameAfter: frameTasks, windowLong: longs.filter((x) => x.at >= t && !sceneTask(x)).map((x) => x.ms).sort((a, b) => b - a).slice(0, 6), ...(res && typeof res === 'object' ? res : {}) };
   if (lt) s.trace = { verdict: lt.verdict, cpu: (lt.tasks || []).slice(0, 4).map((x) => `${x.ms}ms (cpu ${x.cpuMs})`) };
   const worst = Math.max(0, ...deskTasks, ...frameTasks);
   if (worst > 50) out.over50.push(`${name} ${worst}`);
@@ -68,7 +69,7 @@ async function step(name, fn, { budget = BUDGET.desk } = {}) {
 const deskFacts = () => {
   const b = document.querySelector('.pj-home-body');
   const texts = (sel) => [...b.querySelectorAll(sel)].map((n) => n.textContent.trim());
-  return { head: b.querySelector('.pj-p-name')?.textContent, meta: b.querySelector('.pj-p-head .pj-meta')?.textContent, shelves: texts('.pw-shelf-section h3, details > summary'), rows: texts('.pw-shelf-row'), files: texts('.pw-file-results .pj-item'), fileHeads: texts('.pw-file-results h4'), open: [...b.querySelectorAll('details[open]')].map((d) => d.className),
+  return { head: b.querySelector('.pj-p-name')?.textContent, meta: b.querySelector('.pj-p-head .pj-meta')?.textContent, shelves: texts('.pw-shelf-section h3, details > summary'), rows: texts('.pw-shelf-row'), files: texts('.pw-file-results .pj-item-name'), /* (names in order: a time shown can turn over a minute meanwhile) */ fileHeads: texts('.pw-file-results h4'), open: [...b.querySelectorAll('details[open]')].map((d) => d.className),
     fileQuery: b.querySelector('.pw-file-search')?.value, count: b.querySelector('.pw-file-footer [role=status]')?.textContent, find: Boolean(b.querySelector('.pf')) };
 };
 
@@ -126,11 +127,11 @@ try {
   await until(() => card()?.querySelector('.pb-go'), 'export card', 3000); await wait(500);
   out.export = await step('export', async () => {
     const c = card(); const fb = c.querySelector('.pb-files'); if (fb && fb.checked) fb.click(); if (!c.querySelector('.pb-chats').checked) c.querySelector('.pb-chats').click();
-    const t = performance.now(); c.querySelector('.pb-go').click(); const clickTask = taskAt(t + 0.5)?.ms || 0;
+    const t = performance.now(); performance.mark('d89:click'); c.querySelector('.pb-go').click(); const clickTask = taskAt(t + 0.5)?.ms || 0;
     const r = await job; return { ok: Boolean(r?.ok), clickTask, prep: ProjBundle.last?.prep || null };
   }, { budget: BUDGET.task });
   { const ex = out.export; const worst = Math.max(0, ...ex.windowLong); if (worst > BUDGET.task) { if (ex.trace?.verdict === 'load') out.cantTell.push(`export: a ${worst} ms task, the box's`); else out.over50.push(`export ${worst}`); }
-    if (ex.clickTask > BUDGET.task) out.problems.push(`export: the click's task held ${ex.clickTask} ms`); }
+    if (Math.max(ex.clickTask, ex.clickMs || 0) > BUDGET.task) { const cpu = ex.clickCpu; if (cpu != null && cpu <= BUDGET.task) out.cantTell.push(`export: the click's task ${ex.clickMs} ms, ${cpu} ms of it CPU (the box)`); else out.problems.push(`export: the click's task held ${Math.max(ex.clickTask, ex.clickMs || 0)} ms (cpu ${cpu})`); } }
   need(out.export.ok, `export: ${JSON.stringify(out.export).slice(0, 200)}`);
   if (typeof PrepSlice !== 'undefined') {
     need(out.export.prep?.slices > 2, `export: prepared in slices (${JSON.stringify(out.export.prep)})`);
