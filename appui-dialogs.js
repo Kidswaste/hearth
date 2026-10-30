@@ -9,6 +9,7 @@ const AppUIDialogs = (() => {
   // ---------- settings dialog ----------
   async function openSettings(query = '') {
     try { await loadFind(); } catch (err) { console.warn(err); }
+    try { if (window.Lazy) await Lazy.load('updater'); } catch (err) { console.warn(err); } // (round 87, firstscreen87) its What's new row reads Updater
     if (typeof query !== 'string') query = '';
     document.querySelector('dialog.settings-dialog[open]')?.close();
     const s = { ...H.settings() };
