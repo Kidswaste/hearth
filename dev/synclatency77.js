@@ -88,7 +88,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- the cloud and its log (when a file landed in a computer's cloud folder) ----------
 const landed = new Map(); // `${name}:${key}` → wall time it was written into that computer's cloud folder
-const cloud = Sim.cloud({ blobDir: path.join(RUN, 'blobs'), log: (name, what, key) => { if (what === 'down') landed.set(`${name}:${key}`, Date.now()); if (what === 'up' || what === 'down') vlog('cloud', name, what, key); } });
+// (round 88, checkfix88) and how long this process had waited for a CPU / the disk by then (dev/loadwait.js): each
+// timing below carries what of it was the box's (upWait, downWait), so a test can tell a slow app from a busy box
+const LW = require('./loadwait');
+const landedWait = new Map();
+const cloud = Sim.cloud({ blobDir: path.join(RUN, 'blobs'), log: (name, what, key) => { if (what === 'down') { landed.set(`${name}:${key}`, Date.now()); landedWait.set(`${name}:${key}`, LW.snap()); } if (what === 'up' || what === 'down') vlog('cloud', name, what, key); } });
 
 // ---------- a computer: the app's sync main side, a fresh copy of the module for each ----------
 function computer(name) {
@@ -210,19 +214,22 @@ async function measure(from, to, name, mode) {
   const rel = it.rel(tok);
   const big = name === 'big' || it.size || false; // (round 87) a Lab model: its size
   const p0 = [from.passes, to.passes];
+  const w0 = LW.snap(); let wUp = null; let wDown = null; let wWin = null;
   const t0 = Date.now();
   it.save(from, tok);
   const r = { item: name, from: from.name, to: to.name, mode, rel };
   const key = `${to.name}:Hearth/files/${rel}`;
-  landed.delete(key);
+  landed.delete(key); landedWait.delete(key);
   while (Date.now() - t0 < TIMEOUT) {
-    if (r.up == null && has(from.cp(rel), tok, big)) r.up = Date.now() - t0;
-    if (r.down == null && landed.has(key) && has(to.cp(rel), tok, big)) r.down = landed.get(key) - t0;
+    if (r.up == null && has(from.cp(rel), tok, big)) { r.up = Date.now() - t0; wUp = LW.snap(); }
+    if (r.down == null && landed.has(key) && has(to.cp(rel), tok, big)) { r.down = landed.get(key) - t0; wDown = landedWait.get(key) || null; }
     if (r.here == null && has(to.p(rel), tok, big)) r.here = Date.now() - t0;
-    if (r.window == null && r.here != null && (to.pulled.get(rel) || 0) >= t0 + (r.down ?? 0)) r.window = to.pulled.get(rel) - t0;
+    if (r.window == null && r.here != null && (to.pulled.get(rel) || 0) >= t0 + (r.down ?? 0)) { r.window = to.pulled.get(rel) - t0; wWin = LW.snap(); }
     if (r.window != null) break;
     await sleep(big ? 60 : 15);
   }
+  // (round 88) what the box took of save → up and of down → window (null off Linux)
+  r.upWait = LW.waited(w0, wUp); r.downWait = LW.waited(wDown, wWin);
   if (r.window == null) { r.timedOut = true; r.waiting = to.waiting; }
   // the passes this item cost on each side, its echoes included (an echo pass would come within a second or so)
   else { await sleep(ECHO_WAIT); r.passes = { from: from.passes - p0[0], to: to.passes - p0[1] }; }

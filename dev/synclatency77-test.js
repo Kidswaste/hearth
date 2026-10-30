@@ -17,8 +17,17 @@ const { execFileSync } = require('child_process');
 const argv = process.argv.slice(2);
 const ONLY = (() => { const i = argv.indexOf('--only'); return i >= 0 ? argv[i + 1].split(',') : null; })();
 const want = (n) => !ONLY || ONLY.includes(n);
-let passes = 0; let failures = 0;
+let passes = 0; let failures = 0; let cantTell = 0;
 const ok = (c, what, detail) => { if (c) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 700)}` : ''}`); } };
+// (round 88, checkfix88) a real-time budget, load-aware: over it only by what this process waited for a CPU / the disk
+// meanwhile (dev/loadwait.js, measured by dev/synclatency77.js for that very stretch) is "can't tell" (the box was
+// busy: said, not failed); over by more fails, as a slow app should. Off Linux (no wait figures): the wall time.
+const LW = require('./loadwait');
+const within = (ms, budget, wait, what, x) => {
+  const v = LW.judge(ms, budget, wait);
+  if (v === 'load') { cantTell += 1; console.log(`CAN'T TELL ${what}: ${ms} ms > ${budget} ms, but the process waited ${wait.cpuWait} ms for a CPU and ${wait.ioFull} ms on a saturated disk meanwhile (CPU spent: ${wait.cpuMs} ms)`); return; }
+  ok(v === 'ok', what, x);
+};
 
 async function engine() {
   const T = require('./sync72-test'); // its worlds and computers (requiring it runs nothing)
@@ -84,9 +93,9 @@ function live() {
     const what = `live: ${x.mode} ${x.from}→${x.to} ${x.item}`;
     ok(!x.timedOut, `${what} arrives`, x);
     if (x.timedOut) continue;
-    ok(x.engineDown < 2000, `${what}: delivered → window under 2 s`, x);
+    within(x.engineDown, 1999, x.downWait, `${what}: delivered → window under 2 s`, x);
     // the sender: a store goes up in well under 2 s, even while a reply streams; a picture within its calmer debounce
-    ok(x.up < (x.item === 'small' ? 3000 : 2000), `${what}: saved → in the cloud folder`, x);
+    within(x.up, x.item === 'small' ? 2999 : 1999, x.upWait, `${what}: saved → in the cloud folder`, x);
   }
   ok(r.idle && r.idle.passes === 0, 'live: once calm, no pass runs (the calm check aside)', r.idle);
   // a store saved every 2 s (the usage counts): one quick pass, then the calm debounce (not a pass per save)
@@ -101,7 +110,8 @@ function live() {
 function first() {
   const r = harness(['--first', '--mode', 'idle', '--dir', 'mac', '--items', 'chat', '--calm', '2500']);
   const x = r.results[0];
-  ok(x && !x.timedOut && x.engineDown < 2000, 'first: sync just turned on (no Hearth folder in the drive yet): an arrival is seen at once', x || r.error);
+  ok(x && !x.timedOut, 'first: sync just turned on (no Hearth folder in the drive yet): an arrival comes', x || r.error);
+  if (x && !x.timedOut) within(x.engineDown, 1999, x.downWait, 'first: sync just turned on (no Hearth folder in the drive yet): an arrival is seen at once', x);
 }
 
 (async () => {
@@ -109,6 +119,6 @@ function first() {
   if (want('engine')) await engine().catch((err) => ok(false, 'engine threw', err.stack));
   if (want('live')) live();
   if (want('first')) first();
-  console.log(`\nsynclatency77: ${passes} passed, ${failures} failed (${Date.now() - t0} ms)`);
+  console.log(`\nsynclatency77: ${passes} passed, ${failures} failed${cantTell ? `, ${cantTell} can't tell (box busy)` : ''} (${Date.now() - t0} ms)`);
   process.exit(failures ? 1 : 0);
 })();

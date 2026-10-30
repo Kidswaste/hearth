@@ -540,7 +540,7 @@ for (const n of wanted) {
   const skipped = bad ? '' : (text.match(/"skipped":\s*\[\s*"([^"]+)"/)?.[1] || '');
   // (round 88, checkfix88) a load-aware check that couldn't judge a timing (the box too busy to tell: a top-level
   // "cantTell" list) passes, but says so on its line: passed ≠ measured
-  const cantTell = bad ? '' : (text.match(/"cantTell":\s*\[\s*"([^"]+)"/)?.[1] || '');
+  const cantTell = bad ? '' : (text.match(/"cantTell":\s*\[\s*"([^"]+)"/)?.[1] || text.match(/^CAN'T TELL ([^\n]+)/m)?.[1] || ''); // (a Node test: a "CAN'T TELL …" line)
   if (cantTell) results.at(-1).cantTell = cantTell;
   console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}`);
   if (bad && argv.includes('--stop')) break;
