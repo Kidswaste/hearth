@@ -75,11 +75,10 @@ function createPackLane(o = {}) {
     if (now() - gateAt > 5000 || now() < gateAt) gate(); // (once per pass or so: the other computer may have turned it off)
     if (!gateNow.ok || !st) return null;
     if (!L || L.unavailable || !(L.size >= min)) return null;
-    const id = m[1]; const c = st.chats[id];
-    if (!c) return null; // (never published or taken here: as today until the lane has seen it)
+    const id = m[1]; const c = chatOf(id); // (a giant chat the lane hasn't met yet: it publishes it this very pass)
     const arr = new Set();
     for (const [k, since] of arriving) if (k.startsWith(`${id}:`) && now() - since < ARRIVING_MAX) arr.add(k.split(':')[3]);
-    const v = C.decide({ lh, ch, bh, hasL: true, hasC: Boolean(Ce), size: L.size, min, quiet: now() - L.mtime, quietMs, author: c.pub?.wh === lh, known: new Set(c.known), arriving: arr });
+    const v = C.decide({ lh, ch, bh, hasL: true, hasC: Boolean(Ce), size: L.size, min, quiet: now() - L.mtime, quietMs, author: !(c.taken || []).includes(lh) /* its own change or a merge: this computer writes the whole file; a copy of theirs: they do */, known: new Set(c.known), arriving: arr });
     if (v?.adopt) {
       const t = await versionText(id, v.adopt).catch(() => null);
       if (!t) return null; // (its bytes can't be had: the engine's own merge, from its own base)
@@ -103,7 +102,7 @@ function createPackLane(o = {}) {
 
   // ---------- after the engine's operations: take, then publish ----------
   async function pass({ local }) {
-    const out = { waiting: [], took: 0, published: 0 };
+    const out = { waiting: [], took: 0, published: 0, touched: [] };
     gate();
     if (!gateNow.ok) { if (st) save(); return out; }
     const ids = new Set();
@@ -158,7 +157,7 @@ function createPackLane(o = {}) {
       if (r.out) {
         const ok = await api.casWrite(file, r.sig ? { size: r.sig.size, mtime: r.sig.mtime } : null, r.out);
         if (!ok) { out.waiting.push({ rel, why: 'pieces' }); continue; } // (changed here meanwhile: next pass)
-        await api.afterLocalWrite(rel, r.lh);
+        await api.afterLocalWrite(rel, r.lh); out.touched.push(rel);
         api.notePulled(rel, x.by);
         L = { size: r.out.length, mtime: 0 }; // (written: looked at again below)
       }
@@ -166,6 +165,7 @@ function createPackLane(o = {}) {
       if (r.lost?.trash) api.asideAdd({ rel, trash: r.lost.trash, why: 'auto', side: r.lost.side, kind: 'json', from: api.nameOf(x.by), fields: r.lost.fields || [] });
       c.seen[x.by] = x.m.seq; c.last[x.by] = { seq: x.m.seq, took: b }; c.had = true;
       know(c, x.m.wh); know(c, r.hm);
+      if (r.hm === x.m.wh) c.taken = [r.hm, ...(c.taken || []).filter((h) => h !== r.hm)].slice(0, 16); // (this computer's chat IS theirs now: they write the whole file)
       for (const k of [...arriving.keys()]) if (k.startsWith(`${id}:${x.by}:`) && Number(k.split(':')[2]) <= x.m.seq) arriving.delete(k);
       out.took += 1; stats.took += 1; dirty = true;
     }
@@ -186,11 +186,11 @@ function createPackLane(o = {}) {
     }
     const skips = [c.pub?.wh, ...Object.keys(c.last).map((by) => ms.find((x) => x.by === by)?.m?.wh)].filter(Boolean);
     const seq = Math.max(c.pub?.seq || 0, prev?.seq || 0) + 1;
-    const r = await run('publish', { file, ctx, dir, id, by: me(), took: { ...c.seen }, prev, seq, skips: force ? [] : skips, force, baseDir });
+    const r = await run('publish', { file, ctx, dir, id, by: me(), took: { ...c.seen }, prev, seq, skips: force ? [] : skips, force, baseDir, cut: o.cut });
     if (!r || r.stale || r.bad || r.gone) { if (r?.bad) log('packs: chat not laid out as expected', id); return; }
     c.sig = `${r.sig.size}:${r.sig.mtime}`; dirty = true;
     if (r.same) { know(c, r.h); return; }
-    c.pub = { seq: r.m.seq, wh: r.h, at: now() }; know(c, r.h);
+    c.pub = { seq: r.m.seq, wh: r.h, at: now() }; c.checkedAt = now(); know(c, r.h);
     c.self = [r.m.seq, ...c.self.filter((s) => s !== r.m.seq)].slice(0, 4);
     out.published += 1; stats.published += 1; stats.bytesUp += (r.wrote || 0) + (r.manifestBytes || 0); stats.piecesUp += (r.pieces || 0) + 1;
     try { C.trimSelf(fs, baseDir, 4, D0.trash, now()); } catch { /* next time */ }

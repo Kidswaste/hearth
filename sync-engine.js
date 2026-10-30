@@ -1775,6 +1775,7 @@ function createEngine(o) {
     if (PK && !slept && !stopping && !quit) {
       const pr = await PK.pass({ local }).catch((err) => { log('packs', err.message); return null; });
       for (const w of pr?.waiting || []) { pending += 1; why(w.rel, w.why); }
+      for (const r of pr?.touched || []) pendRels.add(r); // (what it wrote here: looked at again, never a "lost event")
       if (pr) { sum.pulled += pr.took; sum.pushed += pr.published; }
     }
     for (const cp of copies) if (!o.skip?.(cp.orig) && !(await absorbCopy(cp, local))) { pending += 1; if (!cp.unsure) cloudOnly.push(cp.rel); why(cp.orig, cp.unsure ? 'copy-check' : 'arriving'); }

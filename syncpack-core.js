@@ -64,7 +64,8 @@ function readRecords(fs, dir, myId) {
 
 // ---------- the plan hook's decision (pure) ----------
 // x: { lh, ch, bh (the engine's hashes: here, the cloud's whole file, the base), hasL, hasC, size (here), min, quiet
-//      (the chat unchanged here this long), quietMs, author (this computer's chat is what it published itself),
+//      (the chat unchanged here this long), quietMs, author (this computer's chat is its own: not a copy of a version
+//      another computer published, which that computer writes whole),
 //      known (Set: versions this computer took in or published), arriving (Set: versions other computers published,
 //      their pieces still on the way or not taken yet) }
 function decide(x) {
@@ -263,10 +264,12 @@ function crossFs(fs) {
 function tidy(fs, o) {
   const out = { moved: 0, held: '' };
   const f = crossFs(fs);
+  // (the cloud folder's pieces and this computer's copies each have their own trash: the same piece can be in both)
+  const where = (dir) => path.join(o.trash, path.basename(path.dirname(dir)) === 'packbase' ? 'base' : 'cloud');
   for (const dir of o.dirs || []) {
-    try { const r = P.tidy(f, dir, { grace: o.grace, now: o.now, trash: o.trash, keep: o.keep }); out.moved += r.moved || 0; if (r.held) out.held = r.held; } catch (err) { out.held = err.code || 'error'; }
+    try { const r = P.tidy(f, dir, { grace: o.grace, now: o.now, trash: where(dir), keep: o.keep }); out.moved += r.moved || 0; if (r.held) out.held = r.held; } catch (err) { out.held = err.code || 'error'; }
   }
-  if (o.trash) { try { out.purged = P.purge(fs, o.trash, o.now); } catch { /* next time */ } }
+  if (o.trash) { out.purged = 0; for (const t of ['cloud', 'base', 'self']) { try { out.purged += P.purge(fs, path.join(o.trash, t), o.now); } catch { /* next time */ } } }
   return out;
 }
 // this computer's own versions kept for merges: the newest `keep` stay, older manifests go to the pack trash
@@ -275,7 +278,7 @@ function trimSelf(fs, dir, keepN, trash, now) {
   const own = names.map((f) => /^m-self-(\d+)\.json$/.exec(f)).filter(Boolean).map((x) => ({ f: x[0], seq: Number(x[1]) })).sort((a, b) => b.seq - a.seq);
   let n = 0;
   for (const x of own.slice(keepN)) {
-    const to = path.join(trash, day(now || Date.now()), path.basename(dir));
+    const to = path.join(trash, 'self', day(now || Date.now()), path.basename(dir));
     try { fs.mkdirSync(to, { recursive: true }); crossFs(fs).renameSync(path.join(dir, x.f), path.join(to, x.f)); n += 1; } catch { /* next time */ }
   }
   return n;

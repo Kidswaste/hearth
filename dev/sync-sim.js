@@ -303,6 +303,7 @@ function cloud(o = {}) {
     server.set(k, s);
     v.known.set(k, { ver: s.ver, hash, key });
     v.stats.up += 1;
+    { const top = String(key).split('/')[1] || ''; v.stats.upBytes = (v.stats.upBytes || 0) + (c.size || 0); (v.stats.upBy ||= {})[top] = (v.stats.upBy[top] || 0) + (c.size || 0); } // (round 89, packs89) bytes uploaded, by Hearth's folder (files / packs / .sync / trash)
     log(v.name, 'up', key);
   };
   function writeInto(v, s, how) {
