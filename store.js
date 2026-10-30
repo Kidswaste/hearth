@@ -730,6 +730,14 @@ function getTokenStats(agents) {
 module.exports = {
   // (round 44, idlecpu; tests) the store threads' busy time since they started (event loop utilization: active / idle ms)
   _threads: () => Object.fromEntries([['store', worker], ['files', filesWorker]].filter(([, w]) => w?.performance?.eventLoopUtilization).map(([k, w]) => { const u = w.performance.eventLoopUtilization(); return [k, { activeMs: Math.round(u.active * 10) / 10, idleMs: Math.round(u.idle) }]; })),
+  // (round 91, longrun91; tests) each store thread's heap after a GC and its caches' sizes (storework.js _mem); a
+  // thread not started yet is not started for this
+  _threadMem: async (o = {}) => {
+    const out = {};
+    if (worker) out.store = await ask({ op: '_mem', snap: o.snap || undefined }).catch((err) => ({ error: err.message }));
+    if (filesWorker) out.files = await runOff('_mem', {}).catch((err) => ({ error: err.message }));
+    return out;
+  },
   DATA_DIR,
   ATTACH_DIR,
   listChats,
