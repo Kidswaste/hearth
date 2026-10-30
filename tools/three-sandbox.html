@@ -750,8 +750,8 @@ function replayDraw(r, renderFn, scene, camera) {
 //    more than 2.5 s.
 //  - glass: the variants three's transmission pass draws with (into a target: no tone mapping, linear colours, the
 //    back faces of double-sided glass) are compiled too, here and in round 89's compile before the first frame.
-//  - a scene that changes on most frames (a material made every frame) isn't watched for 3 s at a time: its new things
-//    show at once, compiled in their frame, as before.
+//  - a scene that changes on most frames (a game spawning things with new materials) stops being watched for a while
+//    (3 s, then 12 s, 48 s, at most 2 min): its new things show at once, compiled in their frame, as before.
 // Not covered (compiled in the frame that first needs them, as before): a light removed or shown again, a shadow
 // caster's first shadow pass, a second scene drawn by the same renderer, materials made inside three's render.
 const LC = { ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0 };
@@ -769,7 +769,7 @@ try {
     Object.defineProperty(MP, 'version', {
       configurable: true,
       get() { return this.__lcv; },
-      set(v) { if (this.__lcv === undefined) Object.defineProperty(this, '__lcv', { value: v, writable: true, configurable: true }); else this.__lcv = v; if (!LC.inR) LC.ver += 1; },
+      set(v) { this.__lcv = v; if (!LC.inR) LC.ver += 1; }, // (a plain field: nothing made per material)
     });
   }
 } catch { /* compiled on first use, as before */ }
@@ -788,10 +788,11 @@ function lcCheck(r, scene, camera) {
   scene.__lcVer = LC.ver;
   const now = realNow();
   if (scene.__lcOff > now) return;
-  // how often it changes: checked on most frames (≈ 10 in a row) → not watched for 3 s
+  // how often it changes: checked on most frames (≈ 5 in a row: a game spawning things) → not watched for 3 s, then
+  // 12 s, 48 s… (each time 4× longer, at most 2 min)
   const k = frameTick - (scene.__lcT ?? -1e9); scene.__lcT = frameTick;
-  scene.__lcRate = (scene.__lcRate || 0) * 0.85 ** Math.min(k, 60) + 1;
-  if (scene.__lcRate > 5) { scene.__lcOff = now + 3000; scene.__lcRate = 0; LC.off += 1; return; }
+  scene.__lcRate = (scene.__lcRate || 0) * 0.8 ** Math.min(k, 60) + 1;
+  if (scene.__lcRate > 3.2) { scene.__lcOffN = (scene.__lcOffN || 0) + 1; scene.__lcOff = now + Math.min(120000, 3000 * 4 ** (scene.__lcOffN - 1)); scene.__lcRate = 0; LC.off += 1; return; }
   const props = r.properties;
   if (typeof props?.has !== 'function') return;
   LC.checks += 1;
@@ -834,7 +835,6 @@ function lcAhead(r, P) {
     try { if (r.getRenderTarget() !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
     LC.inR -= 1;
   }
-  if (!P.whole) for (const o of what) { try { rdyTextures(r, o); } catch { /* drawn with its frame */ } } // (their small pictures too, off the frame)
   LC.ahead += RDY.gl.links - l0;
   if (waits) { LC.khr += 1; const done = () => lcDone(r, P); Promise.all(waits).then(done, done); realSetTimeout(done, 2500); return; }
   // no background compile: each new program's status read here (the wait for the driver happens in this gap), so the
