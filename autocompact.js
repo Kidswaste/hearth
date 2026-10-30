@@ -105,7 +105,7 @@ const Autocompact = (() => {
     const older = input.older || [];
     const kept = input.kept || [];
     if (!older.length) return { ...out, why: 'nothing older than the last exchanges' };
-    const olderTok = historyTok(older) + tok(input.previous);
+    const olderTok = (input.olderTok ?? historyTok(older)) + tok(input.previous); // (round 87, chatcalc87: olderTok / words from the store thread's records)
     const keptTok = historyTok(kept);
     const summaryTok = Math.min(SUMMARY_MAX_TOKENS, Math.max(120, Math.round(olderTok * 0.08)));
     const fixed = Math.max(0, Math.min(input.fixed || 0, ctx - keptTok));
@@ -113,9 +113,10 @@ const Autocompact = (() => {
     out.after = after;
     // how much of the older history the last exchanges still talk about (a message sharing ≥ 2 of their words)
     const recent = words(kept.map((m) => m.text).join(' '));
-    const ix = input.wholeWords ? null : olderWords(older); // (wholeWords: the whole way, for tests)
+    const ix = input.wholeWords || input.words ? null : olderWords(older); // (wholeWords: the whole way, for tests)
     let relTok = 0; let all;
-    if (ix) { // (round 82) from the kept index: the same sums
+    if (input.words) ({ relTok, all } = input.words(recent)); // (round 87) the same sums from words kept per message
+    else if (ix) { // (round 82) from the kept index: the same sums
       const cnt = new Int32Array(older.length);
       for (const r of recent) { const a = ix.post.get(r); if (a) for (const i of a) cnt[i] += 1; }
       for (let i = 0; i < older.length; i++) if (cnt[i] >= Math.min(2, ix.size[i])) relTok += ix.tk[i];
@@ -369,7 +370,7 @@ ${transcript(parts)}
     }
   }
 
-  return { warm, decide, inputOf, split, tailStart, transcript, prompt, shape, fromLocal, line, run, row, handles, atOf, offerFor,
+  return { warm, decide, inputOf, split, tailStart, talk, words, historyTok, usageOf, transcript, prompt, shape, fromLocal, line, run, row, handles, atOf, offerFor,
     DEFAULT_AT, PRESETS, KEEP_EXCHANGES, CHEAP, HEADS, SUMMARY_MAX_TOKENS };
 })();
 if (typeof module !== 'undefined') module.exports = Autocompact; else window.Autocompact = Autocompact;

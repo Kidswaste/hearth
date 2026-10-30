@@ -31,9 +31,35 @@ const ChatWinCore = (() => {
     if (m.role !== 'user' && px > COLLAPSE_PX) px = 440;
     return px;
   }
-  const msgPx = (m, cpl) => (!m || m.compactReq ? 0 : textPx(m, cpl) + 64 + (m.thinking ? 40 : 0) + (m.tools?.length ? 30 : 0) + (m.shows?.length || 0) * 260 + (m.things?.length ? 300 : 0) + (m.attachments?.length ? 34 : 0));
+  const extraPx = (m) => 64 + (m.thinking ? 40 : 0) + (m.tools?.length ? 30 : 0) + (m.shows?.length || 0) * 260 + (m.things?.length ? 300 : 0) + (m.attachments?.length ? 34 : 0);
+  const msgPx = (m, cpl) => (!m || m.compactReq ? 0 : textPx(m, cpl) + extraPx(m));
+  // (round 87, chatcalc87) a message's height at ANY width, kept by the store thread (a width change: its records' heights
+  // made again without reading the messages): [what isn't text, folds (1: a reply that folds past 900 px, 2: always
+  // folded), the text's lines that take the same room at any width (code, blank, ≤ 20 characters), the longer lines'
+  // lengths…]; null: 0 px. pxAt(profOf(m), cpl) = msgPx(m, cpl), exact (dev/chatcalc87-test.js)
+  function profOf(m) {
+    if (!m || m.compactReq) return null;
+    const ex = extraPx(m);
+    const t = String(m.text || ''); const long = []; let fixed = 0; let code = -1;
+    for (let p = 0, e; ; p = e + 1) {
+      e = t.indexOf('\n', p); if (e < 0) e = t.length; const n = e - p;
+      if (n >= 3 && t.startsWith('```', p)) { code = code < 0 ? 0 : -1; fixed += code ? 0 : 34; } else if (code >= 0) { if (code++ < CODE_FOLD_LINES) fixed += 19; } else if (!n) fixed += 6; else if (n <= 20) fixed += 23; else long.push(n);
+      if (e >= t.length) break;
+    }
+    const fold = m.role !== 'user' ? (fixed + long.length * 23 > COLLAPSE_PX ? 2 : 1) : 0;
+    return fold === 2 ? [ex, 2] : [ex, fold, fixed, ...long];
+  }
+  function pxAt(p, cpl) {
+    if (!p) return 0;
+    if (p[1] === 2) return p[0] + 440;
+    let px = p[2]; for (let i = 3; i < p.length; i++) px += Math.ceil(p[i] / cpl) * 23;
+    return p[0] + (p[1] && px > COLLAPSE_PX ? 440 : px);
+  }
   // a field a stub may give: a short value (its content fields never, whatever their size)
   const BIG = new Set(['text', 'thinking', 'sent', 'ctx']);
+  // (round 87, chatcalc87) the things a reply made (chat-things.js: a few small cards) ride in its record, so "Made here"
+  // lists a windowed chat's on the first try; a list that big (≥ 4 KB) stays out (it throws, the chat loads whole)
+  const thingsSmall = (x) => Array.isArray(x) && JSON.stringify(x).length <= 4000;
   const small = (x) => x === null || typeof x === 'boolean' || typeof x === 'number' || (typeof x === 'string' && x.length <= 80) || (typeof x === 'object' && JSON.stringify(x).length <= 200);
   // a message's record: [height, its keys in order, its small fields, its usage (input + output: the chat's header
   // total)] (a message that isn't an object: [height, null, itself, 0])
@@ -42,7 +68,7 @@ const ChatWinCore = (() => {
     const h = msgPx(m, cpl);
     if (m === null || typeof m !== 'object' || Array.isArray(m)) return [h, null, m, 0];
     const keys = Object.keys(m); const s = {};
-    for (const k of keys) if (!BIG.has(k) && small(m[k])) s[k] = m[k];
+    for (const k of keys) if (!BIG.has(k) && (small(m[k]) || (k === 'things' && thingsSmall(m[k])))) s[k] = m[k];
     return [h, keys, s, useOf(m)];
   }
   // what the window keeps per message: its height and usage as numbers, the rest as one short JSON text (read only
@@ -193,8 +219,12 @@ const ChatWinCore = (() => {
 
   // ---------- find in the chat (the store thread's side, exact) ----------
   // the test chat-rest.js restingHits makes on a message (needle: lowercase)
+  // (round 87, chatcalc87) chat-refs.js's @file list: the absolute paths a message names (the same expression there),
+  // walked from the end; the store thread does the same on the messages that aren't loaded (chatScan)
+  const FILE_PATHS = /(?:[A-Za-z]:\\|\/)(?:[^\s"'<>|*?\n]+[\\/])*[^\s"'<>|*?\n]+\.[A-Za-z0-9]{1,5}\b/g;
+  const SCAN = { paths: (m) => (m && typeof m === 'object' ? String(m.sent || m.text || '').match(FILE_PATHS) || [] : []) };
   const findHit = (m, needle) => Boolean(m) && !m.compactReq && (String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle));
 
-  return { textPx, msgPx, metaOf, recOf, useOf, small, BIG, NotLoaded, stubOf, isStub, makeArray, delta, sameSaved, findHit, idx };
+  return { textPx, msgPx, profOf, pxAt, FILE_PATHS, SCAN, metaOf, recOf, useOf, small, BIG, NotLoaded, stubOf, isStub, makeArray, delta, sameSaved, findHit, idx };
 })();
 if (typeof module !== 'undefined') module.exports = ChatWinCore; else window.ChatWinCore = ChatWinCore;

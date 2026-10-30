@@ -215,6 +215,6 @@ const SendPreviewCore = (() => {
     return `≈ ${fmt(est.tokens)} tokens with this message${full}${usual}`;
   }
 
-  return { CACHE_TTL, CONTEXT_CHARS, DEFAULT_FIXED, BIG_FRESH, TIMES_USUAL, MIN_UNUSUAL, EFFORT, tok, fmt, median, stats, historyOf, estimate, should, cheaper, variant, calibrate, valid, trim, lines, headline };
+  return { CACHE_TTL, CONTEXT_CHARS, DEFAULT_FIXED, BIG_FRESH, TIMES_USUAL, MIN_UNUSUAL, EFFORT, tok, fmt, median, stats, historyOf, talk, textOf, label, picTok, estimate, should, cheaper, variant, calibrate, valid, trim, lines, headline };
 })();
 if (typeof module !== 'undefined') module.exports = SendPreviewCore; else window.SendPreviewCore = SendPreviewCore;
