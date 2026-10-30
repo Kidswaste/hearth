@@ -217,7 +217,7 @@ async function freeUp(fsp, o) {
         const items = all ? [{ p: cd, bytes: files.reduce((a, f) => a + f.bytes, 0), n: files.length }] : files.map((f) => ({ ...f, n: 1 }));
         for (const it of items) {
           if (o.dry) { out.moved += it.n; out.bytes += it.bytes; continue; }
-          try { await o.trashItem(it.p); out.moved += it.n; out.bytes += it.bytes; out.items.push(path.relative(d.trash, it.p)); } catch (err) { out.failed.push({ path: it.p, why: String(err?.message || err) }); }
+          try { await o.trashItem(it.p); out.moved += it.n; out.bytes += it.bytes; out.items.push(path.relative(d.trash, it.p)); } catch (err) { out.failed.push({ path: it.p, why: String(err?.message || err) }); } // winmac-ok: o.trashItem is syncmain.js dvTrash (WinPolish / MacPolish trashCheck first)
         }
       }
       if (!o.dry) { try { await fsp.rmdir(dd); } catch { /* not empty: what stays, stays */ } }
