@@ -599,7 +599,7 @@ for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRendering
     const gl = this;
     const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
     let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
-    if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; } else RDY.gl.reuploads += 1;
+    if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; if (HX.on) { const mp = hxPx(arguments); HX.px += mp; if (FR.inRaf) HX.pxF += mp; } } else RDY.gl.reuploads += 1;
     return f.apply(this, arguments);
   };
   for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
@@ -739,15 +739,23 @@ function instrument(renderFn) {
     // switch's cover): its shaders compile in the background first (KHR_parallel_shader_compile, compileAsync) while
     // the old picture stays, instead of the page stopping on its first frame until every shader is linked
     this.__renders = (this.__renders || 0) + 1;
+    // (round 89, labfps89) every new layer's first frame, not only a covered one: a layer added on top (a filter, a
+    // new layer wiping in) waits for its shaders too, and the others keep drawing meanwhile. Its textures go up right
+    // after, in that same task (off the frame), and the hidden things in its scene (shown later: on a drop, a kick)
+    // are compiled with the rest (compile() goes through the hidden ones too), so showing them costs no compile.
+    // Without background compiles (a software GPU), the scene is compiled in one go before its first draw, hidden
+    // things included: the compile a hidden object cost when it first showed (mid-show) is paid here, at the start.
     if (this.__warm !== true) {
       if (this.__warm === 'pending') { this.__lastSkip = [scene, camera]; return; }
       this.__warm = true;
-      if (EL && !fullRes() && !SQ.off && (EL.pics?.length || stackWait) && typeof this.compileAsync === 'function' && this.extensions?.has?.('KHR_parallel_shader_compile')) {
+      const warmOk = EL && !fullRes() && !SQ.off && scene?.isObject3D;
+      if (warmOk && (EL.pics?.length || stackWait || EL.drawnGen !== EL.gen) && typeof this.compileAsync === 'function' && this.extensions?.has?.('KHR_parallel_shader_compile')) {
         this.__warm = 'pending'; this.__lastSkip = [scene, camera];
         // (a sketch that draws once, with no frame loop, gets its one frame drawn when the shaders are ready)
         const done = () => {
           if (this.__warm !== 'pending') return;
           this.__warm = true;
+          if (!this.__stale) { try { perfNote.warmTex = (perfNote.warmTex || 0) + rdyTextures(this, scene); } catch { /* drawn with its first frame */ } }
           const n = this.__renders;
           realRAF(() => realRAF(() => { const sk = this.__lastSkip; this.__lastSkip = null; if (sk && this.__renders === n && !this.__stale) { try { this.render(sk[0], sk[1]); } catch { /* gone */ } } }));
         };
@@ -755,6 +763,8 @@ function instrument(renderFn) {
         realSetTimeout(done, 1500);
         perfNote.warm += 1;
         if (this.__warm === 'pending') return;
+      } else if (warmOk && !this.getRenderTarget?.() && typeof this.compile === 'function' && !this.__helper) {
+        try { this.compile(scene, camera); rdyTextures(this, scene); perfNote.precompiled = (perfNote.precompiled || 0) + 1; } catch { /* its frame compiles what it draws */ }
       }
     }
     // (round 31 "labadapt") a layer fully under an opaque one draws nothing; its code still runs (see "covered layers")
@@ -1893,8 +1903,49 @@ window.__labPace = {
   sleeping: () => paceSleeping.size,
   gates: () => [...renderers].filter((r) => !r.__stale && r.__pace).map((r) => { const g = r.__pace; return { layer: r.__layer || null, moving: g.moving || 0, same: g.same || 0, liveFor: g.liveFor || 0, looks: g.looks || 0, multi: frameTick - g.multi < 120 }; }), // (round 55, labplay55: each renderer's still gate)
 };
+// (round 89, labfps89) the hitch recorder, for checks and /lab perf: while on, each of the page's frames is kept with
+// its gap, the layers' render work in it, and what the GPU was asked for in it (shader compiles / links, the ms the page
+// waited on a program's status, first uploads and the pixels they carried). Typed arrays made once at start: nothing
+// per frame, nothing at all while off. window.__labHitch.start() / mark(label) / stop() → JSON text.
+const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, px: 0, pxF: 0 };
+// megapixels a first upload carried (texImage2D's two shapes, texImage3D / texStorage: width × height (× depth))
+function hxPx(a) {
+  const s = a.length === 6 && typeof a[5] === 'object' ? a[5] : null;
+  if (s) return ((s.videoWidth || s.naturalWidth || s.displayWidth || s.width || 0) * (s.videoHeight || s.naturalHeight || s.displayHeight || s.height || 0)) / 1e6;
+  const w = Number(a[3]) || 0; const h = Number(a[4]) || 0; const d = a.length >= 10 && Number(a[5]) > 1 && Number(a[5]) < 4096 ? Number(a[5]) : 1;
+  return (w * h * d) / 1e6;
+}
+function hxTick(t, drew) {
+  if (HX.n >= HX.max) return;
+  const i = HX.n; HX.n += 1;
+  const gl = RDY.gl; const c = gl.compiles + gl.links;
+  HX.g[i] = HX.last ? t - HX.last : 0; HX.last = t;
+  HX.w[i] = drew ? FT60[1] : 0;
+  // 1 drew, 2 drew with the old scene's still picture over it (a switch: nothing on screen moved), 3 drew with the old
+  // scene still drawing over it (a double-buffered switch: the old scene moved)
+  HX.d[i] = !drew ? 0 : SWAP.cover?.isConnected && !SWAP.cover.__fading ? 2 : SWAP.live.size ? 3 : 1;
+  HX.c[i] = c - HX.c0; HX.c0 = c;
+  HX.s[i] = gl.waitMs - HX.s0; HX.s0 = gl.waitMs;
+  HX.u[i] = gl.uploads - HX.u0; HX.u0 = gl.uploads;
+  HX.p[i] = HX.px - HX.p0; HX.p0 = HX.px;
+  HX.f[i] = HX.pxF - HX.f0; HX.f0 = HX.pxF;
+}
+window.__labHitch = {
+  start: (max = 6000) => {
+    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max) });
+    HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF;
+    return realNow();
+  },
+  mark: (label) => { if (HX.on) HX.marks.push([HX.n, String(label)]); return HX.n; },
+  stop: () => {
+    HX.on = false;
+    const k = HX.n; const r = (a, d = 1) => Array.from(a.subarray(0, k), (x) => Math.round(x * d) / d);
+    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
+  },
+};
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
 const tickFrames = (t) => {
+  if (HX.on) hxTick(t, frameSeen === frameTick);
   if (RDY.rec && FT60[3]) { RDY.rec.g.push(t - FT60[3]); RDY.rec.w.push(frameSeen === frameTick ? FT60[1] : 0); } // (round 52, presentready: frame pacing)
   if (frameSeen === frameTick) { WR[wrI] = Math.round(FT60[1] * 1000); wrI = (wrI + 1) % 120; if (wrN < 120) wrN += 1; lastCalls = frameCalls; }
   FT60[1] = 0; frameCalls = 0;
@@ -4555,17 +4606,39 @@ function ktxTexture(key, tex, fallback) {
 // so the uploads spread over that many frames; small pictures, videos, the export page and a render's exact frames go on
 // at once (their frames wait for every picture anyway: TY.pending holds until the hand-over). A page that isn't drawing
 // (a hidden backstage) hands them over on a short timer instead. window.__labUploads() for checks.
-const UPQ = { q: [], tok: 0, seq: 0, t: 0, held: 0, frames: 0 };
-function upRelease(fn, px) {
+const UPQ = { q: [], tok: 0, seq: 0, t: 0, held: 0, frames: 0, ahead: 0 };
+// (round 89, labfps89) and the hand-over itself happens right AFTER a frame (a task queued from the frame), with the
+// upload made there (initTexture on the renderers whose scene uses the texture): it used to wait for the next render
+// of the layer, inside the frame. With the preview at 60 on a fast screen there are free refreshes after each frame;
+// the upload lands there instead of making the next frame late.
+function upRelease(fn, px, tex = null) {
   if (XP_PAGE || !(px >= 1e6)) { fn(); return undefined; }
   UPQ.held += 1;
   return new Promise((res) => {
-    UPQ.q.push(() => { try { fn(); } finally { res(); } });
+    UPQ.q.push(() => { try { fn(); if (tex) upAhead(tex); } finally { res(); } });
     upArm();
   });
 }
+const sceneUses = (sc, tex) => {
+  if (sc.background === tex || sc.environment === tex) return true;
+  let hit = false;
+  sc.traverse?.((o) => {
+    if (hit) return;
+    for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) {
+      for (const k in m) if (m[k] === tex) { hit = true; return; }
+      if (m.uniforms) for (const k in m.uniforms) if (m.uniforms[k]?.value === tex) { hit = true; return; }
+    }
+  });
+  return hit;
+};
+function upAhead(tex) {
+  for (const r of renderers) {
+    if (r.__stale || !r.__lastScene || typeof r.initTexture !== 'function') continue;
+    try { if (sceneUses(r.__lastScene, tex)) { r.initTexture(tex); UPQ.ahead += 1; } } catch { /* uploaded by its next frame */ }
+  }
+}
 // the next hand-over: at the next frame (or 150 ms on, when no frame comes)
-function upArm() { if (UPQ.tok || !UPQ.q.length) return; const k = UPQ.tok = ++UPQ.seq; const go = () => upFlush(k); realRAF(go); UPQ.t = realSetTimeout(go, 150); }
+function upArm() { if (UPQ.tok || !UPQ.q.length) return; const k = UPQ.tok = ++UPQ.seq; const go = () => upFlush(k); realRAF(() => realSetTimeout(go, 0)); UPQ.t = realSetTimeout(go, 150); }
 function upFlush(k) {
   if (k !== UPQ.tok) return;
   UPQ.tok = 0; realClearTimeout(UPQ.t);
@@ -4573,7 +4646,7 @@ function upFlush(k) {
   if (fn) { UPQ.frames += 1; try { fn(); } catch { /* the texture is gone */ } }
   upArm();
 }
-window.__labUploads = () => ({ held: UPQ.held, frames: UPQ.frames, waiting: UPQ.q.length });
+window.__labUploads = () => ({ held: UPQ.held, frames: UPQ.frames, waiting: UPQ.q.length, ahead: UPQ.ahead });
 globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
   const url = refs[key];
   if (!url) throw new Error(`No reference "${key}". This sketch's references: ${Object.keys(refs).join(', ') || 'none (add some with the References button)'}`);
@@ -4600,7 +4673,7 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
       const dec = (kept || createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' })).then((bmp) => {
         rdyT('decode', dt0); if (who && !kept) ownNote(who, 'bmp', bmp);
         // (round 72, labfps72) a big picture goes to the graphics card in a frame of its own (see "uploads one at a time")
-        return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height);
+        return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height, tex);
       }).catch(() => { new THREE.ImageLoader().load(url, (img) => { tex.image = img; tex.needsUpdate = true; }); });
       // (round 42, labbatch) an exact frame (exports, a batch's logo per row) waits for the picture like for a font
       const pend = dec.finally(() => TY.pending.delete(pend)); TY.pending.add(pend);
@@ -5910,6 +5983,10 @@ function setTweak({ index, value, layer, call, key }) {
 Error.stackTraceLimit = 80;
 const layers = new Map(); // id → { id, gen, box, renderers, tweakSets, props, slot, url }
 const urlLayer = new Map(); // blob url → layer id
+// (round 89, labfps89) a scene switch that keeps the old scene drawing until the new one is ready (see swapLayers):
+// the old stack's layers, out of `layers` but still running on top. mode: 'auto' (where shaders compile in the
+// background: KHR_parallel_shader_compile) | 'on' | 'off' (the old still picture); window.__labSwap for checks
+const SWAP = { mode: 'auto', live: new Set(), byId: new Map(), rids: new Set(), cover: null, lives: 0, covers: 0, fellBack: '', holdMs: 0, revealAt: 0 };
 let ctxLayer = null; // layer whose callback is running right now
 const BLOB_RE = /blob:[^\s)]+?(?=:\d+:\d+)/g;
 function layerOfStack(stack) {
@@ -5930,7 +6007,7 @@ window.__layerOfStack = (s) => pcTop(layerOfStack(s));
 window.__isStale = (s) => Boolean(s) && staleStack(s);
 window.__layerOfUrl = (u) => (u ? pcTop(urlLayer.get(u) || null) : null);
 function layerState(id) {
-  let L = layers.get(id);
+  let L = layers.get(id) || SWAP.byId.get(id); // (round 89: a stack still drawing while it's replaced keeps its own boxes)
   if (!L) {
     const box = document.createElement('div');
     box.className = 'lab-layer';
@@ -12553,8 +12630,8 @@ function installRunGuards() {
   };
   // Timers and frames belong to the layer that asked for them; a re-run or removal silences the old ones,
   // and a hidden / off-time layer stops drawing until it shows again.
-  const owner = () => { FR.stacks += 1; const st = new Error().stack; const id = layerOfStack(st) || ctxLayer; const L = id ? layers.get(id) : null; return { id, L, g: L ? L.gen : gen, stale: !id && staleStack(st) }; };
-  const alive = (o) => !o.stale && (o.L ? o.L.gen === o.g && layers.get(o.id) === o.L : o.g === gen);
+  const owner = () => { FR.stacks += 1; const st = new Error().stack; const id = layerOfStack(st) || ctxLayer; const L = id ? layers.get(id) || SWAP.byId.get(id) || null : null; return { id, L, g: L ? L.gen : gen, stale: !id && staleStack(st) }; };
+  const alive = (o) => !o.stale && (o.L ? o.L.gen === o.g && (layers.get(o.id) === o.L || o.L.retiring === true) : o.g === gen); // (round 89: a stack being replaced keeps drawing until the new one is ready, see swapLayers)
   // (round 56, labcanvas56) a timer's callback is its layer's too (frameOwner below): a timer or a frame asked for from
   // inside it belongs to that layer with no stack trace read (a game's setTimeout calls read and parsed one each)
   const within = (o, fn, args) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(...args); } finally { ctxLayer = prev; frameOwner = pf; } };
@@ -12878,7 +12955,7 @@ function memAfterSwitch() {
   return MEMG.last;
 }
 const memSwitched = () => { if (mode !== 'sketch') return; if (MEMG.timer) realClearTimeout(MEMG.timer); MEMG.timer = realSetTimeout(memAfterSwitch, 3000); };
-function teardownLayer(L) {
+function teardownLayer(L, { keepSlots = false } = {}) {
   // (round 80, laberrors80) its problems were its last run's: forgotten here and in the Lab (a pause ends with the run)
   window.__labProblems.clear(pcTop(L.id)); post({ type: 'health-clear', layer: pcTop(L.id) }); // (always: a shader layer's GLSL errors are said by the page directly)
   L.errQ = null;
@@ -12904,6 +12981,7 @@ function teardownLayer(L) {
   });
   L.box.replaceChildren();
   L.tweakSets = [];
+  if (keepSlots) return; // (round 89: a replaced stack's layer that kept drawing: its slots are the new stack's now)
   const lo = (L.slot || 0) * SLOT;
   for (const set of [usedAtSetup, usedLive]) for (const i of [...set]) if (i >= lo && i < lo + SLOT) set.delete(i);
   slotPast[L.slot || 0] = false;
@@ -13117,7 +13195,7 @@ async function runLayer(spec, hot = false) {
   // scene from the next sketch's numbers). Same line count: errors still point at the right line.
   // (runs are told apart by a page-wide id: a scene swap makes fresh layer objects whose gen starts at 0 again)
   const rid = ++tvRunSeq; L.rid = rid;
-  for (const k of tvRuns.keys()) if (k < rid - 8) tvRuns.delete(k);
+  for (const k of tvRuns.keys()) if (k < rid - 8 && !SWAP.rids.has(k)) tvRuns.delete(k); // (round 89: a stack still drawing while it's replaced keeps its runs' values)
   tvRuns.set(rid, spec.values || null);
   const code = /__tv\(/.test(spec.code) ? `const __tv = (i, d) => globalThis.__tvRun(${JSON.stringify(L.id)}, ${rid}, i, d);${spec.code}` : spec.code;
   await sandboxLibs(spec.code); // (round 25, diet) motion.<kind>() / lab3d.model() load with the first layer that uses them
@@ -13153,6 +13231,7 @@ async function runLayer(spec, hot = false) {
 }
 // All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
+  swapDrop(0); // (round 89: an old stack still fading out goes now)
   for (const id of [...layers.keys()]) if (!specs.some((s) => s.id === id)) removeLayer(id);
   waitStack(specs.map((s) => s.id), () => post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }));
   specs.forEach((s, z) => runLayer({ z, ...s }));
@@ -13171,28 +13250,90 @@ function stageMask(msg) {
   stageVeil.style.opacity = String(to);
   if (msg.ms > 0 && from !== to) stageVeil.animate([{ opacity: from }, { opacity: to }], { duration: msg.ms, easing: 'linear' });
 }
+// (round 89, labfps89) double-buffered: where it can, the old stack keeps DRAWING on top (its layers out of `layers`,
+// still running, their boxes above the new ones, nothing counted or adapted) while the new stack loads, compiles its
+// shaders in the background and uploads its pictures underneath; once every new layer has drawn, the old one fades out
+// (still moving) and is let go. The old picture used to stand still for that whole time (the module imports, every
+// compile, every first upload: 0.3–3 s on a heavy scene, a frozen frame). Where it can't, the still picture as before:
+// a recording or a render, ▶ Play, a sequence, precomps, the scene editor, layer ids shared by both stacks (a scene run
+// again), or too many WebGL contexts for both (Chromium keeps 16 a page; ≤ 13 here). 'auto' does it where shaders
+// compile in the background (KHR_parallel_shader_compile: every desktop GPU; a software GPU compiles on the page's own
+// thread, so there the old scene couldn't move while the new one is made anyway).
+function swapLiveWhy(specs, old) {
+  if (SWAP.mode === 'off') return 'off';
+  if (!old.length) return 'nothing on screen';
+  if (GAME || SQ.on || SQ.off || compRec || recorder || fullRes() || edit.on || PC.list.size || mode !== 'sketch') return 'busy';
+  if (old.some((L) => L.pc || L.props.pcOf || L.matte)) return 'precomp';
+  const ids = new Set(specs.map((x) => x.id));
+  for (const id of layers.keys()) if (ids.has(id)) return 'same layers';
+  if (glAlive() + Math.max(POOL.length, specs.length) > 13) return 'contexts';
+  if (SWAP.mode === 'auto' && !old.some((L) => [...L.renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')))) return 'no background compile';
+  return '';
+}
+function swapRetire(old) {
+  old.forEach((L, i) => {
+    L.retiring = true; SWAP.live.add(L); SWAP.byId.set(L.id, L);
+    if (L.rid) SWAP.rids.add(L.rid);
+    layers.delete(L.id);
+    for (const r of L.renderers) r.__retiring = true;
+    L.box.style.zIndex = String(99960 + i); L.box.style.pointerEvents = 'none';
+  });
+  layerVer += 1;
+}
+// the old stack goes: faded out while it still moves (ms), then let go; 0: at once (another switch came first)
+function swapDrop(ms = 0) {
+  for (const L of [...SWAP.live]) {
+    SWAP.live.delete(L);
+    const done = () => {
+      if (!L.retiring) return;
+      L.retiring = false;
+      teardownLayer(L, { keepSlots: true });
+      L.box.remove();
+      if (L.url) { urlLayer.delete(L.url); URL.revokeObjectURL(L.url); L.url = null; }
+      if (SWAP.byId.get(L.id) === L) SWAP.byId.delete(L.id);
+      if (L.rid) SWAP.rids.delete(L.rid);
+    };
+    if (ms > 0 && !calm.matches) { const op = L.box.style.opacity || '1'; L.box.animate([{ opacity: op }, { opacity: 0 }], { duration: ms, easing: 'ease-out', fill: 'forwards' }).finished.catch(() => {}).then(done); } else done();
+  }
+}
+window.__labSwap = { mode: (m) => { if (m) SWAP.mode = m; return SWAP.mode; }, state: () => ({ mode: SWAP.mode, live: SWAP.live.size, lives: SWAP.lives, covers: SWAP.covers, fellBack: SWAP.fellBack, holdMs: SWAP.holdMs, cover: Boolean(SWAP.cover) }) };
 function swapLayers(specs, fx = 'xfade') {
+  swapDrop(0); // (a switch before the last one's old stack faded: that one goes now)
   let cover = null;
-  if (fx && ordered().some((L) => layerMix(L) > 0)) {
+  const old = fx ? ordered().filter((L) => layerMix(L) > 0) : [];
+  const why = fx ? swapLiveWhy(specs, old) : 'no cross-fade';
+  const t0 = realNow();
+  if (fx && !why) { swapRetire(old); SWAP.lives += 1; SWAP.fellBack = ''; } else if (fx && old.length) {
+    SWAP.fellBack = why;
     try {
       cover = composite(null, Math.min(1, 1280 / (Math.max(innerWidth, innerHeight) * devicePixelRatio)));
       cover.className = 'lab-swap';
       cover.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99990;pointer-events:none';
       document.body.appendChild(cover);
+      SWAP.cover = cover; SWAP.covers += 1;
     } catch { cover = null; }
   }
   for (const id of [...layers.keys()]) removeLayer(id);
   // what the old stack left that no layer could be told from: timers, window listeners, renderers, page styles
+  // (a stack still drawing keeps its own listeners and renderers until it goes)
   gen += 1;
-  for (const [t, type, fn, opts] of sketchListeners) t.removeEventListener(type, fn, opts);
-  sketchListeners = [];
+  for (const [t, type, fn, opts, id] of sketchListeners) if (!SWAP.byId.has(id)) t.removeEventListener(type, fn, opts);
+  sketchListeners = sketchListeners.filter((e) => SWAP.byId.has(e[4]));
   for (const r of [...renderers]) {
+    if (r.__retiring) continue;
     letGoRenderer(r);
     renderers.delete(r);
   }
   lastRenderer = null;
   resetPage();
-  waitStack(specs.map((s) => s.id), () => { if (cover) fadeAway(cover, stageSwapMs ?? 420); post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }); memSwitched(); });
+  const live = SWAP.live.size > 0;
+  // (the old stack moving on top: the new one may take longer to be ready, compiling in the background)
+  waitStack(specs.map((s) => s.id), () => {
+    SWAP.holdMs = Math.round(realNow() - t0); SWAP.revealAt = realNow();
+    if (cover) { fadeAway(cover, stageSwapMs ?? 420); if (SWAP.cover === cover) SWAP.cover = null; }
+    swapDrop(stageSwapMs ?? 420);
+    post({ type: 'stack-drawn', ...(GLR.none ? { noGl: true } : {}) }); memSwitched();
+  }, live ? 6000 : 1800);
   specs.forEach((s, z) => runLayer({ z, ...s, swap: true }));
 }
 
@@ -14144,6 +14285,7 @@ function sqSet(plan) {
   SQ.ended = false;
   if (first) {
     // the program takes the page: the sketch's own layers go (the hub runs them again when the sequence closes)
+    swapDrop(0);
     for (const id of [...layers.keys()]) removeLayer(id);
     region = null; trim = null; loopOn = false; applyLoop(); fparts = null;
     if (mediaEl) mediaEl.pause();

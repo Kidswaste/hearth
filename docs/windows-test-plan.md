@@ -64,6 +64,18 @@ Your job: check the things below on real Windows and report back plain results (
 - After 30 min of normal use: rail ⋯ › That was slow — paste "Hiccups over 500 ms today" and the card.
 - ⋯ › Something broke — paste the report if anything is listed.
 
+## 7. Lab hitches (round 89, labfps89)
+- Run the check if Node is available: `node dev/run-checks.js --exact labfps89` (about 3 min). Report the result
+  line and, from `labfps89.log` in the output folder, for each stretch: `p50`, `p95`, `p99`, `over2x`, `over2xApp`,
+  `stillMs`, `visibleCompileFrames`, `bigMPinFrames`, and `khr` (it should be true on the 4080: shaders compile in the
+  background) and `swap` (the switch-on stretches should show `lives` going up and an empty `fellBack`).
+- By eye, in Hearth, preview on Auto and on Max fps: switch between three gallery scenes (Chrome blob, Particle
+  galaxy, Beat burst). Does the old scene keep moving until the new one fades in, with no frozen frame? Add a Bloom
+  filter on top of a playing scene: does the picture stick at all? Drop a 4K photo into a scene's references and use
+  it: is there a visible jolt?
+- If anything sticks: right-click ▶ Play › 📈 Test play performance on the same scene and paste the report, plus the
+  `/lab perf` line.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.

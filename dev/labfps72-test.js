@@ -97,15 +97,16 @@ check(iCap > 0 && iLock > iCap, 'a show (Present / ▶ Play lock) still draws at
   const src = /const UPQ = \{[\s\S]*?\nfunction upFlush\(k\) \{[\s\S]*?\n\}\n/.exec(html)?.[0];
   check(Boolean(src), 'the uploads\' queue is in the page');
   if (src) {
-    const frames = []; const timers = [];
-    const env = { XP_PAGE: false, realRAF: (f) => frames.push(f), realSetTimeout: (f) => { timers.push(f); return timers.length; }, realClearTimeout: () => {} };
+    const frames = []; const timers = []; const after = [];
+    // (round 89, labfps89) a frame hands over in a task queued from it (right after the frame): after = those tasks
+    const env = { XP_PAGE: false, realRAF: (f) => frames.push(f), realSetTimeout: (f, ms) => { (ms === 0 ? after : timers).push(f); return timers.length + after.length; }, realClearTimeout: () => {} };
     const mk = new Function(...Object.keys(env), `${src}\nreturn { upRelease, UPQ };`);
     const { upRelease, UPQ } = mk(...Object.values(env));
     const done = [];
     const ps = [0, 1, 2, 3].map((i) => upRelease(() => done.push(i), 4096 * 4096));
     upRelease(() => done.push('small'), 512 * 512);
     check(done.join() === 'small', 'a small picture goes at once; big ones wait for frames', done);
-    const tick = () => { const l = frames.splice(0); for (const f of l) f(); };
+    const tick = () => { const l = frames.splice(0); for (const f of l) f(); const n0 = done.length; const a = after.splice(0); if (l.length) check(done.length === n0, 'the hand-over waits until after the frame', done); for (const f of a) f(); };
     tick(); check(done.join() === 'small,0', 'one big picture a frame (1)', done);
     tick(); tick(); check(done.join() === 'small,0,1,2', 'one big picture a frame (2, 3)', done);
     // no frames (a hidden page): the timer hands them over
