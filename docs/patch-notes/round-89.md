@@ -15,8 +15,8 @@
 - If a piece is late or lost on the way, Hearth waits for it. A chat is never shown shorter than it is. If the same
   chat was changed on both computers at once, nothing is lost: the newer change wins, and the other version waits in
   Deleted files with a note in the sync panel.
-- Old pieces are kept in your cloud folder for 30 days before they go, in case one is needed. With heavy use that can
-  take a few GB of cloud space.
+- Old pieces are kept on each computer (not in the cloud folder) for 30 days before they go, in case one is needed.
+  With heavy use that can take a few GB of disk space.
 
 ## 🎬 Fewer hitches in the Lab
 - **Switching scenes in the Lab no longer freezes the picture.** The scene you're leaving keeps moving until the new
