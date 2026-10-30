@@ -39,9 +39,10 @@ Where the time goes:
 - Publishing and taking pieces run on the store's **files thread** (`storework.js`, op `syncPack`), the same thread
   as round 82's `syncText`, `syncPull` and `syncMerge`.
 - The main process only reads small index files and calls `stat`.
-- In the bench, which ran in-process, one publish took the time of one cloud-form pass over the chat. That is the same
-  work the engine's push does today, but it now ends in ≈ 325 KB written instead of 20 MB.
-- See the "lane time" line that `--only bench` prints.
+- In the bench, which ran in-process on a shared box, one publish took **267 ms on average (max 426 ms)** for the
+  20.8 MB chat, and one take took **495 ms (max 558 ms)**. That is about one cloud-form pass over the chat, the same
+  work the engine's push and pull do today, but it now ends in ≈ 325 KB written instead of 20 MB. In the app this runs
+  on the files thread, not the main process.
 
 ## How it works (Phase 1: the cloud only)
 
@@ -167,7 +168,7 @@ rules.
 
 ## Tested
 
-- **`dev/packs89-test.js` (UNIT): 99 checks, 13 scenarios, ≈ 90 s.** All of them use the real engine and the lane on
+- **`dev/packs89-test.js` (UNIT): 100 / 100 checks, 13 scenarios, ≈ 85 s.** All of them use the real engine and the lane on
   two or three computers through `dev/sync-sim.js`.
   - `off`: byte for byte the same as today.
   - `bench`: the table above.
@@ -282,4 +283,19 @@ Other files outside Codex's:
 
 ## Runs
 
-(filled in below with this round's results)
+- **Units, setting off:** all pass. Listed below; the ones with check counts list how many passed.
+  - bigsave88-test 98/98; sync72-test 179/179; syncscope79-test 175/175; syncstate75-test 109/109;
+    storeack77-test 177/177; twocomputers-test 117/117; synclatency77-test 38/38; winmac-test 609/609;
+    boot-test 3039.
+  - cloud-files-test, datasafe-scan, errorcalm-scan, storeack-scan, chatsafe-scan and chatwin-scan pass.
+  - synchard74-test 164/164. It missed once with 163/164: its "many" event-loop budget hit 217 ms against 150 ms
+    while other streams loaded the box. It passed when run again. That part doesn't touch chats or the lane.
+- **Units, packs forced on:** the numbers are in "Tested" above.
+- **App checks** (under `flock /tmp/hearth-run.lock`, at most 5 per run): all pass.
+  - packs89 (twice);
+  - sync72, versions75, lazy;
+  - bigchat84 (`BIGCHAT84=1`), chatwindow86 (`CHATWINDOW86=1`);
+  - `unit:lazymanifest-test`, which starts the app.
+  - (`syncscope79` exists only as a unit suite. It passes above.)
+- **First screen:** unchanged: 68 scripts, 1741 KB of code against the 1751 KB budget. The Settings row is in the lazy
+  `appui-dialogs.js`, and the wording is in the lazy `sync-panel.js`.
