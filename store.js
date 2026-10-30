@@ -356,6 +356,17 @@ async function chatWin(op, a) {
       return r?.bytes ? { n: r.n, from: r.from, to: r.to, same: Boolean(r.same), bytes: Buffer.from(r.bytes.buffer, r.bytes.byteOffset, r.bytes.byteLength) } : { error: r?.error || 'read' };
     }
     if (op === 'find') return (await ask({ op: 'chatFind', file, q: String(a.q || '') })) || { error: 'read' };
+    // (round 87, chatcalc87) heights { id, ver, cpl } → { same, h } · scan { id, ver, kind, from, to, seen, max } → { same,
+    // seen, at } · head { id } → { big, head, n } (a chat ≥ 8 MB: chatsafe's reader reads it by range; smaller: big false)
+    if (op === 'heights') return (await ask({ op: 'chatHeights', file, ver: String(a.ver || ''), cpl: Number(a.cpl) || 90 })) || { error: 'read' };
+    if (op === 'scan') return (await ask({ op: 'chatScan', file, ver: String(a.ver || ''), kind: String(a.kind || ''), from: Number(a.from) || 0, to: Number(a.to) || 0, seen: Array.isArray(a.seen) ? a.seen.slice(0, 1000).map(String) : [], max: Math.min(1000, Number(a.max) || 12) })) || { error: 'read' };
+    if (op === 'head') {
+      let size = -1; try { size = fs.statSync(file).size; } catch { return { error: 'gone' }; }
+      if (size < BIGCHAT) return { big: false };
+      if (deltaFiles.has(file) || pending.has(file)) await idle(); // (what's on its way lands first)
+      const r = await ask({ op: 'chatHead', file });
+      return r?.head ? { big: true, head: r.head, n: r.n } : { error: r?.error || 'read' };
+    }
     if (op === 'calc') { const g = a.agent || {}; return (await ask({ op: 'chatCalc', file, what: Array.isArray(a.what) ? a.what.map(String) : [], agent: { id: g.id, mode: g.mode, engine: g.engine, lighterAt: g.lighterAt, model: g.model }, tools: Boolean(a.tools), upto: a.upto == null ? undefined : Number(a.upto) })) || { error: 'read' }; }
   } catch (err) { return { error: err.message || 'read' }; }
   return { error: 'op' };

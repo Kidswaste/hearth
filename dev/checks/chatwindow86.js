@@ -24,6 +24,9 @@
 //   node dev/bigchat84-fixture.js /tmp/hearth-bigchat84
 //   HEARTH_LOOPLAG=prof node dev/smoke.js --fake-engines --data /tmp/hearth-bigchat84 --wait 1000 --check-timeout 900000 --script dev/checks/chatwindow86.js
 if (window.CW86_DEBUG) { window.CW_REPORT = 1; window.CW86_NOHEAL = 1; } // (every read that reaches an unloaded message listed: none loads the chat whole)
+// (round 87, chatcalc87) the build before round 87 (no records kept, the panels throwing first): its numbers reported,
+// not failed (known once the giant chat opened: chatwin.js is lazy)
+let BEFORE = false;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, n = 400) => { for (let i = 0; i < n; i++) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(60); } return null; };
 const r0 = (x) => Math.round(x);
@@ -32,7 +35,7 @@ const OFF = Boolean(window.CW86_OFF);
 const out = { mode: OFF ? 'off (whole)' : 'windowed', problems: [] };
 // (wake: find and jump draw an older block in place, and that block's first layout — chatwindow72/76's, the same with
 // the setting off — is 35–75 ms here on its own: measured, budgeted apart)
-const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40 }, window.CW_BUDGET || {});
+const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, calcReply: 120 }, window.CW_BUDGET || {});
 const RARE = 'zanzibar84quokka';
 const ID = 'claude-giant0';
 const lag = (label) => window.hub.power?.test?.({ lag: { label } });
@@ -65,6 +68,7 @@ async function step(name, fn, { taskBudget = BUDGET.task, wholeOk = false } = {}
   const w = newWholes();
   if (!OFF && w.length && !wholeOk) out.problems.push(`${name} loaded the giant chat whole: ${w.map((x) => x.why).join(', ')}`);
   if (w.length) s.loadAll = w.map((x) => `${x.why} ${x.ms}ms`);
+  s.windowLongAt = longs.filter((x) => x.at >= t).map((x) => `${r0(x.at - t)}+${x.ms}`).slice(0, 8);
   if (window.CW86_DEBUG) s.heapMB = MB(await heap());
   return s;
 }
@@ -96,6 +100,8 @@ await step('open', async () => {
   return { drawn: Boolean(drawn), atEnd: Boolean(L && L.scrollHeight - L.scrollTop - L.clientHeight < 80) };
 });
 const chat = Native.current(claude.id);
+BEFORE = !OFF && typeof CW()?.things !== 'function';
+if (BEFORE) window.CW_REPORT = 1;
 const heap1 = await heap();
 out.heap = { beforeMB: MB(heap0), openMB: MB(heap1), giantMB: MB(heap1 - heap0) };
 out.open.messages = chat?.messages?.length; out.open.windowed = Boolean(Native.isWin?.(chat)); out.open.cw = cwStats();
@@ -156,6 +162,118 @@ await step('send', async () => { const ok = await sendText(said); await wait(150
   out.send.disk = { n: d?.n, text: d?.msgs?.[0]?.text === said, reply: d?.msgs?.[1]?.role };
   if (!out.send.replied || d?.n !== chat.messages.length || !out.send.disk.text) out.problems.push(`send: ${JSON.stringify(out.send.disk)}`);
   if (!OFF && (!out.send.deltas || out.send.wholeSaves)) out.problems.push(`send: saved ${out.send.deltas} by change, ${out.send.wholeSaves} whole`);
+}
+
+// ---------- (round 87, chatcalc87) the store thread's time per reply ----------
+// each reply asks the store thread for the whole-chat numbers (continue lighter?, the history a message re-reads, the
+// lighter history): round 86 parsed the file for each; round 87 keeps one record per message (chatcalc-core.js) and
+// reads only what changed. threadMs: the store thread's busy time over the step (store.js writerStats: its calcs, the
+// saves by change, the ranges); calcs: chatwin's own count of those asks (ms on the thread, how: kept / built / whole)
+const threadMs = async () => (await window.hub.perfLag?.().catch(() => null))?.store?.ms;
+await threadMs(); // (the probe started)
+const calcsNow = () => CW()?.stats?.().calcs?.length || 0;
+for (const name of ['reply2', 'reply3']) {
+  const t0 = await threadMs(); const c0 = calcsNow();
+  await step(name, async () => { const ok = await sendText(`chatcalc87 ${name} ${Date.now()}`); await wait(3000); return { replied: Boolean(ok) }; });
+  const t1 = await threadMs();
+  out[name].threadMs = t0 == null || t1 == null ? null : r0(t1 - t0);
+  const cs = (CW()?.stats?.().calcs || []).slice(c0);
+  out[name].calcs = cs.map((x) => `${x.kind} ${x.ms}ms ${x.how}`); out[name].calcMs = cs.reduce((a, x) => a + (x.ms || 0), 0);
+  if (!out[name].replied) out.problems.push(`${name}: no reply`);
+}
+if (!OFF && !BEFORE) {
+  // (the records are made once, by the first ask after the chat opened: send above; each reply after that reads them)
+  // (threadMs also holds the two saves by change of the exchange: each writes the 63 MB file anew, ≈ 0.1–0.4 s, round 82's)
+  for (const name of ['reply2', 'reply3']) if (!(out[name].calcMs <= BUDGET.calcReply) || !out[name].calcs.length) out.problems.push(`${name}: the store thread's whole-chat numbers took ${out[name].calcMs} ms for one reply (budget ${BUDGET.calcReply}): ${out[name].calcs.join(', ')}`);
+  if (!out.reply3.calcs?.length || out.reply3.calcs.some((x) => !/ kept$/.test(x))) out.problems.push(`reply3: the whole-chat numbers weren't read from the kept records: ${JSON.stringify(out.reply3.calcs)}`);
+}
+
+// ---------- (round 87) the panels that read older messages, on the first try ----------
+// chat-things' "Made here" (/things), chat-refs' @file list and chatsafe's reader ("Show earlier"), on the windowed chat.
+// A thing and a file path are put on an old message (#1000) first, saved by change, its block let go again: both
+// panels must list them on the first try (round 86: NotLoaded, the chat loaded whole, right on the second try)
+const OLDT = 1000;
+const thing = { k: 'image', path: '/tmp/chatcalc87/made-here.png', name: 'made-here.png', src: 'chatcalc87' };
+const oldPath = '/tmp/chatcalc87/notes-from-long-ago.md';
+if (!OFF) {
+  await CW().ensure(chat, OLDT, OLDT + 1);
+  chat.messages[OLDT].things = [...(chat.messages[OLDT].things || []), thing];
+  for (const k of ['text', 'sent']) if (k === 'text' || chat.messages[OLDT].sent) chat.messages[OLDT][k] = `${chat.messages[OLDT][k]}\nsee ${oldPath}`; // (@file reads what was sent)
+  await Native.save(chat); await wait(800);
+  CW().release(chat, Math.floor(OLDT / 20) * 20, Math.floor(OLDT / 20) * 20 + 20);
+}
+// (the lazy groups loaded first: their own first run isn't what's measured)
+for (const g of ['context', 'chatsafe']) await window.Lazy?.load?.(g).catch(() => {});
+await wait(1500);
+newWholes();
+await step('panels', async () => {
+  const r = { loadedBefore: !OFF && CW()?.has(chat, OLDT), marks: {} };
+  const t0 = performance.now(); const mark = (k) => { r.marks[k] = r0(performance.now() - t0); };
+  const t = performance.now();
+  try { r.things = ChatThings.ofChat(chat).map((x) => `${x.index}:${x.path || x.id || x.name}`); r.thingsOk = true; } catch (err) { r.thingsOk = false; r.thingsErr = err.code || err.message; }
+  r.thingsMs = r0(performance.now() - t); mark('things');
+  if (typeof ChatRefs === 'undefined' && window.Lazy?.load) await Lazy.load('context').catch(() => {});
+  const t2 = performance.now();
+  try { r.refs = (await ChatRefs.items('file', claude.id)).map((x) => x.id); r.refsOk = true; } catch (err) { r.refsOk = false; r.refsErr = err.code || err.message; }
+  r.refsMs = r0(performance.now() - t2); mark('refs');
+  // the same walk over the whole chat (every older message read on the store thread): the path put on #1000 is found
+  if (!BEFORE) { const t5 = performance.now(); try { r.scanAll = await CW().scan(chat, 'paths', 1e6); } catch (err) { r.scanErr = err.message; } r.scanMs = r0(performance.now() - t5); }
+  // chatsafe's reader (a chat whose AI is missing opens there): its last messages, then "Show earlier"
+  if (typeof ChatSafe === 'undefined' && window.Lazy?.load) await Lazy.load('chatsafe').catch(() => {});
+  mark('scan');
+  const t3 = performance.now();
+  const c = ChatSafe.read ? await ChatSafe.read(ID) : await window.hub.getChat(ID);
+  r.safeReadMs = r0(performance.now() - t3);
+  if (c) {
+    ChatSafe.reader(c);
+    const dlg = await until(() => document.querySelector('dialog.chatsafe-reader .chatsafe-msg') && document.querySelector('dialog.chatsafe-reader'), 300);
+    const rows0 = dlg?.querySelectorAll('.chatsafe-msg').length || 0; mark('safeShown');
+    const t4 = performance.now();
+    dlg?.querySelector('.chatsafe-earlier')?.click();
+    const more = await until(() => (dlg.querySelectorAll('.chatsafe-msg').length > rows0 ? dlg.querySelectorAll('.chatsafe-msg').length : 0), 300);
+    r.safe = { rows: rows0, afterEarlier: more || 0, earlierMs: r0(performance.now() - t4) }; mark('earlier');
+    await wait(300);
+    dlg?.close();
+  } else r.safe = { read: false };
+  return r;
+}, { taskBudget: BUDGET.wake });
+newWholes();
+// the same panels on the chat loaded whole (the answers to compare with)
+{
+  await Native.loadWhole(ID);
+  out.panels.wholeThings = ChatThings.ofChat(chat).map((x) => `${x.index}:${x.path || x.id || x.name}`);
+  out.panels.wholeRefs = (await ChatRefs.items('file', claude.id)).map((x) => x.id);
+  out.panels.thingsSame = JSON.stringify(out.panels.things) === JSON.stringify(out.panels.wholeThings);
+  out.panels.refsSame = JSON.stringify(out.panels.refs) === JSON.stringify(out.panels.wholeRefs);
+  if (!BEFORE) { const all = []; for (const m of [...chat.messages].reverse()) for (const p of ChatWinCore.SCAN.paths(m)) if (!all.includes(p)) all.push(p); out.panels.scanSame = JSON.stringify(all) === JSON.stringify(out.panels.scanAll); out.panels.scanN = all.length; out.panels.scanHasOld = all.includes(oldPath); delete out.panels.scanAll; }
+  CW()?.rewindow?.(chat, true);
+  if (!OFF && !BEFORE) {
+    if (!out.panels.thingsOk || !out.panels.thingsSame || !out.panels.things.includes(`${OLDT}:${thing.path}`)) out.problems.push(`panels: Made here on the first try ${JSON.stringify({ ok: out.panels.thingsOk, err: out.panels.thingsErr, same: out.panels.thingsSame })}`);
+    if (!out.panels.refsOk || !out.panels.refsSame) out.problems.push(`panels: @file on the first try ${JSON.stringify({ ok: out.panels.refsOk, err: out.panels.refsErr, same: out.panels.refsSame })}`);
+    if (!out.panels.scanSame || !out.panels.scanHasOld || out.panels.scanErr) out.problems.push(`panels: @file's walk over the whole windowed chat ≠ the whole chat's ${JSON.stringify({ err: out.panels.scanErr, n: out.panels.scanN })}`);
+    if (!(out.panels.safe?.rows > 0 && out.panels.safe.afterEarlier > out.panels.safe.rows)) out.problems.push(`panels: chatsafe's reader ${JSON.stringify(out.panels.safe)}`);
+  }
+}
+
+// ---------- (round 87) a width change: the messages that aren't loaded take the new width's height ----------
+if (!OFF) {
+  await step('width', async () => {
+    const L = list(); const w0 = L.clientWidth;
+    const lo = 3000; const hi = 3020; // (a block never drawn here: its messages aren't loaded)
+    const loaded0 = CW().has(chat, lo, hi);
+    L.style.maxWidth = `${Math.round(w0 * 0.55)}px`;
+    await wait(2500);
+    const w1 = L.clientWidth;
+    const guessed = CW().guess(chat, lo, hi, w1); // (unloaded: their records' heights)
+    await CW().ensure(chat, lo, hi);
+    const exact = CW().guess(chat, lo, hi, w1); // (loaded: measured as native.js guesses)
+    const spacers = [...L.querySelectorAll(':scope > .msg-rest')].length;
+    L.style.maxWidth = '';
+    await wait(1500);
+    CW().release(chat, lo, hi);
+    return { w0, w1, loaded0, guessed, exact, same: guessed === exact, spacers };
+  });
+  if (!BEFORE && !out.width.same) out.problems.push(`width: a block's guessed height at the new width ${out.width.guessed} ≠ its messages' ${out.width.exact}`);
 }
 
 // ---------- a reaction on a message that was never loaded ----------

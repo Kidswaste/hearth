@@ -369,7 +369,7 @@ const HistoryLeanCore = (() => {
     return { per, weight, total: sum(per), totalWeight: sum(weight), avg: Math.round(sum(per) / n), avgWeight: Math.round(sum(weight) / n), last: per.at(-1), leanStarts };
   }
 
-  return { build, decide, inputOf, ttlOf, expiresAfter, warmth, ctxOf, stepsOf, clipMid, stubCode, codeIndex, toolLine, attachStubs, scope, line, hover, simulate, exchange,
+  return { build, decide, inputOf, render, blocksOf, talk, LAZY_FROM, KEEP_CHARS, ttlOf, expiresAfter, warmth, ctxOf, stepsOf, clipMid, stubCode, codeIndex, toolLine, attachStubs, scope, line, hover, simulate, exchange,
     tok, fmt, KEEP, RECENT, MAX_CHARS, FLOOR, MIN_SAVE, SHARE, HORIZON, READ, WRITE, TTL, PROFILES, WRAP };
 })();
 if (typeof module !== 'undefined') module.exports = HistoryLeanCore; else window.HistoryLeanCore = HistoryLeanCore;

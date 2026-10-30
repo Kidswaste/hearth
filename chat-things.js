@@ -7,8 +7,9 @@
 const ChatThings = (() => {
   const MEDIA = /\.(png|jpe?g|webp|gif|bmp|mp4|webm|mov|m4v|mkv)$/i;
   const VIDEO = /\.(mp4|webm|mov|m4v|mkv)$/i;
-  const MAX = 8; // cards per reply
-  const live = new Map(); // chat id -> { things: [], frame: { data, mime, tool } | null } while a reply runs
+  // MAX: cards per reply · live: chat id -> { things: [], frame: { data, mime, tool } | null } while a reply runs
+  const MAX = 8;
+  const live = new Map();
   const fileUrl = (p) => (/^(data|blob|https?|file):/.test(String(p)) ? String(p) : `file:///${String(p).replace(/\\/g, '/').replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:')}`);
   const base = (p) => String(p || '').split(/[\\/]/).pop();
   const keyOf = (t) => `${t.k}:${t.path || t.id || t.name}`;
@@ -156,7 +157,8 @@ const ChatThings = (() => {
       await ready(); fps = await fpsOf(t.path);
       const total = Math.max(1, Math.floor(finiteDur(v.duration) * fps));
       const f = Math.max(0, Math.min(total - 1, n));
-      v.pause(); v.currentTime = (f + 0.5) / fps; // the middle of the frame: never the one before after rounding
+      // (the middle of the frame: never the one before after rounding)
+      v.pause(); v.currentTime = (f + 0.5) / fps;
       v.requestVideoFrameCallback?.(() => show());
       return f;
     };
@@ -266,7 +268,9 @@ const ChatThings = (() => {
   });
 
   // ---------- this chat's things, as a list ----------
+  // (round 87, chatcalc87) a windowed giant chat: the older replies' things from their records (chatwin.js), first try
   function ofChat(chat) {
+    if (Native.isWin?.(chat)) return Native._rest.W.x.things(chat);
     const out = [];
     (chat?.messages || []).forEach((m, i) => { for (const t of m.things || []) if (!t.gone) out.push({ ...t, index: i }); });
     return out;

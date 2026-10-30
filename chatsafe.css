@@ -10,7 +10,7 @@
 .chatsafe-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 12px; }
 .chatsafe-foot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); }
 .chatsafe-msgs { display: grid; gap: 10px; }
-.chatsafe-msg { display: grid; gap: 2px; }
+.chatsafe-msg { display: grid; gap: 2px; content-visibility: auto; contain-intrinsic-size: auto 120px; } /* (round 87, chatcalc87) a row off screen isn't laid out until it comes near: a page of a giant chat's long replies was a 1 s task */
 .chatsafe-who { font-size: 11px; color: var(--muted); }
 .chatsafe-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
 .chatsafe-msg.user .chatsafe-text { color: var(--muted); }
