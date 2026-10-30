@@ -84,6 +84,7 @@ function start() {
   packLane = packsOn() ? require('./syncpack').createPackLane({ on: packsOn, runOff: opts.store?.runOff ? (op, a) => opts.store.runOff(op, a) : undefined, log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); } }) : null; // (round 89, packs89)
   engine = createEngine({
     ...(packLane ? { packs: packLane } : {}), // (round 89, packs89)
+    devices: require('./devices90-core').hook(fs.promises, path.join(settings.root, 'Hearth'), (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); }), // (round 90, devices90) a forgotten computer that comes back: its record again at once
     dataDir: opts.dataDir, configPath: opts.configPath, themePath: opts.themePath, cloudRoot: settings.root,
     big: settings.big !== false,
     // (round 73, syncmedia73) kinds turned off on this computer are left alone; big files move on their own lane (a pass
@@ -365,6 +366,22 @@ function publicStatus() {
   };
 }
 
+// (round 90, devices90) Free up's move to this computer's Trash (Recycle Bin); a drive without one: it stays, said why.
+// App checks (HEARTH_TEST_SAVE_DIR): a folder in the run's own scratch space stands for the Trash.
+async function dvTrash(p) {
+  if (process.env.HEARTH_TEST_SAVE_DIR) {
+    const to = path.join(process.env.HEARTH_TEST_SAVE_DIR, 'devices90-trash', `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}-${path.basename(p)}`);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.renameSync(p, to);
+    return to;
+  }
+  const check = process.platform === 'win32' ? require('./winpolish').trashCheck(p, { platform: 'win32' })
+    : process.platform === 'darwin' ? require('./macpolish').trashCheck(p, { platform: 'darwin' }) : { ok: true };
+  if (!check.ok) throw new Error(check.error || check.why || 'no Trash on that drive: left where it is');
+  await require('electron').shell.trashItem(check.path || p);
+  return 'trash';
+}
+
 // ---------- IPC ----------
 function register(ipcMain, win, o) {
   getWin = win;
@@ -407,6 +424,24 @@ function register(ipcMain, win, o) {
       if (on && engine && !packLane) start(); else schedule(300, 'packs');
     }
     return publicStatus().packs;
+  });
+  // (round 90, devices90) Settings › This computer & sync › Your computers: the computers Hearth knows, "Forget this
+  // computer…" (its record moved to .sync/forgotten, never deleted; never this one; only one not seen for a week), and
+  // the space very long chats' pieces take, with Free up (the pack trash's pieces older than 7 days → this computer's
+  // Trash; never a piece a manifest names; nothing at all if a manifest can't be read). devices90-core.js does the work.
+  const DV = require('./devices90-core');
+  const dvWhere = () => (engine ? { cloudDir: engine.cloudDir, stateDir: engine.stateDir, myId: engine.machine().id } : null);
+  h('sync:devices', async () => { const w = dvWhere(); if (!w) return { off: true, computers: [], forgotten: [] }; return DV.list(fs.promises, { ...w, now: Date.now() }); });
+  h('sync:forget', async (file) => {
+    const w = dvWhere(); if (!w) return { ok: false, why: 'off' };
+    const r = await DV.forget(fs.promises, { ...w, file: String(file || ''), now: Date.now(), by: engine.machine().name }).catch((err) => ({ ok: false, why: 'unreadable', error: err.message }));
+    if (r.ok) schedule(300, 'forget'); // (the packs gate is looked at again in the next pass)
+    return r;
+  });
+  h('sync:packSpace', async () => { const w = dvWhere(); if (!w) return null; return DV.space(fs.promises, { ...w, now: Date.now() }); });
+  h('sync:packFree', async () => {
+    const w = dvWhere(); if (!w) return { ok: false, held: 'off' };
+    return DV.freeUp(fs.promises, { ...w, now: Date.now(), trashItem: dvTrash });
   });
   h('sync:autoResolve', (on) => { if (on !== undefined) { settings = { ...settings, autoResolve: Boolean(on) }; saveSettings(); } return settings.autoResolve !== false; });
   h('sync:preview', async (id) => (engine ? engine.preview(String(id)) : null)); // (round 19) both sides of a conflict

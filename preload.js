@@ -266,6 +266,7 @@ contextBridge.exposeInMainWorld('hub', {
     fix: call('sync:fix'), // (round 74, synchard74) a blocked file's fix button
     aside: call('sync:aside'), // (round 78, guardloss78) conflicts' losing sides kept aside (sync panel)
     packs: call('sync:packs'), // (round 89, packs89) Send very long chats in pieces (Settings › Sync)
+    devices: call('sync:devices'), forget: call('sync:forget'), packSpace: call('sync:packSpace'), packFree: call('sync:packFree'), // (round 90, devices90) Your computers · Forget this computer… · pieces' space, Free up
   },
   video: {
     tools: call('video:tools'),

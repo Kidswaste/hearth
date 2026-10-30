@@ -1,0 +1,14 @@
+/* (round 90, devices90) Settings › This computer & sync › Your computers (devices90.js) */
+.dv-sec > h3 { display: none; } /* the fold's own title says it */
+.dv-list { display: flex; flex-direction: column; gap: 2px; contain: content; }
+.dv-row { display: grid; grid-template-columns: 11em 1fr auto; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; }
+.dv-row:hover, .dv-row:focus-within { background: var(--hover, rgba(255,255,255,0.05)); }
+.dv-row .dv-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.dv-row .dv-what { font-size: 12px; opacity: 0.75; line-height: 1.35; min-width: 0; }
+.dv-row.dv-stale .dv-what { opacity: 0.6; }
+.dv-confirm { grid-column: 1 / -1; padding: 8px 10px; margin: 4px 0; border-radius: 8px; border: 1px solid var(--line, rgba(255,255,255,0.12)); }
+.dv-confirm-text { margin: 0 0 6px; font-size: 13px; line-height: 1.45; }
+.dv-h { margin: 12px 0 4px; font-size: 13px; opacity: 0.85; }
+.dv-space .dv-line { margin: 0 0 6px; font-size: 13px; line-height: 1.45; }
+.dv-space .dv-note, .dv-forgotten { font-size: 12px; opacity: 0.7; margin: 4px 0; }
+@media (max-width: 560px) { .dv-row { grid-template-columns: 1fr auto; } .dv-row .dv-what { grid-column: 1 / -1; } }
