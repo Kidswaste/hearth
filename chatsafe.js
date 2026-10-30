@@ -41,7 +41,7 @@ const ChatSafe = (() => {
     if (!h?.big || !h.head) return window.hub.getChat(id).catch(() => null);
     return { ...h.head, id: h.head.id || id, messages: null, big: { n: Number(h.n) || 0 } };
   }
-  const PAGE = 300;
+  const PAGE = 120;
   function bigEl(chat, name) {
     const box = el('div', { class: 'chatsafe-msgs' });
     const st = { lo: chat.big.n, busy: false, rows: 0 };
@@ -57,9 +57,10 @@ const ChatSafe = (() => {
         const msgs = r?.bytes ? JSON.parse(new TextDecoder().decode(r.bytes)).messages : null;
         if (!Array.isArray(msgs) || msgs.length !== st.lo - from) throw new Error('read');
         st.lo = from;
-        const add = msgs.filter(shown).map((m) => rowEl(m, name));
+        const add = msgs.filter(shown);
         st.rows += add.length;
-        btn.after(...add);
+        // put in a few at a time (newest first, just under the button), each batch its own task
+        for (let i = add.length; i > 0; i -= 10) { btn.after(...add.slice(Math.max(0, i - 10), i).map((m) => rowEl(m, name))); if (i > 10) await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); }
         btn.textContent = '↑ Show earlier messages';
         if (!st.lo) btn.remove();
         note.remove();
