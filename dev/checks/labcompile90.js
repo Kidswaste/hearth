@@ -18,7 +18,11 @@
 // Budgets: 0 compiles inside frames on screen in every runtime stretch and glass:shown; each new thing shown within
 // LC90_HOLD (12) frames; a 4K picture never uploaded in one piece (biggest single upload ≤ 4.2 MP, ≥ 4 slices each,
 // none inside a frame); app-judged hitches ≤ LC90_HITCH (1) a stretch.
-// window.LC90_REPORT = 1 only reports (for a base without this round); LC90_ONLY = 'runtime,glass,texture'.
+// (round 91, labshadow91) more stretches, same rules: light:off / light:on / light:remove / light:readd, shadow:light /
+// shadow:caster (a scene with shadow maps), scene2 (a second scene for the same renderer), inrender (materials made
+// in three's render), reload (a 4K picture changed on disk while shown: in slices, the new picture read back).
+// window.LC90_REPORT = 1 only reports (for a base without this round); LC90_ONLY = 'runtime,glass,texture,light,
+// inrender,scene2,shadow,reload' (reload needs texture).
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --script dev/checks/labcompile90.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000, every = 120) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(every); } return false; };
@@ -168,17 +172,115 @@ const px = new Uint8Array(4); gl.readPixels(100, 3000, 1, 1, gl.RGBA, gl.UNSIGNE
 gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); r.resetState(); return Array.from(px);`);
 });
 
+// ---------- (round 91, labshadow91) what round 90 still compiled in the frame that needed it ----------
+// light:first               a light hidden from the start shown (its programs never made)
+// light:off / light:on      the sun hidden, then shown again (every lit material's program changes with the count)
+// light:remove / light:readd a point light taken out of the scene, then put back
+// shadow:light              a scene with shadow maps on gets its first shadow-casting light (three's own depth materials)
+// shadow:caster             a new kind of caster (instanced, new material) added to a scene with a shadow light
+// scene2                    the same renderer starts drawing a second scene (a menu → level switch)
+// inrender                  materials made inside three's render (a mesh's onBeforeRender swaps its material)
+// reload                    a 4K picture changed on disk while it's shown (round 42's reload): in slices too
+const LIGHTS = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+__SHADOWS__
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#151820');
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 1, 6); camera.lookAt(0, 0, 0);
+scene.add(new THREE.HemisphereLight('#9cf', '#321', 1.2)); const sun = new THREE.DirectionalLight('#fff', 2); sun.position.set(3, 5, 2); scene.add(sun);
+const pl = new THREE.PointLight('#f80', 6, 20); pl.position.set(-2, 2, 2); scene.add(pl);
+const rim = new THREE.SpotLight('#9cf', 20, 20, 0.6); rim.position.set(2, 3, -2); rim.visible = false; scene.add(rim); // (hidden from the start: its programs never made)
+const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(0.8, 0.25, 128, 16), new THREE.MeshStandardMaterial({ color: '#7ad', roughness: 0.4 })); knot.castShadow = true; scene.add(knot);
+const ball = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 16), new THREE.MeshPhongMaterial({ color: '#e5a' })); ball.position.set(-2, -0.5, 0.5); ball.castShadow = true; scene.add(ball);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshLambertMaterial({ color: '#334' })); floor.rotation.x = -Math.PI / 2; floor.position.y = -1.6; floor.receiveShadow = true; scene.add(floor);
+let want = 0;
+knot.onBeforeRender = () => { if (want) { want = 0; knot.material = new THREE.MeshToonMaterial({ color: '#5e8' }); ball.material = new THREE.MeshPhysicalMaterial({ color: '#fd4', clearcoat: 1 }); } };
+// a second scene for the same renderer (its own materials: none of them drawn yet)
+const scene2 = new THREE.Scene(); scene2.background = new THREE.Color('#201518');
+scene2.add(new THREE.AmbientLight('#fff', 0.4)); const s2 = new THREE.SpotLight('#fff', 30, 20, 0.6); s2.position.set(0, 4, 3); scene2.add(s2);
+for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.4, 2), [new THREE.MeshPhysicalMaterial({ color: '#8cf', sheen: 1 }), new THREE.MeshMatcapMaterial({ color: '#fc8' }), new THREE.MeshNormalMaterial(), new THREE.MeshPhongMaterial({ color: '#ad6', flatShading: true })][i]); m.position.x = -1.8 + i * 1.2; scene2.add(m); }
+let cur = scene;
+window.__lc91 = {
+  first() { rim.visible = true; return performance.now(); },
+  off() { sun.visible = false; return performance.now(); },
+  on() { sun.visible = true; return performance.now(); },
+  remove() { scene.remove(pl); return performance.now(); },
+  readd() { scene.add(pl); return performance.now(); },
+  spot() { const s = new THREE.SpotLight('#fff', 40, 20, 0.5, 0.3); s.position.set(1, 5, 3); s.castShadow = true; s.shadow.mapSize.set(512, 512); scene.add(s); return performance.now(); },
+  caster() { const g = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: '#c96', metalness: 0.3 }), 12); const m = new THREE.Matrix4(); for (let i = 0; i < 12; i++) g.setMatrixAt(i, m.makeTranslation(-2.5 + i * 0.45, -1.2, -0.5)); g.castShadow = true; scene.add(g); return performance.now(); },
+  inrender() { want = 1; return performance.now(); },
+  scene2() { cur = scene2; return performance.now(); },
+};
+renderer.setAnimationLoop((t) => { knot.rotation.y = t / 1500; scene2.rotation.y = t / 3000; renderer.render(cur, camera); });`;
+const SHADOWS_ON = 'renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;';
+const lc91 = async (name, k, ms = 2600) => {
+  const s0 = await lcState();
+  await record(name, async () => ({ at: await sbx(`return window.__lc91.${k}()`) }), { ms });
+  const s1 = await lcState();
+  if (s1) out.stretches[name].lcDelta = Object.fromEntries(Object.keys(s1).filter((x) => typeof s1[x] === 'number').map((x) => [x, r1(s1[x] - (s0?.[x] || 0))]));
+  await wait(600);
+};
+if (want('light')) await safe('light', async () => {
+  await D.newSketch('labshadow91 lights', LIGHTS.replace('__SHADOWS__', ''), 1);
+  await ready(); await wait(2500);
+  for (const [n, k] of [['light:first', 'first'], ['light:off', 'off'], ['light:on', 'on'], ['light:remove', 'remove'], ['light:readd', 'readd']]) await lc91(n, k);
+});
+if (want('inrender')) await safe('inrender', async () => {
+  await D.newSketch('labshadow91 inrender', LIGHTS.replace('__SHADOWS__', ''), 1);
+  await ready(); await wait(2500);
+  await lc91('inrender', 'inrender');
+});
+if (want('scene2')) await safe('scene2', async () => {
+  await D.newSketch('labshadow91 scene2', LIGHTS.replace('__SHADOWS__', ''), 1);
+  await ready(); await wait(2500);
+  await lc91('scene2', 'scene2');
+});
+if (want('shadow')) await safe('shadow', async () => {
+  await D.newSketch('labshadow91 shadows', LIGHTS.replace('__SHADOWS__', SHADOWS_ON), 1);
+  await ready(); await wait(2500);
+  await lc91('shadow:light', 'spot', 3000);
+  await lc91('shadow:caster', 'caster', 3000);
+});
+// a 4K picture shown, then changed on disk (the texture stretch's layer: its left picture reloaded)
+if (want('reload') && want('texture') && out.stretches.texture) await safe('reload', async () => {
+  await window.hub.fs.write(`${DIR}/big2.png`, await png(4096, 130));
+  const texel = `const e = window.__scenes['Big pictures']; if (!e) return 'no layer';
+const r = e.renderer; let tex = null; e.scene.traverse((o) => { if (!tex && o.material?.map) tex = o.material.map; });
+const p = tex && r.properties.get(tex); if (!p?.__webglTexture) return 'not on the graphics card';
+if (p.__version !== tex.version) return 'still to upload';
+const gl = r.getContext(); const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, p.__webglTexture, 0);
+const px = new Uint8Array(4); gl.readPixels(100, 3000, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); r.resetState(); return Array.from(px);`;
+  const before = await sbx(texel);
+  const mine = await D.refs.list(); const every = Object.values((await D.refs.all()) || {}).flat();
+  const ref = (mine || []).find((x) => x.key === 'big0') || every.filter((x) => x.key === 'big0').at(-1);
+  if (!ref) throw new Error(`no big0 reference (${JSON.stringify((mine || []).map((x) => x.key))}, ${every.length} in all)`);
+  const u0 = await sbx('return window.__refUpdates || 0');
+  await record('reload', async () => { const r = await D.refs.reload(ref.id, { from: `${DIR}/big2.png` }); return { reload: r }; }, { ms: 6000 });
+  if (!out.stretches.reload.info?.reload?.inPlace) throw new Error(`the reference wasn't reloaded in place: ${JSON.stringify(out.stretches.reload.info)}`);
+  await until(async () => { const u = await sbx('return [window.__refUpdates || 0, window.__labUploads()]'); return u[0] > u0 && !u[1].waiting && !(u[1].slices?.active); }, 30000);
+  await wait(400);
+  const after = await sbx(texel);
+  out.stretches.reload.pixel = { before, after };
+});
+
 // ---------- verdicts ----------
 const S = out.stretches;
-for (const [k, s] of Object.entries(S).filter(([n]) => /^(runtime|glass):/.test(n))) {
+for (const [k, s] of Object.entries(S).filter(([n]) => /^(runtime|glass|light|shadow):|^(scene2|inrender)$/.test(n))) {
   step(`${k}: no shader compile inside a frame on screen (made in the gap after a frame${s.khr ? ', compiled in the background' : ''})`, s.visibleInFrameCompiles === 0, { inFrames: s.visibleInFrameCompiles, frames: s.visibleCompileFrames, all: s.compiles, waitInFramesMs: s.waitInFramesMs, lc: s.lcDelta });
-  if (s.lcDelta && /^runtime:/.test(k)) step(`${k}: the new thing waited ≤ ${HOLD} frames before it showed`, (s.lc?.maxWait ?? 0) <= HOLD && (s.lcDelta.pending ?? 0) >= 0, { maxWait: s.lc?.maxWait, lc: s.lcDelta });
+  if (s.lcDelta && /^(runtime|light|shadow):|^(scene2|inrender)$/.test(k)) step(`${k}: the new thing waited ≤ ${HOLD} frames before it showed`, (s.lc?.maxWait ?? 0) <= HOLD && (s.lcDelta.pending ?? 0) >= 0, { maxWait: s.lc?.maxWait, lc: s.lcDelta });
 }
 if (S.texture) {
   const sl = S.texture.slices;
   step('texture: a 4K picture never goes to the graphics card in one piece (biggest single upload ≤ 4.2 MP)', S.texture.biggestUploadMP <= 4.2, { biggest: S.texture.biggestUploadMP, slices: sl });
   step('texture: … in slices (≥ 4 a picture), none inside a frame', sl?.pictures >= 2 && sl.slices >= 8 && S.texture.biggestInFrameMP < 1, { slices: sl, inFrame: S.texture.biggestInFrameMP });
   step('texture: the picture shows once its slices are in', Array.isArray(S.texture.pixel) && S.texture.pixel[0] + S.texture.pixel[1] + S.texture.pixel[2] > 30, S.texture.pixel);
+}
+if (S.reload) {
+  const sl = S.reload.slices; const p = S.reload.pixel || {};
+  step('reload: a 4K picture changed on disk never goes up in one piece (biggest single upload ≤ 4.2 MP, none inside a frame)', S.reload.biggestUploadMP <= 4.2 && S.reload.biggestInFrameMP < 1, { biggest: S.reload.biggestUploadMP, inFrame: S.reload.biggestInFrameMP, slices: sl });
+  const diff = Array.isArray(p.before) && Array.isArray(p.after) ? Math.abs(p.before[0] - p.after[0]) + Math.abs(p.before[1] - p.after[1]) + Math.abs(p.before[2] - p.after[2]) : -1;
+  step('reload: the new picture shows once its slices are in', diff > 30 && p.after[0] + p.after[1] + p.after[2] > 30, p);
 }
 // (texture adds a layer: without background compiles its programs are made in its one setup frame, as labfps89 allows)
 for (const [k, s] of Object.entries(S)) {
