@@ -25,7 +25,7 @@
 //   by hand: node dev/longrun91.js [--cycles 24] [--every 3] [--snap <dir>] [--report]
 //   node dev/smoke.js --fake-engines --data /tmp/hearth-bigchat84 --wait 1000 --check-timeout 2400000 --script dev/checks/longrun91.js
 //   debug options: LR91_PARTS='project,lab' only those parts · LR91_TRACE=1 / 'raw' what draws during the quiet window ·
-//   LR91_STORESNAP='<dir>' a store-thread heap snapshot at each sample · LR91_IDLE_PRE=<ms> the quiet window later
+//   LR91_STORESNAP='<dir>' a store-thread heap snapshot at each sample · LR91_IDLE_PRE=<ms> the quiet window later · LR91_STORE_MAX_MB the store thread's bound (45; round 92)
 //   --eval "window.LR91_CYCLES=9" a short run · window.LR91_SNAP='<dir>' heap snapshots (window, main) after the warm-up
 //   and at the end · window.LR91_REPORT=1 reports without failing
 // ---------- part 1: the counters, in every frame before its own scripts (then the window reloads) ----------
@@ -49,7 +49,7 @@ const LR = `(() => { if (window.__lr91) return; const L = window.__lr91 = { pend
 try { localStorage.setItem('idlecpu.hushMs', '3000'); } catch { /* the full minute: idle reads higher */ }
 await smoke({ cdp: 'Page.addScriptToEvaluateOnNewDocument', params: { source: SOAK } });
 await smoke({ cdp: 'Page.addScriptToEvaluateOnNewDocument', params: { source: LR } });
-localStorage.lr91 = JSON.stringify(Object.fromEntries(['LR91_CYCLES', 'LR91_EVERY', 'LR91_WARM', 'LR91_OUT', 'LR91_SNAP', 'LR91_REPORT', 'LR91_IDLE_MS', 'LR91_STORESNAP', 'LR91_TRACE', 'LR91_PARTS', 'LR91_IDLE_PRE'].filter((k) => window[k] != null).map((k) => [k, window[k]])));
+localStorage.lr91 = JSON.stringify(Object.fromEntries(['LR91_CYCLES', 'LR91_EVERY', 'LR91_WARM', 'LR91_OUT', 'LR91_SNAP', 'LR91_REPORT', 'LR91_IDLE_MS', 'LR91_STORESNAP', 'LR91_TRACE', 'LR91_PARTS', 'LR91_IDLE_PRE', 'LR91_STORE_MAX_MB'].filter((k) => window[k] != null).map((k) => [k, window[k]])));
 return 'probes installed';
 //@@ reload
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -322,6 +322,19 @@ for (const [name, get, unit, div, max] of SLOPE) {
   const grows = slope > max;
   out.trend.push(`${grows ? '✖ GROWS' : 'ok'} ${name}: ${r1(xy[0][1] / div)} → ${r1(xy.at(-1)[1] / div)}${unit ? ` ${unit}` : ''} (${slope >= 0 ? '+' : ''}${r1(slope / div)}${unit ? ` ${unit}` : ''}/cycle, limit ${r1(max / div)})`);
   if (grows) fails.push(`grows: ${name} +${r1(slope / div)}${unit}/cycle`);
+}
+// (round 92, findmem92) the store thread stays under a bound with the giant chat's project searched: round 91 swung
+// 18 ↔ 82 MB (Find in this project held the giant chat's text); its index now keeps a giant chat's words only
+const STORE_MAX_MB = Number(window.LR91_STORE_MAX_MB) || 45;
+{
+  const hs = S.map((s) => s.store?.heap).filter(Number.isFinite);
+  const fc = S.map((s) => s.store?.caches?.findChars).filter(Number.isFinite);
+  if (hs.length) {
+    const top = Math.max(...hs);
+    out.storeMax = { mb: MB(top), limitMb: STORE_MAX_MB, findChars: fc.length ? Math.max(...fc) : null };
+    out.trend.push(`${top > STORE_MAX_MB * 1048576 ? '✖ OVER' : 'ok'} store thread heap at most ${MB(top)} MB (limit ${STORE_MAX_MB} MB; Find's index at most ${out.storeMax.findChars ?? '?'} characters)`);
+    if (top > STORE_MAX_MB * 1048576) fails.push(`store thread heap ${MB(top)} MB > ${STORE_MAX_MB} MB`);
+  }
 }
 // idle CPU after the warm-up: the last third vs the first third (in percent of one CPU), and its slope
 const idleOf = (s) => s.idle?.total;
