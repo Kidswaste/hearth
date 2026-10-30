@@ -178,7 +178,8 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('power:release', (_e, token) => blocker.release(Number(token)));
   ipcMain.handle('power:allow', () => blocker.allow());
   ipcMain.handle('power:quiet', (_e, on) => quiet(on)); // (round 52, presentready) the Lab presents: background work waits
-  ipcMain.handle('power:test', (_e, t = {}) => (t.lag && lagProbe ? lagProbe.take(t.lag) : testHook(t)));
+  // (round 91, longrun91) { threadMem: true }: the store threads' heaps after a GC and their caches (tests only)
+  ipcMain.handle('power:test', (_e, t = {}) => (t.lag && lagProbe ? lagProbe.take(t.lag) : t.threadMem ? threadMem() : testHook(t)));
   try {
     const { powerMonitor } = require('electron');
     const again = () => checkSaver(true);
@@ -249,6 +250,10 @@ function testHook(t) {
   return out;
 }
 
+async function threadMem() {
+  if (!TEST) throw new Error('Tests only');
+  try { return { threadMem: await require('./store')._threadMem() }; } catch (err) { return { threadMem: { error: err.message } }; }
+}
 // (round 72, longrun72; tests only) what can pile up in the main process over hours, after a full GC: JS heap, live
 // handles by kind (timers, watchers, sockets, child processes with what they run), live timers by the line that made
 // them, IPC listeners (ipcMain channels with more than one listener; invoke handlers), listeners on app / powerMonitor /

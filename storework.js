@@ -1016,7 +1016,15 @@ const OPS = {
   },
   forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); calcs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
+  // (round 91, longrun91; tests only: asked only by power:test { threadMem } behind HEARTH_TEST_SAVE_DIR) this thread's
+  // JS heap after a full GC and the size of each cache it keeps, for dev/checks/longrun91.js's growth trend
+  _mem() {
+    try { if (!gcFn) { require('v8').setFlagsFromString('--expose_gc'); gcFn = require('vm').runInNewContext('gc'); } gcFn(); gcFn(); } catch { /* no gc: reads higher */ }
+    const h = require('v8').getHeapStatistics();
+    return { heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, find: findIdx ? 1 : 0, winCalc: winCalc.chat ? 1 : 0 } };
+  },
 };
+let gcFn = null; // (round 91, longrun91) _mem's gc, made on its first (test-only) use
 
 parentPort.on('message', (msg) => {
   const t0 = performance.now();
