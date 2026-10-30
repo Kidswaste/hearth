@@ -138,8 +138,9 @@ These all looked like growth at first, but each one is bounded or by design:
 - `dev/run-checks.js`: the `longrun91` group.
 - Tested:
   - longrun91 before and after (above), plus bisect runs by part
-  - idlecpu, calmstart, lazy, projects, chatwindow72, sync72, chatwindow86 (`CHATWINDOW86=1`)
-  - unit:datasafe-scan, unit:winmac-test, unit:errorcalm-scan, unit:storeack-scan, unit:chatsafe-scan,
+  - passed: idlecpu, calmstart, lazy, projects, chatwindow72, sync72, chatwindow86 (`CHATWINDOW86=1`; one
+    "can't tell under load" on its edit step: a 65 ms task with 40 ms of its own CPU, the rest waiting for a CPU)
+  - passed: unit:datasafe-scan, unit:winmac-test, unit:errorcalm-scan, unit:storeack-scan, unit:chatsafe-scan,
     unit:chatwin-scan, unit:boot-test, unit:lazymanifest-test, unit:store-thread-test, unit:chatcalc87-test
 
 ## For Codex
