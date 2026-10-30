@@ -4285,7 +4285,9 @@ ${code}
       const own = errors.filter((e) => !e.layer || e.layer === selId);
       const errText = own.length ? `\n\nIt currently shows these errors:\n${own.map((e) => `- ${e.message}${e.line ? ` (line ${e.line})` : ''}`).join('\n')}` : '';
       const which = layersOf().length > 1 ? ` (the layer "${sel().name}" of a layered sketch: each layer is its own module with its own transparent renderer)` : '';
-      // (round 92, labchat92) the chat it starts is linked to this scene (its AI's Lab calls reach it; ▶ Apply on its code)
+      // (round 92, labchat92) the chat it starts is linked to this scene (its AI's Lab calls reach it; ▶ Apply on its code).
+      // A Claude with the Lab's tools reads the layer itself: the draft doesn't carry its whole code (≈ 1 token / 4 characters)
+      if (window.LabChatLink && H.claudeAgent()?.threeTools) { LabChatLink.ask(`About the layer "${sel().name}" (read it with three_read_code).${errText}\n\n`, { sceneId: current.id, agentId: H.claudeAgent().id }); return; }
       (window.LabChatLink ? (t) => LabChatLink.ask(t, { sceneId: current.id, agentId: H.claudeAgent()?.id }) : draftToClaude)(`Here's my three.js sketch${which} (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
     }
 

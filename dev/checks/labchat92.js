@@ -99,7 +99,8 @@ try {
   ok(await clickMenu(/Ask Claude about this layer/), '… › Ask Claude about this layer');
   await wait(500);
   const draft = Native.view(C.id)?.input.value || '';
-  out.fromLab = { draft: draft.split('\n')[0], newChat: H.activeChat[C.id] !== pre.chatId };
+  out.fromLab = { draft: draft.split('\n')[0], chars: draft.length, newChat: H.activeChat[C.id] !== pre.chatId };
+  ok(!/import \* as THREE/.test(draft), `a Claude with the Lab's tools isn't sent the layer's whole code in the draft (${draft.length} characters)`);
   ok(out.fromLab.newChat, 'Ask Claude about this layer starts a new chat (the one on scene B is left alone)');
   ok(/^\[Lab scene "Chat A" · layers, bottom first \(\* = selected\): Base, Ring\*\]/.test(draft), `its draft names the scene, the layers and the selected one (${out.fromLab.draft})`);
   out.sceneLineTokens = Math.ceil(out.fromLab.draft.length / 4);
@@ -269,7 +270,8 @@ try {
   ta.focus(); await type('/*busy*/', 120);
   await tMany; await until(() => !Native.isBusy(askChat), 120000); await wait(300);
   const runs1 = ThreeLab.live.counts();
-  out.many = { ms: Date.now() - t0, ringSize: /size: \{ value: ([\d.]+),/.exec(codeIn(A, 'Ring'))?.[1], busy: codeIn(A, 'Base').includes('/*busy*/'), runs: { before: runs0, after: runs1 }, selected: d.layers().selected };
+  const callMs = HubBridge.log().filter((e) => e.tool === 'three_edit_code' && e.chatId === askChat).slice(-8).map((e) => e.ms).sort((x, y) => x - y);
+  out.many = { ms: Date.now() - t0, medianCallMs: callMs[4], hotRuns: (runs1.sent?.['preview hot-layer'] || 0) - (runs0.sent?.['preview hot-layer'] || 0), ringSize: /size: \{ value: ([\d.]+),/.exec(codeIn(A, 'Ring'))?.[1], busy: codeIn(A, 'Base').includes('/*busy*/'), selected: d.layers().selected };
   ok(out.many.ringSize === '1.8', `all 8 quick edits landed (${out.many.ringSize})`);
   ok(out.many.busy && out.many.selected === 'Base', 'the owner\'s typing during them stayed in their layer');
   ta.blur();
