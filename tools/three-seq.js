@@ -168,7 +168,7 @@ const ThreeSeq = (() => {
     S.owner = e.seq?.scene || lab()?.sketchId() || null;
     S.explicit = true; // opened on purpose: it stays until another scene comes on screen
     store.set('three.seq.current', key);
-    if (e.seq?.scene) store.set('three.seq.byScene', { ...store.get('three.seq.byScene', {}), [e.seq.scene]: key });
+    if (e.seq?.scene && store.get('three.seq.byScene', {})[e.seq.scene] !== key) { store.set('three.seq.byScene', { ...store.get('three.seq.byScene', {}), [e.seq.scene]: key }); window.LabPresets?.changed(); } // (round 88, labsync88)
     await loadNested(e);
     emit('change', { key }); // the name chip follows
     await ensureSong();

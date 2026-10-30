@@ -798,7 +798,7 @@ const ThreeLab = (() => {
     // Each song keeps its own bars (songs differ a lot); the last ones you set are the default for new songs.
     const saveTriggers = debounce(() => {
       store.set('three.triggers', trigCfg);
-      if (player.path) store.set('three.triggersBySong', { ...store.get('three.triggersBySong', {}), [player.path]: trigCfg });
+      if (player.path) { store.set('three.triggersBySong', { ...store.get('three.triggersBySong', {}), [player.path]: trigCfg }); window.LabPresets?.changed(); } // (round 88, labsync88) to the other computer too
     }, 400);
     function songTriggers() {
       const saved = player.path && store.get('three.triggersBySong', {})[player.path];
@@ -2730,7 +2730,57 @@ const ThreeLab = (() => {
       player.setClockLength(tl.len);
     }
     // (round 35, twocomputers) a song found again on this computer (another path): every scene using it follows
-    player.on('relink', ({ from, to }) => { let n = 0; for (const id of Object.keys(extras)) if (extras[id]?.media?.path === from) { extras[id].media.path = to; n += 1; } if (n) saveExtras(); });
+    player.on('relink', ({ from, to }) => { let n = 0; for (const id of Object.keys(extras)) if (extras[id]?.media?.path === from) { extras[id].media.path = to; n += 1; } if (n) saveExtras(); songFollows(from, to); });
+    // (round 88, labsync88) the song's own ⚡ triggers and loop go with it to its new place (as its beat grid does: copyMap)
+    function songFollows(from, to) {
+      if (!from || !to || from === to) return;
+      const by = store.get('three.triggersBySong', {}) || {}; let n = 0;
+      if (by[from] && !by[to]) { store.set('three.triggersBySong', { ...by, [to]: by[from] }); n += 1; }
+      const lp = store.get(`three.loop:${from}`, null); if (lp && !store.get(`three.loop:${to}`, null)) { store.set(`three.loop:${to}`, lp); n += 1; }
+      if (n) window.LabPresets?.changed();
+    }
+    // (round 88, labsync88) a song loaded from outside Hearth's folder (Music, Downloads, another disk) stays on this
+    // computer: the other one finds it only if it has the same file (round 35), else "Find this file". Hearth never copies
+    // your music by itself. With sync on and another computer seen, the first time a song like that is on the timeline
+    // you're offered, once, "Keep a copy with this scene so it plays on your other computer (its size)": one click copies
+    // it into Hearth's references (refs/, which sync always brings down), and every scene using that song switches to the
+    // copy (its beat grid, ⚡ triggers and loop come along). The original stays where it was. /song keep asks any time.
+    const SONG_MAX = 400 * 1048576; // (as for references)
+    async function songCopyInfo(path) {
+      if (!path || /^scene:/.test(path) || player.isClock) return { why: 'no song' };
+      const two = await window.hub.two?.info?.().catch(() => null);
+      if (!two?.sync?.on) return { why: 'sync off' };
+      const travels = SceneSafeCore.songTravels(path, two.roots);
+      if (travels) return { why: travels === 'data' ? 'in Hearth' : 'in a cloud drive' };
+      const st = await window.hub.fs.stat(path).catch(() => null);
+      if (!st?.size) return { why: 'not here' };
+      return { size: st.size, peers: (two.peers || []).length, big: st.size > SONG_MAX };
+    }
+    const songName = (p) => String(p).split(/[\\/]/).pop();
+    async function keepSongCopy(path) {
+      if (!path || player.path !== path) throw new Error('That song isn\'t on the timeline any more');
+      const copy = await window.hub.importRef(path);
+      const r = await player.follow(copy);
+      if (r && r.ok === false) throw new Error('The copy was made, but the timeline couldn\'t switch to it');
+      return copy;
+    }
+    const songAsked = () => { const l = store.get('three.songCopyAsked', []); return Array.isArray(l) ? l : []; };
+    async function offerSongCopy(path, { ask = false } = {}) {
+      if (!ask && songAsked().includes(path)) return null;
+      const i = await songCopyInfo(path);
+      if (player.path !== path) return null;
+      if (!i.size) return ask ? (i.why === 'in Hearth' ? 'This song is in Hearth\'s folder already: it goes to your other computer by itself.' : i.why === 'in a cloud drive' ? 'This song is in your cloud drive: the drive brings it to your other computer.' : i.why === 'sync off' ? 'Sync is off: there is no other computer to bring it to.' : 'No song from a file on the timeline.') : null;
+      if (!ask && !i.peers) return null;
+      if (i.big) return ask ? `${songName(path)} is over 400 MB: too big to keep a copy with the scene.` : null;
+      store.set('three.songCopyAsked', [path, ...songAsked().filter((x) => x !== path)].slice(0, 200));
+      const label = `Keep a copy with this scene so it plays on your other computer (${fmtBytes(i.size)})`;
+      const done = (copy) => toast(`A copy of ${songName(path)} is kept with your scenes (${fmtBytes(i.size)}) and goes to your other computer. The original stays where it was.`, { timeout: 7000, action: { label: 'Undo', fn: () => player.follow(path).then(() => window.hub.fs.trash(copy).catch(() => {})).catch((err) => toast(err.message, { type: 'error' })) } });
+      const go = () => keepSongCopy(path).then(done).catch((err) => toast(err.message, { type: 'error' }));
+      if (ask) { if (await Modal.confirm('Keep a copy with this scene?', `${songName(path)} is on this computer only. A copy (${fmtBytes(i.size)}) goes into Hearth's folder and syncs to your other computer, so the scene plays there too. The original stays where it is.`, { ok: 'Keep a copy' })) { await go(); return null; } return 'Nothing copied.'; }
+      toast(`${songName(path)} is on this computer only: your other computer won't have it.`, { timeout: 20000, action: { label, fn: go } });
+      return label;
+    }
+    player.on('load', ({ path, clock }) => { if (!clock && path) setTimeout(() => { if (player.path === path) offerSongCopy(path).catch(() => {}); }, 2500); });
     player.on('clock-length', (n) => { if (current && extras[current.id]?.timeline) { extras[current.id].timeline.len = n; saveExtras(); } });
     // A song loaded on a scene that played on its own timeline: its cues and markers come along at the same seconds
     // (keyframes are in seconds on the layers already), and once the song's bars are known one click snaps them.
@@ -3338,7 +3388,45 @@ const ThreeLab = (() => {
     let trash = [];
     // (round 21: written 1.5 s after the last change, not 0.4 s: with auto-run every pause in typing takes a snapshot,
     // and the whole history, 40 versions of every layer, went to disk each time)
-    const saveHistory = debounce(() => { if (kvOk.has('three-history')) window.hub.kvSet('three-history', { versions: history, trash }); }, 1500);
+    // (round 88, labsync88) one file per scene: kv/three-hv-<scene>.json holds that scene's versions, kv/three-history.json
+    // the trash ({ v: 2, versions: {}, trash }). A run writes its scene's file only (it was the whole history, every
+    // scene's 40 versions per layer, sent whole to the other computer each time). A scene's file is read before it is
+    // written (what's there joins what's here; one that can't be read is left alone and tried again), and read when the
+    // scene opens (History shows it). Versions still in three-history.json (an older Hearth on the other computer, or
+    // before this round) move into the scene files, and leave three-history.json only once their scene's file is written.
+    // saveHistory(sceneId): that scene's versions changed · saveHistory(): the trash changed
+    const histDirty = new Set(); const histRead = new Set();
+    let histMove = null; let histMainDue = false; let histBusy = false; let histAgain = false;
+    async function readHistSeg(name) {
+      try {
+        const r = await window.hub.kvGet(name, null, { status: true });
+        if (!r || typeof r !== 'object' || !r.state) return { ok: true, value: r }; // an older main process
+        return r.state === 'unreadable' ? { ok: false } : { ok: true, value: r.state === 'ok' ? r.value : null };
+      } catch { return { ok: false }; }
+    }
+    async function loadHist(sid) {
+      if (!sid || histRead.has(sid)) return true;
+      const r = await readHistSeg(SceneSafeCore.histSegName(sid));
+      if (!r.ok || histRead.has(sid)) return histRead.has(sid);
+      SceneSafeCore.histTake(history, sid, SceneSafeCore.histJoin(SceneSafeCore.histSegOf(history, sid), SceneSafeCore.segVersions(r.value)));
+      histRead.add(sid);
+      return true;
+    }
+    async function flushHistory() {
+      if (!kvOk.has('three-history')) return;
+      if (histBusy) { histAgain = true; return; }
+      histBusy = true;
+      let failed = false;
+      try {
+        const st = { history, dirty: histDirty, read: histRead, move: histMove, mainDue: histMainDue, trash };
+        histMainDue = false;
+        ({ failed } = await SceneSafeCore.histFlush(st, { read: readHistSeg, write: (name, v) => window.hub.kvSet(name, v) }));
+        histMainDue = histMainDue || st.mainDue;
+      } finally { histBusy = false; }
+      if (histAgain) { histAgain = false; saveHistoryNow(); } else if (failed) setTimeout(() => saveHistoryNow(), 20000);
+    }
+    const saveHistoryNow = debounce(() => { flushHistory().catch(() => {}); }, 1500);
+    function saveHistory(sid) { if (sid) histDirty.add(sid); else histMainDue = true; saveHistoryNow(); }
     const histKey = (L) => (!L || L.id === 'main' ? current.id : `${current.id}:${L.id}`);
     function snapshot() {
       if (!current || !editor.value.trim() || api.tm?.quiet) return; // (round 23: not while the time machine shows a version)
@@ -3346,9 +3434,10 @@ const ThreeLab = (() => {
       if (list[0]?.code === editor.value) return;
       list.unshift({ at: Date.now(), code: editor.value });
       list.length = Math.min(list.length, 40);
-      saveHistory();
+      saveHistory(current.id); // (round 88) this scene's file only
     }
-    function historyDialog() {
+    function historyDialog(read = false) {
+      if (!read && current && kvOk.has('three-history') && !histRead.has(current.id)) { loadHist(current.id).catch(() => false).then(() => historyDialog(true)); return; } // (round 88) its file read first (one that can't be read: what's here is shown)
       const L = sel();
       const versions = history[histKey(L)] || [];
       const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
@@ -3881,6 +3970,31 @@ const ThreeLab = (() => {
     const saveThumbs = debounce(() => { if (kvOk.has('three-thumbs')) window.hub.kvSet('three-thumbs', thumbs); }, 800);
     let thumbTimer = 0;
     let thumbShot = null;
+    // (round 88, labsync88) a picture is saved (and sent to the other computer, the whole three-thumbs.json) only when it
+    // looks different from the one kept: a 64-bit difference hash of it made tiny (scenesafe-core.js thumbHash), kept with
+    // it as h. A scene that runs again with the same look — the same frame, or its animation a moment later — saves nothing.
+    async function hashOfThumb(src) {
+      try {
+        let img = src;
+        if (typeof src === 'string') { img = new Image(); img.src = src; await img.decode(); }
+        const c = document.createElement('canvas'); c.width = 9; c.height = 8;
+        const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, 9, 8);
+        const d = g.getImageData(0, 0, 9, 8).data; const gray = new Array(72);
+        for (let i = 0; i < 72; i++) gray[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+        return SceneSafeCore.thumbHash(gray);
+      } catch { return null; }
+    }
+    async function keepThumb(id, url, img) {
+      const h = await hashOfThumb(img || url);
+      const old = thumbs[id];
+      if (old?.url && !old.h && h) old.h = await hashOfThumb(old.url); // (a picture kept before this round: its hash, in memory)
+      if (old?.url === url || (h && !SceneSafeCore.thumbChanged(old, h))) { if (old) old.at = Date.now(); thumbStats.same += 1; return false; } // (not taken again for 3 min; nothing written)
+      thumbs[id] = { url, at: Date.now(), ...(h ? { h } : {}) };
+      thumbStats.saved += 1;
+      saveThumbs();
+      return true;
+    }
+    const thumbStats = { saved: 0, same: 0 };
     function scheduleThumb() {
       clearTimeout(thumbTimer);
       const id = current?.id;
@@ -3890,15 +4004,14 @@ const ThreeLab = (() => {
         if (current?.id !== id || pendingShot || thumbShot || errors.length || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
         thumbShot = async (url, small) => {
           if (!url || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
-          if (small) { thumbs[id] = { url, at: Date.now() }; saveThumbs(); return; } // (already a small JPEG)
+          if (small) { await keepThumb(id, url, null); return; } // (already a small JPEG)
           const img = new Image(); img.src = url;
           try { await img.decode(); } catch { return; }
           const c = document.createElement('canvas'); const sc = Math.min(1, 360 / Math.max(img.width, img.height));
           c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
           c.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, c.width, c.height); // (round 54) in memory, encoded off the main thread (no wait for the GPU)
           const small2 = typeof canvasDataUrl === 'function' ? await canvasDataUrl(c, 'image/jpeg', 0.75) : c.toDataURL('image/jpeg', 0.75);
-          thumbs[id] = { url: small2, at: Date.now() };
-          saveThumbs();
+          await keepThumb(id, small2, img);
         };
         // (round 16: when the page is idle, and the preview makes it small and encodes it off its frames)
         const ask = () => box.send({ type: 'screenshot', tag: 'thumb', max: 360 });
@@ -3920,7 +4033,7 @@ const ThreeLab = (() => {
       const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
       const pf = pj?.sketchBrowse?.({ after: sortSel, refill: () => fill() }) || null; // (round 23) one project's scenes, its mark on cards (projects.js)
       const pins = () => new Set(store.get('three.sketchPins', []));
-      const togglePin = (id) => { const p = pins(); if (p.has(id)) p.delete(id); else p.add(id); store.set('three.sketchPins', [...p]); fill(); };
+      const togglePin = (id) => { const p = pins(); if (p.has(id)) p.delete(id); else p.add(id); store.set('three.sketchPins', [...p]); window.LabPresets?.changed(); fill(); }; // (round 88) pins on both computers
       const cardMenu = (e, sk) => {
         e.preventDefault();
         const p = pins();
@@ -3998,6 +4111,7 @@ const ThreeLab = (() => {
     }
     // opts.by: who switched ('scene' = chat-scenes.js following the chat on screen); fires 'hearth:sketch'
     function openSketch(id, opts = {}) {
+      if (kvOk.has('three-history')) loadHist(id).catch(() => {}); // (round 88) its versions (kv/three-hv-<scene>.json)
       plainSwap = opts.by === 'project' || window.ProjectWorkspace?.state?.().phase === 'opening'; // (round 73, see plainSwap)
       workspaceReleased = false; pageKept = false;
       // unsaved slider values in any layer of the sketch you leave
@@ -4012,7 +4126,7 @@ const ThreeLab = (() => {
             (history[key] ||= []).unshift({ at: Date.now(), code: L.code });
             L.code = p.to;
           }
-          saveHistory();
+          saveHistory(left.id); // (round 88) this scene's file only
           left.code = left.layers?.[0]?.code ?? left.code;
           left.updatedAt = Date.now();
           save();
@@ -4241,14 +4355,18 @@ ${code}
       const [h, t] = await Promise.all([kv('three-history', {}), kv('three-thumbs', {})]);
       if (h.ok) {
         const hv = val(h, {});
-        const disk = hv.versions && typeof hv.versions === 'object' ? hv.versions : {};
-        const made = Object.keys(history).length + trash.length;
-        for (const [k, list] of Object.entries(history)) { const d = Array.isArray(disk[k]) ? disk[k] : []; disk[k] = [...list, ...d.filter((v) => !list.some((x) => x.code === v.code))].slice(0, 40); }
+        const disk = hv.versions && typeof hv.versions === 'object' && !Array.isArray(hv.versions) ? hv.versions : {};
+        const made = trash.length; // (versions made before this read: their scene's file is written with them)
+        // (round 88, labsync88) versions still in three-history.json: into their scenes' files (taken out of it once written)
+        if (Object.keys(disk).length) {
+          histMove = { ...disk };
+          for (const sid of new Set(Object.keys(disk).map(SceneSafeCore.histSceneOf))) { SceneSafeCore.histTake(history, sid, SceneSafeCore.histJoin(SceneSafeCore.histSegOf(history, sid), SceneSafeCore.histSegOf(disk, sid))); histDirty.add(sid); }
+        }
         const dt = Array.isArray(hv.trash) ? hv.trash : [];
         trash = SceneSafeCore.dedupeTrash([...trash, ...dt.filter((x) => !trash.some((y) => y.id === x.id && y.deletedAt === x.deletedAt))]); // (round 87) one entry per deleted scene
-        history = disk;
         kvOk.add('three-history');
-        if (made) saveHistory();
+        if (made) saveHistory(); else if (histDirty.size) saveHistoryNow();
+        if (current) loadHist(current.id).catch(() => {}); // the scene on screen's versions, for History
       }
       if (t.ok) {
         const made = Object.keys(thumbs).length;
@@ -4385,12 +4503,37 @@ ${code}
       let ok = false; let kv = null;
       const local = () => ({ trig: store.get('three.trigPresets', []), palettes: store.get('three.palettes', []) });
       const saveKv = saver(() => (ok && kv ? window.hub.kvSet(KV, kv) : null), 400);
+      // (round 88, labsync88) the rest of what you make in the Lab rides in the same store (scenesafe-core.js mineMerge):
+      // each song's ⚡ triggers and loop, pinned scenes, effect favourites, the stage set list, each scene's sequence. The
+      // places that use them still read this window's storage; they call LabPresets.changed() when they write it.
+      const LOOP = 'hub.three.loop:';
+      const loops = () => { const out = {}; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(LOOP)) { const v = store.get(k.slice(4), null); if (v && v.a != null) out[k.slice(LOOP.length)] = v; } } } catch { /* storage is a convenience */ } return out; };
+      const asSet = (l) => Object.fromEntries((Array.isArray(l) ? l : []).filter((x) => typeof x === 'string' && x).map((x) => [x, true]));
+      const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+      const mineLocal = () => ({
+        song: obj(store.get('three.triggersBySong', {})), loop: loops(),
+        pin: asSet(store.get('three.sketchPins', [])), fxfav: asSet(store.get('three.fx.favs', [])),
+        setlist: (() => { const l = store.get('three.stage.setlist', []); return Array.isArray(l) && l.length ? { main: l } : {}; })(),
+        seqpick: obj(store.get('three.seq.byScene', {})),
+      });
+      const inOrder = (key, m) => { const cur = (store.get(key, []) || []).filter((x) => m[x]); return [...cur, ...Object.keys(m).filter((x) => !cur.includes(x))]; };
+      function mineWrite(kind, m) {
+        if (kind === 'song') store.set('three.triggersBySong', m);
+        else if (kind === 'pin') store.set('three.sketchPins', inOrder('three.sketchPins', m));
+        else if (kind === 'fxfav') store.set('three.fx.favs', inOrder('three.fx.favs', m));
+        else if (kind === 'setlist') store.set('three.stage.setlist', m.main || []);
+        else if (kind === 'seqpick') store.set('three.seq.byScene', m);
+        else if (kind === 'loop') { for (const k of Object.keys(loops())) if (!(k in m)) store.set(`three.loop:${k}`, null); for (const [k, v] of Object.entries(m)) store.set(`three.loop:${k}`, v); }
+      }
       function take(disk) {
-        const r = SceneSafeCore.presetsMerge(disk, local(), store.get('three.presetsKnown', null) || {});
+        const r = SceneSafeCore.labStoreMerge(disk, { presets: local(), presetsKnown: store.get('three.presetsKnown', null) || {}, mine: mineLocal(), mineKnown: store.get('three.mineKnown', null) || {} });
         kv = r.kv;
-        if (r.localChanged) { store.set('three.trigPresets', r.local.trig); store.set('three.palettes', r.local.palettes); }
-        store.set('three.presetsKnown', r.known);
+        for (const kind of r.mineChanged) mineWrite(kind, r.mine[kind]);
+        store.set('three.mineKnown', r.mineKnown);
+        if (r.presets) { store.set('three.trigPresets', r.presets.trig); store.set('three.palettes', r.presets.palettes); } // (a song's setup changed on both: the other one is one of your trigger presets)
+        store.set('three.presetsKnown', r.presetsKnown);
         if (r.kvChanged) saveKv();
+        if (r.mineChanged.size) dispatchEvent(new CustomEvent('hearth:lab-mine', { detail: { kinds: [...r.mineChanged] } }));
         return r;
       }
       SA?.hold(KV, { name: 'Lab presets', saver: saveKv, read: () => SA.kv(KV, null),
@@ -4501,6 +4644,11 @@ ${code}
         return x;
       },
       thumbOf: (id) => thumbs[id]?.url || null,
+      // (round 88, labsync88) a picture for a scene, kept only when it looks different (dev/checks/labsync88.js) · History's
+      // versions of a scene, its file read first
+      keepThumb: (id, url) => keepThumb(id, url, null), thumbStats: () => ({ ...thumbStats }),
+      songCopy: { info: () => songCopyInfo(player.path), offer: (o) => offerSongCopy(player.path, o), keep: () => keepSongCopy(player.path) }, // (round 88) /song keep
+      versionsOf: async (id) => { await loadHist(id); return SceneSafeCore.histSegOf(history, id); },
       previewHost: () => previewHost,
       // (round 43, scenesafe) 🛟 Recover lost scenes (tools/three-scenesafe.js): found scenes join the list (never replacing
       // one: SceneSafeCore.mergeInto), saved at once; unrecover takes exactly those back (the toast's Undo)

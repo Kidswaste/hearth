@@ -70,6 +70,9 @@ async function scan({ quick = false, current = null } = {}) {
   addHistory(await readJson(path.join(K, 'three-history.prev.json')), ' (the save before)');
   const hh = path.join(K, '.history', 'three-history');
   for (const n of (await ls(hh)).sort().reverse().slice(0, 12)) { const c = SS.parseCopy(n); if (c) addHistory(await readJson(path.join(hh, n)), ` (copy of ${when(c.at)})`); }
+  // (round 88, labsync88) History's versions, one file per scene since this round (kv/three-hv-<scene>.json, and its .prev)
+  { const hv = {}; for (const n of (await ls(K)).filter((x) => /^three-hv-[\w-]+(\.prev)?\.json$/.test(x)).slice(0, 1200)) { const v = await readJson(path.join(K, n)); if (v?.versions && typeof v.versions === 'object') Object.assign(hv, SS.histJoin(hv, v.versions)); }
+    if (Object.keys(hv).length) addHistory({ versions: hv }, ' (each scene\'s file)'); }
   let TM = null; try { TM = require('./tools/three-history-core'); } catch { /* no time machine */ }
   const tms = [];
   for (const n of (await ls(K)).filter((x) => /^three-tm-[\w-]+\.json$/.test(x) && !/-t\.json$/.test(x)).slice(0, 400)) {
@@ -86,7 +89,7 @@ async function scan({ quick = false, current = null } = {}) {
     for (const n of await ls(path.join(strash, d, 'kv'))) {
       const f = path.join(strash, d, 'kv', n);
       if (/three-sketches(\.prev)?\.json$/.test(n)) add(`Kept aside by sync on ${d}`, 'scenes', await readJson(f), mtime(f));
-      else if (/three-history\.json$/.test(n)) addHistory(await readJson(f), ` (kept aside by sync on ${d})`);
+      else if (/three-history\.json$|^three-hv-[\w-]+\.json$/.test(n)) addHistory(await readJson(f), ` (kept aside by sync on ${d})`); // (round 88) a scene's versions file too
     }
   }
   if (!quick) {

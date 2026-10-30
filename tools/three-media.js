@@ -1507,7 +1507,7 @@ const ThreeMedia = (() => {
       saveLoop();
       paint();
     }
-    const saveLoop = () => { if (st.path) store.set(loopKey(st.path), region ? { ...region, locked } : null); };
+    const saveLoop = () => { if (st.path) { store.set(loopKey(st.path), region ? { ...region, locked } : null); window.LabPresets?.changed(); } }; // (round 88, labsync88) a song's loop on both computers
     const padded = (r) => { const pad = Math.max(0.05, (r.b - r.a) * 0.06); return { start: Math.max(0, r.a - pad), end: Math.min(D() || r.b + pad, r.b + pad) }; };
 
     // ---------- trim + cut (round 6): the song starts at trim.a and stops at trim.b; the loop or trim can be saved as
