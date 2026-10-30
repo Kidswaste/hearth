@@ -236,7 +236,7 @@ const ProjectsHome = (() => {
     S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files); // (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
     for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
     if(modules.open)paintModules();
-    S.top=S.root.scrollTop=state.scroll||0; // (round 86: S.top, see keepDesk; a clamped place comes back by its scroll event)
+    if(window.DeskPaint)DeskPaint.place(S,state.scroll||0,{now:Boolean(state.focus)});else S.top=S.root.scrollTop=state.scroll||0; // (round 89, desk89) the place set in the coming frame (desk-paint-core.js): the write laid out the whole window inside this task (≈ 15–30 ms of Clink's 50–70) · (round 86: S.top, see keepDesk; a clamped place comes back by its scroll event)
     if(state.focus){const field=[...S.body.querySelectorAll('input,textarea,select')].find(e=>e.className===state.focus.className);field?.focus({preventScroll:true});if(field?.setSelectionRange&&state.focus.start!=null)try{field.setSelectionRange(state.focus.start,state.focus.end);}catch{}}
   }
   // ---------- (round 76, projsync76) the project across your two computers ----------
@@ -320,7 +320,7 @@ const ProjectsHome = (() => {
     if(!id && ProjectWorkspace.current()){ProjectWorkspace.home().catch(err=>toast(calmError(err),{type:'error'}));return;}
     S.open = id && P.get(id) ? id : null;
     if (S.open) P.touch(P.get(S.open));
-    if (S.mounted) { if(!S.open)S.top=S.root.scrollTop=0;paint(); } // (round 86: S.top)
+    if (S.mounted) { if(!S.open){if(window.DeskPaint)DeskPaint.place(S,0);else S.top=S.root.scrollTop=0;}paint(); } // (round 86: S.top) (round 89, desk89) the cards' place too, in the coming frame
   }
 
   Tools.define({

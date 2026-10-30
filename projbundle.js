@@ -199,7 +199,18 @@ const ProjBundle = (() => {
       // (round 85, projbig85) a giant chat goes by its name only ({ __bigChat: { id } }): prepared on the main process's
       // thread exactly as prepare() does here (its secrets counted there)
       const bare = body.chats.map((c) => (c.chat?.__bigChat ? { ...c, chat: { __bigChat: { id: c.chat.__bigChat.id }, messages: [] } } : c));
-      const prep = C.prepare({ ...body, chats: bare, away: undefined }, { chats: chatsBox.checked, files: filesBox.checked });
+      // (round 89, desk89) prepared in slices of a few ms (prepslice-core.js: the same copy, the same steps, the same scrub),
+      // not in the click's task (35–50 ms of copy + scrub for Clink's 4 MB body). Closing the card meanwhile writes nothing
+      const choice = { chats: chatsBox.checked, files: filesBox.checked };
+      let prep;
+      if (typeof PrepSlice !== 'undefined') {
+        let dropped = false;
+        ui.onCancel(() => { dropped = true; ui.close(); }); ui.buttons(button('Cancel', () => { dropped = true; ui.close(); }));
+        ui.say('Getting it ready…');
+        prep = await PrepSlice.prepare({ ...body, chats: bare, away: undefined }, choice, { stats: (last.prep = {}) });
+        if (dropped || !ui.d.open) { ui.close(); return null; }
+        ui.say('');
+      } else prep = C.prepare({ ...body, chats: bare, away: undefined }, choice);
       const job = `ex${Date.now().toString(36)}`;
       let canceled = false;
       const stop = () => { canceled = true; pb().cancel(job).catch(() => {}); ui.say('Stopping…'); };

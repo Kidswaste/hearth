@@ -216,8 +216,15 @@ const ProjBundleCore = (() => {
   // What's left in the body once the owner chose (chats, files): chats out → the project's chat items and the links go;
   // files out → file / capture / render / download items go. Each chat's engine session, a reference's original path
   // (the other computer's folders), a make's link (local) never travel. → { body, leftOut: { chats, files }, secrets }
-  function prepare(body, { chats = true, files = true } = {}) {
+  function prepare(body, opts = {}) {
     const b = copy(body);
+    const leftOut = shape(b, opts);
+    const sc = scrub(b);
+    return { body: sc.value, leftOut, secrets: sc.count };
+  }
+  // (round 89, desk89) prepare's middle, on its own copy b (changed in place) → leftOut: the same steps for prepare()
+  // above and for the export's prepare in slices (prepslice-core.js), so both leave out exactly the same
+  function shape(b, { chats = true, files = true } = {}) {
     const leftOut = {};
     const p = b.project;
     delete p.make; delete p.mkName; delete p.trash;
@@ -237,8 +244,7 @@ const ProjBundleCore = (() => {
     if (p.cover && !p.items.some((x) => x.id === p.cover)) p.cover = null;
     for (const c of b.chats || []) { if (c.chat) { c.chat.session = {}; delete c.chat.lastReply; delete c.chat.pending; } }
     for (const s of b.scenes || []) for (const r of s.refs || []) delete r.src;
-    const sc = scrub(b);
-    return { body: sc.value, leftOut, secrets: sc.count };
+    return leftOut;
   }
   // the parts whose files are packed, for the export card's sizes: the base (scenes, boards, worktable), the chats
   // (attachments), the files (the project's file / capture / render / download items: { path, dir? } each)
@@ -396,6 +402,6 @@ const ProjBundleCore = (() => {
     return c;
   }
 
-  return { FORMAT, VERSION, EXT, MANIFEST, BODY, TOKEN, LIMITS, STORES, KIND_ITEMS, BIG, fmtSize, plural, base, copy, walk, rewrite, entryOk, inside, checkEntries, makeManifest, checkManifest, from, checkBody, isPathLike, secretFile, collectPaths, tokenOf, entryOfToken, methodFor, scrub, prepare, parts, chatBytes, summarize, describe, remap, canon };
+  return { FORMAT, VERSION, EXT, MANIFEST, BODY, TOKEN, LIMITS, STORES, KIND_ITEMS, BIG, fmtSize, plural, base, copy, walk, rewrite, entryOk, inside, checkEntries, makeManifest, checkManifest, from, checkBody, isPathLike, secretFile, collectPaths, tokenOf, entryOfToken, methodFor, scrub, prepare, shape, SECRET_KEY, SECRET_STR, isObj, parts, chatBytes, summarize, describe, remap, canon };
 })();
 if (typeof module !== 'undefined') module.exports = ProjBundleCore;
