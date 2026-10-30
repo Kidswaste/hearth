@@ -77,7 +77,9 @@ engine-watch untouched). `projects.js` still reads `kv/three-thumbs.json` as bef
 - Scans: `unit:datasafe-scan`, `unit:winmac-test`, `unit:errorcalm-scan`, `unit:storeack-scan`, `unit:chatsafe-scan`,
   `unit:boot-test` (first screen 1741 / 1751 KB, unchanged), `unit:lazymanifest-test`: pass.
 - App checks under the run lock: `labsync88` (14/14), `labsync87`, `sync72`, `labboot`, `projects`, `lazy`: pass.
-  Also `labstartfast`, `scenesafe`, `timemachine` (they read or seed History).
+  Also `scenesafe` and `timemachine` (they read or seed History): pass. `labstartfast` fails its `songOpen` step ("the
+  preview changed size 2× after it was laid out") — the same failure on this round's base code (run there too, plus a CPU
+  budget miss), so not from this round; left to checkfix88.
 
 ## For the patch notes
 - More of what you make in the Lab now follows you between the PC and the Mac: the trigger bars you set for each song,
