@@ -10,6 +10,7 @@
 //   chat.clickHandler  the window's own handlers for that click (pointer / mouse / click events, capture → bubble)
 //   chat.clickCpu      the window's CPU in the 600 ms after each row click (profiler samples, not idle)
 //   chat.keyHandler    handlers per key while typing 30 keys in the long chat's box (chatsteady73)
+//   chat.keyPaint      (round 93, perf93) those keys' event → the next frame presented after it (key to paint)
 //   lab.toolCall       a Lab tool call that sends no picture, end to end through the fake engine's real MCP calls
 //                      (labcalls74: HubBridge's total), 9 tools × 2 rounds on a scene on screen
 //   lab.stillDraws     a still scene left alone: the preview's draws a second over 10 s (labdraw74 / labpace)
@@ -170,7 +171,15 @@ await section('chats', async () => {
   if (!box) throw Error('no chat box');
   await click(box); await wait(200);
   const text = 'the fog in the intro, bass drop'; const k0 = await thr();
-  for (const ch of text) { HT.ms = 0; HT.on = true; await key(ch); HT.on = false; add('chat.keyHandler', HT.ms); await wait(30); }
+  // (round 93, perf93) chat.keyPaint: the key's event → the first frame presented after it (rAF, then a message posted from it)
+  const afterPaint = () => new Promise((r) => requestAnimationFrame(() => { const mc = new MessageChannel(); mc.port1.onmessage = () => r(performance.now()); mc.port2.postMessage(0); }));
+  for (const ch of text) {
+    let ev = null; let painted = null; const on = (e) => { if (ev == null) { ev = e.timeStamp; painted = afterPaint(); } };
+    addEventListener('keydown', on, { capture: true, once: true });
+    HT.ms = 0; HT.on = true; await key(ch); HT.on = false; add('chat.keyHandler', HT.ms);
+    if (painted) add('chat.keyPaint', (await painted) - ev); else removeEventListener('keydown', on, { capture: true });
+    await wait(30);
+  }
   add('chat.keyCpu', ((await thr()) - k0) / text.length);
   box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true }));
 });
