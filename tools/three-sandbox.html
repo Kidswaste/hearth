@@ -577,32 +577,37 @@ const realNow = performance.now.bind(performance); // (a sequence gives each sce
 // timeline; then, while presenting, 100 % quality is held (RDY.lock: no adaptive steps, no doze, no Light mode, no fps
 // cap). RDY.gl counts what the GPU compiles / uploads (from the prototypes, under the program cache: a cached program
 // counts nothing), so a check can count them in the first seconds of a show.
-const RDY = { lock: false, rec: null, pend: 0, reveal: 0, revealed: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0 } };
+const RDY = { lock: false, rec: null, pend: 0, reveal: 0, revealed: 0, gl: { compiles: 0, links: 0, uploads: 0, reuploads: 0, waitMs: 0, inF: 0, waitF: 0 } };
 // (round 56, readyspeed) when ▶ Play's pictures arrived, were decoded (off the page's thread) and transcoded (KTX2, in workers): page times, ms
 const RDYT = { refsAt: null, decodeFrom: null, decodeTo: null, decodeN: 0, ktxFrom: null, ktxTo: null, ktxN: 0 };
 const rdyT = (k, t0) => { const t = realNow(); if (RDYT[`${k}From`] == null || t0 < RDYT[`${k}From`]) RDYT[`${k}From`] = t0; if (RDYT[`${k}To`] == null || t > RDYT[`${k}To`]) RDYT[`${k}To`] = t; RDYT[`${k}N`] += 1; };
 for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRenderingContext?.prototype]) {
   if (!P) continue;
   const wrap = (m, fn) => { const f = P[m]; if (typeof f === 'function') P[m] = fn(f); };
-  wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; return f.call(this, sh); });
-  wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; return f.call(this, pr); });
+  // (round 90, labcompile90) and how many of them ran inside one of the page's frame callbacks (FR.inRaf): a compile in
+  // the gap after a frame doesn't make a frame late on a graphics card that compiles in the background
+  wrap('compileShader', (f) => function (sh) { RDY.gl.compiles += 1; if (FR.inRaf) RDY.gl.inF += 1; return f.call(this, sh); });
+  wrap('linkProgram', (f) => function (pr) { RDY.gl.links += 1; if (FR.inRaf) RDY.gl.inF += 1; return f.call(this, pr); });
   // (round 52, gameready) time the page waits for the GPU's shader work (a status read blocks until it's compiled /
   // linked; programs from Chromium's shader disk cache come back sooner): ms, cumulative
-  wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { RDY.gl.waitMs += realNow() - t; } });
+  wrap('getProgramParameter', (f) => function (pr, k) { const t = realNow(); try { return f.call(this, pr, k); } finally { const d = realNow() - t; RDY.gl.waitMs += d; if (FR.inRaf) RDY.gl.waitF += d; } });
   // a texture's first upload (a picture / model texture arriving) vs the same texture again (a video's next frame).
   // (round 55, labplay55) the texture is asked for at the upload (the context keeps its bindings: no GPU round trip)
   // instead of following every activeTexture / bindTexture call: those run many times a frame in a game, uploads rarely
   // (round 60, gcchurn60) a game's canvas / data texture is uploaded every frame: `arguments` only handed on (strict: the
   // optimiser passes them through; `...a` made an array on every upload)
-  const up = (f) => function (tg) {
+  // (round 90, labcompile90) while the hitch recorder is on, the biggest single upload that carried pixels (a whole 4K
+  // picture, or one slice of it: see "big pictures in slices"), inside a frame or not
+  const up = (f, m) => function (tg) {
     'use strict';
     const gl = this;
+    if (HX.on) { const mp = hxCall(m, arguments); if (mp > HX.big) HX.big = mp; if (FR.inRaf && mp > HX.bigF) HX.bigF = mp; }
     const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
     let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
     if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; if (HX.on) { const mp = hxPx(arguments); HX.px += mp; if (FR.inRaf) HX.pxF += mp; } } else RDY.gl.reuploads += 1;
     return f.apply(this, arguments);
   };
-  for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, up);
+  for (const m of ['texImage2D', 'texImage3D', 'texStorage2D', 'texStorage3D', 'compressedTexImage2D', 'texSubImage2D', 'texSubImage3D', 'compressedTexSubImage2D']) wrap(m, (f) => up(f, m));
 }
 // models (and textures) loading through three.js's default manager: how many are still on their way
 try {
@@ -1907,7 +1912,17 @@ window.__labPace = {
 // its gap, the layers' render work in it, and what the GPU was asked for in it (shader compiles / links, the ms the page
 // waited on a program's status, first uploads and the pixels they carried). Typed arrays made once at start: nothing
 // per frame, nothing at all while off. window.__labHitch.start() / mark(label) / stop() → JSON text.
-const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, px: 0, pxF: 0 };
+const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, cf: null, sf: null, bx: null, bxf: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, cf0: 0, sf0: 0, px: 0, pxF: 0, big: 0, bigF: 0 };
+// (round 90, labcompile90) megapixels one upload call carried: texImage2D / texSubImage2D from a picture (its size) or
+// from data (the width × height asked for: a slice); texStorage carries none (memory only)
+function hxCall(m, a) {
+  if (m === 'texStorage2D' || m === 'texStorage3D') return 0;
+  const src = a[a.length - 1];
+  if (m === 'texSubImage2D' && a.length >= 9) return (Number(a[4]) * Number(a[5])) / 1e6 || 0;
+  if (m === 'texImage2D' && a.length >= 9) return src ? (Number(a[3]) * Number(a[4])) / 1e6 || 0 : 0;
+  if (src && typeof src === 'object' && !ArrayBuffer.isView(src)) return ((src.videoWidth || src.naturalWidth || src.displayWidth || src.width || 0) * (src.videoHeight || src.naturalHeight || src.displayHeight || src.height || 0)) / 1e6;
+  return 0;
+}
 // megapixels a first upload carried (texImage2D's two shapes, texImage3D / texStorage: width × height (× depth))
 function hxPx(a) {
   const s = a.length === 6 && typeof a[5] === 'object' ? a[5] : null;
@@ -1929,18 +1944,21 @@ function hxTick(t, drew) {
   HX.u[i] = gl.uploads - HX.u0; HX.u0 = gl.uploads;
   HX.p[i] = HX.px - HX.p0; HX.p0 = HX.px;
   HX.f[i] = HX.pxF - HX.f0; HX.f0 = HX.pxF;
+  HX.cf[i] = gl.inF - HX.cf0; HX.cf0 = gl.inF; // (round 90: compiles / links inside the frame's callbacks, ms waited there)
+  HX.sf[i] = gl.waitF - HX.sf0; HX.sf0 = gl.waitF;
+  HX.bx[i] = HX.big; HX.bxf[i] = HX.bigF; HX.big = 0; HX.bigF = 0; // (round 90: the biggest single upload since the last frame)
 }
 window.__labHitch = {
   start: (max = 6000) => {
-    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max) });
-    HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF;
+    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max), cf: new Uint16Array(max), sf: new Float32Array(max), bx: new Float32Array(max), bxf: new Float32Array(max), big: 0, bigF: 0 });
+    HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF; HX.cf0 = RDY.gl.inF; HX.sf0 = RDY.gl.waitF;
     return realNow();
   },
   mark: (label) => { if (HX.on) HX.marks.push([HX.n, String(label)]); return HX.n; },
   stop: () => {
     HX.on = false;
     const k = HX.n; const r = (a, d = 1) => Array.from(a.subarray(0, k), (x) => Math.round(x * d) / d);
-    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
+    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), compilesInFrame: r(HX.cf), waitInFrame: r(HX.sf, 10), bigUp: r(HX.bx, 100), bigUpInFrame: r(HX.bxf, 100), lc: window.__labCompile?.state?.() || null, slices: window.__labUploads().slices ?? null, swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
   },
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
