@@ -9,6 +9,8 @@
 //   copies: names / prune  rotating copies in data/kv/.history/<store>/ (newest 10, one per day for a week, the fullest)
 //   collect(…)             the recovery scan's sources → one list of scenes that aren't in your list (or are newer)
 //   mergeInto(…)           bringing scenes back: added next to yours, never replacing one
+//   trashArrived / dedupeTrash / presetsMerge  (round 87, labsync87) a scene deleted on the other computer in this one's
+//                          Lab trash; the Lab presets (trigger presets, saved palettes) across both computers
 (function (root, factory) {
   const api = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.SceneSafeCore = api;
@@ -291,5 +293,96 @@
     return { list, added };
   }
 
-  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto };
+  // ---------- (round 87, labsync87) the other computer's changes, in the Lab of this one ----------
+  // A scene deleted on the other computer goes to THIS computer's Lab trash too (History → Deleted sketches), not just out
+  // of the picker. trash: what the Lab holds ([scene + deletedAt]) · removed: the scenes the arrival took out · disk: the
+  // trash in kv/three-history.json as it is now (null: not read). The other computer's own entry wins when it's there;
+  // else one made here, marked `there` (its time is when it was seen here), replaced by the real one when that arrives.
+  // → { trash, changed } (newest first, at most 30, one entry per deletion)
+  function trashArrived(trash, removed = [], disk = null, now = Date.now()) {
+    const list = Array.isArray(trash) ? [...trash] : [];
+    let changed = false;
+    for (const d of Array.isArray(disk) ? disk : []) {
+      if (!d?.id || list.some((t) => t.id === d.id && t.deletedAt === d.deletedAt)) continue;
+      list.push(d); changed = true;
+    }
+    for (const s of removed || []) {
+      if (!s?.id || list.some((t) => t.id === s.id && (t.there || (t.deletedAt || 0) >= (s.updatedAt || 0)))) continue;
+      list.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, updatedAt: s.updatedAt || 0, deletedAt: now, there: true }); changed = true;
+    }
+    const out = dedupeTrash(list);
+    return { trash: out, changed: changed || out.length !== list.length };
+  }
+  // a `there` entry goes once the other computer's own entry for that deletion is here (deleted after the version seen)
+  function dedupeTrash(list) {
+    const L = (list || []).filter(Boolean);
+    const real = (t) => L.some((x) => !x.there && x.id === t.id && (x.deletedAt || 0) >= (t.updatedAt || 0));
+    return L.filter((t) => !(t.there && real(t))).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0)).slice(0, 30);
+  }
+  // Lab presets made by the owner (trigger presets, saved palettes) live in this window's localStorage, where the menus
+  // read them (each computer its own); since round 87 they also live in kv/lab-presets.json, which syncs:
+  //   { v: 1, items: { <id>: { kind: 'trig' | 'palettes', name, data: '<the cfg / colors as JSON text>', at } } }
+  // Each preset has its own id (two made with one name on both computers are two items, both kept: the second shows as
+  // "name (2)"); its value is one piece of text (changed on both computers = one clash, settled by sync with the other
+  // version kept aside — never two presets mixed field by field). known: per kind, name → { id, sig } as this computer last
+  // saw the store, so a name gone from the store is told apart from a new one here: deleted there (unchanged here) →
+  // deleted here; changed here → kept (an edit wins over a delete: never lost).
+  // local: { trig: [{ name, cfg }], palettes: [{ name, colors }] } (newest first)
+  // → { kv, local, known, kvChanged, localChanged }
+  const PRESET_KINDS = { trig: { field: 'cfg', max: 30 }, palettes: { field: 'colors', max: 60 } };
+  const sigOf = (v) => { try { return JSON.stringify(v ?? null); } catch { return 'null'; } };
+  const unsig = (s) => { try { return JSON.parse(s); } catch { return null; } };
+  function presetsMerge(kv, local, known, now = Date.now(), rand = () => Math.floor(Math.random() * 46656).toString(36)) {
+    const store = kv && typeof kv === 'object' && !Array.isArray(kv) ? kv : null;
+    const items = store?.items && typeof store.items === 'object' && !Array.isArray(store.items) ? store.items : {};
+    const out = { kv: { ...(store || {}), v: 1, items: {} }, local: {}, known: {}, kvChanged: false, localChanged: false };
+    let seq = 0;
+    const newId = () => `p${now.toString(36)}${rand()}${(seq++).toString(36)}`;
+    for (const [id, it] of Object.entries(items)) if (it && !PRESET_KINDS[it.kind]) out.kv.items[id] = it; // a kind a newer Hearth knows: kept
+    for (const [kind, { field, max }] of Object.entries(PRESET_KINDS)) {
+      const K = new Map(Object.entries(items).filter(([, it]) => it && it.kind === kind && typeof it.name === 'string' && typeof it.data === 'string'));
+      const L = (Array.isArray(local?.[kind]) ? local[kind] : []).filter((x) => x && typeof x.name === 'string' && x.name);
+      // (no store at all — never made, or gone: nothing in it was "deleted there"; what's here is put back in it)
+      const kn = store && known?.[kind] && typeof known[kind] === 'object' ? known[kind] : {};
+      const nextKv = new Map(); const nextLocal = []; const nextKnown = {}; const used = new Set();
+      const keep = (x, id, it) => { nextLocal.push(x); nextKv.set(id, it); nextKnown[x.name] = { id, sig: sigOf(x[field]) }; used.add(id); };
+      for (const x of L) {
+        const sig = sigOf(x[field]); const k = kn[x.name]; const it = k ? K.get(k.id) : null;
+        if (it && !used.has(k.id)) {
+          if (it.data === sig) keep(x, k.id, it);
+          else if (k.sig === sig) { keep({ ...x, [field]: unsig(it.data) }, k.id, it); out.localChanged = true; } // changed there
+          else { keep(x, k.id, { ...it, data: sig, at: now }); out.kvChanged = true; } // changed here
+        } else if (k && !it && k.sig === sig) out.localChanged = true; // deleted there (unchanged here): deleted here
+        else {
+          // new here (or changed here after a delete there): the same one already in the store (made on the other
+          // computer with this name and this value) is taken as it is
+          const twin = [...K].find(([id, y]) => !used.has(id) && y.name === x.name && y.data === sig && !Object.values(kn).some((z) => z.id === id));
+          if (twin) keep(x, twin[0], twin[1]);
+          else { keep(x, k?.id && !K.has(k.id) ? k.id : newId(), { kind, name: x.name, data: sig, at: now }); out.kvChanged = true; }
+        }
+      }
+      const fresh = [];
+      for (const [id, it] of K) {
+        if (used.has(id)) continue;
+        const k = Object.entries(kn).find(([, z]) => z.id === id);
+        if (k && k[1].sig === it.data) { out.kvChanged = true; continue; } // deleted here (changed there since: it comes back)
+        fresh.push([id, it]);
+      }
+      fresh.sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+      const shown = [];
+      for (const [id, it] of fresh) {
+        let name = it.name; let n = 2;
+        while (nextLocal.some((y) => y.name === name) || shown.some((y) => y.name === name)) name = `${it.name} (${n++})`;
+        const x = { name, [field]: unsig(it.data) };
+        shown.push(x); nextKv.set(id, it); nextKnown[name] = { id, sig: it.data }; out.localChanged = true;
+      }
+      out.local[kind] = [...shown, ...nextLocal].slice(0, max);
+      const kept = new Set(out.local[kind].map((x) => nextKnown[x.name]?.id));
+      for (const [id, it] of nextKv) if (kept.has(id)) out.kv.items[id] = it; else out.kvChanged = true;
+      out.known[kind] = Object.fromEntries(out.local[kind].map((x) => [x.name, nextKnown[x.name]]));
+    }
+    if (!store) out.kvChanged = out.kvChanged || Object.keys(out.kv.items).length > 0;
+    return out;
+  }
+  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge };
 }));

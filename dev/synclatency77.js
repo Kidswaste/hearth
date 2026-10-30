@@ -13,6 +13,7 @@
 //   down → window  the receiver's window was told (sync:pulled: chats reload at once; stores per storeack77)
 //   engine share   (save → up) + (down → window): what Hearth itself adds
 //   node dev/synclatency77.js [--root DIR] [--mode idle|busy|all] [--dir pc|mac|both] [--items chat,note,scene,small,big]
+//                             (round 87, labsync87: also labcode,labparams,labnew,labrename,labdelete,labsettings,texture,model,audio,template,presets)
 //                             [--profile icloud|fast] [--repeat 1] [--json] [--budget ms] [--timeout ms]
 //   --root: another copy of Hearth (before / after); --budget: exit 1 when a small item's engine share after delivery
 //   (down → window) is over it
@@ -135,9 +136,49 @@ const ITEM = {
   big: { rel: (tok) => `captures/take-${tok}.mp4`, seed: () => {},
     save: (m, tok) => { const b = Buffer.alloc(48 * 1024 * 1024, 1); b.write(tok, 0); crypto.randomFillSync(b, 1024, 4096); m.write(`captures/take-${tok}.mp4`, b); } },
 };
+// (round 87, labsync87) the Lab's own items (--items labcode,labparams,labnew,labrename,labdelete,labsettings,texture,
+// model,audio,template,presets): a scene's code / its sliders' values, a new / renamed / deleted scene (its copy in the
+// Lab's trash, kv/three-history.json), a scene's settings (kv/three-lab-extras.json), a reference imported into a scene
+// (refs/<time>-name: a 2 MB texture, a 30 MB model, a 6 MB sound; and its line in kv/three-refs.json), a template (its
+// folder) and the Lab presets (kv/lab-presets.json, round 87)
+const labSeed = (m) => {
+  if (!fs.existsSync(m.p('kv/three-sketches.json'))) m.write('kv/three-sketches.json', JSON.stringify(sketches()));
+  if (!fs.existsSync(m.p('kv/three-history.json'))) m.write('kv/three-history.json', JSON.stringify({ versions: { s1: Array.from({ length: 40 }, (_, i) => ({ at: 1700000000000 + i, code: words(400, i) })) }, trash: [] }));
+  if (!fs.existsSync(m.p('kv/three-lab-extras.json'))) m.write('kv/three-lab-extras.json', JSON.stringify({ s1: { media: null } }));
+  if (!fs.existsSync(m.p('kv/three-refs.json'))) m.write('kv/three-refs.json', JSON.stringify({ s1: [] }));
+  if (!fs.existsSync(m.p('kv/lab-presets.json'))) m.write('kv/lab-presets.json', JSON.stringify({ v: 1, items: {} }));
+};
+const LAB_STORES = ['kv/three-sketches.json', 'kv/three-history.json', 'kv/three-lab-extras.json', 'kv/three-refs.json', 'kv/lab-presets.json'];
+const sketchEdit = (fn) => (m, tok) => { const d = m.json('kv/three-sketches.json'); fn(d, tok); m.write('kv/three-sketches.json', JSON.stringify(d)); };
+const refItem = (name, mb) => ({ rel: (tok) => `refs/17${tok.slice(1)}-${name}`, seed: labSeed, size: mb > 8 ? mb * 1048576 : 0,
+  save: (m, tok) => {
+    const rel = `refs/17${tok.slice(1)}-${name}`;
+    const b = mb > 8 ? Buffer.alloc(mb * 1048576, 2) : crypto.randomBytes(mb * 1048576); b.write(tok, 0); if (mb > 8) crypto.randomFillSync(b, 1024, 4096);
+    m.write(rel, b);
+    const r = m.json('kv/three-refs.json'); (r.s1 ||= []).push({ id: `r${tok}`, key: name.replace(/\..*$/, ''), name, kind: /png/.test(name) ? 'image' : /glb/.test(name) ? 'model' : 'audio', path: m.p(rel), size: b.length, at: Date.now() });
+    m.write('kv/three-refs.json', JSON.stringify(r));
+  } });
+Object.assign(ITEM, {
+  labcode: { rel: () => 'kv/three-sketches.json', seed: labSeed, save: sketchEdit((d, tok) => { d[3].layers[2].code += `\n// ${tok}`; d[3].updatedAt = Date.now(); }) },
+  labparams: { rel: () => 'kv/three-sketches.json', seed: labSeed, save: sketchEdit((d, tok) => { d[4].layers[0].values = { Speed: 1.5, Glow: 0.8, Seed: tok }; d[4].updatedAt = Date.now(); }) },
+  labnew: { rel: () => 'kv/three-sketches.json', seed: labSeed, save: sketchEdit((d, tok) => { d.push({ id: `s-${tok}`, name: `New ${tok}`, code: '// new scene', updatedAt: Date.now() }); }) },
+  labrename: { rel: () => 'kv/three-sketches.json', seed: labSeed, save: sketchEdit((d, tok) => { d[6].name = `Neon ${tok}`; d[6].updatedAt = Date.now(); }) },
+  labdelete: { rel: () => 'kv/three-history.json', seed: labSeed,
+    save: (m, tok) => {
+      const d = m.json('kv/three-sketches.json'); const gone = d.splice(d.length - 1, 1)[0]; m.write('kv/three-sketches.json', JSON.stringify(d));
+      const h = m.json('kv/three-history.json'); h.trash.unshift({ ...gone, name: `${gone.name} ${tok}`, deletedAt: Date.now() }); m.write('kv/three-history.json', JSON.stringify(h));
+    } },
+  labsettings: { rel: () => 'kv/three-lab-extras.json', seed: labSeed, save: (m, tok) => { const x = m.json('kv/three-lab-extras.json'); x.s3 = { media: { path: m.p('refs/song.mp3'), time: 12.5 }, look: tok }; m.write('kv/three-lab-extras.json', JSON.stringify(x)); } },
+  texture: refItem('paint.png', 2),
+  model: refItem('robot.glb', 30),
+  audio: refItem('loop.wav', 6),
+  template: { rel: (tok) => `templates/t-${tok}/template.json`, seed: labSeed, save: (m, tok) => m.write(`templates/t-${tok}/template.json`, JSON.stringify({ v: 1, name: `Template ${tok}`, layers: [{ name: 'Main', code: '// template' }] })) },
+  presets: { rel: () => 'kv/lab-presets.json', seed: labSeed, save: (m, tok) => { const x = m.json('kv/lab-presets.json'); x.items[`p${tok}`] = { kind: 'trig', name: `Mine ${tok}`, data: JSON.stringify({ bands: [1, 2, 3] }), at: Date.now() }; m.write('kv/lab-presets.json', JSON.stringify(x)); } },
+});
 const has = (file, tok, big) => {
   try {
-    if (big) { const fd = fs.openSync(file, 'r'); try { const b = Buffer.alloc(64); fs.readSync(fd, b, 0, 64, 0); const st = fs.fstatSync(fd); return st.size === 48 * 1024 * 1024 && b.toString('latin1').includes(tok); } finally { fs.closeSync(fd); } }
+    if (typeof big === 'number' && big > 0) { const fd = fs.openSync(file, 'r'); try { const b = Buffer.alloc(64); fs.readSync(fd, b, 0, 64, 0); return fs.fstatSync(fd).size === big && b.toString('latin1').includes(tok); } finally { fs.closeSync(fd); } }
+    if (big === true) { const fd = fs.openSync(file, 'r'); try { const b = Buffer.alloc(64); fs.readSync(fd, b, 0, 64, 0); const st = fs.fstatSync(fd); return st.size === 48 * 1024 * 1024 && b.toString('latin1').includes(tok); } finally { fs.closeSync(fd); } }
     return fs.readFileSync(file, 'latin1').includes(tok);
   } catch { return false; }
 };
@@ -167,7 +208,7 @@ async function measure(from, to, name, mode) {
   const it = ITEM[name];
   const tok = `T${crypto.randomBytes(4).toString('hex')}`;
   const rel = it.rel(tok);
-  const big = name === 'big';
+  const big = name === 'big' || it.size || false; // (round 87) a Lab model: its size
   const p0 = [from.passes, to.passes];
   const t0 = Date.now();
   it.save(from, tok);
@@ -196,7 +237,7 @@ async function main() {
   for (const n of ITEMS) ITEM[n].seed(pc);
   if (!(await quiet(3000, pc, mac))) say('(start: not calm)');
   // the first sync: both computers have the seeded stores
-  for (let i = 0; i < 100 && !ITEMS.filter((n) => ['chat', 'note', 'scene'].includes(n)).every((n) => fs.existsSync(mac.p(ITEM[n].rel()))); i++) await sleep(300);
+  for (let i = 0; i < 100 && ![...ITEMS.filter((n) => ['chat', 'note', 'scene'].includes(n)).map((n) => ITEM[n].rel()), ...(ITEMS.some((n) => ITEM[n].seed === labSeed) ? LAB_STORES : [])].every((r) => fs.existsSync(mac.p(r))); i++) await sleep(300); // (round 87) and the Lab's stores
   await quiet(CALM, pc, mac);
   const results = [];
   for (const mode of MODES) {

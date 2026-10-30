@@ -1847,6 +1847,7 @@ const ThreeLab = (() => {
     function savePalette(name, colors) {
       const list = savedPalettes().filter((p) => p.name !== name);
       store.set('three.palettes', [{ name, colors }, ...list].slice(0, 60));
+      window.LabPresets?.changed(); // (round 87, labsync87) to the other computer too
     }
     async function importPalette() {
       let clip = '';
@@ -1879,7 +1880,7 @@ const ThreeLab = (() => {
         saved.length ? 'Saved (click to use)' : null,
         ...saved.map((p) => [p.name, p.colors.join(' '), () => setPalette(p.colors), pal.join() === p.colors.join()]),
         saved.length ? ['Delete a saved palette…', '', () => {
-          popup(r.left, r.bottom + 4, ['Delete which one?', ...savedPalettes().map((p) => [p.name, p.colors.join(' '), () => { store.set('three.palettes', savedPalettes().filter((x) => x.name !== p.name)); toast(`Deleted "${p.name}"`, { timeout: 1500 }); }])]);
+          popup(r.left, r.bottom + 4, ['Delete which one?', ...savedPalettes().map((p) => [p.name, p.colors.join(' '), () => { store.set('three.palettes', savedPalettes().filter((x) => x.name !== p.name)); window.LabPresets?.changed(); toast(`Deleted "${p.name}"`, { timeout: 1500 }); }])]);
         }] : null,
       ]);
     }
@@ -4244,7 +4245,7 @@ ${code}
         const made = Object.keys(history).length + trash.length;
         for (const [k, list] of Object.entries(history)) { const d = Array.isArray(disk[k]) ? disk[k] : []; disk[k] = [...list, ...d.filter((v) => !list.some((x) => x.code === v.code))].slice(0, 40); }
         const dt = Array.isArray(hv.trash) ? hv.trash : [];
-        trash = [...trash, ...dt.filter((x) => !trash.some((y) => y.id === x.id && y.deletedAt === x.deletedAt))].slice(0, 30);
+        trash = SceneSafeCore.dedupeTrash([...trash, ...dt.filter((x) => !trash.some((y) => y.id === x.id && y.deletedAt === x.deletedAt))]); // (round 87) one entry per deleted scene
         history = disk;
         kvOk.add('three-history');
         if (made) saveHistory();
@@ -4255,6 +4256,7 @@ ${code}
         kvOk.add('three-thumbs');
         if (made) saveThumbs();
       }
+      window.LabPresets?.start().catch(() => {}); // (round 87, labsync87)
       const failed = [h.ok ? null : 'three-history', t.ok ? null : 'three-thumbs'].filter(Boolean);
       if (failed.length) console.warn('Lab: could not read', failed.join(', '), '(nothing was saved over them)');
       // (round 21) pictures of sketches that are gone (deleted and not in the trash) are let go
@@ -4327,13 +4329,15 @@ ${code}
           for (const k of Object.keys(mine)) delete mine[k];
           Object.assign(mine, JSON.parse(JSON.stringify(d))); updated += 1;
         }
+        const gone = []; // (round 87, labsync87) deleted there: into this computer's Lab trash too
         if (!trying) {
           for (const x of [...sketches]) {
             if (!x?.id || onDisk.has(x.id) || removedIds.has(x.id)) continue;
             if (x === current) { kept = true; continue; } // deleted there while it's on screen: stays here for now
-            sketches.splice(sketches.indexOf(x), 1); removed += 1;
+            sketches.splice(sketches.indexOf(x), 1); removed += 1; gone.push(x);
           }
         }
+        if (gone.length) trashArrived(gone).catch(() => {});
         if (added || updated || removed) {
           renderPicker();
           if (reopen && current) openSketch(current.id, { by: 'scene' });
@@ -4342,6 +4346,28 @@ ${code}
         return kept ? false : undefined;
       },
     });
+    // (round 87, labsync87) a scene deleted on the other computer is in History → Deleted sketches here too, at once: the
+    // other computer's own entry when its trash (three-history) is here already, else one made now (marked `there`, put
+    // back by the real one when it arrives). The trash file is read only for such an arrival (rare; a read that fails: the
+    // entry made here, nothing saved over it).
+    async function trashArrived(gone) {
+      let disk = null;
+      if (kvOk.has('three-history')) { try { disk = (await SA.kv('three-history', null))?.trash || null; } catch { disk = null; } }
+      const r = SceneSafeCore.trashArrived(trash, gone, disk);
+      if (!r.changed) return;
+      trash = r.trash;
+      if (kvOk.has('three-history')) saveHistory();
+    }
+    // (round 87, labsync87) references that arrived for the scene on screen (made on the other computer): their files read
+    // and sent to the preview, the scene run again when it uses them (before, they waited for the next scene switch). A
+    // file not here yet (a big model still coming) is read when it lands (filewatch.js follows the new path).
+    const refsLine = () => (current ? JSON.stringify((refsAll[current.id] || []).map((r) => [r.id, r.key, r.path, r.size])) : '');
+    function refsArrived() {
+      if (!current || workspaceReleased || !box) return;
+      const want = current;
+      renderRefsBtn(); if (refsDlg?.open) renderRefsDlg();
+      loadRefBytes().then((added) => { if (added && current === want && !workspaceReleased && layersOf().some((L) => /\brefs\b|refTexture/.test(L.code || ''))) run({ sync: true }); }).catch(() => {});
+    }
     // (a store gone or not an object: what's here stays, sync keeps merging) · storeack: holds three-lab-extras, three-notes, three-refs
     const labStore = (name, label, s, set) => SA?.hold(name, {
       name: label, saver: s, read: () => SA.kv(name, null),
@@ -4349,7 +4375,32 @@ ${code}
     });
     labStore('three-lab-extras', 'Lab scene settings', saveExtras, (v) => { extras = v; });
     labStore('three-notes', 'Lab notes', saveNotes, (v) => { notesAll = v; });
-    labStore('three-refs', 'Lab references', saveRefs, (v) => { refsAll = v; dispatchEvent(new Event('hearth:lab-refs')); });
+    labStore('three-refs', 'Lab references', saveRefs, (v) => { const was = refsLine(); refsAll = v; dispatchEvent(new Event('hearth:lab-refs')); if (refsLine() !== was) refsArrived(); }); // (round 87) refsArrived
+    // (round 87, labsync87) the Lab presets you make (trigger presets, saved palettes) on both computers: the menus read them
+    // from this window's storage (as before); kv/lab-presets.json carries them to the other computer (scenesafe-core.js
+    // presetsMerge: a delete there goes here unless you changed it here; the same name made on both before they met: both
+    // kept). Read in the Lab's first idle moment; a read that fails: nothing is saved over the store.
+    const LabPresets = (() => {
+      const KV = 'lab-presets';
+      let ok = false; let kv = null;
+      const local = () => ({ trig: store.get('three.trigPresets', []), palettes: store.get('three.palettes', []) });
+      const saveKv = saver(() => (ok && kv ? window.hub.kvSet(KV, kv) : null), 400);
+      function take(disk) {
+        const r = SceneSafeCore.presetsMerge(disk, local(), store.get('three.presetsKnown', null) || {});
+        kv = r.kv;
+        if (r.localChanged) { store.set('three.trigPresets', r.local.trig); store.set('three.palettes', r.local.palettes); }
+        store.set('three.presetsKnown', r.known);
+        if (r.kvChanged) saveKv();
+        return r;
+      }
+      SA?.hold(KV, { name: 'Lab presets', saver: saveKv, read: () => SA.kv(KV, null),
+        apply: (v) => { if (!ok) return undefined; if (!v || typeof v !== 'object' || Array.isArray(v)) return false; take(v); return undefined; } });
+      return {
+        async start() { if (ok) return; try { const disk = SA ? await SA.kv(KV, null) : await window.hub.kvGet(KV, null); ok = true; take(disk); } catch { ok = false; } },
+        changed() { if (ok) take(kv); }, // a preset saved / deleted here (the menus wrote this window's storage)
+      };
+    })();
+    window.LabPresets = LabPresets;
     api.scenes = {
       all: () => sketches,
       get: (id) => sketches.find((x) => x.id === id) || null,

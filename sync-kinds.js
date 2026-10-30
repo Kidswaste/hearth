@@ -15,6 +15,13 @@ const KINDS = [
   { id: 'runtime', label: 'Instrument runtime', note: 'each computer installs its own', re: /^creative-vst\/runtime\//i, perComputer: true },
 ];
 const byId = new Map(KINDS.map((k) => [k.id, k]));
+// (round 87, labsync87) files a Lab scene needs to run: the references imported into scenes (refs/: textures, 3D models,
+// sounds, videos, fonts) and My templates' folders. A big one (over 8 MB) that the cloud drive keeps online-only (OneDrive
+// Files On-Demand on the PC, iCloud's optimised storage on the Mac) is downloaded like a small one: the engine's
+// "never behind your back" rule is for renders and captures, and a scene whose model never came can't run.
+// Used as the engine's allowDownload ({ has(rel) }); `with(set)` adds the files "Download the big files now" asks for.
+const NEEDED_RE = /^(?:refs|templates)\//i;
+const needed = { has: (rel) => NEEDED_RE.test(String(rel || '')), with: (set) => ({ has: (rel) => NEEDED_RE.test(String(rel || '')) || Boolean(set?.has(rel)), with: needed.with }) };
 const memo = new Map();
 // rel (data-folder path with "/") → kind id, or '' (always syncs)
 function kindOf(rel) {
@@ -53,4 +60,4 @@ async function sizesAsync(local, cloud, breathe) {
 // the list the panel shows: label, note, on / off here, sizes
 const list = (choices = {}, sz = {}) => KINDS.map((k) => ({ id: k.id, label: k.label, note: k.note, perComputer: Boolean(k.perComputer), big: Boolean(k.big), on: isOn(k.id, choices), ...(sz[k.id] || { n: 0, bytes: 0, cloudN: 0, cloudBytes: 0 }) }));
 
-module.exports = { KINDS, kindOf, isOn, skipper, sizes, sizesAsync, list };
+module.exports = { KINDS, kindOf, isOn, skipper, sizes, sizesAsync, list, needed };
