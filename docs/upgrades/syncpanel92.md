@@ -104,6 +104,8 @@ run) and a final one in the `--out` folder (`syncpanel92.png`).
 - `dev/checks/sync72.js`: an arriving chat that isn't here yet is now "A chat", not its id; the step accepts that.
 - `dev/checks/errorcalm.js`: the folder-gone note's button is now "Start the cloud copy again from here", the same as
   the panel; the step accepts that name.
+- `dev/checks/synchard74.js`, `dev/checks/sync-switch-safety.js`: their exact-wording steps follow the new words
+  ("…is an older version. Update it there…"; "the version before the last change from your other computer").
 
 ## Runs
 

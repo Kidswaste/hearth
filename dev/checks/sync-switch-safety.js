@@ -13,7 +13,7 @@ const c=await hub.getChat('switch-check');check(c.messages.length===2,'both mess
 const status=await hub.sync.status();check(status.pending===0&&status.last.errors===0,'sync has no pending errors');
 const previous=(await hub.sync.trash()).find(x=>x.recovery&&x.rel==='chats/switch-check.json');check(previous,'previous chat is recoverable');
 await Sync.trash();
-check([...document.querySelectorAll('dialog[open]')].some(d=>d.textContent.includes('saved before the last incoming sync')),'recovery version labeled correctly');
+check([...document.querySelectorAll('dialog[open]')].some(d=>d.textContent.includes('the version before the last change from your other computer')),'recovery version labeled correctly');
 await smoke({shot:window.SMOKE_SAVES+'/sync-recovery.png'});
 document.querySelectorAll('dialog[open]').forEach(d=>d.close());
 await hub.sync.pause(true);
