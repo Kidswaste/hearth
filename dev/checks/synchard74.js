@@ -45,7 +45,7 @@ const row = () => sec()?.querySelector('.sp-blk');
 step('the panel has "Can\'t sync (1)"', /Can't sync \(1\)/.test(sec()?.textContent || ''), sec()?.textContent?.slice(0, 200));
 step('the file by name, and why in plain words (Windows can\'t use ":")', /Capture 10:32\.png/.test(row()?.textContent || '') && /“:” in it, which Windows can't use/.test(row()?.textContent || '') && /nothing is lost/i.test(sec()?.textContent || ''), row()?.textContent);
 step('a "Rename for Windows" button on its row', Boolean(btn(/^Rename for Windows$/, row())));
-step('the PC runs an older Hearth: "update it there too"', /Hearth on Studio PC is an older version: update it there too/.test(sec()?.textContent || ''), sec()?.textContent);
+step('the PC runs an older Hearth: "update it there too"', /Hearth on Studio PC is an older version\. Update it there/.test(sec()?.textContent || ''), sec()?.textContent);
 step('every button in the panel is named', [...panel().querySelectorAll('button')].every((b) => (b.textContent || b.getAttribute('aria-label') || '').trim()));
 await smoke({ shot: '/tmp/synchard74-blocked.png' });
 

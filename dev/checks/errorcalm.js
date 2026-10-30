@@ -86,7 +86,7 @@ try {
   const t4 = await newToast(() => Sync.now(), () => true, 20000);
   out.syncGone = t4 && { text: shown(t4), buttons: [...t4.querySelectorAll('button')].map((b) => b.textContent), state: Sync.status().state, error: Sync.status().error };
   step('4. the folder gone: a plain line', t4 && !JARGON.test(shown(t4)) && /isn't reachable|missing/.test(shown(t4)), out.syncGone);
-  step('4. … with the one fix (pick the folder again / start it again)', t4 && [...t4.querySelectorAll('button')].some((b) => /Pick the folder again|Start it again/.test(b.textContent)), out.syncGone?.buttons);
+  step('4. … with the one fix (pick the folder again / start it again)', t4 && [...t4.querySelectorAll('button')].some((b) => /Pick the folder again|Start it again|Start the cloud copy again/.test(b.textContent)), out.syncGone?.buttons);
   step('4. … Details holds what was looked for', t4 && new RegExp(`cloud`).test(rawOf(t4)), rawOf(t4));
   t4?.remove();
   await window.hub.sync.off(); await Sync.refresh();
