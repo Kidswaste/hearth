@@ -251,13 +251,21 @@ const gl = r.getContext(); const fb = gl.createFramebuffer(); gl.bindFramebuffer
 gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, p.__webglTexture, 0);
 const px = new Uint8Array(4); gl.readPixels(100, 3000, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
 gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); r.resetState(); return Array.from(px);`;
+  // (in a long run the Lab can be on another scene by now: the texture stretch's scene opened again, its pictures in)
+  if (!((await D.refs.list()) || []).some((x) => x.key === 'big0')) {
+    try { c.openSketch('labcompile90 texture'); } catch { /* the lookup below says */ }
+    await wait(1500); await ready();
+    await until(async () => Array.isArray(await sbx(texel)), 30000);
+    await until(async () => { const u = await sbx('return window.__labUploads()'); return u && !u.waiting && !(u.slices?.active); }, 30000);
+    await wait(800);
+  }
   const before = await sbx(texel);
   const mine = await D.refs.list(); const every = Object.values((await D.refs.all()) || {}).flat();
   const ref = (mine || []).find((x) => x.key === 'big0') || every.filter((x) => x.key === 'big0').at(-1);
   if (!ref) throw new Error(`no big0 reference (${JSON.stringify((mine || []).map((x) => x.key))}, ${every.length} in all)`);
   const u0 = await sbx('return window.__refUpdates || 0');
   await record('reload', async () => { const r = await D.refs.reload(ref.id, { from: `${DIR}/big2.png` }); return { reload: r }; }, { ms: 6000 });
-  if (!out.stretches.reload.info?.reload?.inPlace) throw new Error(`the reference wasn't reloaded in place: ${JSON.stringify(out.stretches.reload.info)}`);
+  if (!out.stretches.reload.info?.reload?.inPlace) throw new Error(`the reference wasn't reloaded in place: ${JSON.stringify(out.stretches.reload.info)} (this scene's: ${JSON.stringify((mine || []).map((x) => [x.key, x.id]))}; big0 in all: ${JSON.stringify(Object.entries((await D.refs.all()) || {}).map(([s, l]) => [s, l.map((x) => x.key)]))}; the scene: ${D.sketchId?.() ?? '?'}; picked ${ref.id})`);
   await until(async () => { const u = await sbx('return [window.__refUpdates || 0, window.__labUploads()]'); return u[0] > u0 && !u[1].waiting && !(u[1].slices?.active); }, 30000);
   await wait(400);
   const after = await sbx(texel);
