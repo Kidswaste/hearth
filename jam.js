@@ -301,6 +301,7 @@ const Jam = (() => {
     if (J) throw new Error('The jam is still running: share it when it ends (Esc stops it).');
     if (!m) throw new Error('No jam yet: /jam starts one.');
     if (sharing) return 'Already recording the clip.';
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const S = ThreeLab.scenes;
     if (!S?.get(m.sketchId)) throw new Error('The jam\'s sketch is gone.');
     const c = await ThreeLab.cmd({ show: true });

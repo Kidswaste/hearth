@@ -40,6 +40,7 @@ const CompDispatch = (() => {
     return a;
   }
   async function labUp() {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94)
     await ThreeLab.cmd({ show: false });
     for (let i = 0; i < 80 && !(S() && ThreeLab.director); i += 1) await sleep(100);
     if (!S()) throw new Error('The Three.js Lab did not load.');

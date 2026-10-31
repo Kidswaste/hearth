@@ -132,6 +132,7 @@ const Studio = (() => {
     return String(out || '').replace(/\*\*/g, '').trim();
   }
   async function labScene(run) {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94)
     await ThreeLab.cmd({ show: false });
     for (let i = 0; i < 80 && !(ThreeLab.scenes && ThreeLab.director); i += 1) await sleep(100);
     return (run.vars.lab && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf(run.vars.lab) : null) || ThreeLab.scenes?.currentId?.() || null;

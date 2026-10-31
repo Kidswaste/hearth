@@ -147,7 +147,7 @@ const Apps = (() => {
     switch (target) {
       case 'lab-model': return AppsLab.addModel(file, { name });
       case 'lab-hdri': return AppsLab.addHdri(file, { name });
-      case 'lab-ref': { await ThreeLab.cmd(); const r = await ThreeLab.addReference(file); toast(`In the Lab's references as ${r.key}`, { timeout: 2600 }); return r; }
+      case 'lab-ref': { await window.Lazy?.load?.('lab'); await ThreeLab.cmd(); const r = await ThreeLab.addReference(file); toast(`In the Lab's references as ${r.key}`, { timeout: 2600 }); return r; }
       case 'lab-song': {
         const r = await HubBridge.call('three_load_media', { path: file });
         if (!r?.ok) throw new Error(r?.error || 'The Lab couldn\'t load it');

@@ -35,7 +35,7 @@ const SafetyNet = (() => {
 
   function labNow() {
     try {
-      if (typeof ThreeLab === 'undefined' || !ThreeLab.peek?.() || !ThreeLab.tm) return labEntry;
+      if ((window.Lazy && !Lazy.isIn('lab')) || typeof ThreeLab === 'undefined' || !ThreeLab.peek?.() || !ThreeLab.tm) return labEntry; // (round 94: not in yet, no work there; a peek would load it)
       if (window.ThreeHistory?.scrubbing) return labEntry; // a version shown while scrubbing isn't your work
       const id = ThreeLab.scenes?.currentId?.();
       if (!id) return labEntry;
@@ -223,6 +223,7 @@ const SafetyNet = (() => {
     if (!o) return;
     if (o.k === 'lab') {
       activate('tool:three');
+      await window.Lazy?.load?.('lab'); // (round 94, labload94)
       await ThreeLab.cmd();
       if (ThreeLab.scenes?.currentId?.() !== o.id) { ThreeLab.scenes?.open?.(o.id); await new Promise((r) => setTimeout(r, 500)); }
       if (window.ThreeHistoryUI) {

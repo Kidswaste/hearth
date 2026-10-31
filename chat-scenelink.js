@@ -21,6 +21,7 @@ const SceneLink = (() => {
   }
 
   async function lab() {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     if (!labIn()) await ThreeLab.cmd({ show: false });
     for (let i = 0; i < 50 && !labIn(); i += 1) await new Promise((r) => setTimeout(r, 100));
     if (!labIn()) throw new Error('The Three.js Lab did not load');

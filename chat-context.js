@@ -63,7 +63,8 @@ const ChatContext = (() => {
     } catch { /* the board isn't loaded */ }
     try {
       const sid = (typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(chatId)) || e.scene?.id;
-      const sk = sid && ThreeLab.scenes?.get(sid);
+      // (round 94, labload94) before the Lab is in: the name kept with the link (a peek at ThreeLab would load the Lab)
+      const sk = sid && (!window.Lazy || Lazy.isIn('lab') ? ThreeLab.scenes?.get(sid) : { id: sid, name: (ChatScenes.linkOf?.(chatId) === sid && ChatScenes.sceneName?.(chatId)) || e.scene?.name || 'a Lab scene' });
       if (sk) out.scene = { id: sk.id, name: sk.name, own: Boolean(ChatScenes?.linkOf?.(chatId)) };
     } catch { /* the Lab isn't loaded */ }
     if (e.sequence) out.sequence = e.sequence;
@@ -129,7 +130,7 @@ const ChatContext = (() => {
       v.linked ? null : forgetIt,
     ].filter(Boolean);
     if (k === 'scene') return [
-      { label: 'Attach the frame on screen', hint: 'a picture', action: tryRun(async () => { if (ThreeLab.scenes?.currentId() !== v.id) { await ThreeLab.cmd(); ThreeLab.scenes.open(v.id); await new Promise((r) => setTimeout(r, 900)); } await ChatAttach.labFrame(agentId); }) },
+      { label: 'Attach the frame on screen', hint: 'a picture', action: tryRun(async () => { await window.Lazy?.load?.('lab'); if (ThreeLab.scenes?.currentId() !== v.id) { await ThreeLab.cmd(); ThreeLab.scenes.open(v.id); await new Promise((r) => setTimeout(r, 900)); } await ChatAttach.labFrame(agentId); }) },
       { label: 'Attach the scene', hint: 'name and layers', action: tryRun(() => ChatAttach.labScene(agentId, v.id)) },
       { label: 'Open in the Lab', action: tryRun(async () => { activate('tool:three'); if (typeof ChatScenes !== 'undefined') await ChatScenes.openScene(v.id); else ThreeLab.scenes.open(v.id); }) },
       typeof ThreeSeq !== 'undefined' ? { label: 'Add to the Lab sequence', action: tryRun(async () => { await ThreeLab.cmd(); await ThreeSeq.add({ sketch: v.id }); toast('Added to the sequence', { timeout: 1400 }); }) } : null,
@@ -246,6 +247,7 @@ const ChatContext = (() => {
     load().then(paintAll);
     const boardHook = () => { try { Board.onChange((what) => { if (what === 'links' || what === 'boards') paintAll(); }); } catch { /* no board */ } };
     if (window.Lazy) window.Lazy.when('board', () => { boardHook(); paintAll(); }); else boardHook(); // (round 16) the board loads after the first screen
+    window.Lazy?.when('lab', () => paintAll()); // (round 94) the scene chip from the Lab itself once it's in
     register();
   });
 
