@@ -94,11 +94,12 @@ async function toTrash(list) {
 // (round 98, bundle98) an error that means the disk (full, read-only, refused), not a damaged file: the import stops
 const diskErr = (err) => ['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'EBUSY', 'EEXIST'].includes(err?.code);
 // (round 98, bundle98) the plans for the models among these files (one call on the thread): path → plan
-async function modelPlans(list, slotLen = 14) {
+// (round 99, labmodels99) syncSafe: for a copy in data/refs/ (it syncs): names sync never carries are moved or named
+async function modelPlans(list, slotLen = 14, { syncSafe = false } = {}) {
   const files = [...new Set(list.filter((p) => AD.isModel(p)))];
   const out = new Map();
   if (!files.length) return out;
-  const res = await work('deps', { files: files.map((file) => ({ file, name: safeBase(file), maxLen: P.LIMITS.name - slotLen - 6, maxDepth: P.LIMITS.depth - 2 })) }).catch(() => []);
+  const res = await work('deps', { files: files.map((file) => ({ file, name: safeBase(file), maxLen: P.LIMITS.name - slotLen - 6, maxDepth: P.LIMITS.depth - 2, ...(syncSafe ? { syncSafe: true } : {}) })) }).catch(() => []);
   files.forEach((f, i) => { if (res?.[i]) out.set(f, res[i]); });
   return out;
 }
@@ -607,11 +608,14 @@ async function discard(dir) {
 const REFS = () => path.join(opts.dataDir, 'refs');
 // src → { ok, path, dir, files, missing } (its folder in data/refs/), { ok, single, missing } (one file: copied by the
 // window as before), { ok: false, error }. Never over a file that's there; a copy that fails half-way goes to the Trash
+// (round 99, labmodels99) the Lab's "add a reference" copies through here too (store.js importRef): + gone (the plan's
+// missing entries, for the Lab's own words), used (this computer's files it copied besides the model: a drop of the
+// model with its files adds the model once); names sync never carries are moved or named (modelPlans syncSafe)
 async function copyAsset(src) {
   const h = here(String(src || ''));
   if (!h || h.dir) return { ok: false, error: 'it isn\'t on this computer' };
-  const pl = (await modelPlans([h.path], 0)).get(h.path);
-  if (!pl || (!pl.files.length && !pl.main.data && !pl.main.rel.includes('/'))) return { ok: true, single: true, missing: pl ? AD.missingLines(pl.missing) : [] };
+  const pl = (await modelPlans([h.path], 0, { syncSafe: true })).get(h.path);
+  if (!pl || (!pl.files.length && !pl.main.data && !pl.main.rel.includes('/'))) return { ok: true, single: true, missing: pl ? AD.missingLines(pl.missing) : [], gone: pl?.missing || [], used: [] };
   fs.mkdirSync(REFS(), { recursive: true });
   const stem = safeBase(h.path, 60).replace(/\.[^.]+$/, '') || 'model';
   let dir = null;
@@ -627,7 +631,7 @@ async function copyAsset(src) {
       else await fs.promises.copyFile(f.abs, t, fs.constants.COPYFILE_EXCL);
     }
   } catch (err) { await toTrash([dir]).catch(() => {}); return { ok: false, error: err.code === 'ENOSPC' ? 'the disk is full' : err.message }; }
-  return { ok: true, path: path.join(dir, ...pl.main.rel.split('/')), dir, files: 1 + pl.files.length, missing: AD.missingLines(pl.missing) };
+  return { ok: true, path: path.join(dir, ...pl.main.rel.split('/')), dir, files: 1 + pl.files.length, missing: AD.missingLines(pl.missing), gone: pl.missing, used: pl.files.map((f) => f.abs) };
 }
 // a failed import / copy's own writes, to the Trash: kv: History files (three-hv-<scene>), its boards' (board-<id>) and
 // worktable's (workbench-<project>) stores, each with its .prev — names the apply wrote fresh (it checked they weren't
@@ -704,4 +708,4 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('projbundle:untake', (_e, a) => untake(a || {}));
 }
 
-module.exports = { register, sizes, exportBundle, peek, peekHere, unpack, discard, chatsInfo, adopt, release, writeZip, walkDir, copyAsset, untake, toTrash, cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; }, _partsDir: (job) => parts.get(String(job))?.dir || null };
+module.exports = { register, sizes, exportBundle, peek, peekHere, unpack, discard, chatsInfo, adopt, release, writeZip, walkDir, copyAsset, untake, toTrash, modelPlans, /* (round 99, labmodels99) */ cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; }, _partsDir: (job) => parts.get(String(job))?.dir || null };

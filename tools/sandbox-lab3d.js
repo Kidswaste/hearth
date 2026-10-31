@@ -96,16 +96,23 @@ const lab3d = (() => {
     return l;
   }
   // bytes → { root: Object3D, clips: AnimationClip[] }
-  async function parse(bytes, kind, renderer) {
+  // (round 99, labmodels99) rm: a reference copied with its other files (three-sandbox.html __labRefModel): the .gltf
+  // parses with its own resource path (its .bin and pictures found there), an .obj gets its .mtl's materials
+  async function parse(bytes, kind, renderer, rm = null) {
     const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     if (kind === 'glb' || kind === 'gltf') {
       const l = await loaders(decodersFor(bytes));
       if (l.__ktx2 && renderer && !l.__ktx2On) { try { l.__ktx2.detectSupport(renderer); l.setKTX2Loader(l.__ktx2); l.__ktx2On = true; } catch { /* no KTX2 */ } }
-      const g = await new Promise((res, rej) => l.parse(buf, '', res, (e) => rej(e)));
+      const g = await new Promise((res, rej) => l.parse(buf, rm?.base || '', res, (e) => rej(e)));
       return { root: g.scene || g.scenes?.[0], clips: g.animations || [] };
     }
     if (kind === 'fbx') { const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js'); const o = new FBXLoader().parse(buf, ''); return { root: o, clips: o.animations || [] }; }
-    if (kind === 'obj') { const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js'); return { root: new OBJLoader().parse(new TextDecoder().decode(bytes)), clips: [] }; }
+    if (kind === 'obj') {
+      const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+      const text = new TextDecoder().decode(bytes); const o = new OBJLoader();
+      if (rm && globalThis.__labRefMtl) { const m = await globalThis.__labRefMtl(rm, text).catch(() => null); if (m) o.setMaterials(m); }
+      return { root: o.parse(text), clips: [] };
+    }
     if (kind === 'stl' || kind === 'ply') {
       const mod = kind === 'stl' ? await import('three/addons/loaders/STLLoader.js') : await import('three/addons/loaders/PLYLoader.js');
       const geo = new (mod.STLLoader || mod.PLYLoader)().parse(buf);
@@ -114,8 +121,10 @@ const lab3d = (() => {
     }
     throw new Error(WHY[kind] || WHY.unknown);
   }
-  function friendly(err, kind) {
+  function friendly(err, kind, rm = null) {
     const m = String(err?.message || err || '');
+    const lost = /Failed to load buffer "([^"]+)"/.exec(m)?.[1];
+    if (rm && lost) return `${decodeURIComponent(lost.split('/').pop())} isn't next to the model: put it there and add the model again`; // (round 99, labmodels99)
     if (/draco/i.test(m)) return 'it is Draco-compressed and the decoder could not load (offline?): export it without Draco, or try again online';
     if (/buffer|\.bin|Failed to load buffer|fetch/i.test(m) && kind === 'gltf') return 'this .gltf points to .bin / texture files next to it: export as one .glb, or add those files too';
     if (/KHR_|extension/i.test(m)) return `it uses a glTF extension three.js can't read (${m.slice(0, 80)})`;
@@ -127,7 +136,8 @@ const lab3d = (() => {
       const bytes = await fetchBytes(url, onProgress);
       const kind = sniff(bytes);
       if (WHY[kind]) throw new Error(WHY[kind]);
-      try { return { ...(await parse(bytes, kind, renderer)), kind, bytes: bytes.length }; } catch (err) { throw new Error(friendly(err, kind)); }
+      const rm = globalThis.__labRefModel?.(url) || null; // (round 99, labmodels99)
+      try { return { ...(await parse(bytes, kind, renderer, rm)), kind, bytes: bytes.length }; } catch (err) { throw new Error(friendly(err, kind, rm)); }
     })();
     cache.set(url, p);
     p.catch(() => cache.delete(url));

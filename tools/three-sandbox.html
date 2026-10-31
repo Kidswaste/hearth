@@ -100,7 +100,7 @@ if (parent !== window) {
   // already parsed comes back without being read or parsed again. Same classes otherwise; any other URL loads as before.
   if (params.get('pool') !== '0' && params.get('assets') !== '0') {
     try {
-      for (const n of ['GLTFLoader', 'HDRLoader', 'RGBELoader', 'EXRLoader']) {
+      for (const n of ['GLTFLoader', 'HDRLoader', 'RGBELoader', 'EXRLoader', 'OBJLoader']) { // (round 99, labmodels99: OBJLoader, for an .obj reference's .mtl)
         const real = `${base}/examples/jsm/loaders/${n}.js`;
         const u = URL.createObjectURL(new Blob([`export * from '${real}';\nimport { ${n} as B } from '${real}';\nexport class ${n} extends B { load(u, ok, pr, er) { const h = globalThis.__labAssetLoad; return h ? h(this, '${n}', u, ok, pr, er, (a, b, c, d) => super.load(a, b, c, d)) : super.load(u, ok, pr, er); } }\n`], { type: 'text/javascript' }));
         orbits[`three/addons/loaders/${n}.js`] = u; orbits[`three/examples/jsm/loaders/${n}.js`] = u;
@@ -4711,6 +4711,7 @@ function setRefs(items) {
     const now = new Set(Object.values(refs));
     for (const u of old) if (!now.has(u) && !busy.has(u) && !AST.urlSig.has(u)) URL.revokeObjectURL(u); // (round 75: not one the asset cache keeps)
   }, 5000);
+  rmodClear(); // (round 99, labmodels99)
   for (const k of Object.keys(refs)) delete refs[k];
   for (const k of Object.keys(refBlobs)) delete refBlobs[k];
   for (const k of Object.keys(refKtx)) delete refKtx[k];
@@ -4733,12 +4734,97 @@ function setRefs(items) {
       b = e.val.blob; url = e.val.url;
     } else { b = new Blob([it.buffer], { type: it.mime || '' }); url = URL.createObjectURL(b); }
     refs[it.key] = url; refKinds[it.key] = it.kind; if (it.kind === 'image') refBlobs[it.key] = b; if (it.ktx2 && it.kind === 'image') refKtx[it.key] = it.ktx2;
+    if (it.files?.length) rmodAdd(it, url, need); // (round 99, labmodels99) a model's other files
     // the open scene's pictures start decoding now, side by side (off the page's thread), before its code asks
     if (it.warm && it.kind === 'image' && !refKtx[it.key]) astPicture(it.key)?.catch(() => {});
   }
   if (AST.on && (items || []).some((it) => it.sig)) { astTrim(); post({ type: 'refs-held', n: PAGE_N, sigs: astHeld() }); }
   if (need.length) post({ type: 'refs-need', n: PAGE_N, sigs: need });
 }
+// ---------- (round 99, labmodels99) a model made of several files ----------
+// A reference copied whole (a .gltf with its .bin and pictures, an .obj with its .mtl and pictures: data/refs/<time>-
+// <name>/ in the window) comes with its other files (it.files: { rel, sig?, buffer? }, rel from the folder's top; it.main:
+// the model's own place there). Each gets a blob: URL (kept in the asset cache by its sig, like the model); the model's
+// URL (refs.<name>) is noted with a resource path of its own, hearth-ref://m<n>/<its folder>/, and the loading
+// managers resolve that path's URLs to the files (refModelResolve: "..", %20, another case written on Windows). So:
+//   - lab3d.model(refs.car) parses with that resource path (tools/sandbox-lab3d.js), and an .obj gets its .mtl
+//   - a scene's own GLTFLoader().load(refs.car) / OBJLoader().load(refs.chair) does the same (the import map's hook)
+// The pictures load through three's own loaders (GLTFLoader: ImageBitmapLoader, decoded off this thread by the
+// browser; MTLLoader: TextureLoader): refTexture's pictures keep the decOff worker and the slices as before.
+const RMOD = { seq: 0, byUrl: new Map(), byPrefix: new Map(), own: new Set() };
+// (the same as labmodels-core.js resolve: dev/labmodels99-test.js runs both on the same cases)
+function refModelResolve(url, prefix, files) {
+  const u = String(url || '');
+  if (!u.startsWith(prefix)) return null;
+  let rest = u.slice(prefix.length).replace(/[?#].*$/, '');
+  try { rest = rest.split('/').map((x) => decodeURIComponent(x)).join('/'); } catch { /* as written */ }
+  const out = [];
+  for (const x of rest.split(/[\\/]+/)) { if (!x || x === '.') continue; if (x === '..') { if (!out.length) return null; out.pop(); } else out.push(x); }
+  const rel = out.join('/');
+  if (files.has(rel)) return files.get(rel);
+  const lc = rel.normalize('NFC').toLowerCase();
+  for (const [k, v] of files) if (k.normalize('NFC').toLowerCase() === lc) return v;
+  return null;
+}
+const rmodAny = (url) => { const m = /^hearth-ref:\/\/m\d+\//.exec(String(url || '')); const e = m && RMOD.byPrefix.get(m[0]); return e ? refModelResolve(url, e.prefix, e.files) : null; };
+const rmodUses = (url) => { for (const e of RMOD.byPrefix.values()) for (const u of e.files.values()) if (u === url) return true; return false; };
+// a loading manager that finds a model's files (its own URL modifier still asked for anything else)
+function rmodManager(mgr) {
+  if (!mgr || mgr.__hearthRef || typeof mgr.resolveURL !== 'function') return mgr;
+  const own = mgr.resolveURL;
+  mgr.resolveURL = function (url) { return rmodAny(url) || own.call(this, url); };
+  mgr.__hearthRef = true;
+  return mgr;
+}
+rmodManager(THREE.DefaultLoadingManager);
+globalThis.__labRefModel = (url) => RMOD.byUrl.get(String(url)) || null;
+function rmodAdd(it, url, need) {
+  const prefix = `hearth-ref://m${++RMOD.seq}/`; const files = new Map();
+  for (const f of it.files) {
+    let fu = null;
+    if (f.sig && AST.on) {
+      let e = astGet(`b|${f.sig}`);
+      if (e) AST.hits += 1;
+      else if (f.buffer) { AST.recv += f.buffer.byteLength; const b = new Blob([f.buffer], { type: f.mime || '' }); const u = URL.createObjectURL(b); AST.urlSig.set(u, f.sig); e = astPut(`b|${f.sig}`, f.sig, f.buffer.byteLength, { blob: b, url: u }, () => astRevoke(u)); AST.misses += 1; }
+      if (!e) { need.push(f.sig); continue; }
+      AST.pin.add(f.sig); fu = e.val.url;
+    } else if (f.buffer) { AST.recv += f.buffer.byteLength; fu = URL.createObjectURL(new Blob([f.buffer], { type: f.mime || '' })); RMOD.own.add(fu); }
+    if (fu) files.set(String(f.rel), fu);
+  }
+  const dir = String(it.main || '').split('/').slice(0, -1).map(encodeURIComponent).join('/');
+  const e = { prefix, base: dir ? `${prefix}${dir}/` : prefix, files, main: it.main, key: it.key };
+  RMOD.byUrl.set(url, e); RMOD.byPrefix.set(prefix, e);
+}
+// the references change: the last ones' entries (and their own URLs) go 5 s later (a model still loading finds its files)
+function rmodClear() {
+  const was = [...RMOD.byPrefix.values()]; const own = [...RMOD.own];
+  if (!was.length && !own.length) return;
+  RMOD.own = new Set();
+  realSetTimeout(() => {
+    for (const e of was) { if (RMOD.byPrefix.get(e.prefix) === e) RMOD.byPrefix.delete(e.prefix); for (const [u, x] of RMOD.byUrl) if (x === e) RMOD.byUrl.delete(u); }
+    for (const u of own) if (!rmodUses(u)) URL.revokeObjectURL(u);
+  }, 5000);
+}
+// an .obj's materials: its (first) mtllib, read through the model's files, its pictures found the same way → a
+// MaterialCreator, preloaded (null when it names none / it isn't there)
+async function rmodMtl(rm, text) {
+  const libs = [...String(text).matchAll(/^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/gm)].map((m) => m[1]);
+  if (!libs.length) return null;
+  const { MTLLoader } = await import('three/addons/loaders/MTLLoader.js');
+  let mats = null;
+  for (const lib of libs.slice(0, 4)) {
+    const u = rmodAny(rm.base + lib);
+    if (!u) continue;
+    const t = await fetch(u).then((r) => r.text()).catch(() => null);
+    if (t == null) continue;
+    const dir = lib.split(/[\\/]/).slice(0, -1).join('/');
+    const m = new MTLLoader(rmodManager(THREE.DefaultLoadingManager)).parse(t, rm.base + (dir ? `${dir}/` : ''));
+    if (!mats) mats = m; else Object.assign(mats.materialsInfo, m.materialsInfo);
+  }
+  mats?.preload();
+  return mats;
+}
+globalThis.__labRefMtl = rmodMtl;
 // ---------- the scene's files, kept in this page (round 75, labload75) ----------
 // A project switch keeps this page (round 72) and runs the next project's scene in it, and a scene seen before used to
 // start from nothing: its references' bytes copied over again from the window (a video reference is the whole video),
@@ -4768,7 +4854,7 @@ const astHeld = () => [...AST.e.values()].filter((e) => e.key.startsWith('b|')).
 // a file let go: its URL goes 5 s later (anything still loading it has its copy), unless the scene shows it now
 function astRevoke(url) {
   realSetTimeout(() => {
-    if (Object.values(refs).includes(url)) return;
+    if (Object.values(refs).includes(url) || rmodUses(url)) return; // (round 99: a model's file still in use)
     for (const w of refVids) { const v = w.deref(); if (v && v.getAttribute('src') === url) return; }
     AST.urlSig.delete(url); URL.revokeObjectURL(url);
   }, 5000);
@@ -4816,7 +4902,23 @@ function astPicture(key) {
 // scene's references or a web address (by its address; other blob: URLs load as before). The first load parses as usual
 // and keeps what came out. (Without it a sky loaded by a scene stayed whole with each gone scene: +4 MB a switch.)
 const AST_DATA = { HDRLoader: 1, RGBELoader: 1, EXRLoader: 1 };
+// (round 99, labmodels99) a model of several files (one of the scene's references): its loader finds the files (its
+// manager, its resource path); an .obj gets its .mtl's materials first. Then as before.
 globalThis.__labAssetLoad = (loader, name, url, onLoad, onProgress, onError, superLoad) => {
+  const rm = RMOD.byUrl.get(String(url));
+  if (!rm) return astLoad(loader, name, url, onLoad, onProgress, onError, superLoad);
+  rmodManager(loader.manager);
+  if (name === 'OBJLoader') {
+    const mgr = loader.manager; mgr?.itemStart?.(url);
+    const fail = (err) => { mgr?.itemError?.(url); if (onError) onError(err); else console.error(err); };
+    fetch(url).then((r) => r.text()).then(async (text) => { if (!loader.materials) { const m = await rmodMtl(rm, text).catch(() => null); if (m) loader.setMaterials(m); } onLoad?.(loader.parse(text)); }).catch(fail).finally(() => mgr?.itemEnd?.(url));
+    return undefined;
+  }
+  if (name !== 'GLTFLoader' || loader.resourcePath) return astLoad(loader, name, url, onLoad, onProgress, onError, superLoad);
+  loader.resourcePath = rm.base; // (read by its load() at once)
+  try { return astLoad(loader, name, url, onLoad, onProgress, onError, superLoad); } finally { loader.resourcePath = ''; }
+};
+function astLoad(loader, name, url, onLoad, onProgress, onError, superLoad) {
   // (a web address: kept by its address; a blob: URL only when it's one of the scene's references)
   const u = String(url);
   const sig = !AST.on ? null : AST.urlSig.get(u) || (/^(https?|hearth-three):/i.test(u) && !loader.path && !loader.requestHeader?.Authorization ? `url|${u}` : null);
@@ -4848,7 +4950,7 @@ globalThis.__labAssetLoad = (loader, name, url, onLoad, onProgress, onError, sup
   const tex = new THREE.DataTexture();
   e.val.p.then((d) => { try { loader._applyTexData(tex, d); if (live()) onLoad?.(tex, d); } finally { end(); } }, (err) => { fail(err); end(); });
   return tex;
-};
+}
 function astGltfBytes(g) {
   let n = 0; const seen = new Set();
   for (const s of g.scenes?.length ? g.scenes : [g.scene]) s?.traverse?.((o) => {

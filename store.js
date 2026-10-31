@@ -19,6 +19,7 @@ const ssEnv = { fs, path, cache: new Map() };
 // (round 43, datasafe) the same for every other store: a read that failed is never "empty", a store read with a
 // fallback is merged with the disk before it's saved, a held file is never written blind (datasafe-core.js)
 const DS = require('./datasafe-core');
+const LabModelsCore = require('./labmodels-core'); // (round 99, labmodels99) importRef: a model of several files copied whole
 const dfs = DS.faults(fs, DATA_DIR); // (tests: Windows-style errors from data/.datasafe-faults.json, smoke runs only)
 const dsEnv = { fs: dfs, path, cache: new Map() };
 const doubts = new Map(); // file → { name, why, code, at } — read with a fallback / a copy in this window's session
@@ -582,13 +583,31 @@ const kvPath = (name) => {
 };
 
 // Reference files for Lab sketches are copied here, so they keep working if the original moves.
+// (round 99, labmodels99) a model made of several files (a .gltf with its .bin and pictures, an .obj with its .mtl, a
+// .glb naming outside files) is copied whole: its folder in refs/<time>-<name>/, the layout kept (importRefWhole). The
+// answer is then a Promise of the model's path (the IPC waits for it); every other file as before.
 function importRef(src) {
+  if (LabModelsCore.isMulti(src)) return importRefWhole(src).then((r) => r.path);
+  return importRefOne(src);
+}
+function importRefOne(src) {
   const dir = path.join(DATA_DIR, 'refs');
   fs.mkdirSync(dir, { recursive: true });
   const safe = path.basename(src).replace(/[^\w.\- ]+/g, '_').slice(-80) || 'file';
   const file = path.join(dir, `${Date.now()}-${safe}`);
   fs.copyFileSync(src, file);
   return file;
+}
+// (round 99, labmodels99) → { path, dir?, files, missing: [plain words], used: [this computer's files it copied besides
+// the model] }. The plan (assetdeps-core.js) runs on the project files' thread (projbundlemain.js copyAsset: never over a
+// file, a half-done copy to the Trash, secret-looking files never copied, names sync never carries moved or named).
+// A model of one file (a plain .glb, a .gltf with everything inside) is copied as before. Throws in plain words.
+async function importRefWhole(src) {
+  const c = await require('./projbundlemain').copyAsset(String(src));
+  if (!c || c.ok === false) throw new Error(`${path.basename(String(src))} couldn't be copied: ${c?.error || 'error'}`);
+  const missing = LabModelsCore.missingText(c.gone);
+  if (c.path) return { path: c.path, dir: c.dir, files: c.files, missing, used: c.used || [] };
+  return { path: importRefOne(src), files: 1, missing, used: [] };
 }
 
 function saveAttachment(name, base64) {
@@ -841,6 +860,7 @@ module.exports = {
   mergeKV, applyOps, // (round 73, chatsteady73) a store saved by what changed (usage.js)
   saveAttachment,
   importRef,
+  importRefWhole, // (round 99, labmodels99)
   ATTACH_DIR,
   addUsage,
   getUsage: () => readJson(USAGE_PATH, {}),

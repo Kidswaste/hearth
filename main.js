@@ -412,6 +412,10 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
 });
 ipcMain.handle('attachments:save', (_e, name, base64) => store.saveAttachment(name, base64));
 ipcMain.handle('refs:import', (_e, src) => store.importRef(String(src)));
+// (round 99, labmodels99) the Lab's "add a reference" for a model of several files: copied whole, its missing files named;
+// refs:uses: the files each model names (a drop of a .gltf with its .bin and pictures adds the model once). Read only.
+ipcMain.handle('refs:importWhole', (_e, src) => store.importRefWhole(String(src)));
+ipcMain.handle('refs:uses', async (_e, paths) => { const list = (Array.isArray(paths) ? paths : []).map(String).slice(0, 50); const plans = await require('./projbundlemain').modelPlans(list, 0); return Object.fromEntries(list.map((p) => [p, (plans.get(p)?.files || []).map((f) => f.abs)])); });
 ipcMain.handle('attachments:dir', () => store.ATTACH_DIR);
 ipcMain.handle('usage:get', () => store.getUsage());
 ipcMain.handle('usage:codex', (_e, options) => engines.getCodexUsage(options));
