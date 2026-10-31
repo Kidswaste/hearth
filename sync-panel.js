@@ -58,7 +58,7 @@ const SyncPanel = (() => {
     'secret-cloud': () => ({ text: 'A key or password file an older version put in your cloud copy. Keys never sync now.', fix: 'Remove from the cloud' }),
     // (round 99, kvrename99) one of Hearth's own files (a project, a board, a Lab preset, a chat…): Hearth finds it by its
     // name, so it is never renamed; what is too long is the folder path on the PC. No button here: the fix is on the PC.
-    'win-long-app': (b) => ({ text: `One of Hearth's own files: Hearth finds it by this name, so it isn't renamed. The folder Hearth uses on your ${OTHER} is ${b.over ? `${b.over} character${b.over === 1 ? '' : 's'} ` : ''}too long for it. On the ${OTHER}, open this panel: it shows which folder to move somewhere shorter. Meanwhile it stays as it is on this ${HERE}; nothing is lost.` }),
+    'win-long-app': (b) => ({ text: `One of Hearth's own files: Hearth finds it by this name, so it isn't renamed. The folder Hearth uses on your ${OTHER} is ${b.over ? `${b.over} character${b.over === 1 ? '' : 's'} ` : ''}too long for it. On the ${OTHER}, move Hearth's folder or the cloud folder somewhere shorter (this panel there says which, once Hearth is up to date there). Meanwhile it stays as it is on this ${HERE}; nothing is lost.` }),
     'win-name-app': (b) => ({ text: `One of Hearth's own files, and “${clip(b.part, 30)}” is a name Windows can't use. Hearth finds it by this name, so it isn't renamed: it stays on this ${HERE}; nothing is lost.` }),
   };
   const FIX = { 'win-chars': 'rename', 'win-ending': 'rename', 'win-reserved': 'rename', 'win-long': 'rename', 'too-long': 'rename', 'bad-name': 'rename', 'read-only': 'writable', 'secret-cloud': 'unsecret', locked: 'retry', drive: 'retry', denied: 'retry', 'disk-full': 'space' };

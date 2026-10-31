@@ -44,7 +44,7 @@ await until(() => panel()?.querySelector('.sp-blk[data-why="win-long-app"]'), 15
 const row = () => panel()?.querySelector('.sp-blk[data-why="win-long-app"]');
 const rt = () => (row()?.textContent || '').replace(/\s+/g, ' ');
 step('its row says it is one of Hearth\'s own files, found by its name, not renamed', /One of Hearth's own files: Hearth finds it by this name, so it isn't renamed/.test(rt()), rt());
-step('…that the PC\'s folder is too long for it, by how much, and to look on the PC', /The folder Hearth uses on your PC is \d+ characters? too long for it/.test(rt()) && /On the PC, open this panel/.test(rt()) && /nothing is lost/.test(rt()), rt());
+step('…that the PC\'s folder is too long for it, by how much, and to look on the PC', /The folder Hearth uses on your PC is \d+ characters? too long for it/.test(rt()) && /On the PC, move Hearth's folder or the cloud folder somewhere shorter/.test(rt()) && /nothing is lost/.test(rt()), rt());
 step('no "Rename for Windows" (nor any button) on its row', !row()?.querySelector('button'), row()?.innerHTML?.slice(0, 300));
 step('the row\'s words have no paths or codes', !JARGON.test(rt().replace(/^.*?(One of)/, '$1')), rt().match(JARGON)?.[0]);
 await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/kvrename99-mac.png` }).catch(() => null);
