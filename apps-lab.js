@@ -115,11 +115,13 @@ renderer.setAnimationLoop(() => {
 `;
 
   async function addRef(file) {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94)
     await ThreeLab.cmd();
     return ThreeLab.addReference(file);
   }
   const base = (file) => String(file).split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
   async function addModel(file, { name } = {}) {
+    await window.Lazy?.load?.('lab');
     // (round 15) the Lab's own model layers (tools/three-models.js: library, materials, clips, camera moves) when loaded
     if (window.ThreeModels) { const r = await ThreeModels.add(file, { name, source: 'Apps' }); toast(`🧊 ${(name || base(file)).slice(0, 40)} is a layer in the Lab`, { timeout: 2600 }); return { ref: r.ref, layer: r.layer }; }
     if (!/\.(glb|gltf)$/i.test(file)) {
@@ -134,6 +136,7 @@ renderer.setAnimationLoop(() => {
     return { ref: r.key, layer: out?.added || label };
   }
   async function addHdri(file, { name, legacy = false } = {}) {
+    await window.Lazy?.load?.('lab');
     // (round 15) with a model in the scene, the sky lights it (and shows behind it) instead of being a layer of its own
     if (window.ThreeModels && !legacy) return ThreeModels.sky(file, { name });
     const r = await addRef(file);

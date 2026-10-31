@@ -510,7 +510,7 @@ const CmdBar = (() => {
     const t = String(s || '').trim().toLowerCase();
     const bars = t.match(/^(\d+(?:\.\d+)?)\s*(bars?|beats?)$/);
     if (bars) {
-      const bpm = ThreeLab.peek?.()?.state?.bpm;
+      const bpm = (!window.Lazy || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined' ? ThreeLab.peek?.()?.state?.bpm : null; // (round 94: the Lab may not be in)
       if (!bpm) throw new Error('no tempo yet: load a song in the Lab (or give seconds)');
       return Number(bars[1]) * (60000 / bpm) * (/^bar/.test(bars[2]) ? 4 : 1);
     }

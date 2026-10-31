@@ -14,7 +14,7 @@ const Decide = (() => {
   const uniq = (a) => a.filter((x, i) => x && a.indexOf(x) === i);
 
   // ---------- the Lab ----------
-  const lab = async () => { await ThreeLab.cmd({ show: false }); if (!ThreeLab.director) throw new Error('The Three.js Lab is not ready yet'); return ThreeLab.director; };
+  const lab = async () => { await window.Lazy?.load?.('lab'); await ThreeLab.cmd({ show: false }); if (!ThreeLab.director) throw new Error('The Three.js Lab is not ready yet'); return ThreeLab.director; };
   // What applying a Lab item can change: layers (added / removed ✦ look layers), the palette, the selected layer's
   // color sliders. Undo puts those back.
   async function labSnapshot() {
@@ -105,6 +105,7 @@ const Decide = (() => {
     const inLab = H.surfaceIdFor?.(H.activeId) === 'tool:three';
     const kind = resolveKind(what) || (inLab ? 'look' : 'theme');
     const K = KINDS[kind];
+    if (kind !== 'theme') await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const cands = K.candidates();
     if (!cands.length) throw new Error(`Nothing to choose from for ${K.label}.`);
     const prompt = `Pick ${K.label}. Goal: ${goal || K.goal}.${K.visual ? ' The image is the picture now.' : ''}\nOptions: ${cands.map((c) => c.name).join(' | ')}\nReply with one option name only.`;

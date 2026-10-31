@@ -136,6 +136,7 @@ const Assist = (() => {
     return uniqueName(name, taken);
   }
   async function nameSketch({ useAstra = false } = {}) {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const c = await ThreeLab.cmd({ show: false });
     const was = c.state.sketch;
     let name = sketchName(); let r = null;
@@ -177,6 +178,7 @@ const Assist = (() => {
     return top ? { id: top[0], why: 'your usual' } : { id: '9:16', why: 'the size you use most' };
   }
   async function useUsual() {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const c = await ThreeLab.cmd({ show: false });
     const was = c.state.frame?.id || 'fit';
     const u = usualFrame();
@@ -193,6 +195,7 @@ const Assist = (() => {
   async function frameThumb() { const url = await ThreeLab.shot(); return url ? shrink(url, 240, 0.78) : null; }
 
   async function shufflePick(n = 4, { goal = '', astraPicks = false, from = null } = {}) {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     n = clamp(Math.round(Number(n) || 4), 2, 9);
     const c = await ThreeLab.cmd();
     const d = ThreeLab.director;
@@ -302,6 +305,7 @@ const Assist = (() => {
 
   // Astra picks the strongest variation: one small question with a numbered contact sheet.
   async function astraPick() {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const p = pick;
     if (!p) throw new Error('Open the variations first: /shuffle-pick');
     const tiles = p.tiles.slice(1).filter((t) => t.url);
@@ -427,7 +431,7 @@ const Assist = (() => {
   // ---------- chat commands ----------
   const reg = (def) => {
     if (Commands.get(def.name)) { console.warn(`[assist] /${def.name} exists: not registered`); return; }
-    Commands.register({ area: 'Assist', ...def, aliases: (def.aliases || []).filter((x) => !Commands.get(x)) });
+    Commands.register({ area: 'Assist', ...def, run: async (a, c) => { await window.Lazy?.load?.('lab'); return def.run(a, c); }, aliases: (def.aliases || []).filter((x) => !Commands.get(x)) });
   };
   reg({
     name: 'shuffle-pick', aliases: ['pick-shuffle'], args: '[2–9] [astra] [goal…]',

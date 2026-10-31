@@ -8,7 +8,7 @@
 // board stream's own registration replaces.
 (() => {
   const C = AppsCore;
-  const lab = async () => ThreeLab.cmd();
+  const lab = async () => { await window.Lazy?.load?.('lab'); return ThreeLab.cmd(); }; // (round 94: the Lab may not be in yet)
   async function paletteToLab({ url }) {
     const cols = C.palette(url);
     if (cols.length < 2) throw new Error('No palette in this page\'s address: open a palette (coolors.co/…-…-…) first.');

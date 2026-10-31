@@ -93,7 +93,7 @@
   });
 
   // ---------- undo / history ----------
-  const needThree = () => { if (typeof ThreeDirector === 'undefined') throw new Error('The Three.js Lab isn\'t loaded.'); };
+  const needThree = () => { if (window.Lazy && !Lazy.isIn('lab')) throw new Error('The Three.js Lab isn\'t open yet this session: nothing to undo.'); if (typeof ThreeDirector === 'undefined') throw new Error('The Three.js Lab isn\'t loaded.'); };
   cmd({
     name: 'undo-edit', args: '[force]', desc: 'Undo the director\'s last edit in the Lab: everything an AI changed in one reply is one step (force: even if it changed since)', keys: '↶ in the docked chat',
     complete: pick(['force']),

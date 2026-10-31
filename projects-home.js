@@ -132,12 +132,12 @@ const ProjectsHome = (() => {
     c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
     c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
     // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
-    c.addEventListener('pointerenter', prefetch, { once: true }); c.addEventListener('focus', prefetch, { once: true });
+    c.addEventListener('pointermove', prefetch); c.addEventListener('focus', prefetch, { once: true }); // (round 94, labload94: a pointer moving on it, not pointerenter: one resting where the cards are drawn at start isn't intent)
     // (round 74, projdesk74) the press is the click's first moment: the preview page starts loading now (let go in 4 s if no open claims it)
     c.addEventListener('pointerdown', (e) => { if (e.button === 0 && !e.target.closest('.pj-go') && Lazy.loaded('lab')) ThreeLab.workspace?.preload?.(); });
     return c;
   }
-  const prefetch = () => { for (const g of ['lab', 'board', 'creative']) if (!Lazy.loaded(g)) Lazy.load(g).catch(() => {}); };
+  const prefetch = (e) => { if (e?.type === 'pointermove' && !e.movementX && !e.movementY) return; e?.currentTarget?.removeEventListener('pointermove', prefetch); for (const g of ['lab', 'board', 'creative']) if (!Lazy.loaded(g)) Lazy.load(g).catch(() => {}); }; // (round 94, labload94: a pointer that moved; Chromium's own moves after a layout or scroll have no movement)
   // "continue where you left off": the last chat, the last scene, the last render or still
   function continueChips(p) {
     const out = [];

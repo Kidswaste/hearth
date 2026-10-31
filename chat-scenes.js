@@ -512,7 +512,7 @@ renderer.setAnimationLoop((now) => {
     const url = thumbOf(chatId);
     if (node.textContent !== id.glyph) node.textContent = id.glyph;
     // the scene's own sequence (tools/three-seq.js), in the still's tooltip and a small ▤ mark
-    const sq = typeof ThreeSeq !== 'undefined' ? ThreeSeq.summaryFor?.(linkOf(chatId)) : null;
+    const sq = (!window.Lazy || Lazy.isIn('lab')) && typeof ThreeSeq !== 'undefined' ? ThreeSeq.summaryFor?.(linkOf(chatId)) : null; // (round 94: a peek would load the Lab)
     const sqTip = sq ? ` · ▤ its sequence: ${sq.clips} clip${sq.clips === 1 ? '' : 's'}, ${sq.seconds.toFixed(1)} s` : '';
     if (node.classList.contains('has-seq') !== Boolean(sq?.clips)) node.classList.toggle('has-seq', Boolean(sq?.clips));
     if ((node.dataset.thumb || '') === String(url ? url.length + url.slice(-24) : '')) { const t = url ? `This chat's scene (its own sketch in the Lab)${sqTip}` : sqTip.slice(3); if (node.title !== t) node.title = t; return node; }
@@ -745,6 +745,7 @@ renderer.setAnimationLoop((now) => {
       run: async (args, ctx) => {
         const { agent, chatId, guest } = chatFor(ctx);
         if (!agent) return 'Per-chat scenes are for the Three Director: /director-setup docks one in the Lab.';
+        await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
         await ThreeLab.cmd({ show: false });
         for (let i = 0; i < 50 && !lab(); i += 1) await new Promise((r) => setTimeout(r, 100));
         const S = lab();
@@ -807,6 +808,7 @@ renderer.setAnimationLoop((now) => {
       examples: ['/scene-timeline', '/scene-timeline length 20', '/scene-timeline go f120', '/scene-timeline snap'],
       complete: (a) => [{ value: 'length 10', hint: 'seconds (no song)' }, { value: 'length 20', hint: 'seconds (no song)' }, { value: 'go 0', hint: 'a time (s, m:ss) or a frame (f120)' }, { value: 'play' }, { value: 'pause' }, { value: 'snap', hint: 'keyframes and cues to the song\'s bars' }].filter((x) => x.value.startsWith(String(a || '').trim().toLowerCase().split(' ')[0] || '')),
       run: async (args) => {
+        await window.Lazy?.load?.('lab');
         const c = await ThreeLab.cmd({ show: false });
         for (let i = 0; i < 50 && !lab(); i += 1) await new Promise((r) => setTimeout(r, 100));
         const S = lab(); const d = ThreeLab.director;

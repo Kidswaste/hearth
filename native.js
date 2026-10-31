@@ -484,6 +484,7 @@ const Native = (() => {
     const chatId = H.activeChat[agentId] || null;
     const sk = chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf(chatId) : null;
     if (!sk && H.agent(agentId)?.dock !== 'three') throw new Error('This chat isn\'t linked to a Lab scene yet');
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const r = await ThreeLab.addReference(path, sk ? { sketchId: sk } : {});
     const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
     const scene = sk && typeof ChatScenes !== 'undefined' ? ChatScenes.sceneName(chatId) : null;
@@ -569,10 +570,10 @@ const Native = (() => {
         const saved = await window.hub.saveFile({ defaultPath: `snippet.${ext}`, content: code });
         if (saved) toast(`Saved ${saved.split(/[\\/]/).pop()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(saved) } });
       }
-      if (codeAction.dataset.act === 'three') ThreeLab.openCode(code);
+      if (codeAction.dataset.act === 'three') (window.Lazy ? Lazy.load('lab') : Promise.resolve()).then(() => ThreeLab.openCode(code)).catch((err) => toast(err.message, { type: 'error' })); // (round 94: the Lab may not be in yet)
       if (codeAction.dataset.act === 'apply') { const chatId = H.activeChat[agentId]; const m = chats.get(chatId)?.messages[Number(pre.closest('.msg')?.dataset.index)]; (window.Lazy ? Lazy.load('lab') : Promise.resolve()).then(() => LabChatLink.menu(agentId, chatId, code, codeAction, m ? (m.at || 0) - (m.ms || 0) : 0)).catch((err) => toast(err.message, { type: 'error' })); } // (round 92, labchat92) tools/three-chatlink.js
       if (codeAction.dataset.act === 'ae') (async () => { await window.Lazy?.load?.('adobe'); const r = Adobe.aeJob ? await Adobe.aeJob(code, 'From chat') : await Adobe.run('aftereffects', code, { label: 'From chat' }); toast(r.ok ? 'Running in After Effects: keep working, Hearth tells you when it is done (one undo in AE takes it back)' : r.error, { type: r.ok ? undefined : 'error', timeout: r.ok ? 3500 : 9000 }); })().catch((err) => toast(err.message, { type: 'error' }));
-      if (codeAction.dataset.act === 'shader') ThreeLab.openShader(code);
+      if (codeAction.dataset.act === 'shader') (window.Lazy ? Lazy.load('lab') : Promise.resolve()).then(() => ThreeLab.openShader(code)).catch((err) => toast(err.message, { type: 'error' }));
       return;
     }
     const sug = t.closest('[data-suggest]');
@@ -2375,7 +2376,7 @@ const Native = (() => {
       // (round 67) a chat that owns a Lab scene: that scene (backstage when another one is on screen), not whatever shows
       const chatId = agent && H.activeChat[agent.id];
       const sk = chatId && typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(chatId);
-      if (sk && typeof HubBridge !== 'undefined' && typeof ThreeLab !== 'undefined' && (!window.Lazy?.isIn || Lazy.isIn('lab'))) {
+      if (sk && typeof HubBridge !== 'undefined' && (!window.Lazy?.isIn || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined') {
         const r = await HubBridge.call('three_screenshot', { size: 'medium', force: true }, { chatId }).catch(() => null);
         const data = r?.ok && r.images?.[0]?.data;
         if (data) return await window.hub.saveAttachment(`lab-${Date.now()}.jpg`, data);

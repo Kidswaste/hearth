@@ -763,8 +763,8 @@ const CodeFlow = (() => {
     const actions = [
       { label: 'Copy code', title: 'The whole code (with your edits)', run: () => copyText(src, 'Code copied'), close: false },
       agentId ? { label: 'Insert in my message', title: 'Into the chat box (with your edits)', run: () => { Native.insertDraft(agentId, `\`\`\`${lang || L}\n${src.replace(/\s+$/, '')}\n\`\`\`\n`); }, close: true } : null,
-      isThree() ? { label: 'Open in the Lab', title: 'A new Lab sketch with this code', run: () => ThreeLab.openCode(src), close: true } : null,
-      isShader() ? { label: 'Shader playground', title: 'Open it in the shader playground', run: () => ThreeLab.openShader(src), close: true } : null,
+      isThree() ? { label: 'Open in the Lab', title: 'A new Lab sketch with this code', run: () => (window.Lazy?.load?.('lab') || Promise.resolve()).then(() => ThreeLab.openCode(src)), close: true } : null,
+      isShader() ? { label: 'Shader playground', title: 'Open it in the shader playground', run: () => (window.Lazy?.load?.('lab') || Promise.resolve()).then(() => ThreeLab.openShader(src)), close: true } : null,
     ];
     const g = toGraph(res);
     res.graphTrimmed = g.meta?.trimmed || 0;

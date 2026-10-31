@@ -20,6 +20,7 @@ const Lazy = (() => {
   const realBridge = new Map(); // tool prefix → the real handler
   const stubKeys = new Map(); // 'area|keys' → the stand-in keys-sheet line (the real one fills it in)
   const stubTools = new Map(); // tool id → stand-in tool
+  const actOf = new Map(); // a stand-in Ctrl/⌘+K line → its group (round 94: Lazy.groupOfAction)
   const unregs = new Map(); // 'group|name' → its stand-in's unregister (what Commands.register returns)
   const reports = new Map(); // group → { commands: [defs], actions: [labels], keys: [lines], bridge: [prefixes], apps: [defs], tools: [defs] }
   const missLog = []; // { name, group, at, where }
@@ -33,6 +34,9 @@ const Lazy = (() => {
     groups.set(g.name, { tier: 'soon', after: [], css: [], ...g, state: 'stub', promise: null });
     for (const n of g.globals || []) ofGlobal.set(n, g.name);
   }
+  // (round 94, labload94) a 'soon' group that needs a 'use' one (the Lab's direction / finish lines need the Lab) follows
+  // it: it loads once that one is in (and the start is calm), never pulling it in itself
+  for (const g of groups.values()) if (g.tier === 'soon' && g.after.some((d) => groups.get(d)?.tier === 'use')) { g.tier = 'use'; g.follow = true; }
 
   // ---------- globals: touching one before its group loaded loads it (and is noted for the developer) ----------
   // A configurable accessor on window: `typeof Studio` reads it (undefined, as before the group loads) and asks for the
@@ -125,6 +129,7 @@ const Lazy = (() => {
     const have = (seen.actions ||= new Set((AppUI.actions?.() || []).map((a) => a.label)));
     if (have.has(label)) return;
     have.add(label);
+    actOf.set(label, g.name);
     AppUI.addAction(label, async () => {
       try { await load(g.name); } catch (err) { toast(err.message, { type: 'error' }); return; }
       const fn = realActions.get(label);
@@ -340,12 +345,15 @@ const Lazy = (() => {
   }
   // (round 29, fastboot) a big group's tags go in a few at a time, a task each (the Lab's 74 files were one ≈ 0.1–0.5 s
   // task right after the first frame); they still run in their order (async = false keeps insertion order)
+  // (round 94, labload94) a group loading in the background (g.pace: Lazy.prefetch) goes 4 files at a time, each four
+  // run before the next go in, in idle moments; any real use (a load asked without idle) puts it back at full speed
   const CHUNK = 8;
   const yieldTask = () => (globalThis.scheduler?.yield ? scheduler.yield() : new Promise((r) => setTimeout(r, 0)));
-  async function injectAll(files) {
+  const idleWait = (g) => new Promise((r) => { g.wake = r; if (window.requestIdleCallback) requestIdleCallback(() => r(), { timeout: 1500 }); else setTimeout(r, 50); });
+  async function injectAll(files, g) {
     const all = [];
     for (let i = 0; i < files.length; i += 1) {
-      if (i && i % CHUNK === 0) await yieldTask();
+      if (i && i % (g?.pace ? 4 : CHUNK) === 0) await (g?.pace ? Promise.all(all.slice(-4)).then(() => g.pace && idleWait(g), () => {}) : yieldTask());
       const p = inject(files[i]); p.catch(() => {}); // (Promise.all below reports a failure; no "unhandled" meanwhile)
       all.push(p);
     }
@@ -364,12 +372,14 @@ const Lazy = (() => {
     });
   }
 
-  function load(name) {
+  function load(name, o) {
     const g = groups.get(name);
     if (!g) return Promise.reject(new Error(`No lazy group "${name}"`));
+    if (!o?.idle) { for (const x of groups.values()) if (x.pace) { x.pace = null; x.wake?.(); } } else if (!g.promise) g.pace = 'idle';
     if (g.promise) return g.promise;
+    g.by = (new Error().stack || '').split('\n').slice(2, 5).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < '); // (round 94) who asked first (Lazy.by(name))
     g.promise = (async () => {
-      for (const dep of g.after || []) await load(dep);
+      for (const dep of g.after || []) await load(dep, o);
       const go = chain.then(text).then(async () => {
         g.state = 'loading';
         const t0 = performance.now();
@@ -377,7 +387,7 @@ const Lazy = (() => {
         reports.set(g.name, rep);
         const p = patch(g, rep);
         try {
-          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files)]);
+          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files, g)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
           g.state = 'failed';
@@ -391,6 +401,7 @@ const Lazy = (() => {
         unguardGlobals(g);
         // a tool already on screen with the stand-in: the rail keeps the stand-in object (it hands over to the real one)
         g.state = 'loaded';
+        g.pace = null;
         g.ms = Math.round(performance.now() - t0);
         g.at = Math.round(performance.now());
         dispatchEvent(new CustomEvent('hearth:lazy', { detail: { group: g.name } }));
@@ -504,6 +515,10 @@ const Lazy = (() => {
   // (tests: localStorage 'lazy.hold' = '1' keeps every group a stand-in until it's used, to prove first use works)
   let hold = false;
   try { hold = localStorage.getItem('lazy.hold') === '1'; } catch { /* no storage */ }
+  // (round 94) a following group: once what it needs is in, after the calm start, in an idle moment
+  addEventListener('hearth:lazy', () => {
+    for (const f of groups.values()) if (f.follow === true && f.state === 'stub' && !f.promise && !hold && f.after.every((d) => groups.get(d)?.state === 'loaded')) { f.follow = 'due'; calmGate().then(() => idle(() => (f.state === 'stub' && !f.promise ? load(f.name) : null)?.catch(() => {}))); }
+  });
   function start() {
     if (readyAt) return;
     readyAt = performance.now();
@@ -537,9 +552,11 @@ const Lazy = (() => {
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
-  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null }));
+  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}) }));
   return {
     load, state, start, at, text,
+    // (round 94, labload94) prefetch(name): load it in the background, paced (lab-intent.js decides when) · groupOfAction(label)
+    prefetch: (name) => load(name, { idle: true }), groupOfAction: (label) => actOf.get(label) || null, by: (name) => groups.get(name)?.by || null,
     calmNow: () => { CALM.fast = true; openGate(); }, // (round 83) the rest of the 'soon' groups now, back to back (tests)
     calm: () => ({ open: CALM.open, after: CALM.after, quiet: CALM.quiet, waiting: [...groups.values()].filter((g) => g.tier === 'soon' && g.state === 'stub').length }),
     loaded: (name) => groups.get(name)?.state === 'loaded',

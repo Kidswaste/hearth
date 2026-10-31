@@ -32,6 +32,7 @@ const ChatAttach = (() => {
   }
   // the Lab preview as a picture (the scene on screen; the Lab loads when it isn't open yet)
   async function labFrame(agentId) {
+    await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     if (typeof ThreeLab === 'undefined') throw new Error('The Three.js Lab isn\'t available');
     if (!ThreeLab.director) await ThreeLab.cmd({ show: false }).catch(() => ThreeLab.cmd());
     const url = await ThreeLab.shot();
@@ -46,6 +47,7 @@ const ChatAttach = (() => {
     return `Lab scene "${sk.name}"${layers.length ? `\nLayers (bottom first): ${layers.join('; ')}` : ''}\n(The scene is in the Three.js Lab; its code isn't attached.)`;
   }
   async function labScene(agentId, id = null) {
+    await window.Lazy?.load?.('lab');
     const S = ThreeLab.scenes;
     if (!S) { await ThreeLab.cmd({ show: false }).catch(() => {}); }
     const sk = ThreeLab.scenes?.get(id || ThreeLab.scenes.currentId());
@@ -215,10 +217,11 @@ const ChatAttach = (() => {
     reg({ name: 'attach-frame', args: '', desc: 'Attach the Lab\'s frame on screen as a picture', keywords: 'lab preview picture still add',
       run: async (args, ctx) => { await labFrame(need(ctx)); } });
     reg({ name: 'attach-scene', args: '[scene name]', desc: 'Attach a Lab scene as a short text (its name and layers, not its code)', keywords: 'lab sketch add',
-      complete: () => (ThreeLab.scenes?.all() || []).slice(-12).map((s) => ({ value: s.name })),
+      complete: () => ((typeof ThreeLab !== 'undefined' && ThreeLab.scenes?.all()) || []).slice(-12).map((s) => ({ value: s.name })),
       run: async (args, ctx) => {
         const id = need(ctx);
         const q = String(args || '').trim().toLowerCase();
+        await window.Lazy?.load?.('lab');
         const sk = q ? (ThreeLab.scenes?.all() || []).find((s) => s.name.toLowerCase().includes(q)) : null;
         if (q && !sk) return `No scene named like “${args}”.`;
         await labScene(id, sk?.id || null);

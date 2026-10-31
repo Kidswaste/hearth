@@ -233,6 +233,7 @@ const AppUI = (() => {
       else if (finder()) pal.shown = finder().find(q);
       else pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
         .sort((a, b) => b.score - a.score).slice(0, 60);
+      if (ql) window.LabIntent?.seen(pal.shown); // (round 94, labload94) a Lab line near the top: the Lab's code starts loading
     }
     pal.sel = Math.min(pal.sel, Math.max(0, pal.shown.length - 1));
     if (!pal.shown.length) {
