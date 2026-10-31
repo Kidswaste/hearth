@@ -140,22 +140,27 @@ const SyncPanel = (() => {
     return box;
   }
   function card(c) {
-    const t = there(c);
+    // (round 94, keptaside94) a conflict's record syncs, so both computers list it: the version in place is the noticing
+    // computer's (by), the copy the other's (from). On the computer the copy came from, "this PC" is the copy (before,
+    // it was labelled the other way round there, and "Keep PC" kept the Mac's version)
+    const flip = Boolean(c.fromId && c.fromId === Sync.status().machine?.id);
+    const t = there(flip ? { from: c.by, fromPlatform: c.byPlatform } : c);
+    const mineSide = flip ? 'theirs' : 'ours'; const otherSide = flip ? 'ours' : 'theirs';
     // Windows PC on the left, the Mac on the right, on both computers (the same place each time)
     const hereFirst = !(MAC && t === 'PC');
     const col = (which) => {
-      const mine = which === 'ours';
+      const mine = which === mineSide;
       return el('div', { class: `sp-side ${mine ? 'here' : 'there'}` },
         el('b', { text: mine ? `This ${HERE}` : t[0].toUpperCase() + t.slice(1) }),
         el('span', { class: 'hint', text: edited(mine ? c.oursAt : c.theirsAt) }),
         side(c, which));
     };
     const keep = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-keep${how === 'both' ? ' both' : ''}`, text: label, title, dataset: { keep: how }, on: { click: () => choose(c, how) } });
-    const kHere = keep(`Keep ${HERE}`, 'mine', `The version on this ${HERE} stays everywhere; the ${t} version waits in Deleted files`);
-    const kThere = keep(`Keep ${t}`, 'theirs', `The ${t} version replaces this one; this one waits in Deleted files`);
+    const kHere = keep(`Keep ${HERE}`, flip ? 'theirs' : 'mine', `The version on this ${HERE} stays everywhere; the ${t} version waits in Deleted files`);
+    const kThere = keep(`Keep ${t}`, flip ? 'mine' : 'theirs', `The ${t} version replaces this one; this one waits in Deleted files`);
     return el('div', { class: 'sp-conflict', dataset: { id: c.id } },
       el('div', { class: 'sp-what', text: Sync.whatIs(c) }),
-      el('div', { class: 'sp-sides' }, ...(hereFirst ? [col('ours'), col('theirs')] : [col('theirs'), col('ours')])),
+      el('div', { class: 'sp-sides' }, ...(hereFirst ? [col(mineSide), col(otherSide)] : [col(otherSide), col(mineSide)])),
       el('div', { class: 'sp-acts' }, ...(hereFirst ? [kHere, kThere] : [kThere, kHere]),
         c.canBoth ? keep('Keep both', 'both', /^chats\//.test(c.rel) || c.kind === 'file' ? `Both stay: the ${t} version is added next to it as “… (from ${t})”` : `Both stay: what differs is kept twice (a scene or a board as “… (from ${t})”, text as both texts)`) : null,
         el('button', { type: 'button', class: 'ghost small sp-compare', text: 'Compare…', title: 'Both versions side by side, in full (the messages, the lines, the pictures), with Combine… for text', on: { click: () => compare({ conflict: c.id }) } }))); // (round 94, keptaside94)

@@ -59,8 +59,37 @@
   }
 
   // ---------- text and code, line by line ----------
-  // → [{ t: 'same' | 'del' | 'add', a, b }] (a: this side's line, b: the other's). Longest common lines in the middle;
-  // texts too big for that (over 4 million line pairs) are one changed block.
+  // → [{ t: 'same' | 'del' | 'add', a, b }] (a: this side's line, b: the other's), the fewest changes (Myers' way:
+  // quick when few lines differ, whatever the length). More than MAX_D changed lines: one changed block (still whole).
+  const MAX_D = 1500;
+  function middle(A, B, s, ea, eb) {
+    const N = ea - s; const M = eb - s; const max = N + M; const off = max + 1;
+    const v = new Int32Array(2 * max + 3); const trace = [];
+    for (let d = 0; d <= Math.min(max, MAX_D); d++) {
+      trace.push(v.slice(off - d - 1, off + d + 2));
+      for (let k = -d; k <= d; k += 2) {
+        let x = k === -d || (k !== d && v[off + k - 1] < v[off + k + 1]) ? v[off + k + 1] : v[off + k - 1] + 1;
+        let y = x - k;
+        while (x < N && y < M && A[s + x] === B[s + y]) { x += 1; y += 1; }
+        v[off + k] = x;
+        if (x >= N && y >= M) {
+          // back from the end: each step one line only on one side, between runs of lines both have
+          const out = []; let cx = N; let cy = M;
+          for (let e = d; e > 0; e--) {
+            const V = trace[e]; const at = (kk) => V[kk + e + 1];
+            const kk = cx - cy;
+            const pk = kk === -e || (kk !== e && at(kk - 1) < at(kk + 1)) ? kk + 1 : kk - 1;
+            const px = at(pk); const py = px - pk;
+            while (cx > px && cy > py) { cx -= 1; cy -= 1; out.push({ t: 'same', a: A[s + cx], b: B[s + cy] }); }
+            if (cx === px) { cy -= 1; out.push({ t: 'add', b: B[s + cy] }); } else { cx -= 1; out.push({ t: 'del', a: A[s + cx] }); }
+          }
+          while (cx > 0 && cy > 0) { cx -= 1; cy -= 1; out.push({ t: 'same', a: A[s + cx], b: B[s + cy] }); }
+          return out.reverse();
+        }
+      }
+    }
+    return null;
+  }
   function ops(a, b) {
     const A = String(a ?? '').split('\n'); const B = String(b ?? '').split('\n');
     let s = 0; while (s < A.length && s < B.length && A[s] === B[s]) s += 1;
@@ -68,14 +97,10 @@
     while (ea > s && eb > s && A[ea - 1] === B[eb - 1]) { ea -= 1; eb -= 1; }
     const out = [];
     for (let i = 0; i < s; i++) out.push({ t: 'same', a: A[i], b: B[i] });
-    const n = ea - s; const k = eb - s;
-    if (n * k > 4e6) { for (let i = s; i < ea; i++) out.push({ t: 'del', a: A[i] }); for (let j = s; j < eb; j++) out.push({ t: 'add', b: B[j] }); } else if (n || k) {
-      const T = Array.from({ length: n + 1 }, () => new Uint32Array(k + 1));
-      for (let i = n - 1; i >= 0; i--) for (let j = k - 1; j >= 0; j--) T[i][j] = A[s + i] === B[s + j] ? T[i + 1][j + 1] + 1 : Math.max(T[i + 1][j], T[i][j + 1]);
-      let i = 0; let j = 0;
-      while (i < n || j < k) {
-        if (i < n && j < k && A[s + i] === B[s + j]) { out.push({ t: 'same', a: A[s + i], b: B[s + j] }); i += 1; j += 1; } else if (j >= k || (i < n && T[i + 1][j] >= T[i][j + 1])) { out.push({ t: 'del', a: A[s + i] }); i += 1; } else { out.push({ t: 'add', b: B[s + j] }); j += 1; }
-      }
+    if (ea > s || eb > s) {
+      const mid = middle(A, B, s, ea, eb);
+      if (mid) out.push(...mid);
+      else { for (let i = s; i < ea; i++) out.push({ t: 'del', a: A[i] }); for (let j = s; j < eb; j++) out.push({ t: 'add', b: B[j] }); }
     }
     for (let i = ea, j = eb; i < A.length; i++, j++) out.push({ t: 'same', a: A[i], b: B[j] });
     return out;

@@ -43,10 +43,15 @@ const KeptAside = (() => {
     if (src.conflict) {
       const p = await api().preview?.(src.conflict);
       if (!p) return { gone: true };
-      const t = there(p);
-      const m = { src: 'conflict', id: p.id, rel: p.rel, kind: K.kindOf(p.rel), file: p.kind === 'file', from: p.from, fromPlatform: p.fromPlatform, canBoth: p.canBoth !== false && p.rel !== 'app/config.json',
-        a: { who: `this ${HERE}`, label: `This ${HERE}`, value: p.ours, path: p.here, at: p.oursAt, size: p.size },
-        b: { who: t, label: cap(thereShort(p)), value: p.theirs, path: p.there, at: p.theirsAt, size: p.theirsSize } };
+      // a conflict is listed on both computers (its record syncs): the version in place is the one of the computer that
+      // noticed it (by), the copy the other's (from). On the computer the copy came from, "this computer's" is the copy.
+      const w = mineOf(p);
+      const who = (mine, x) => (mine ? `this ${HERE}` : there(x));
+      const label = (mine, x) => (mine ? `This ${HERE}` : cap(there(x).replace(/^the /, '')));
+      const byX = { from: p.by, fromPlatform: p.byPlatform }; const fromX = { from: p.from, fromPlatform: p.fromPlatform };
+      const m = { src: 'conflict', id: p.id, rel: p.rel, kind: K.kindOf(p.rel), file: p.kind === 'file', from: w.b ? p.by : p.from, fromPlatform: w.b ? p.byPlatform : p.fromPlatform, canBoth: p.canBoth !== false && p.rel !== 'app/config.json',
+        a: { who: who(w.a, byX), label: label(w.a, byX), value: p.ours, path: p.here, at: p.oursAt, size: p.size, mine: w.a },
+        b: { who: who(w.b, fromX), label: label(w.b, fromX), value: p.theirs, path: p.there, at: p.theirsAt, size: p.theirsSize, mine: w.b }, copyFrom: thereShort(fromX) };
       return finish(m);
     }
     const r = await api().aside?.(src.aside, 'compare');
@@ -56,6 +61,12 @@ const KeptAside = (() => {
       a: { who: theirs ? `this ${HERE}` : t, label: 'In use now', value: r.now, path: r.here, at: null },
       b: { who: theirs ? t : `this ${HERE}`, label: 'Kept aside', value: r.kept, path: r.there, at: r.at } };
     return finish(m);
+  }
+  // which side of a conflict is this computer's: { a: the version in place, b: the copy }
+  function mineOf(p) {
+    const me = Sync.status().machine || {};
+    const b = Boolean(p.fromId && me.id && p.fromId === me.id);
+    return { a: !b && (!p.by || !me.name || p.by === me.name), b };
   }
   function finish(m) {
     const json = !m.file && /\.json$/i.test(m.rel);
@@ -141,7 +152,8 @@ const KeptAside = (() => {
     const dialog = el('dialog', { class: 'ui-modal ka-view', dataset: { kind: m.kind, src: m.src } });
     open1 = dialog;
     // this computer on the left, the Mac on the right on both computers when it's a PC / Mac pair (as the sync panel)
-    const swap = m.src === 'conflict' && MAC && /PC/.test(m.b.label);
+    const isMac = (x) => (x.mine ? MAC : /\bMac\b/.test(x.label)); const isPC = (x) => (x.mine ? WIN : /\bPC\b/.test(x.label));
+    const swap = m.src === 'conflict' && isMac(m.a) && isPC(m.b);
     const head = (s, which) => el('div', { class: `ka-h ka-${which}` },
       el('b', { text: s.label }), el('span', { class: 'hint', text: [m.src === 'aside' ? `${cap(s.who)}'s` : '', edited(s.at)].filter(Boolean).join(' · ') }),
       el('button', { type: 'button', class: `primary small ka-keep ka-keep-${which}`, text: 'Keep this one', title: which === 'a' ? (m.src === 'aside' ? 'Things stay as they are; the other version stays in Deleted files' : `${cap(m.a.who)}'s version stays everywhere; the other waits in Deleted files`) : (m.src === 'aside' ? 'The version kept aside comes back; the one in use now waits in Deleted files' : `${cap(m.b.who)}'s version replaces this one; this one waits in Deleted files`), on: { click: () => go(which) } }));
@@ -151,7 +163,7 @@ const KeptAside = (() => {
     const say = m.src === 'aside'
       ? `Both computers changed it at the same time, so sync kept one (${m.a.who}'s) and put ${m.b.who}'s aside. Nothing is lost: choose which to keep.`
       : 'Both computers changed it before they could sync. Nothing changes until you choose; the one you don\'t keep waits in Deleted files for 30 days.';
-    const bothBtn = m.canBoth ? el('button', { type: 'button', class: 'ghost ka-both', text: 'Keep both', title: m.kind === 'chat' ? `Both stay: ${m.b.who}'s is added as its own chat “… (from ${thereShort(m)})”` : m.file ? `Both stay: ${m.b.who}'s is saved next to it as “… (from ${thereShort(m)})”` : m.kind === 'project' ? 'One project with both names, and everything from both' : 'Both stay: what differs is kept twice (a scene or a board as “… (from …)”, text as both texts)', on: { click: () => go('both') } }) : null;
+    const bothBtn = m.canBoth ? el('button', { type: 'button', class: 'ghost ka-both', text: 'Keep both', title: m.kind === 'chat' ? `Both stay: ${m.b.who}'s is added as its own chat “… (from ${m.copyFrom || thereShort(m)})”` : m.file ? `Both stay: ${m.b.who}'s is saved next to it as “… (from ${m.copyFrom || thereShort(m)})”` : m.kind === 'project' ? 'One project with both names, and everything from both' : 'Both stay: what differs is kept twice (a scene or a board as “… (from …)”, text as both texts)', on: { click: () => go('both') } }) : null;
     const combBtn = m.canCombine ? el('button', { type: 'button', class: 'ghost ka-comb', text: 'Combine…', title: 'Both versions\' lines in one text you can edit, then save', on: { click: () => startCombine() } }) : null;
     const later = el('button', { type: 'button', text: 'Decide later', on: { click: () => dialog.close() } });
     const acts = el('div', { class: 'dialog-actions' }, bothBtn, combBtn, el('span', { class: 'spacer' }), later);
@@ -217,7 +229,7 @@ const KeptAside = (() => {
       text = `Kept ${m.a.who}'s version of ${whatL}. ${cap(m.b.who)}'s waits in Deleted files for 30 days.`;
       if (other) { undoLabel = `Use ${m.b.who}'s instead`; undo = () => putBack(other, m); } // (nothing changed here: the way back is the other one)
     } else if (how === 'both' && (m.kind === 'chat' || m.file) && r.made && r.made !== m.rel) {
-      text = m.kind === 'chat' ? `Kept both: ${m.b.who}'s is its own chat now, “… (from ${thereShort(m)})”.` : `Kept both: ${m.b.who}'s is next to it, “${String(r.made).split('/').pop()}”.`;
+      text = m.kind === 'chat' ? `Kept both: ${m.b.who}'s is its own chat now, “… (from ${m.copyFrom || thereShort(m)})”.` : `Kept both: ${m.b.who}'s is next to it, “${String(r.made).split('/').pop()}”.`;
       undo = () => (m.kind === 'chat' ? takeBackChat(r.made) : takeBackFile(r.made));
     } else {
       const prev = keptMine || fresh.find((t) => t.where === 'here')?.id;
@@ -263,5 +275,5 @@ const KeptAside = (() => {
   }
   const refreshPanel = () => { try { if (window.SyncPanel?.isOpen()) SyncPanel.render(); } catch { /* closed */ } };
 
-  return { open, choose: async (src, how) => { const m = await load(src); if (m.gone) { toast('That one is already settled.', { timeout: 3000 }); Sync.refresh(); return false; } return choose(m, how); }, load, _isOpen: () => Boolean(open1?.isConnected) };
+  return { mineOf, open, choose: async (src, how) => { const m = await load(src); if (m.gone) { toast('That one is already settled.', { timeout: 3000 }); Sync.refresh(); return false; } return choose(m, how); }, load, _isOpen: () => Boolean(open1?.isConnected) };
 })();

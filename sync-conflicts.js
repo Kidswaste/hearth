@@ -80,12 +80,22 @@ const SyncConflicts = (() => {
     const apply = el('button', { type: 'button', class: 'primary', text: 'Apply', disabled: true });
     const paint = () => {
       const by = { theirs: 0, mine: 0, both: 0, merge: 0 }; const from = new Set();
-      for (const [id, k] of picks) { by[k] += 1; if (k === 'theirs') from.add(thereName(full.find((c) => c.id === id) || {})); }
+      for (const [id, k0] of picks) {
+        const c = full.find((x) => x.id === id) || {}; const flip = Boolean(c.fromId && c.fromId === Sync.status().machine?.id); // (round 94) as this computer sees it
+        const k = flip && k0 === 'mine' ? 'theirs' : flip && k0 === 'theirs' ? 'mine' : k0;
+        by[k] += 1; if (k === 'theirs') from.add(thereName(flip ? { from: c.by, fromPlatform: c.byPlatform } : c));
+      }
       const bits = [by.theirs && `${by.theirs} from ${[...from].join(' / ')}`, by.mine && `${by.mine} from ${HERE_NAME}`, by.both && `${by.both} kept both`, by.merge && `${by.merge} merged`].filter(Boolean);
       summary.textContent = picks.size ? `${bits.join(', ')}. Every choice can be undone: the version that loses waits in Deleted files for 30 days.` : 'Pick a version for each one, then Apply. Nothing changes until then.';
       apply.disabled = !picks.size; apply.textContent = picks.size > 1 ? `Apply ${picks.size} choices` : 'Apply';
     };
-    const rowOf = (c) => {
+    const rowOf = (c0) => {
+      // (round 94, keptaside94) the record syncs: on the computer the copy came from, the copy is this computer's version
+      // (it was labelled as the other computer's there). The sides are put the way round this computer sees them; the
+      // choices keep their meaning (mine: the one in place).
+      const flip = Boolean(c0.fromId && c0.fromId === Sync.status().machine?.id);
+      const c = flip ? { ...c0, from: c0.by, fromPlatform: c0.byPlatform, oursAt: c0.theirsAt, theirsAt: c0.oursAt, ours: c0.theirs, theirs: c0.ours, here: c0.there, there: c0.here, size: c0.theirsSize, theirsSize: c0.size, fields: (c0.fields || []).map((f) => ({ ...f, ours: f.theirs, theirs: f.ours })) } : c0;
+      const K = flip ? { mine: 'theirs', theirs: 'mine' } : { mine: 'mine', theirs: 'theirs' };
       const newer = c.oursAt && c.theirsAt ? (c.oursAt > c.theirsAt ? 'here' : 'there') : null;
       const side = (label, t, isNewer) => el('div', { class: 'sync-side' }, el('b', { text: label }), el('span', { class: 'hint', text: `${edited(t)}${isNewer ? ' · newer' : ''}` }));
       const choice = (keep, text, title) => el('button', { type: 'button', class: 'ghost small sync-pick', text, title, dataset: { keep }, on: { click: (e) => {
@@ -101,8 +111,8 @@ const SyncConflicts = (() => {
           diffOf(c),
           el('details', { class: 'sync-details' }, el('summary', { text: 'Details' }), el('div', { class: 'hint', text: `${c.rel} · noticed ${timeAgo(c.at)}${c.fields?.length ? ` · ${c.fields.length} field${c.fields.length === 1 ? '' : 's'} changed two ways` : ''}` }))),
         el('div', { class: 'sync-row-acts sync-choices' },
-          choice('theirs', `Keep ${there}'s version`, `${there}'s version replaces the one on ${HERE_NAME} (${HERE_NAME}'s goes to Deleted files)`),
-          choice('mine', `Keep ${HERE_NAME}'s version`, `${HERE_NAME}'s version stays everywhere (${there}'s goes to Deleted files)`),
+          choice(K.theirs, `Keep ${there}'s version`, `${there}'s version replaces the one on ${HERE_NAME} (${HERE_NAME}'s goes to Deleted files)`),
+          choice(K.mine, `Keep ${HERE_NAME}'s version`, `${HERE_NAME}'s version stays everywhere (${there}'s goes to Deleted files)`),
           c.canBoth ? choice('both', 'Keep both', `${there}'s version is saved next to it as “… (from ${there})”`) : null,
           c.canMerge ? choice('merge', 'Merge', 'Everything from both; where they differ, the newer one wins (both go to Deleted files first)') : null,
           el('button', { type: 'button', class: 'ghost small sync-compare', text: 'Compare…', title: 'Both versions side by side, in full, with Combine… for text', on: { click: async () => { // (round 94, keptaside94) the shared compare view
@@ -173,7 +183,9 @@ const SyncConflicts = (() => {
   }
   // deleted files (from any computer): restorable for 30 days
   async function trash() {
-    const list = await api().trash();
+    // (round 94, keptaside94) a version kept twice the same day has a short random prefix on disk: named without it
+    // ("Notes", not "Tool data “1a2b3c4d-notes”")
+    const list = (await api().trash()).map((t) => ({ ...t, rel: String(t.rel).replace(/(^|\/)[0-9a-f]{6,8}-([^/]+)$/, '$1$2'), disk: t.rel }));
     const dialog = el('dialog', { class: 'ui-modal sync-list' });
     const q = el('input', { type: 'search', placeholder: 'Filter…', class: 'sync-filter' });
     const rows = el('div', { class: 'sync-rows' });
@@ -182,7 +194,7 @@ const SyncConflicts = (() => {
       const l = list.filter((t) => !f || t.rel.toLowerCase().includes(f) || nameOf(t.rel).toLowerCase().includes(f)).slice(0, 200);
       rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
         // (round 92, syncpanel92) the name and when in words; the path only on hover (it was the first thing on each row)
-        el('div', { class: 'sync-row-main', title: t.rel }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : `deleted ${dayWord(t.day)}${t.where === 'here' ? ' (removed here because your other computer deleted it)' : ''}` })),
+        el('div', { class: 'sync-row-main', title: t.disk }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : t.where === 'here' ? `replaced or deleted on this computer ${dayWord(t.day)}` : `deleted or replaced ${dayWord(t.day)}` /* (round 94, keptaside94) a version a choice replaced (or kept aside) is here too: it said "your other computer deleted it" */ })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
           let r = await api().restore(t.id);
           // (round 19) undoing a conflict choice: the version in place goes to the trash, this one comes back
