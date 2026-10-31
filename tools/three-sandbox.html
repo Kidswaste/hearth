@@ -4773,6 +4773,26 @@ function astRevoke(url) {
     AST.urlSig.delete(url); URL.revokeObjectURL(url);
   }, 5000);
 }
+// (round 95, labflake95) a picture decoded AND flipped off the page's thread: createImageBitmap decodes on a decoder
+// thread, but its flip (imageOrientation: 'flipY', which the slices and three's upload need) was made on the page's
+// thread when the decode came back: a task of 80–86 ms for one 4096² picture here, calm (75–340 ms of the page's CPU
+// under load), so a frame stuck as each big picture arrived. In a worker the whole of it runs on the worker's thread
+// and the picture comes back transferred (no copy). Any trouble with the worker: the page decodes it, as before.
+const DEC = { w: null, seq: 0, wait: new Map(), off: typeof Worker !== 'function', n: 0, fell: 0 };
+function decOff(blob, opts, cib) {
+  const here = () => { DEC.fell += 1; return cib(blob, opts); };
+  if (DEC.off || XP_PAGE || !(blob instanceof Blob)) return cib(blob, opts);
+  if (!DEC.w) {
+    try {
+      const url = URL.createObjectURL(new Blob(['onmessage = (e) => { const { id, blob, opts } = e.data; createImageBitmap(blob, opts).then((b) => postMessage({ id, b }, [b]), (err) => postMessage({ id, err: String((err && err.message) || err) })); };'], { type: 'text/javascript' }));
+      DEC.w = new Worker(url); URL.revokeObjectURL(url);
+      DEC.w.onmessage = (e) => { const p = DEC.wait.get(e.data.id); if (!p) return; DEC.wait.delete(e.data.id); if (e.data.b) { DEC.n += 1; const M = window.__labMemRaw; if (M) { M.bitmapsMade += 1; if (M.bitmaps.size < 4096) M.bitmaps.add(new WeakRef(e.data.b)); } p.res(e.data.b); } else p.res(here()); };
+      DEC.w.onerror = () => { DEC.off = true; try { DEC.w.terminate(); } catch { /* gone */ } for (const p of DEC.wait.values()) p.res(here()); DEC.wait.clear(); };
+    } catch { DEC.off = true; return cib(blob, opts); }
+  }
+  return new Promise((res) => { const id = ++DEC.seq; DEC.wait.set(id, { res }); try { DEC.w.postMessage({ id, blob, opts }); } catch { DEC.wait.delete(id); res(here()); } });
+}
+window.__labDecode = () => ({ worker: Boolean(DEC.w) && !DEC.off, decoded: DEC.n, onPage: DEC.fell, waiting: DEC.wait.size });
 // a picture of the open scene, decoded once per page (flipped as three.js would at upload): a Promise of its
 // ImageBitmap, or null when it isn't one the cache keeps (the caller decodes it itself, as before)
 function astPicture(key) {
@@ -4787,7 +4807,7 @@ function astPicture(key) {
   }
   AST.misses += 1; astBegin();
   const ent = astPut(k, sig, 0, { p: null, bmp: null }, () => { const bm = ent.val.bmp; try { if (bm?.width && !ownInUse().has(bm)) bm.close(); } catch { /* fine */ } });
-  ent.val.p = AST.cib.call(window, blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none' })
+  ent.val.p = decOff(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'none' }, (b, o) => AST.cib.call(window, b, o)) // (round 95: in a worker)
     .then((bmp) => { ent.val.bmp = bmp; AST.kept.add(bmp); astSize(ent, bmp.width * bmp.height * 4); astTrim(); return bmp; }, (err) => { astDrop(ent); throw err; })
     .finally(astEnd);
   return ent.val.p;
@@ -5118,7 +5138,7 @@ globalThis.refTexture = (key, { loop = true, muted = true } = {}) => {
     const picture = () => {
       const dt0 = realNow(); // (round 56, readyspeed: its decode timed)
       const kept = astPicture(key); // (round 75, labload75: decoded once per page, kept for the next visit; not this layer's to close)
-      const dec = (kept || createImageBitmap(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' })).then((bmp) => {
+      const dec = (kept || decOff(refBlobs[key], { imageOrientation: 'flipY', premultiplyAlpha: 'none' }, (x, o) => createImageBitmap(x, o))).then((bmp) => { // (round 95: decoded in a worker)
         rdyT('decode', dt0); if (who && !kept) ownNote(who, 'bmp', bmp);
         // (round 72, labfps72) a big picture goes to the graphics card in a frame of its own (see "uploads one at a time")
         return upRelease(() => { tex.image = bmp; tex.flipY = false; tex.needsUpdate = true; }, bmp.width * bmp.height, tex, bmp);
@@ -5165,7 +5185,8 @@ function updateRef(it) {
     const done = (img) => { const was = tex.image; tex.image = img; tex.needsUpdate = true; let1(was, img); };
     // (round 91, labshadow91) through the uploads' queue: a big one right after a frame, a 4K one in slices while the
     // old picture keeps showing (it used to go up whole inside the next frame)
-    if (typeof createImageBitmap === 'function' && it.kind === 'image') createImageBitmap(b, { imageOrientation: tex.flipY === false ? 'flipY' : 'none', premultiplyAlpha: 'none' }).then((img) => upRelease(() => done(img), img.width * img.height, tex, img, (was) => let1(was, img))).catch(() => new THREE.ImageLoader().load(url, done));
+    if (typeof createImageBitmap === 'function' && it.kind === 'image') decOff(b, { imageOrientation: tex.flipY === false ? 'flipY' : 'none', premultiplyAlpha: 'none' }, (x, o) => createImageBitmap(x, o)).then( // (round 95: in a worker)
+      (img) => upRelease(() => done(img), img.width * img.height, tex, img, (was) => let1(was, img))).catch(() => new THREE.ImageLoader().load(url, done));
     else new THREE.ImageLoader().load(url, done);
   }
   realSetTimeout(() => { if (!Object.values(refs).includes(old)) URL.revokeObjectURL(old); }, 5000);

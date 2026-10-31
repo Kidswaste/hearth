@@ -196,7 +196,9 @@ function longTasks(events, opts = {}) {
       .map((t) => ({ at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: Number.isFinite(t.tdur) ? r1(t.tdur / 1000) : null }));
   }
   const over = tasks.filter((t) => t.ms > budget);
-  const out = { thread: main, n: top.length, cpuMs: hasCpu ? r1(top.reduce((a, t) => a + (t.tdur || 0), 0) / 1000) : null, runDelayMs: delayMs == null ? null : r1(delayMs), tasks: tasks.slice(0, 8), verdict: 'ok', why: '' };
+  // (round 95, labflake95) the check's own observed list comes back whole: cut to 8, a 9th hitch came back with no CPU
+  // figure and the check took it for "can't tell" without judging it (a stretch with many late frames: 4K slices)
+  const out = { thread: main, n: top.length, cpuMs: hasCpu ? r1(top.reduce((a, t) => a + (t.tdur || 0), 0) / 1000) : null, runDelayMs: delayMs == null ? null : r1(delayMs), tasks: Array.isArray(opts.observed) ? tasks : tasks.slice(0, 8), verdict: 'ok', why: '' };
   // (round 89, desk89) opts.marked: a mark's name (performance.mark in the page) → the task each such mark fell in, long
   // or not ({ at, ms, cpuMs }: the outermost event on the window's thread around it), for a check that times one piece
   // of work below the long-task line too
