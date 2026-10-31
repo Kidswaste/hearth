@@ -2011,7 +2011,13 @@ const ThreeLab = (() => {
     // (round 97, labproj97) a removed reference's file to the Trash: given as a list (a bare path was walked letter by
     // letter by fs:trash: the file never went, and "/" was asked for), and only when no other scene's reference or song
     // still uses it (a copied project whose copy of the file couldn't be made shares the original's)
-    function trashRefFile(r) { if (r?.path && !SceneSafeCore.refShared(r.path, { refsAll, extras, except: r })) window.hub.fs.trash([r.path]).catch(() => {}); }
+    // (round 98, bundle98) a model a duplicate copied whole (data/refs/<time>-<name>/…: the model and the files it names)
+    // goes as its folder, when no other reference or song lies in it
+    function trashRefFile(r) {
+      if (!r?.path || SceneSafeCore.refShared(r.path, { refsAll, extras, except: r })) return;
+      const dir = /^(.*[\\/]refs[\\/]\d{10,}-[^\\/]+)[\\/]/.exec(r.path)?.[1];
+      window.hub.fs.trash([dir && !SceneSafeCore.refShared(dir, { refsAll, extras, except: r, under: true }) ? dir : r.path]).catch(() => {});
+    }
     function removeRef(r) {
       refsAll[current.id] = refsOf().filter((x) => x !== r);
       refBytes.delete(r.id);

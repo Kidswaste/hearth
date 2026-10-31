@@ -595,12 +595,15 @@
   // couldn't be made shares the original's; a song kept with a scene): removing the reference never trashes it.
   // refsAll: { scene: [refs] } (the one removed already out, or given as `except`), extras: { scene: { media } }.
   // Paths compare as both systems do (\ or /, any case)
-  function refShared(p, { refsAll = {}, extras = {}, except = null } = {}) {
+  // (round 98, bundle98) under: p is a folder (a model a duplicate copied whole, with the files it names): any reference
+  // or song inside it counts
+  function refShared(p, { refsAll = {}, extras = {}, except = null, under = false } = {}) {
     if (!p) return false;
     const n = (x) => String(x || '').replace(/\\/g, '/').normalize('NFC').toLowerCase();
-    const k = n(p);
-    for (const list of Object.values(refsAll || {})) for (const r of Array.isArray(list) ? list : []) if (r && r !== except && !(except && r.id === except.id) && r.path && n(r.path) === k) return true;
-    for (const ex of Object.values(extras || {})) if (ex?.media?.path && n(ex.media.path) === k) return true;
+    const k = n(p).replace(/\/+$/, '');
+    const hit = (x) => { const v = n(x); return v === k || (under && v.startsWith(`${k}/`)); };
+    for (const list of Object.values(refsAll || {})) for (const r of Array.isArray(list) ? list : []) if (r && r !== except && !(except && r.id === except.id) && r.path && hit(r.path)) return true;
+    for (const ex of Object.values(extras || {})) if (ex?.media?.path && hit(ex.media.path)) return true;
     return false;
   }
   return { refShared, BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge, MINE_KINDS, mineKey, mineMerge, labStoreMerge, histSegName, histSegOf, histSceneOf, histJoin, histSame, histTake, histFlush, segVersions, HIST_MAX, thumbHash, thumbDistance, thumbChanged, songTravels };

@@ -157,7 +157,8 @@ const Board = (() => {
     return b;
   }
   async function rename(name, b = S.cur) { if (!name?.trim()) return; b.name = name.trim().slice(0, 60); await save(b); renderHud(); emit('boards'); }
-  async function remove(id = S.cur?.id) {
+  // (round 98, bundle98) quiet: no toast (a failed project import / copy taking back the boards it made)
+  async function remove(id = S.cur?.id, { quiet = false } = {}) {
     const e = S.index.list.find((x) => x.id === id); if (!e) return;
     const b = await load(id);
     S.index.list = S.index.list.filter((x) => x.id !== id);
@@ -166,7 +167,7 @@ const Board = (() => {
     if (!S.index.list.length) await create('My board', { quiet: true, open: false });
     if (S.cur?.id === id) await open(S.index.list[0].id);
     saveIndex(); emit('boards');
-    toast(`Deleted board "${e.name}"`, { action: { label: 'Undo', fn: async () => { S.index.list.unshift(e); S.boards.set(id, b); await save(b, { now: true }); await open(id); emit('boards'); } } });
+    if (!quiet) toast(`Deleted board "${e.name}"`, { action: { label: 'Undo', fn: async () => { S.index.list.unshift(e); S.boards.set(id, b); await save(b, { now: true }); await open(id); emit('boards'); } } });
   }
   async function duplicate(b = S.cur) {
     const copy = JSON.parse(JSON.stringify(b));
