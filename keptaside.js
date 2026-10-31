@@ -51,13 +51,13 @@ const KeptAside = (() => {
       const byX = { from: p.by, fromPlatform: p.byPlatform }; const fromX = { from: p.from, fromPlatform: p.fromPlatform };
       const m = { src: 'conflict', id: p.id, rel: p.rel, kind: K.kindOf(p.rel), file: p.kind === 'file', from: w.b ? p.by : p.from, fromPlatform: w.b ? p.byPlatform : p.fromPlatform, canBoth: p.canBoth !== false && p.rel !== 'app/config.json',
         a: { who: who(w.a, byX), label: label(w.a, byX), value: p.ours, path: p.here, at: p.oursAt, size: p.size, mine: w.a },
-        b: { who: who(w.b, fromX), label: label(w.b, fromX), value: p.theirs, path: p.there, at: p.theirsAt, size: p.theirsSize, mine: w.b }, copyFrom: thereShort(fromX) };
+        b: { who: who(w.b, fromX), label: label(w.b, fromX), value: p.theirs, path: p.there, at: p.theirsAt, size: p.theirsSize, mine: w.b }, copyFrom: thereShort(fromX), fields: p.fields || [] };
       return finish(m);
     }
     const r = await api().aside?.(src.aside, 'compare');
     if (!r?.ok) return { gone: true, error: r?.error };
     const theirs = r.side !== 'ours'; const t = there(r);
-    const m = { src: 'aside', id: r.id, rel: r.rel, kind: K.kindOf(r.rel), file: r.kind === 'file', from: r.from, fromPlatform: r.fromPlatform, why: r.why, trash: r.trash, canBoth: r.rel !== 'app/config.json',
+    const m = { src: 'aside', id: r.id, rel: r.rel, kind: K.kindOf(r.rel), file: r.kind === 'file', from: r.from, fromPlatform: r.fromPlatform, why: r.why, trash: r.trash, canBoth: r.rel !== 'app/config.json', fields: r.fields || [],
       a: { who: theirs ? `this ${HERE}` : t, label: 'In use now', value: r.now, path: r.here, at: null },
       b: { who: theirs ? t : `this ${HERE}`, label: 'Kept aside', value: r.kept, path: r.there, at: r.at } };
     return finish(m);
@@ -73,6 +73,10 @@ const KeptAside = (() => {
     m.big = json && (m.a.value == null || m.b.value == null); // (over 6 MB: not sent whole)
     m.canCombine = json && !m.big && K.canCombine(m.rel, m.a.value, m.b.value);
     m.what = Sync.whatIs({ rel: m.rel, ours: m.a.value ?? undefined, theirs: m.b.value ?? undefined, fields: m.fields || [] });
+    if (m.kind === 'preset') { // "Tool data “lab-presets”" → the Lab preset(s) by name
+      const names = [...new Set((m.fields || []).map((f) => { const id = /^items\.([^.]+)/.exec(f.path)?.[1]; return id && (m.a.value?.items?.[id]?.name || m.b.value?.items?.[id]?.name); }).filter(Boolean))];
+      m.what = names.length ? `The Lab preset${names.length > 1 ? 's' : ''} ${names.map((n) => `“${n}”`).join(', ')}` : 'Lab presets and trigger setups';
+    }
     return m;
   }
 
@@ -111,7 +115,8 @@ const KeptAside = (() => {
   const settingWord = (label) => cap(String(label).replace(/^settings › /, ''));
   function dataView(m) {
     const box = el('div', { class: 'ka-data' });
-    const rows = K.rows(m.a.value, m.b.value, { root: m.what });
+    // (settings: each computer's own parts — window layout, program paths — never sync: not a difference)
+    const rows = K.rows(m.a.value, m.b.value, { root: m.what }).filter((r) => !(m.kind === 'settings' && r.how !== 'changed'));
     if (!rows.length) { box.append(el('p', { class: 'hint', text: 'The two versions hold the same things (only times or order differ).' })); return box; }
     for (const r of rows) {
       if (r.text) {

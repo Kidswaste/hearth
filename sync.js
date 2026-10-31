@@ -75,7 +75,7 @@ const Sync = (() => {
     return asideN() ? `◐ ${asideN()} to compare` : '✓ Synced'; // (round 94, keptaside94) a version kept aside shows in the rail too
   };
   const glyphOf = () => chipOf().slice(0, 1);
-  const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes' };
+  const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes', 'lab-presets': 'Lab presets and trigger setups' }; // (round 94) + lab-presets
   function nameOf(rel) {
     let m = /^chats\/(.+)\.json$/.exec(rel);
     if (m) { const c = (H.chats || []).find((x) => x.id === m[1]); return c ? `Chat “${c.title}”` : 'A chat'; } // (round 92) never its id
