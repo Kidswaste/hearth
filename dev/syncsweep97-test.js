@@ -10,7 +10,8 @@
 //   merge · merge-thread     both changed: merged
 //   absorb                   a cloud client's "conflicted copy" merged in
 //   relink                   Rename for Windows: a store's link to the renamed file rewritten
-//   resolve-theirs / -merge / -both   a conflict's choices
+//   resolve-theirs / -merge / -both   a conflict's choices · resolve-theirs-big / aside-theirs-big: a store over 1 MB
+//                            (its JSON work on the store thread: asidework.js)
 //   aside-theirs / -both     Kept aside: Use that one / Keep both
 //   restore                  Restore from Deleted files (round 96's case, a small store)
 //   restore-new              …of a store this computer doesn't have (gone here)
@@ -43,8 +44,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DAY = '2026-10-31';
 
 // the store thread (storework.js), for the paths that use it
-let worker = null; let wseq = 0; const wjobs = new Map();
+let worker = null; let wseq = 0; const wjobs = new Map(); const ops = {};
 function runOff(op, args) {
+  ops[op] = (ops[op] || 0) + 1;
   if (!worker) {
     const { Worker } = require('worker_threads');
     worker = new Worker(path.join(__dirname, '..', 'storework.js'));
@@ -184,6 +186,29 @@ for (const keep of ['theirs', 'merge', 'both']) {
   });
 }
 
+// ---------- the same, for a store over 1 MB: its JSON work on the store thread (aside95's asidework.js) ----------
+const bigNotes = (m) => m.write(REL, Array.from({ length: 400 }, (_, i) => note(`n${i}`, `note ${i}`, 3000)));
+scenario('resolve-theirs-big', async () => {
+  const tag = 'resolve-theirs-big';
+  const { w, pc, mac } = pair(tag, { big: true });
+  bigNotes(pc);
+  ok(await T.converge(w) > 0 && fs.statSync(pc.p(REL)).size > 1024 * 1024, `${tag}: first sync (a store over 1 MB)`, T.why(w));
+  const c = await conflict(tag, w, pc, mac);
+  if (!c) return;
+  const t0 = ops.asideTake || 0;
+  await guarded(tag, pc, async () => { const r = await pc.e.resolve(c.id, 'theirs'); ok(r.ok && (ops.asideTake || 0) > t0, `${tag}: chosen (on the store thread)`, { r, ops }); }, { mark: 'Mac\'s text' });
+});
+scenario('aside-theirs-big', async () => {
+  const tag = 'aside-theirs-big';
+  const { w, pc, mac } = pair(tag, { big: true });
+  bigNotes(pc);
+  ok(await T.converge(w) > 0, `${tag}: first sync`, T.why(w));
+  const n = await keptAside(tag, w, pc, mac);
+  if (!n) return;
+  const t0 = ops.asideTake || 0;
+  await guarded(tag, pc, async () => { const r = await pc.e.aside(n.id, 'theirs'); ok(r.ok && (ops.asideTake || 0) > t0, `${tag}: chosen (on the store thread)`, { r, ops }); }, { mark: 'Mac changed the first note' });
+});
+
 // ---------- Kept aside ----------
 for (const how of ['theirs', 'both']) {
   scenario(`aside-${how}`, async () => {
@@ -225,7 +250,8 @@ scenario('restore-big', async () => {
   ok(fs.statSync(pc.p(REL)).size > 1024 * 1024, 'restore-big: the store is over 1 MB', fs.statSync(pc.p(REL)).size);
   const v = pc.json(REL); v[0] = note('n0', 'the version put back', PAD);
   const id = putInTrash(pc, v);
-  await guarded('restore-big', pc, async () => { const r = await pc.e.restore(id, { replace: true }); ok(r.ok, 'restore-big: put back', r); }, { mark: 'the version put back' });
+  const f0 = ops.asideForm || 0;
+  await guarded('restore-big', pc, async () => { const r = await pc.e.restore(id, { replace: true }); ok(r.ok && (ops.asideForm || 0) >= f0 + 2, 'restore-big: put back (both forms made on the store thread)', { r, ops }); }, { mark: 'the version put back' });
 });
 
 // ---------- a very long chat's pieces taken (syncpack.js) ----------
