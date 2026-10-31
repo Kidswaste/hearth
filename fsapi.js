@@ -67,9 +67,13 @@ const MacPolish = require('./macpolish');
 async function trash(paths) {
   const done = [];
   const failed = [];
-  for (const p of paths) {
+  // (round 97, labproj97) one path given as text is that one path (it was walked letter by letter: "/" asked for, the
+  // file never trashed); a disk's root or the home folder itself is never trashed
+  const list = typeof paths === 'string' ? [paths] : Array.isArray(paths) ? paths : [];
+  for (const p of list) {
     let target;
     try { target = assertAbs(p); } catch { failed.push({ path: p, error: `Hearth only deletes files named with their full path (${p}); nothing was deleted.` }); continue; }
+    if (path.parse(target).root === target || target.replace(/[\\/]+$/, '') === os.homedir().replace(/[\\/]+$/, '')) { failed.push({ path: p, error: 'Hearth never deletes a whole disk or your home folder; nothing was deleted.' }); continue; }
     // (round 33, macpolish) the Mac: a network share or a read-only disk has no Trash (left alone, said why)
     const check = process.platform === 'darwin' ? MacPolish.trashCheck(target) : WinPolish.trashCheck(target);
     if (!check.ok) { failed.push({ path: p, error: check.error, reason: check.reason }); continue; }
