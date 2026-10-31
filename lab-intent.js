@@ -3,7 +3,7 @@
 // session. Its commands, keys, rail button, agent tools and Ctrl/⌘+K lines are stand-ins (lazy.js) that load it on
 // first use, so it can wait. This file decides when it loads, without making the first open wait:
 //   now    right after the first frame, as before: the last start ended in the Lab, or Hearth opens on it
-//   calm   in the background once the start is calm (lazy.js' calm gate: ≈ 10–13 s in), paced in idle moments: the
+//   calm   in the background 5 s after the first screen (1.5 s without input), paced in idle moments: the
 //          Lab was opened in at least half of the last 8 starts, or the newest project was left on its Scene
 //   idle   the same, but ≥ 40 s after the first screen and 3 s without a key / click / scroll: the Lab was used in the
 //          last 14 days, less often
@@ -14,7 +14,7 @@
 // The warm preview page (tools/three-boot.js) follows the Lab's code as before. Tests: localStorage 'lazy.lab.mode'
 // = now | calm | idle | none forces a mode; LabIntent.state() says what happened.
 const LabIntent = (() => {
-  const G = 'lab'; const SURFACE = 'tool:three'; const DAY = 864e5; const KEEP = 8; const IDLE_AFTER = 40000; const QUIET = 3000;
+  const G = 'lab'; const SURFACE = 'tool:three'; const DAY = 864e5; const KEEP = 8; const IDLE_AFTER = 40000; const CALM_AFTER = 5000; const QUIET = 3000;
   const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* no storage */ } return null; };
   const json = (k) => { const raw = ls(k); return raw == null ? null : JSON.parse(raw); };
   const st = { mode: null, why: '', intent: null, intentAt: null, prefetchAt: null, shownAt: null, inWhenShown: null };
@@ -61,16 +61,16 @@ const LabIntent = (() => {
   for (const ev of ['pointerdown', 'keydown', 'wheel']) addEventListener(ev, () => { lastInput = performance.now(); }, { capture: true, passive: true });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function background(idleMode) {
-    // the calm start first (≤ 30 s), then the other feature groups (≤ 6 s), as the warm page waits (three-boot.js)
-    while (!Lazy.calm?.().open && performance.now() - ready() < 30000) await sleep(500);
-    const t0 = performance.now();
-    while (Lazy.state().some((g) => g.tier === 'soon' && (g.state === 'stub' || g.state === 'loading')) && performance.now() - t0 < 6000) await sleep(400);
-    if (idleMode) {
-      for (;;) {
-        const wait = Math.max(ready() + IDLE_AFTER - performance.now(), lastInput + QUIET - performance.now());
-        if (wait <= 0) break;
-        await sleep(Math.min(wait + 20, 5000));
-      }
+    // calm: 5 s after the first screen and 1.5 s without input (ahead of the calm start's other groups, so an open
+    // about 10 s in finds it in; measured: docs/upgrades/labload94.md) · idle: the calm start first (≤ 30 s), the other
+    // feature groups (≤ 6 s), then ≥ 40 s after the first screen and 3 s without input
+    const until = async (at, quiet) => { for (;;) { const w = Math.max(ready() + at - performance.now(), lastInput + quiet - performance.now()); if (w <= 0) return; await sleep(Math.min(w + 20, 5000)); } };
+    if (!idleMode) await until(CALM_AFTER, 1500);
+    else {
+      while (!Lazy.calm?.().open && performance.now() - ready() < 30000) await sleep(500);
+      const t0 = performance.now();
+      while (Lazy.state().some((g) => g.tier === 'soon' && (g.state === 'stub' || g.state === 'loading')) && performance.now() - t0 < 6000) await sleep(400);
+      await until(IDLE_AFTER, QUIET);
     }
     await new Promise((r) => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 3000 }) : setTimeout(r, 200)));
     if (isIn() || st.intent) return;

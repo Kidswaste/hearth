@@ -1,5 +1,5 @@
 // (round 94, labload94) The Lab's code (lazy group 'lab', ≈ 3.4 MB) no longer loads at every start (lab-intent.js
-// decides: at once / once the start is calm / in deep idle / only on intent). Every way into the Lab still works from the
+// decides: at once / a few seconds in / in deep idle / only on intent). Every way into the Lab still works from the
 // first moment, each from a fresh reload with the Lab not loaded ('lazy.lab.mode' = 'none': nothing loads it in the
 // background), and the stand-in loads it on the way:
 //   rail      the pointer on the workspace bar's Scene button starts the load (intent), the click opens the Lab (its
@@ -12,7 +12,7 @@
 //   chat      a reply's whole-layer code block (fake engine): the pointer on ▶ Apply to scene starts the load, the
 //             click › Replace "Ring" puts the code in the chat's scene (labchat92's flow)
 //   modes     a start whose history says the Lab is used most times ('calm'): still not loaded 4 s after the first
-//             screen, loaded in the background (paced) once the start is calm, the groups that follow it after; a
+//             screen, loaded in the background (paced) from 5 s in, the groups that follow it after; a
 //             start after one that ended in the Lab ('now'): loaded right after the first frame; and no app code
 //             touched a Lab global before it loaded (Lazy.misses)
 //   node dev/smoke.js --fake-engines --no-lazy-wait --wait 1500 --check-timeout 600000 --script dev/checks/labload94.js
@@ -240,10 +240,10 @@ ok(LabIntent.state().mode === 'calm', `used in 3 of the last 4 starts: 'calm' ($
 { const left = ready + 4000 - performance.now(); if (left > 0) await wait(left); }
 ok(lab().state === 'stub' && !Lazy.calm().open, `not loaded 4 s after the first screen (${lab().state}, gate ${Lazy.calm().open ? 'open' : 'shut'})`);
 let paced = false;
-const done = await until(() => { if (lab().pace === 'idle') paced = true; return Lazy.loaded('lab'); }, Math.max(1000, ready + 45000 - performance.now()), 20);
-ok(done, `loaded in the background once the start is calm (${Math.round(lab().at - ready)} ms after the first screen; its load ${lab().ms} ms)`);
+const done = await until(() => { if (lab().pace === 'idle') paced = true; return Lazy.loaded('lab'); }, Math.max(1000, ready + 25000 - performance.now()), 20);
+ok(done, `loaded in the background a few seconds in (${Math.round(lab().at - ready)} ms after the first screen; its load ${lab().ms} ms)`);
 ok(paced && LabIntent.state().prefetchAt && !LabIntent.state().intent, `paced, in idle moments (prefetch at ${LabIntent.state().prefetchAt})`);
-ok(Lazy.calm().open, 'the calm gate was open first');
+ok(lab().at - ready >= 4900, `not before 5 s after the first screen (${Math.round(lab().at - ready)} ms)`);
 R.times.calmPrefetchAt = Math.round(lab().at - ready); R.times.calmPrefetchMs = lab().ms;
 ok(await until(() => ['labdirection', 'labfinish'].every((n) => Lazy.loaded(n)), 15000), 'the groups that follow the Lab (direction, finish lines) load after it');
 ok(Lazy.misses().filter((x) => x.group === 'lab').length === 0, `no app code touched a Lab global before it loaded (${Lazy.misses().filter((x) => x.group === 'lab').map((x) => x.where).join('; ')})`);
