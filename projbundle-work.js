@@ -195,7 +195,7 @@ const OPS = {
     const AD = require('./assetdeps-core');
     return files.map(({ file, name, maxLen, maxDepth }) => {
       if (!AD.isModel(file)) return null;
-      try { return AD.plan(file, { fs, path, name, maxLen, maxDepth }); } catch { return null; }
+      try { return AD.plan(file, { fs, path, name, maxLen, maxDepth, refuse: P.secretFile }); } catch { return null; }
     });
   },
 };

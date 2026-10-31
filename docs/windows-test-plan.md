@@ -159,6 +159,15 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   (`Été Brick.PNG`). Then the other way (Mac → PC). Then ⧉ **Duplicate project** on either: change the copy's bars and
   code; the original's stay as they were.
 
+## 12. A model made of several files, PC ↔ Mac (round 98, bundle98)
+- On the PC, export a glTF from Blender as **glTF Separate (.gltf + .bin + textures)** into a folder with a `textures`
+  sub-folder (a texture name with a space and a capital, e.g. `Wood Grain.PNG`, if you can). Put the `.gltf` in a test
+  project as one of its files (drop it on the project), then **Export project…** (files and captures ticked). On the Mac:
+  **Import project…**, then **Show the file** on that item: the `.gltf`, its `.bin` and `textures/…` sit next to it, the
+  same sizes. Open the `.gltf` in a viewer that reads glTF (Preview / Reality Composer, or Blender): the model shows with
+  its textures. Delete the `.bin` on the PC first and export again: the toast's **What was skipped** names
+  `….bin (used by ….gltf: not on this computer)`. Then the other way (Mac → PC).
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.

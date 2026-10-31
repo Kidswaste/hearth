@@ -19,6 +19,7 @@
 //   under the URI's own spelling, so it is found on a computer where case matters
 // - a file it names that isn't here is in `missing` (named in "What was skipped": never dropped silently)
 // - data: and http(s): URIs are inside the model or on the web: nothing to carry
+// - a file that looks like a secret (refuse: projbundle-core.js secretFile) is never carried: named instead
 // No DOM, no IPC: projbundle-work.js runs it on the main process's thread; dev/bundle98-test.js in Node.
 const AssetDepsCore = (() => {
   const MAX_TEXT = 64 * 1048576; // a .gltf / .obj / .mtl looked inside (a bigger .obj: its mtllib lines found by chunks)
@@ -161,7 +162,8 @@ const AssetDepsCore = (() => {
   }
 
   // ---------- the plan ----------
-  function plan(mainAbs, { fs, path, name = null, maxLen = 220, maxDepth = 14 } = {}) {
+  // refuse(path): a file never carried (projbundle-core.js secretFile: keys, credentials, dotfolders): named instead
+  function plan(mainAbs, { fs, path, name = null, maxLen = 220, maxDepth = 14, refuse = null } = {}) {
     // (its own name: the caller's safe one, as before this round: nothing names the model itself)
     const main = { abs: mainAbs, kind: kindOf(mainAbs), vpath: [name || safeSeg(base(mainAbs), 120)], depth: 0, refs: [], main: true };
     const nodes = [main]; const byAbs = new Map([[ciKey(path.resolve(mainAbs)), main]]);
@@ -179,6 +181,7 @@ const AssetDepsCore = (() => {
         const shown = p.type === 'abs' ? base(p.path) : p.segs[p.segs.length - 1] || String(u.uri);
         const abs = p.type === 'abs' ? fileAt(fs, p.path) : p.segs.length ? resolveCi(fs, path, path.dirname(c.abs), p.segs) : null;
         if (!abs) { missing.push({ name: shown, of: base(c.abs) }); continue; }
+        if (refuse?.(abs)) { missing.push({ name: shown, of: base(c.abs), why: 'it looks like a key or a password file: never packed' }); continue; }
         const want = p.type === 'rel' ? normSegs([...cdir, ...p.segs]) : null; // where the URI says it is (null: an absolute path)
         let n = byAbs.get(ciKey(path.resolve(abs)));
         if (!n) {

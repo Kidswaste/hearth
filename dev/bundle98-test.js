@@ -153,6 +153,15 @@ ok('a project file item that is an .obj: its .mtl and textures come too (files/<
   for (const f of ['chair parts.mtl', 'maps/seat.png', 'maps/seat_n.png']) assert.strictEqual(sha(path.join(path.dirname(ref), ...f.split('/'))), sha(path.join(SRC, 'obj', ...f.split('/'))), f);
   await M.discard(u.dir);
 });
+ok('secrets never travel: a model naming a key or a credentials file (../.ssh/id_rsa, api-token.png): never packed, named', async () => {
+  const g = w('sec/m.gltf', JSON.stringify({ asset: { version: '2.0' }, buffers: [{ uri: 'm.bin' }, { uri: '../.ssh/id_rsa' }], images: [{ uri: 'api-token.png' }, { uri: 'ok.png' }] }));
+  w('sec/m.bin', rnd(8)); w('.ssh/id_rsa', 'PRIVATE KEY'); w('sec/api-token.png', rnd(8)); w('sec/ok.png', rnd(8));
+  const r = await M.exportBundle({ body: sceneBody([{ id: 'r', key: 'm', name: 'm.gltf', path: g }], { name: 'Sec' }), name: 'Sec', job: 'es', out: path.join(OUT, 'Sec.hearthproject') });
+  const names = (await require(path.join(ROOT, 'zipkit.js')).entries(r.path)).map((e) => e.name);
+  assert.ok(names.some((n) => n.endsWith('/m.bin')) && names.some((n) => n.endsWith('/ok.png')), names.join());
+  assert.ok(!names.some((n) => /id_rsa|token/.test(n)), names.join());
+  assert.deepStrictEqual(r.skipped.filter((x) => /never packed/.test(x)).length, 2, r.skipped.join());
+});
 ok('an older project file (the .gltf alone, made before this round): the import names the files it lacks', async () => {
   const body = { project: { id: 'p', name: 'Old', items: [] }, scenes: [{ id: 's', sketch: { id: 's', name: 'S', code: '' }, refs: [{ id: 'r', key: 'car', name: 'car.gltf', path: 'hearthproject:assets/0/car.gltf' }], notes: [] }] };
   const man = C.makeManifest({ name: 'Old', counts: C.summarize(body) });
