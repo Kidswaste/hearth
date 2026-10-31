@@ -170,7 +170,22 @@ sees the same files. `packs89-test` (including its mixed-versions scenario with 
 pass.
 
 ## Final runs
-See the table at the end of this section (filled in after the runs).
+All app checks ran under `flock /tmp/hearth-run.lock`, at most 5 per run, with `TMPDIR=/tmp/ss97` (since removed).
+
+| What | Result |
+|---|---|
+| `node dev/syncsweep97-test.js` | ✓ 106 / 106 (before the fixes: 11 failures in 7 scenarios) |
+| keptaside94, sync72, guardloss78, projaudit91-sync | ✓ |
+| syncpanel92 | ✓ on its rerun. The first run failed once on a click on a missing element ("click: not visible: null"), during a burst of load from unit tests running beside it. The panel's code isn't touched by this round. |
+| labsync88, sync, devices90, packs89, lazy | ✓ |
+| unit: syncsweep97, storeack77, sync72, syncstate75, sync, aside95, keptaside94, packs89, devices90, synchard74, guardloss78, twocomputers, datasafe-scan, winmac, errorcalm-scan, storeack-scan, chatsafe-scan, chatwin-scan, boot-test, lazymanifest | ✓ 20 / 20 |
+| `node dev/sync72-test.js --thread` | ✓ 209 / 209 |
+
+`synchard74`'s `many` once went over its event-loop budget (260 ms against 150 ms, in the 50,000-file first join) when run
+by hand beside the app checks. Under the lock it passed. That path (the passes) isn't touched here.
+
+The first screen is unchanged: `sync-engine.js`, `syncpack.js` and `store.js` are main-process files, and `keptaside.js`
+is lazy (group `keptaside`). `unit:boot-test` and `unit:lazymanifest-test` pass.
 
 ## For Codex
 `sync-engine.js` (each edit marked `(round 97, syncsweep97)`):
