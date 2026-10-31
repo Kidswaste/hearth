@@ -449,4 +449,4 @@ function registerIpc(ipcMain, getWin) {
   });
 }
 
-module.exports = { registerIpc, list, read, write, diffLines, zip, backupNow, listBackups, restoreBackup };
+module.exports = { registerIpc, list, read, write, diffLines, zip, backupNow, listBackups, restoreBackup, trash }; // (round 98, bundle98) trash: projbundlemain.js sends what a failed import wrote to the Trash

@@ -23,6 +23,15 @@
 //                                          thread: head (its own fields) + the messages of an import's part or of a
 //                                          chat here (Duplicate); never over a chat that's there
 //   projbundle:release (job)               an import's part files removed (a temporary folder)
+// (round 98, bundle98) a model made of several files (a .gltf with its .bin and textures, an .obj with its .mtl) travels
+// whole: every file it names is packed in its own layout next to it (assetdeps-core.js plan, on the thread: deps), a file
+// it names that isn't here is named in the skipped list; an import names one that wasn't in the file. And what an import
+// or a copy wrote and took back goes to the Trash (toTrash; never a file that was there before):
+//   projbundle:copyAsset (path)            ⧉ Duplicate's copy of such a model: its files, in their layout, in a folder of
+//                                          its own in data/refs/ (<time>-<name>/); a model of one file: { single } (the
+//                                          window copies it as before)
+//   projbundle:untake ({ kv, files })      a failed import / copy's own writes to the Trash: History files (three-hv-*),
+//                                          its boards' and worktable's stores, copies it made in data/refs/
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -33,6 +42,7 @@ const { pipeline } = require('stream/promises');
 const { Transform, PassThrough, Writable } = require('stream');
 const P = require('./projbundle-core');
 const zipkit = require('./zipkit');
+const AD = require('./assetdeps-core'); // (round 98, bundle98)
 
 const inflateRaw = promisify(zlib.inflateRaw);
 const deflateRaw = promisify(zlib.deflateRaw);
@@ -70,6 +80,28 @@ const statOf = (p) => { try { return fs.statSync(p); } catch { return null; } };
 const unFile = (s) => { let p = String(s).replace(/^file:\/\/(localhost)?/i, ''); try { p = decodeURIComponent(p); } catch { /* as is */ } if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1); return p; };
 const root = () => path.join(opts.dataDir, 'assets', 'projects');
 const cancelErr = () => Object.assign(new Error('Cancelled'), { code: 'ECANCELED' });
+// (round 98, bundle98) what an import or a copy wrote and took back goes to the Trash (fsapi.js trash: shell.trashItem,
+// never a disk's root or the home folder; a drive with no Trash: left where it is, said in `failed`). Node tools (no
+// Electron, no Trash): removed. → { done, failed }
+async function toTrash(list) {
+  const paths = [...new Set((list || []).filter(Boolean).map(String))].filter((p) => statOf(p));
+  if (!paths.length) return { done: [], failed: [] };
+  const t = opts.trash || (process.versions.electron ? require('./fsapi').trash : null);
+  if (t) return t(paths);
+  for (const p of paths) await fs.promises.rm(p, { recursive: true, force: true }).catch(() => {});
+  return { done: paths, failed: [] };
+}
+// (round 98, bundle98) an error that means the disk (full, read-only, refused), not a damaged file: the import stops
+const diskErr = (err) => ['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES', 'EPERM', 'EIO', 'EMFILE', 'ENFILE', 'EBUSY', 'EEXIST'].includes(err?.code);
+// (round 98, bundle98) the plans for the models among these files (one call on the thread): path → plan
+async function modelPlans(list, slotLen = 14) {
+  const files = [...new Set(list.filter((p) => AD.isModel(p)))];
+  const out = new Map();
+  if (!files.length) return out;
+  const res = await work('deps', { files: files.map((file) => ({ file, name: safeBase(file), maxLen: P.LIMITS.name - slotLen - 6, maxDepth: P.LIMITS.depth - 2 })) }).catch(() => []);
+  files.forEach((f, i) => { if (res?.[i]) out.set(f, res[i]); });
+  return out;
+}
 const safeBase = (s, n = 120) => String(s || 'file').split(/[\\/]/).filter(Boolean).pop()?.replace(/[<>:"|?*\u0000-\u001f\u007f]+/g, '_').replace(/^[.\s]+/, '').replace(/[ .]+$/, '').replace(/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i, '_$1$2').slice(0, n) || 'file';
 const safeName = (s, n = 60) => String(s || '').replace(/[<>:"/\\|?*\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').replace(/^[.\s]+/, '').replace(/[ .]+$/, '').trim().slice(0, n) || 'Project';
 function versionOf() { try { return require('electron').app.getVersion(); } catch { return ''; } }
@@ -168,12 +200,15 @@ async function sizes({ paths = [], dirs = [] } = {}) {
   const all = [...paths.map((p) => ({ p, dir: false })), ...dirs.map((p) => ({ p, dir: true }))];
   const found = await hereMany(all.map((x) => (P.secretFile(x.p) ? { p: '', dir: x.dir } : x)));
   const at = new Map(); all.forEach((x, i) => at.set(x, found[i]));
+  const plans = await modelPlans(found.filter((h) => h && !h.dir).map((h) => h.path)); // (round 98, bundle98) a model's other files count too
   const one = async (x) => {
     const { p, dir } = x;
     if (P.secretFile(p)) return { path: p, found: false, secret: true, size: 0 };
     const h = at.get(x);
     if (!h) return { path: p, found: false, size: 0 };
     if (h.dir) { const fs2 = await walkDirAsync(h.path); return { path: p, found: true, dir: true, files: fs2.length, size: fs2.reduce((n, f) => n + f.size, 0) }; }
+    const pl = plans.get(h.path);
+    if (pl) { const more = pl.files.reduce((n, f) => n + (statOf(f.abs)?.size || 0), 0); return { path: p, found: true, files: 1 + pl.files.length, size: h.size + more, ...(pl.missing.length ? { missing: AD.missingLines(pl.missing) } : {}) }; }
     return { path: p, found: true, files: 1, size: h.size };
   };
   return { files: await Promise.all(all.slice(0, paths.length).map(one)), dirs: await Promise.all(all.slice(paths.length).map(one)) };
@@ -325,23 +360,43 @@ async function exportBundle(o = {}, sender = null) {
     const items = []; const skipped = []; const map = new Map();
     let n = 0; let bytes = 0;
     const entryFor = (kind, nm) => `${kind}/${n++}/${safeBase(nm)}`;
+    // (round 98, bundle98) a model made of several files: the model and every file it names, in its own folder
+    // (<kind>/<n>/…, its layout kept: assetdeps-core.js plan); a file it names that isn't here is named → its entry
+    const withFiles = (kind, h, pl) => {
+      const slot = `${kind}/${n++}`;
+      const main = `${slot}/${pl.main.rel}`;
+      for (const f of [{ rel: pl.main.rel, abs: h.path, data: pl.main.data }, ...pl.files]) {
+        const name = `${slot}/${f.rel}`;
+        if (f.data) { const data = asBuf(f.data); items.push({ name, data }); bytes += data.length; continue; }
+        const st = statOf(f.abs);
+        if (!st?.isFile()) { skipped.push(`${path.basename(f.abs)} (used by ${path.basename(h.path)}: not on this computer)`); continue; }
+        items.push({ name, path: f.abs, size: st.size, mtime: st.mtimeMs }); bytes += st.size;
+      }
+      skipped.push(...AD.missingLines(pl.missing));
+      return main;
+    };
     // (the project's file / capture / render / download items are its own files, below: not assets; found by exportA)
-    for (const src of a.paths) {
-      const h = here(src);
+    const found = a.paths.map((src) => ({ src, h: here(src) }));
+    const fileHs = (body.files || []).map((f) => (!f?.path || P.secretFile(f.path) ? null : here(f.path, { dir: true })));
+    const plans = await modelPlans([...found.filter((x) => x.h).map((x) => x.h.path), ...fileHs.filter((h) => h && !h.dir).map((h) => h.path)]);
+    for (const { src, h } of found) {
       if (!h) { skipped.push(safeBase(unFile(src))); map.set(src, ''); continue; }
+      if (plans.has(h.path)) { map.set(src, P.tokenOf(withFiles('assets', h, plans.get(h.path)))); continue; }
       const entry = entryFor('assets', h.path);
       items.push({ name: entry, path: h.path, size: h.size, mtime: statOf(h.path)?.mtimeMs });
       map.set(src, P.tokenOf(entry)); bytes += h.size;
     }
     // the project's own files: files/<n>/<name>[/<rel>]
     const itemRefs = new Map(); // project item id → token
-    for (const f of body.files || []) {
-      const h = !f?.path || P.secretFile(f.path) ? null : here(f.path, { dir: true });
+    for (const [i, f] of (body.files || []).entries()) {
+      const h = fileHs[i];
       if (!h) { skipped.push(safeBase(unFile(f?.path || f?.ref || ''))); itemRefs.set(f?.id, null); continue; }
       if (h.dir) {
         const top = entryFor('files', h.path);
         for (const x of walkDir(h.path)) { items.push({ name: `${top}/${x.rel.split('/').map((s) => safeBase(s, 160)).join('/')}`, path: x.abs, size: x.size, mtime: statOf(x.abs)?.mtimeMs }); bytes += x.size; }
         itemRefs.set(f.id, P.tokenOf(top));
+      } else if (plans.has(h.path)) {
+        itemRefs.set(f.id, P.tokenOf(withFiles('files', h, plans.get(h.path)))); // (round 98, bundle98)
       } else {
         const entry = entryFor('files', h.path);
         items.push({ name: entry, path: h.path, size: h.size, mtime: statOf(h.path)?.mtimeMs }); bytes += h.size;
@@ -474,10 +529,12 @@ async function extractOne(file, fh, e, target, { signal, onBytes }) {
   let crc = 0; let n = 0;
   const count = new Transform({ transform(chunk, _e, cb) { n += chunk.length; if (n > e.size) { cb(new Error(`"${e.name}" unpacks to more than it says (a zip bomb?)`)); return; } crc = crc32(chunk, crc); onBytes(chunk.length); cb(null, chunk); } });
   const src = e.csize ? fs.createReadStream(file, { start, end: start + e.csize - 1, highWaterMark: 1 << 20 }) : (() => { const s = new PassThrough(); s.end(); return s; })();
+  // (round 98, bundle98) a file cut short here is left for the caller: a damaged one goes to the Trash on its own, a
+  // stop (cancel, a full disk) takes the whole folder there
   try {
     await pipeline(src, e.method === 8 ? zlib.createInflateRaw() : new PassThrough(), count, fs.createWriteStream(target, { flags: 'wx' }), { signal });
-  } catch (err) { await fs.promises.rm(target, { force: true }).catch(() => {}); throw err.name === 'AbortError' ? cancelErr() : err; }
-  if (n !== e.size || (crc >>> 0) !== (e.crc >>> 0)) { await fs.promises.rm(target, { force: true }).catch(() => {}); throw new Error(`"${e.name}" is damaged (its check doesn't match)`); }
+  } catch (err) { throw err.name === 'AbortError' ? cancelErr() : err; }
+  if (n !== e.size || (crc >>> 0) !== (e.crc >>> 0)) throw new Error(`"${e.name}" is damaged (its check doesn't match)`);
 }
 async function unpack(o = {}, sender = null) {
   const file = String(o.file || '');
@@ -505,29 +562,92 @@ async function unpack(o = {}, sender = null) {
         const target = path.join(dir, ...e.name.split('/'));
         if (!P.inside(dir, target, path)) throw new Error(`"${e.name}" would land outside the project's folder`);
         await fs.promises.mkdir(path.dirname(target), { recursive: true });
-        try { await extractOne(pv.path, fh, e, target, { signal: ctl.signal, onBytes: (k) => { done += k; send({ phase: 'unpack', done, total, file: e.name.split('/').pop() }); } }); } catch (err) { if (err.code === 'ECANCELED') throw err; bad.push(e.name); }
+        // (round 98, bundle98) a full disk, a refused write: the import stops and takes back what it wrote (it was taken
+        // as a damaged file: the import went on without it). Only a damaged entry is skipped (its part to the Trash)
+        try { await opts.fault?.('extract', e.name); await extractOne(pv.path, fh, e, target, { signal: ctl.signal, onBytes: (k) => { done += k; send({ phase: 'unpack', done, total, file: e.name.split('/').pop() }); } }); } catch (err) { if (err.code === 'ECANCELED' || diskErr(err)) throw err; await toTrash([target]); bad.push(e.name); }
       }
     } finally { await fh.close().catch(() => {}); }
+    // (round 98, bundle98) a model made of several files whose other files aren't all in the project file (made before
+    // this round, or missing where it was made): named, never dropped silently
+    const models = files.filter((e) => AD.isModel(e.name) && !bad.includes(e.name));
+    const named = new Set(pv.manifest.skipped.map((x) => String(x).replace(/:.*$/, '')));
+    const lost = [];
+    if (models.length) {
+      const res = await work('deps', { files: models.map((e) => ({ file: path.join(dir, ...e.name.split('/')) })) }).catch(() => []);
+      for (const pl of res || []) for (const m of pl?.missing || []) if (!named.has(`${m.name} (used by ${m.of}`)) { named.add(`${m.name} (used by ${m.of}`); lost.push(...AD.missingLines([m], 'it wasn\'t in the project file')); }
+    }
+    await opts.fault?.('finish', '');
     // the body with this computer's paths (a damaged file's references are left empty and named); (round 85) made on
     // the thread, each big chat's messages left in a part file there (the window adds the chat by name: adopt)
     partsDir = path.join(os.tmpdir(), `hearth-projbundle-${crypto.randomBytes(6).toString('hex')}`);
     const fin = await work('finishImport', { job, dir, bad, partsDir });
     if (fin.parts.length) keepParts(job, partsDir, fin.parts); else fs.promises.rm(partsDir, { recursive: true, force: true }).catch(() => {});
     send({ phase: 'done', done: total, total }, true);
-    return { ok: true, dir, body: fin.body, manifest: pv.manifest, skipped: [...pv.manifest.skipped, ...bad.map((x) => `${x.split('/').pop()} (damaged in the file)`)], path: pv.path, ...(fin.parts.length ? { parts: job } : {}) };
+    return { ok: true, dir, body: fin.body, manifest: pv.manifest, skipped: [...pv.manifest.skipped, ...bad.map((x) => `${x.split('/').pop()} (damaged in the file)`), ...lost], path: pv.path, ...(fin.parts.length ? { parts: job } : {}) };
   } catch (err) {
     work('forget', { job }).catch(() => {});
-    if (dir && P.inside(root(), dir, path)) await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
-    if (partsDir) { parts.delete(job); await fs.promises.rm(partsDir, { recursive: true, force: true }).catch(() => {}); }
-    if (err.code === 'ECANCELED') return { ok: false, canceled: true, path: pv.path };
-    return { ok: false, problems: [err.message], path: pv.path };
+    // (round 98, bundle98) the folder it was writing goes to the Trash (it was removed for good)
+    let left = [];
+    if (dir && P.inside(root(), dir, path)) left = (await toTrash([dir]).catch((e) => ({ failed: [{ path: dir, error: e.message }] }))).failed || [];
+    if (partsDir) { parts.delete(job); await fs.promises.rm(partsDir, { recursive: true, force: true }).catch(() => {}); } // (a temporary folder of the system's: not the owner's)
+    const leftOut = left.length ? { left: left.map((x) => x.path) } : {};
+    if (err.code === 'ECANCELED') return { ok: false, canceled: true, path: pv.path, ...leftOut };
+    return { ok: false, problems: [diskErr(err) && err.code === 'ENOSPC' ? 'The disk is full: nothing was added (what it had unpacked is in the Trash)' : err.message], path: pv.path, ...leftOut };
   } finally { jobs.delete(job); }
 }
-// an import the window couldn't finish (or took back): its folder goes (only ever inside data/assets/projects)
+// an import the window couldn't finish (or took back): its folder goes to the Trash (only ever inside
+// data/assets/projects) · (round 98, bundle98: it was removed for good) → true, or { ok: false, left } when it couldn't go
 async function discard(dir) {
   if (!dir || !P.inside(root(), String(dir), path)) return false;
-  await fs.promises.rm(String(dir), { recursive: true, force: true });
-  return true;
+  const r = await toTrash([String(dir)]);
+  return r.failed?.length ? { ok: false, left: r.failed.map((x) => x.path) } : true;
+}
+
+// ---------- (round 98, bundle98) Duplicate's copy of a model made of several files, and what a failed one takes back ----------
+const REFS = () => path.join(opts.dataDir, 'refs');
+// src → { ok, path, dir, files, missing } (its folder in data/refs/), { ok, single, missing } (one file: copied by the
+// window as before), { ok: false, error }. Never over a file that's there; a copy that fails half-way goes to the Trash
+async function copyAsset(src) {
+  const h = here(String(src || ''));
+  if (!h || h.dir) return { ok: false, error: 'it isn\'t on this computer' };
+  const pl = (await modelPlans([h.path], 0)).get(h.path);
+  if (!pl || (!pl.files.length && !pl.main.data && !pl.main.rel.includes('/'))) return { ok: true, single: true, missing: pl ? AD.missingLines(pl.missing) : [] };
+  fs.mkdirSync(REFS(), { recursive: true });
+  const stem = safeBase(h.path, 60).replace(/\.[^.]+$/, '') || 'model';
+  let dir = null;
+  for (let i = 0; !dir && i < 50; i += 1) { const d = path.join(REFS(), `${Date.now()}-${i ? `${i}-` : ''}${stem}`); try { fs.mkdirSync(d); dir = d; } catch (err) { if (err.code !== 'EEXIST') throw err; } }
+  if (!dir) return { ok: false, error: 'no folder for its copy' };
+  try {
+    for (const f of [{ rel: pl.main.rel, abs: h.path, data: pl.main.data }, ...pl.files]) {
+      const t = path.join(dir, ...f.rel.split('/'));
+      if (!P.inside(dir, t, path)) throw new Error(`"${f.rel}" would land outside its folder`);
+      await fs.promises.mkdir(path.dirname(t), { recursive: true });
+      await opts.fault?.('copy', f.rel);
+      if (f.data) await fs.promises.writeFile(t, asBuf(f.data), { flag: 'wx' });
+      else await fs.promises.copyFile(f.abs, t, fs.constants.COPYFILE_EXCL);
+    }
+  } catch (err) { await toTrash([dir]).catch(() => {}); return { ok: false, error: err.code === 'ENOSPC' ? 'the disk is full' : err.message }; }
+  return { ok: true, path: path.join(dir, ...pl.main.rel.split('/')), dir, files: 1 + pl.files.length, missing: AD.missingLines(pl.missing) };
+}
+// a failed import / copy's own writes, to the Trash: kv: History files (three-hv-<scene>), its boards' (board-<id>) and
+// worktable's (workbench-<project>) stores, each with its .prev — names the apply wrote fresh (it checked they weren't
+// there); files: copies it made in data/refs/ (<time>-<name>, a file or a model's folder). Anything else is refused.
+// Their saves on their way land first (never trashed, then written again). → { done, failed }
+const UNTAKE_KV = /^(three-hv-[\w-]{1,80}|board-[\w-]{1,80}|workbench-[\w-]{1,100})$/;
+async function untake({ kv = [], files = [] } = {}) {
+  await opts.idle?.();
+  const list = [];
+  for (const n of Array.isArray(kv) ? kv : []) {
+    if (!UNTAKE_KV.test(String(n))) continue;
+    for (const f of [`${n}.json`, `${n}.prev.json`]) { const p = path.join(opts.dataDir, 'kv', f); if (statOf(p)) list.push(p); }
+  }
+  for (const f of Array.isArray(files) ? files : []) {
+    const p = path.resolve(unFile(f));
+    const rel = path.relative(REFS(), p).split(/[\\/]/);
+    if (!P.inside(REFS(), p, path) || !/^\d{10,}-/.test(rel[0])) continue;
+    list.push(path.join(REFS(), rel[0])); // (a model's folder whole; a file copied alone is that file)
+  }
+  return toTrash(list);
 }
 
 // ---------- (round 85, projbig85) big chats added by name ----------
@@ -579,6 +699,9 @@ function register(ipcMain, o = {}) {
   ipcMain.handle('projbundle:chats', (_e, ids, o) => chatsInfo(ids, o || {})); // (round 86: o.lite)
   ipcMain.handle('projbundle:adopt', async (_e, a) => { try { return await adopt(a || {}); } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('projbundle:release', (_e, job) => release(job));
+  // (round 98, bundle98) a model made of several files copied whole (Duplicate); a failed import / copy's writes to the Trash
+  ipcMain.handle('projbundle:copyAsset', async (_e, src) => { try { return await copyAsset(src); } catch (err) { return { ok: false, error: err.message }; } });
+  ipcMain.handle('projbundle:untake', (_e, a) => untake(a || {}));
 }
 
-module.exports = { register, sizes, exportBundle, peek, peekHere, unpack, discard, chatsInfo, adopt, release, writeZip, walkDir, cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; }, _partsDir: (job) => parts.get(String(job))?.dir || null };
+module.exports = { register, sizes, exportBundle, peek, peekHere, unpack, discard, chatsInfo, adopt, release, writeZip, walkDir, copyAsset, untake, toTrash, cancel: (job) => jobs.get(String(job))?.abort(), _set: (o) => { opts = { ...opts, ...o }; }, _partsDir: (job) => parts.get(String(job))?.dir || null };

@@ -19,6 +19,7 @@
 //   finishImport { job, dir, bad, partsDir }  its paths made this computer's; each big chat's messages written to a
 //                             part file (partsDir) and the chat replaced by its own fields + { __bigPart: { key, n } }:
 //                             the window then adds it by name (projbundle:adopt → the store thread writes it)
+//   deps { files }            (round 98, bundle98) the files a .gltf / .obj names (assetdeps-core.js plan): read only
 // Nothing here writes outside partsDir (a temporary folder) and nothing is uploaded.
 'use strict';
 const fs = require('fs');
@@ -187,6 +188,16 @@ const OPS = {
     return { body, parts };
   },
   forget({ job }) { state.delete(String(job)); return true; },
+  // (round 98, bundle98) a model made of several files (a .gltf and its .bin / textures, an .obj and its .mtl): every
+  // file it names, where each goes (assetdeps-core.js plan); files: [{ file, name, maxLen }] → [plan | null] (a file
+  // that isn't such a model, or can't be read: null, it travels alone as before)
+  deps({ files = [] } = {}) {
+    const AD = require('./assetdeps-core');
+    return files.map(({ file, name, maxLen, maxDepth }) => {
+      if (!AD.isModel(file)) return null;
+      try { return AD.plan(file, { fs, path, name, maxLen, maxDepth, refuse: P.secretFile }); } catch { return null; }
+    });
+  },
 };
 
 // as a thread: one message at a time, big bytes handed over (res.__transfer)

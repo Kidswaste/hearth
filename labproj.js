@@ -11,7 +11,9 @@
 //   history(s, ctx)        before a scene is added: its History written to its own file (new id: never over one)
 //   place(s, ctx)          after: its pin, its song's bars and loop (under this computer's path for the song, never
 //                          over bars already set for that song here), its sequence pick
-//   finish(ctx) / undo(ctx)  the presets' store told once (they sync) / what was put back taken out (a failed apply)
+//   finish(ctx) / undo(ctx)  the presets' store told once (they sync) / what was put back taken out (a failed apply);
+//                          (round 98, bundle98) ctx.hist (History files written) and ctx.copies (songs copied) are sent to
+//                          the Trash by projbundle.js's undo
 const LabProj = (() => {
   const LP = LabProjCore;
   const hub = () => window.hub;
@@ -57,7 +59,7 @@ const LabProj = (() => {
   // ---------- apply ----------
   const exists = async (p) => Boolean(p) && Boolean(await hub().fs.stat(p).catch(() => null));
   async function start(b, { mode = 'import', skipped = [] } = {}) {
-    const ctx = { mode, skipped, pins: [], bars: [], loops: [], seqpick: [], hist: [], touched: false };
+    const ctx = { mode, skipped, pins: [], bars: [], loops: [], seqpick: [], hist: [], copies: [], touched: false }; // (round 98, bundle98) copies: the songs copied (to the Trash if the copy fails)
     if (mode !== 'duplicate') return ctx;
     let dataDir = '';
     try { dataDir = (await hub().reach.info())?.dataDir || ''; } catch { /* no song copied: shared, said below */ }
@@ -68,7 +70,7 @@ const LabProj = (() => {
       if (!copies.has(song)) {
         let np = null;
         if (!(await exists(song))) skipped.push(`The song of “${s.sketch?.name || 'a scene'}” isn't on this computer (${String(song).split(/[\\/]/).pop()}): the copy points at it as the original does`);
-        else { try { np = await hub().importRef(song); } catch (err) { skipped.push(`The song of “${s.sketch?.name || 'a scene'}” couldn't be copied (${err?.message || 'error'}): the copy plays the original's file`); } }
+        else { try { np = await hub().importRef(song); if (np) ctx.copies.push(np); } catch (err) { skipped.push(`The song of “${s.sketch?.name || 'a scene'}” couldn't be copied (${err?.message || 'error'}): the copy plays the original's file`); } }
         copies.set(song, np);
       }
       const np = copies.get(song);
@@ -110,7 +112,8 @@ const LabProj = (() => {
       for (const p of ctx.loops) st().set(`${LOOP}${p}`, null);
       finish(ctx);
     } catch { /* storage is a convenience */ }
-    // (a History file written for a scene that was taken back stays: a small file nobody points at, as labsync88's do)
+    // (round 98, bundle98) the History files it wrote (ctx.hist) and the songs it copied (ctx.copies) go to the Trash with
+    // the rest of what the apply wrote (projbundle.js undo → projbundle:untake): they stayed before
   }
   return { addTo, start, history, place, finish, undo, loopOf };
 })();

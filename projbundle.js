@@ -23,7 +23,7 @@ const ProjBundle = (() => {
   const hub = () => window.hub;
   const pb = () => window.hub.projbundle;
   let busy = false;
-  const last = { exported: null, imported: null, duplicated: null, skipped: [] }; // (checks) what the last run did
+  const last = { exported: null, imported: null, duplicated: null, skipped: [], undone: null, left: [] }; // (checks) what the last run did · (round 98, bundle98) undone: what a failed import / copy took back, left: what it couldn't
 
   // ---------- reading a project's parts ----------
   async function kv(name, d) {
@@ -243,7 +243,7 @@ const ProjBundle = (() => {
     if (busy) { toast('Another project export / import is running', { type: 'error' }); return null; }
     file = file || await pickFile();
     if (!file) return null;
-    busy = true;
+    busy = true; last.left = []; last.undone = null;
     const ui = dialog('Import a project', { eyebrow: 'PROJECT / IMPORT' });
     let dir = null; let parts = null; // (round 85) parts: its giant chats' messages, waiting on the main side (released after)
     try {
@@ -284,9 +284,12 @@ const ProjBundle = (() => {
         return null;
       }
       dir = r.dir; parts = r.parts || null;
-      ui.onCancel(() => {}); ui.buttons();
+      // (round 98, bundle98) Cancel stays while it adds: what was added goes back (apply's undo), as for a failure
+      const signal = { aborted: false };
+      const halt = () => { signal.aborted = true; ui.say('Stopping… (taking back what was added)'); ui.buttons(); };
+      ui.onCancel(halt); ui.buttons(button('Cancel', halt));
       ui.say('Adding its scenes, boards and chats…');
-      const res = await apply(r.body, { mode: 'import', parts });
+      const res = await apply(r.body, { mode: 'import', parts, signal });
       ui.close();
       const skipped = [...(r.skipped || []), ...res.skipped];
       last.imported = res.project.id; last.skipped = skipped;
@@ -294,8 +297,12 @@ const ProjBundle = (() => {
       return res.project;
     } catch (err) {
       ui.close();
-      if (dir) pb().discard(dir).catch(() => {});
-      toast(calmError(err), { type: 'error', raw: err });
+      // (round 98, bundle98) its folder to the Trash (awaited: the toast says what stayed, if anything couldn't go)
+      const d = dir ? await pb().discard(dir).catch(() => ({ ok: false, left: [dir] })) : true;
+      const left = [...(d?.left || []), ...(last.undone?.left || [])];
+      last.left = left;
+      if (err?.code === 'ECANCELED') toast(`Import cancelled (nothing was added${left.length ? `; ${left.length} thing${left.length === 1 ? '' : 's'} couldn't be taken back` : ''})`, { timeout: 4000 });
+      else toast(`${calmError(err)}${left.length ? ` (${left.length} thing${left.length === 1 ? '' : 's'} it added couldn't be taken back: ${left.slice(0, 2).join(', ')})` : ''}`, { type: 'error', raw: err });
       return null;
     } finally { busy = false; if (parts) pb().release?.(parts).catch?.(() => {}); }
   }
@@ -310,7 +317,7 @@ const ProjBundle = (() => {
   async function duplicateProject(p) {
     if (!p) return null;
     if (busy) { toast('Another project export / import is running', { type: 'error' }); return null; }
-    busy = true;
+    busy = true; last.left = []; last.undone = null;
     try {
       toast(`Copying “${p.name}”…`, { timeout: 2500 });
       const body = await gather(p, { files: false });
@@ -321,7 +328,8 @@ const ProjBundle = (() => {
       done(res.project, `“${res.project.name}”: ${PC.countText(res.project)}`, skipped);
       return res.project;
     } catch (err) {
-      toast(calmError(err), { type: 'error', raw: err });
+      const left = last.undone?.left || []; last.left = left; // (round 98, bundle98) what the copy added went back (apply's undo)
+      toast(`${calmError(err)}${left.length ? ` (${left.length} thing${left.length === 1 ? '' : 's'} it added couldn't be taken back: ${left.slice(0, 2).join(', ')})` : ''}`, { type: 'error', raw: err });
       return null;
     } finally { busy = false; }
   }
@@ -353,14 +361,37 @@ const ProjBundle = (() => {
     H.chats = [summary, ...(H.chats || []).filter((x) => x.id !== chat.id)];
     try { if (typeof Panel !== 'undefined') (Panel.soon || Panel.render)(); } catch { /* the list draws later */ }
   }
+  // (round 98, bundle98) a duplicate's copy of a reference: a model made of several files (a .gltf with its .bin and
+  // textures, an .obj with its .mtl) gets its folder copied whole (projbundle:copyAsset), any other file is copied as
+  // before (importRef). The copy is noted in made.files (taken back on a failure); a file the model names that isn't
+  // here is named. Throws when it can't be copied (named by the caller)
+  const MODEL = /\.(gltf|glb|obj)$/i;
+  async function copyRef(r, s, made, skipped) {
+    if (MODEL.test(r.path || '') && pb().copyAsset) {
+      const c = await pb().copyAsset(r.path);
+      if (c?.ok === false) throw new Error(c.error || 'it couldn\'t be copied');
+      for (const m of c?.missing || []) skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}”: ${m}`);
+      if (c?.path) { made.files.push(c.dir || c.path); r.path = c.path; return; }
+    }
+    const np = await hub().importRef(r.path);
+    if (np) { made.files.push(np); r.path = np; }
+  }
   // (round 85, projbig85) parts: the import's giant chats' messages waiting on the main side (unpack's r.parts)
-  async function apply(body0, { mode = 'import', suffix = '', parts = null } = {}) {
+  // (round 98, bundle98) Everything it writes is noted (made) and taken back if it can't finish — a failed write, a full
+  // disk, the card's Cancel (signal: { aborted }, looked at between steps) — newest first (undo below): the project to
+  // Recently deleted, chats to the chats' Trash, boards out of the list (their stores to the Trash), sequences, scenes
+  // to the Lab's deleted, their pins / bars / loops / sequence picks, History files, the worktable's store and the
+  // copies a duplicate made to the Trash. Only what it wrote itself: a file that was there before is never touched.
+  // Chats join the list and are linked to their scene and board only once the project is in (nothing to take back there)
+  async function apply(body0, { mode = 'import', suffix = '', parts = null, signal = null } = {}) {
     await P.ready();
     // (round 85, projbig85) only what is changed here is copied (each chat's entry and own fields): remap copies the rest;
     // a whole JSON copy of the body first was a 30–50 ms piece of a long task for a project of 760 things
     const body = { ...body0, chats: (body0.chats || []).map((c) => ({ ...c, chat: c.chat && typeof c.chat === 'object' ? { ...c.chat } : c.chat })) };
     const skipped = [];
-    const made = { scenes: [], chats: [], boards: [] };
+    const made = { scenes: [], chats: [], boards: [], seqs: [], files: [], kv: [], project: null }; // (round 98, bundle98)
+    const halt = () => { if (signal?.aborted) throw Object.assign(new Error('Cancelled'), { code: 'ECANCELED' }); };
+    last.undone = null;
     const hasScenes = (body.scenes || []).length || (body.sequences || []).length;
     if (hasScenes) await labReady();
     // chats: which AI here
@@ -371,42 +402,66 @@ const ProjBundle = (() => {
       c.chat.agentId = agent.id;
     }
     body.chats = (body.chats || []).filter((c) => !c.drop);
-    // boards first: the board keeps its own id format (Board.create)
-    const boardIds = new Map();
-    if ((body.boards || []).length) {
-      await window.Lazy?.load('board');
-      await Board.ready();
-      for (const x of body.boards) {
-        const n = await Board.create(`${String(x.board.name || 'Board').slice(0, 60 - suffix.length)}${suffix}`, { quiet: true, open: false });
-        boardIds.set(x.id, n.id); made.boards.push(n.id);
-      }
-    }
-    // fresh ids for everything else, checked against what exists
-    const sceneTaken = new Set(hasScenes ? ThreeLab.scenes.all().map((s) => s.id) : []);
-    const chatTaken = new Set((H.chats || []).map((c) => c.id));
-    const seqTaken = new Set();
-    if ((body.sequences || []).length) { await CutStore.editFor('seq:__probe__'); for (const q of CutStore.sequences()) seqTaken.add(q.key); }
-    let n = 0;
-    const fresh = (pre, taken) => { let id; do { id = `${pre}${Date.now().toString(36)}${(n++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`; } while (taken.has(id)); taken.add(id); return id; };
-    const ids = {
-      project: () => { let id; do { id = PC.newId(); } while (P.get(id) || P.trashed().some((x) => x.id === id)); return id; },
-      scene: () => fresh('s', sceneTaken),
-      board: (old) => boardIds.get(old),
-      chat: (_old, agentId) => fresh(`${agentId}-`, chatTaken),
-      ref: () => fresh('r', new Set()), note: () => fresh('n', new Set()),
-      seqKey: (name) => { let k = `seq:${name}`; for (let i = 2; seqTaken.has(k); i += 1) k = `seq:${name} ${i}`; seqTaken.add(k); return k; },
-    };
-    const { body: b, map, dropped } = C.remap(body, { ids, suffix });
-    skipped.push(...dropped);
-    await nextTask(); // (round 86, projopen86) the copy above (≈ 30 ms for a long chat) and the scenes below: tasks of their own
     let labCtx = null; // (round 97, labproj97)
+    let b = null; let map = null; let p = null;
+    // (round 98, bundle98) what it added, taken back (each on its own: one that can't go back doesn't stop the others;
+    // last.undone says what stayed)
+    const undo = async () => {
+      const left = [];
+      const one = async (what, fn) => { try { if ((await fn()) === false) left.push(what); } catch { left.push(what); } };
+      if (made.project) await one(`the project “${made.project.name}”`, async () => { P.removeProject(made.project, { quiet: true }); await P.flush().catch(() => {}); });
+      for (const id of made.chats.slice().reverse()) await one(`a chat (${id})`, () => hub().deleteChat(id));
+      for (const k of made.seqs.slice().reverse()) await one(`the sequence ${k.slice(4)}`, () => CutStore.deleteSequence(k));
+      for (const id of made.boards.slice().reverse()) await one(`a board (${id})`, async () => { await Board.remove(id, { quiet: true }); });
+      if (made.boards.length) await Promise.resolve(Board._?.flush?.()).catch(() => {}); // (their saves on their way first: then their stores to the Trash)
+      for (const id of made.scenes.slice().reverse()) await one(`a scene (${id})`, () => ThreeLab.scenes.remove(id));
+      await LabProj.undo(labCtx); // (round 97, labproj97) the pins and bars it put back
+      const kv = [...made.kv, ...(labCtx?.hist || [])]; const files = [...made.files, ...(labCtx?.copies || [])];
+      if (kv.length || files.length) {
+        const r = await pb().untake({ kv, files }).catch((e) => ({ failed: [...kv, ...files].map((x) => ({ path: x, error: e?.message })) }));
+        for (const f of r?.failed || []) left.push(String(f.path).split(/[\\/]/).pop());
+      }
+      last.undone = { scenes: made.scenes.length, chats: made.chats.length, boards: made.boards.length, seqs: made.seqs.length, kv, files, project: made.project?.id || null, left };
+    };
     try {
+      // boards first: the board keeps its own id format (Board.create)
+      const boardIds = new Map();
+      if ((body.boards || []).length) {
+        await window.Lazy?.load('board');
+        await Board.ready();
+        for (const x of body.boards) {
+          halt();
+          const n = await Board.create(`${String(x.board.name || 'Board').slice(0, 60 - suffix.length)}${suffix}`, { quiet: true, open: false });
+          boardIds.set(x.id, n.id); made.boards.push(n.id); made.kv.push(`board-${n.id}`);
+        }
+      }
+      // fresh ids for everything else, checked against what exists
+      const sceneTaken = new Set(hasScenes ? ThreeLab.scenes.all().map((s) => s.id) : []);
+      const chatTaken = new Set((H.chats || []).map((c) => c.id));
+      const seqTaken = new Set();
+      if ((body.sequences || []).length) { await CutStore.editFor('seq:__probe__'); for (const q of CutStore.sequences()) seqTaken.add(q.key); }
+      let n = 0;
+      const fresh = (pre, taken) => { let id; do { id = `${pre}${Date.now().toString(36)}${(n++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`; } while (taken.has(id)); taken.add(id); return id; };
+      const ids = {
+        project: () => { let id; do { id = PC.newId(); } while (P.get(id) || P.trashed().some((x) => x.id === id)); return id; },
+        scene: () => fresh('s', sceneTaken),
+        board: (old) => boardIds.get(old),
+        chat: (_old, agentId) => fresh(`${agentId}-`, chatTaken),
+        ref: () => fresh('r', new Set()), note: () => fresh('n', new Set()),
+        seqKey: (name) => { let k = `seq:${name}`; for (let i = 2; seqTaken.has(k); i += 1) k = `seq:${name} ${i}`; seqTaken.add(k); return k; },
+      };
+      const rm = C.remap(body, { ids, suffix });
+      b = rm.body; map = rm.map;
+      skipped.push(...rm.dropped);
+      await nextTask(); // (round 86, projopen86) the copy above (≈ 30 ms for a long chat) and the scenes below: tasks of their own
+      halt();
       labCtx = await LabProj.start(b, { mode, skipped }); // (round 97, labproj97) a duplicate's own copy of a song kept with its scene
       // scenes (a duplicate's references are copied: removing a reference deletes its file)
       for (const s of b.scenes || []) {
+        halt();
         // (round 97, labproj97) a reference whose copy can't be made is named (it shares the original's file: removing it
-        // in the copy never trashes it, tools/three.js trashRefFile)
-        if (mode === 'duplicate') for (const r of s.refs || []) { try { const np = await hub().importRef(r.path); if (np) r.path = np; } catch { skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}” ${(await hub().fs.stat(r.path).catch(() => null)) ? 'couldn\'t be copied: the copy shares the original\'s file' : 'isn\'t on this computer'}`); } }
+        // in the copy never trashes it, tools/three.js trashRefFile) · (round 98, bundle98) a model's other files too: copyRef
+        if (mode === 'duplicate') for (const r of s.refs || []) { try { await copyRef(r, s, made, skipped); } catch { skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}” ${(await hub().fs.stat(r.path).catch(() => null)) ? 'couldn\'t be copied: the copy shares the original\'s file' : 'isn\'t on this computer'}`); } }
         if (mode === 'import') s.refs = (s.refs || []).filter((r) => { if (r.path) return true; skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}” (its file wasn't in the file)`); return false; });
         await LabProj.history(s, labCtx); // (round 97, labproj97) its History, in its own file before the Lab can open it
         const x = ThreeLab.scenes.adoptScene({ sketch: s.sketch, extras: s.extras, refs: s.refs, notes: s.notes, thumb: s.thumb, maps: s.maps });
@@ -415,18 +470,19 @@ const ProjBundle = (() => {
         LabProj.place(s, labCtx); // (round 97, labproj97) its pin, its song's ⚡ bars and loop, its sequence pick
         await nextTask(); // (round 86, projopen86) the scenes added in slices: one per task (a big scene's copy is a few ms)
       }
-      LabProj.finish(labCtx); // (round 97, labproj97)
-      for (const q of b.sequences || []) await CutStore.storeEdit(q.key, q.edit, mode === 'duplicate' ? 'Copied with its project' : 'Imported with its project');
+      for (const q of b.sequences || []) { halt(); await CutStore.storeEdit(q.key, q.edit, mode === 'duplicate' ? 'Copied with its project' : 'Imported with its project'); made.seqs.push(q.key); }
       if ((b.sequences || []).length) await window.ThreeSeq?.list?.().catch?.(() => {});
       // boards: their content into the boards made above
       for (const x of b.boards || []) {
+        halt();
         const nb = await Board.load(x.id);
         const { id: _i, name: _n, ...rest } = x.board;
         Object.assign(nb, rest, { id: x.id, name: nb.name, chats: x.board.chats || [], updated: Date.now() });
         await Board.save(nb, { now: true });
       }
-      // chats: saved, known to the chats list, linked to their scene and board again
+      // chats: saved (listed and linked to their scene and board once the project is in, below)
       for (const c of b.chats || []) {
+        halt();
         const chat = { ...c.chat, id: c.id, session: {} };
         const big = chat.__bigPart || chat.__bigChat;
         if (big) {
@@ -436,22 +492,26 @@ const ProjBundle = (() => {
           const r = await pb().adopt(c.chat.__bigPart ? { job: parts, part: big.key, id: chat.id, head: chat } : { chat: big.id, id: chat.id, head: chat });
           if (!r?.ok) throw new Error(r?.error || `The chat “${chat.title || 'chat'}” couldn't be added`);
           made.chats.push(chat.id);
-          listChat(chat);
+          c.saved = { chat, big: true };
         } else {
           const r = await hub().saveChat(chat);
           if (r?.error) throw new Error(r.error);
           made.chats.push(chat.id);
-          Native.adopt(chat, { openIt: false });
+          c.saved = { chat, big: false };
         }
-        if (c.scene && typeof ChatScenes !== 'undefined') ChatScenes.link(chat.id, c.scene, { rename: false });
-        if (c.board && typeof Board !== 'undefined' && window.Lazy?.loaded('board')) Board.linkChat(chat.id, c.board);
       }
       // the worktable
       if (b.workbench != null && /^[\w-]{1,100}$/.test(map.project)) {
+        halt();
         const key = `workbench-${map.project}`;
         const was = await hub().kvGet(key, null, { status: true });
-        if (was?.state === 'missing') await hub().kvSet(key, b.workbench);
+        if (was?.state === 'missing') {
+          made.kv.push(key); // (round 98, bundle98) taken back with the rest (a failed write was taken as done)
+          const r = await hub().kvSet(key, b.workbench);
+          if (r?.error) throw new Error(r.error);
+        }
       }
+      halt();
       // the project itself, last (until here nothing points at the new things)
       const bp = b.project;
       const items = [];
@@ -460,19 +520,28 @@ const ProjBundle = (() => {
         if (x.type === 'chat' && !made.chats.includes(x.ref)) continue;
         items.push({ type: x.type, ref: x.ref, name: x.name, at: x.at });
       }
-      const p = P.create({ id: map.project, name: bp.name, notes: bp.notes || '', from: 'hand', items, at: bp.at || Date.now(), ...(mode === 'import' && bp.ident ? { ident: bp.ident } : {}) });
+      p = P.create({ id: map.project, name: bp.name, notes: bp.notes || '', from: 'hand', items, at: bp.at || Date.now(), ...(mode === 'import' && bp.ident ? { ident: bp.ident } : {}) });
+      made.project = p;
       if (bp.status && bp.status !== 'active') P.setStatus(p, bp.status === 'archived' ? 'active' : bp.status);
       if (bp.cover && p.items.some((x) => x.id === bp.cover)) P.setCover(p, bp.cover);
       if (bp.workspace && typeof bp.workspace === 'object') P.setWorkspace(p, bp.workspace);
       await P.flush();
-      return { project: p, map, skipped };
     } catch (err) {
-      // what was added before the failure goes back (scenes to the Lab's deleted, chats to the trash)
-      for (const id of made.scenes) { try { ThreeLab.scenes.remove(id); } catch { /* kept */ } }
-      await LabProj.undo(labCtx); // (round 97, labproj97) the pins and bars it put back
-      for (const id of made.chats) { try { await hub().deleteChat(id); } catch { /* kept */ } }
+      await undo();
       throw err;
     }
+    // (round 98, bundle98) in: its chats join the list and are linked to their scene and board again (one that can't
+    // be linked is named; the project stays); the Lab's presets told once (they sync)
+    for (const c of b.chats || []) {
+      const sv = c.saved; if (!sv) continue;
+      try {
+        if (sv.big) listChat(sv.chat); else Native.adopt(sv.chat, { openIt: false });
+        if (c.scene && typeof ChatScenes !== 'undefined') ChatScenes.link(sv.chat.id, c.scene, { rename: false });
+        if (c.board && typeof Board !== 'undefined' && window.Lazy?.loaded('board')) Board.linkChat(sv.chat.id, c.board);
+      } catch { skipped.push(`The chat “${sv.chat.title || 'chat'}” couldn't be linked to its scene or board`); }
+    }
+    LabProj.finish(labCtx); // (round 97, labproj97)
+    return { project: p, map, skipped };
   }
 
   // ---------- drop a .hearthproject on Projects ----------
