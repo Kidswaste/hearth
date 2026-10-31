@@ -80,7 +80,7 @@ computer is updated it is never offered again (`oldheld`).
 |---|---|
 | `node dev/kvrename99-test.js` | ✓ 89 / 89 (before the fix: 23 failures in repro, refuse, older, oldheld, rules) |
 | app checks `kvrename99 sync72 syncpanel92 keptaside94 guardloss78` | ✓ 5 / 5 |
-| app checks `sync lazy synchard74` | see "Final runs" |
+| app checks `sync lazy synchard74` | ✓ 3 / 3 |
 | unit: synchard74, sync72, syncsweep97, syncrace98, sync, packs89, devices90, twocomputers, datasafe-scan, winmac, errorcalm-scan, storeack-scan, chatsafe-scan, boot, lazymanifest | ✓ all |
 | `node dev/sync72-test.js --thread` | ✓ 209 / 209 |
 
@@ -94,6 +94,10 @@ computer is updated it is never offered again (`oldheld`).
   per-name rule check showed a 171 ms hold against a 150 ms budget; with the comparison first it passes).
 - First screen unchanged (the panel is the lazy `syncpanel` group; `sync-own.js` is main-process only); `unit:boot-test`
   passes.
+
+## Final runs
+App checks ran under `flock /tmp/hearth-run.lock`, at most 5 per run, with `TMPDIR=/tmp/kr99` (since removed);
+`kvrename99` ran again after the Mac's words changed (✓).
 
 ## What's left
 - An older Hearth's Rename for Windows on a kv store it held back (never in the cloud) still cuts the store off **on that
