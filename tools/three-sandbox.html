@@ -4818,7 +4818,7 @@ async function rmodMtl(rm, text) {
     const t = await fetch(u).then((r) => r.text()).catch(() => null);
     if (t == null) continue;
     const dir = lib.split(/[\\/]/).slice(0, -1).join('/');
-    const m = new MTLLoader(rmodManager(THREE.DefaultLoadingManager)).parse(t, rm.base + (dir ? `${dir}/` : ''));
+    const m = new MTLLoader(rmodManager(THREE.DefaultLoadingManager)).parse(t, rm.base + (dir ? `${dir}/` : '')); // winmac-ok (a URL: the model's resource path, always "/")
     if (!mats) mats = m; else Object.assign(mats.materialsInfo, m.materialsInfo);
   }
   mats?.preload();
