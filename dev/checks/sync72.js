@@ -113,7 +113,7 @@ await click(btn(/^Keep Mac$/, card));
 await until(() => !panel()?.querySelector(`.sp-conflict[data-id="${card.dataset.id}"]`), 8000);
 const kept = await window.hub.getChat('sync72-chat');
 step('Keep Mac: the Mac\'s version is the chat now, the conflict is gone from the panel', /Mac cut/.test(kept?.title || '') && (kept.messages || []).some((m) => /logo reveal/.test(m.text)), kept?.title);
-step('a calm note says where the other version waits', recentToasts().some((t) => /Keep Mac: done/.test(t.message) && /Deleted files/.test(t.message)), recentToasts().slice(-2).map((t) => t.message));
+step('a calm note says where the other version waits, with Undo', recentToasts().some((t) => /Using the Mac's version/.test(t.message) && /Deleted files/.test(t.message)) && [...document.querySelectorAll('.toast button')].some((x) => x.textContent.trim() === 'Undo'), recentToasts().slice(-2).map((t) => t.message)); // (round 94, keptaside94) the note names it and has Undo
 await click(btn(/^Sync now$/));
 await until(() => Sync.status().state === 'synced', 8000);
 step('settled: "✓ Synced" again', /✓ Synced/.test(chip()));

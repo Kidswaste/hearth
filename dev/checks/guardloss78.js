@@ -42,18 +42,18 @@ await click('#sync-dot');
 await until(() => document.querySelector('.sync-panel .sp-aside'), 8000);
 const row = document.querySelector('.sync-panel .sp-aside');
 step('the sync panel: "Mac\'s version of Notes kept aside — compare"', /^Mac's version of Notes kept aside — compare$/.test(row?.querySelector('.sp-what')?.textContent || ''), row?.textContent);
-await click(row.querySelector('.sp-aside-compare'));
-await until(() => document.querySelector('.sync-panel .sp-aside .sp-sides'), 6000);
-const sides = document.querySelector('.sync-panel .sp-aside .sp-sides')?.textContent || '';
+await click(row.querySelector('.sp-aside-compare')); // (round 94, keptaside94) the shared compare view
+await until(() => document.querySelector('dialog.ka-view[open] .ka-diff'), 8000);
+const sides = document.querySelector('dialog.ka-view[open] .ka-main')?.textContent || '';
 step('Compare shows both versions', /the big one/.test(sides) && /1:12 \(Mac\)/.test(sides), sides);
-await smoke({ shot: '/tmp/guardloss78-aside.png' });
+await smoke({ shot: `${window.SMOKE_TMP || '/tmp'}/guardloss78-aside.png` });
 const trash = await api.trash();
 step('the Mac\'s version is in Deleted files', trash.some((t) => t.rel === 'kv/notes.json' && t.where === 'here'), trash.map((t) => t.id));
-await click(document.querySelector('.sync-panel .sp-aside .sp-aside-both'));
+await click(document.querySelector('dialog.ka-view[open] .ka-both'));
 await until(async () => (await window.hub.kvGet('notes', [])).some((n) => /1:12 \(Mac\)/.test(n.text)), 10000);
 const all = await window.hub.kvGet('notes', []);
 step('Keep both: the Mac\'s version is back beside it, this computer\'s line kept', all.some((n) => /1:12 \(Mac\)/.test(n.text)) && all.some((n) => /the big one/.test(n.text)), all.map((n) => `${n.title}: ${n.text.split('\n')[2]}`));
-await until(() => !document.querySelector('.sync-panel .sp-aside'), 6000);
+await until(() => !(Sync.status().aside || []).length, 6000);
 step('…and the note in the panel is gone', !document.querySelector('.sync-panel .sp-aside') && !(Sync.status().aside || []).length);
 SyncPanel.close();
 

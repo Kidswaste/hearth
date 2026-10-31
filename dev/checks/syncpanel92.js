@@ -211,7 +211,7 @@ over.conflicts = async () => []; delete over.preview;
 
 // 10. kept aside (both computers changed it; sync kept one)
 await show('kept aside', { aside: [{ id: 'a92', at: T - 300000, rel: 'kv/boards.json', why: 'guard', side: 'theirs', from: 'Studio Mac', fromPlatform: 'darwin', kind: 'json', fields: [] }] });
-step('kept aside: "Mac\'s version of Mood boards kept aside — compare", Compare / Keep both / Use that one / OK', /Mac's version of Mood boards kept aside/.test(mainText()) && Boolean(btn(/^Compare$/)) && Boolean(btn(/^Use that one$/)) && Boolean(btn(/^OK$/)), audit['kept aside']);
+step('kept aside: "Mac\'s version of Mood boards kept aside — compare", Compare… / Keep the one in use / Use the one kept aside / Keep both', /Mac's version of Mood boards kept aside/.test(mainText()) && Boolean(btn(/^Compare…$/)) && Boolean(btn(/^Use the one kept aside$/)) && Boolean(btn(/^Keep the one in use$/)) && Boolean(btn(/^Keep both$/)), audit['kept aside']); // (round 94, keptaside94) plainer names; Compare… opens the shared compare view
 step('kept aside: the chip and title say so too', /kept aside/.test(h2()), h2());
 clean('kept aside');
 
