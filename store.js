@@ -791,7 +791,11 @@ module.exports = {
     // (round 20) the copy is made on the store thread right before the write, and skipped with it when nothing changed
     const file = kvPath(name);
     const removed = Array.isArray(o?.removed) ? o.removed.filter((x) => typeof x === 'string').slice(0, 5000) : undefined;
-    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed, outside: Boolean(o?.outside) }); // (round 78) o.outside: 🛟 Recover's own write
+    // (round 97, syncsweep97) o.base: the version this value was made from (Kept aside › Combine…): until the window has
+    // read the store again (its ack), a save of an older copy from the window merges with this value (base: o.base),
+    // as for 🛟 Recover's writes, never written over it
+    if (o && o.base !== undefined) outsideWrite(name, o.base);
+    return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed, outside: Boolean(o?.outside) || (o && o.base !== undefined) }); // (round 78) o.outside: 🛟 Recover's own write
   },
   outsideWrite, outsideAck, _outside: () => outside.size, // (round 78, guardloss78) 🛟 Recover's writes vs the window's copy
   mergeKV, applyOps, // (round 73, chatsteady73) a store saved by what changed (usage.js)
