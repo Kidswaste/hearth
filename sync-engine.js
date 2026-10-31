@@ -25,6 +25,7 @@ const SS = require('./scenesafe-core');
 const K = require('./sync-kinds'); // (round 73, syncmedia73) what syncs, by kind: sizes for the panel
 const Hard = require('./sync-hard'); // (round 74, synchard74) Windows names, locked / read-only / full disks, versions, secrets
 const SState = require('./sync-state'); // (round 75, syncstate75) sync's own state kept in pieces (data/sync/state/)
+const Own = require('./sync-own'); // (round 99, kvrename99) Hearth's own files (found by their name): never renamed by sync
 const Aside = require('./sync-aside'); // (round 78, guardloss78) a conflict's losing side, kept in Deleted files with a note
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
@@ -256,7 +257,7 @@ function createEngine(o) {
   function block(rel, why, x = {}) {
     const list = blockNow || status.blocked || (status.blocked = []);
     if (list.length >= 60 || list.some((b) => b.rel === rel && b.why === why)) return;
-    list.push({ rel, why, where: x.where || 'here', fix: x.fix !== undefined ? x.fix : Hard.BLOCK[why]?.fix ?? null, ...(x.part ? { part: x.part } : {}), ...(x.code ? { code: x.code } : {}), ...(x.to ? { to: x.to } : {}), at: now() });
+    list.push({ rel, why, where: x.where || 'here', fix: x.fix !== undefined ? x.fix : Hard.BLOCK[why]?.fix ?? null, ...(x.part ? { part: x.part } : {}), ...(x.code ? { code: x.code } : {}), ...(x.to ? { to: x.to } : {}), ...(x.over ? { over: x.over } : {}) /* (round 99, kvrename99) */, at: now() });
   }
   // an fs error on rel → a blocked entry (true) when it is one the owner can see / fix; the read-only test looks at the
   // files themselves (Windows refuses to replace or delete a read-only file: EPERM, like a file in use)
@@ -757,10 +758,11 @@ function createEngine(o) {
   let machinePk = null; // (round 89, packs89) the packs part of the record last written
   async function writeMachine(force) {
     const file = path.join(META, 'machines', `${machine.id}.json`);
-    const pk = PK ? JSON.stringify(PK.record()) : ''; // (round 89, packs89) "packs: 1" while the setting is on here (rewritten at once when it changes)
-    if (!force && now() - (state.machineAt || 0) < 10 * 60 * 1000 && (!PK || pk === machinePk)) return;
-    state.machineAt = now(); if (PK) machinePk = pk;
-    await atomicWrite(file, JSON.stringify({ id: machine.id, name: machine.name, platform, dataDir, home: o.home || os.homedir(), cloudRoot, lastSeen: now(), lastOk: state.lastOk, format: ME, app: o.appVersion || undefined, ...(PK ? PK.record() : {}) }, null, 2)); // (round 74, synchard74) format: which sync rules this Hearth follows
+    const own = Own.record(status.blocked); // (round 99, kvrename99) Hearth's files held back for a PC whose path is too long: that PC says so
+    const pk = (PK ? JSON.stringify(PK.record()) : '') + JSON.stringify(own); // (round 89, packs89) "packs: 1" while the setting is on here (rewritten at once when it changes)
+    if (!force && now() - (state.machineAt || 0) < 10 * 60 * 1000 && pk === (machinePk ?? '{}')) return; // (round 99, kvrename99) + own
+    state.machineAt = now(); machinePk = pk;
+    await atomicWrite(file, JSON.stringify({ id: machine.id, name: machine.name, platform, dataDir, home: o.home || os.homedir(), cloudRoot, lastSeen: now(), lastOk: state.lastOk, format: ME, app: o.appVersion || undefined, ...(PK ? PK.record() : {}), ...own /* (round 99, kvrename99) */ }, null, 2)); // (round 74, synchard74) format: which sync rules this Hearth follows
   }
 
   // ---------- files ----------
@@ -1455,6 +1457,7 @@ function createEngine(o) {
     }
     if (how !== 'rename') return { ok: false, error: 'Nothing to fix there' };
     if (SPECIAL[rel] || state.ext[rel]) return { ok: false, error: 'Hearth\'s own settings file can\'t be renamed' };
+    if (Own.appNamed(rel)) return { ok: false, error: Own.REFUSE }; // (round 99, kvrename99) its name is how the app finds it
     const from = localPathOf(rel);
     let st; try { st = await fsp.stat(from); } catch { return { ok: false, error: 'It isn\'t on this computer' }; }
     const taken = (r) => r !== rel && (fs.existsSync(localPathOf(r)) || Boolean(state.base[r]));
@@ -1575,6 +1578,7 @@ function createEngine(o) {
     for (const rel of cloud.secrets || []) block(rel, 'secret-cloud', { where: 'cloud' }); // (round 74) keys an older version synced
     // (round 74, synchard74) on a Windows PC: files the other computer made whose names Windows can't hold (the cloud
     // client never brings them here): said by name, fixed on that computer ("Rename for Windows" there)
+    status.longPath = platform === 'win32' ? Own.longHere({ dataDir, cloudRoot, rels: [local.keys(), cloud.keys()], peers }) : null; // (round 99, kvrename99) this PC's folder path too long for Hearth's own files
     if (platform === 'win32') for (const [rel, j] of journalLatest) { if (j.op !== 'del' && !cloud.has(rel) && !local.has(rel)) { const bad = Hard.winBad(rel, { rootLen: 0 }); if (bad && bad.why !== 'win-long') block(rel, 'win-there', { where: 'there', part: bad.part }); } }
     // (round 74, synchard74) a clock jump between two files = the computer slept mid-pass (once in a row: a pass that
     // really took that long between two files on a very slow disk isn't started again and again)
@@ -1660,7 +1664,7 @@ function createEngine(o) {
       // not a file; a trailing dot is dropped by Windows: another file). Elsewhere, when a PC syncs too: held back if it
       // isn't in the cloud yet, shown with "Rename for Windows" (it keeps syncing between Macs if it already is).
       if (platform === 'win32') { const bad = Hard.winBad(rel, { rootLen: 0 }); if (bad && bad.why !== 'win-long') { block(rel, 'win-there', { where: L ? 'here' : 'there', part: bad.part }); continue; } }
-      else if (L && winTarget()) { const bad = Hard.winBad(rel, { rootLen: winRootLen() }); if (bad) { block(rel, bad.why, { part: bad.part }); if (!C && !bh) continue; } }
+      else if (L && winTarget()) { const bad = Hard.winBad(rel, { rootLen: winRootLen() }); if (bad) { const ob = Own.winBlock(rel, bad); /* (round 99, kvrename99) a Hearth-named file: never "Rename for Windows" */ block(rel, ob.why, { part: bad.part, fix: ob.fix, over: ob.over }); if (!C && !bh) continue; } }
       // (round 19) the chats' workspace syncs what they make, never a huge file (a model checkpoint, a build archive)
       const capHere = S.isWorkspaceRel(rel) ? Math.min(cap, o.bigCap || BIG_CAP) : cap;
       if ((L && L.size > capHere) || (C && (C.size ?? 0) > capHere)) { skippedBig.push(rel); continue; }
@@ -1724,6 +1728,7 @@ function createEngine(o) {
     }
     for (const d of live.filter((p) => p.op === 'deleteHere')) {
       const a = firstFree(pulls, d.h);
+      if (a && !Own.followMove(d.rel, a.rel, { ci: platform !== 'linux' })) { d.op = 'push'; d.C = null; dropBase(d.rel); continue; } // (round 99, kvrename99) a Hearth-named file renamed there (an older Hearth's Rename for Windows): kept here under its name and put back; the new name arrives too
       if (a) { a.used = true; d.op = 'renameHere'; d.to = a.rel; }
     }
     { const b = breathe(); if (b) await b; } // (round 75)

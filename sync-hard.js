@@ -127,6 +127,9 @@ const BLOCK = {
   'win-chars': { fix: 'rename' }, 'win-ending': { fix: 'rename' }, 'win-reserved': { fix: 'rename' }, 'win-long': { fix: 'rename' },
   'win-there': { fix: null }, locked: { fix: 'retry' }, 'read-only': { fix: 'writable' }, denied: { fix: 'retry' }, 'disk-full': { fix: 'space' },
   'too-long': { fix: 'rename' }, 'bad-name': { fix: 'rename' }, drive: { fix: 'retry' }, 'newer-app': { fix: null }, 'secret-cloud': { fix: 'unsecret' },
+  // (round 99, kvrename99) one of Hearth's own files (sync-own.js appNamed: a kv store, a chat…): its name is how the app
+  // finds it, so it is never renamed; the PC's folder path is what is too long (or, never seen, a name Windows keeps)
+  'win-long-app': { fix: null }, 'win-name-app': { fix: null },
 };
 
 module.exports = { FORMAT, WIN_MAX, winBad, winSafeName, winSafeRel, classify, BLOCKING, secretName, secretKey, secretValue, BLOCK };

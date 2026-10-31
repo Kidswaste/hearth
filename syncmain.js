@@ -366,7 +366,7 @@ function publicStatus() {
     scope: st?.scope || null, // (round 79, syncscope79) the last pass: scoped or whole (why), how much it looked at
     aside: st?.aside || [], // (round 78, guardloss78) the losing sides of conflicts settled by themselves, kept aside (the sync panel)
     packs: { on: packsOn(), ...(st?.packs ? { gate: st.packs.gate, published: st.packs.published, took: st.packs.took, bytesUp: st.packs.bytesUp } : {}) }, // (round 89, packs89) Send very long chats in pieces
-    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
+    ...(st ? { state: settings.paused ? 'paused' : st.state, at: st.at, lastOk: st.lastOk, pending: st.pending || 0, conflicts: st.conflicts || 0, cloudOnly: st.cloudOnly || [], skippedBig: st.skippedBig || [], unreadable: st.unreadable || [], waiting: st.waiting || [], blocked: st.blocked || [], peersOld: st.peersOld || [], longPath: st.longPath || null /* (round 99, kvrename99) this PC's folder path too long for Hearth's own files */, need: st.need || 0, lastError: st.lastError || null, held: st.held || null, error: st.error || '', last: st.last || null, peers: st.peers || [], ms: st.ms || 0 } : { state: settings.on ? 'starting' : 'off' }),
   };
 }
 
@@ -458,6 +458,14 @@ function register(ipcMain, win, o) {
   h('sync:aside', async (id, how) => { if (!engine) return id ? { ok: false, error: 'Sync is off' } : []; const r = await engine.aside(id ? String(id) : null, ['compare', 'both', 'theirs', 'dismiss'].includes(how) ? how : 'compare'); if (r?.ok && (how === 'both' || how === 'theirs')) schedule(500, 'aside'); return r; });
   h('sync:trash', async () => (engine ? engine.trash() : []));
   h('sync:restore', async (id, ro) => { if (!engine) return { ok: false, error: 'Sync is off' }; const r = await engine.restore(String(id), { replace: Boolean(ro?.replace) }); schedule(500, 'restore'); return r; });
+  // (round 99, kvrename99) "Hearth's folder path is too long" (a PC): show the folder to move. 'data': Hearth's own folder
+  // (the data folder lives in it; moved whole, saved file locations follow: portable.js), selected in Explorer / Finder;
+  // 'cloud': the cloud drive's folder (moved in the cloud app's own settings). Only shows: nothing is moved from here.
+  h('sync:showFolder', (which) => {
+    const { shell } = require('electron');
+    if (which === 'cloud') { const p = settings.root; if (!p || !fs.existsSync(p)) return false; shell.showItemInFolder(p); return true; }
+    shell.showItemInFolder(path.dirname(opts.dataDir)); return true;
+  });
   h('sync:open', () => { if (!engine) return false; require('electron').shell.openPath(fs.existsSync(engine.cloudDir) ? engine.cloudDir : settings.root); return true; });
   // the big files that are still only in the cloud: downloaded now (you asked)
   h('sync:download', async () => { if (!engine) return publicStatus(); engine.set({ allowDownload: K.needed.with(new Set(publicStatus().cloudOnly)) }); await run({ force: true }); engine?.set({ allowDownload: K.needed }); /* (round 87, labsync87) */ return publicStatus(); });
