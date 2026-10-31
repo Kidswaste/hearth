@@ -214,6 +214,9 @@ const DirectorTask = (() => {
     HubBridge.onResult?.((call) => { load().then(() => noteCall(call)); });
   }
   if (typeof Native !== 'undefined') Native.hooks.send.push((agentId, chat, text) => { load().then(() => noteAsk(agentId, chat, text)); });
+  // (round 96, firstscreen96) a lazy group now (directortask, right after the first frame): asks sent before it was in
+  // were kept for it (tools.js)
+  for (const [agentId, chat, text] of (window.DirectorTaskEarly || []).splice(0)) load().then(() => noteAsk(agentId, chat, text));
 
   // ---------- the owner's command ----------
   if (typeof Commands !== 'undefined' && !Commands.get('task')) {

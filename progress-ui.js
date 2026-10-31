@@ -234,8 +234,9 @@ const ProgressUI = (() => {
       },
     });
   }
+  // (round 96, firstscreen96) a lazy group now (progressui, right after the first frame): what Hearth learned of how
+  // long things take is configured by progress-hooks.js from the start; whatever runs already gets its bars at once
   function boot() {
-    Progress.configure({ load: () => store.get('progress.hist', null), save: (h) => store.set('progress.hist', h) });
     register();
     if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('What\'s in progress (loading bars)', () => openPop());
     if (Progress.list({ all: true }).length) start();

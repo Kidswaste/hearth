@@ -284,7 +284,8 @@ const ThreeFX = (() => {
     const foot = el('div', { class: 'fx-foot' });
     const favBtn = el('button', { class: 'ghost small', text: '★', title: 'Only favorites', on: { click: () => { favOnly = !favOnly; favBtn.classList.toggle('on', favOnly); render(); input.focus(); } } });
     const diceBtn = el('button', { class: 'ghost small', text: '🎲', title: 'Surprise me: apply a random one from this tab (Alt+R)', on: { click: () => doSurprise() } });
-    const decideBtn = typeof Decide !== 'undefined' ? el('button', { class: 'ghost small decide-btn', text: '✦', title: 'Let Astra pick an effect for this picture (Undo takes it back)', on: { click: () => { close(); Decide.run(tab === 'look' || tab === 'palette' ? tab : 'effect'); } } }) : null;
+    // (round 96, firstscreen96) decide.js loads with the 'assist' group, right after the first frame
+    const decideBtn = el('button', { class: 'ghost small decide-btn', text: '✦', title: 'Let Astra pick an effect for this picture (Undo takes it back)', on: { click: () => { close(); const k = tab === 'look' || tab === 'palette' ? tab : 'effect'; (window.Lazy ? Lazy.load('assist') : Promise.resolve()).then(() => Decide.run(k)).catch((err) => toast(err.message, { type: 'error' })); } } });
     root = el('div', { class: 'fx-picker', attrs: { role: 'dialog', 'aria-label': 'Effects and presets' } },
       el('div', { class: 'fx-head' }, input, favBtn, diceBtn, decideBtn, el('button', { class: 'ghost small', text: '×', title: 'Close (Esc)', on: { click: close } })),
       el('div',{class:'fx-tabs'},

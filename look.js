@@ -233,7 +233,8 @@ const Look = (() => {
       el('span', { text: 'Accent' }), el('span', { class: 'look-accent' }, accentIn, accentReset), el('span', { text: 'Tooltips' }), tips,
       el('span', { text: 'Your looks' }), el('span', {}, el('button', { type: 'button', class: 'ghost small', text: 'Save as…', title: 'Keep this look and your tweaks under a name',
         on: { click: async () => { const n = await Modal.prompt('Save this look as', { placeholder: 'e.g. Night session' }); if (n) toast(saveLook(n), { timeout: 1600 }); } } })));
-    const decide = typeof Decide !== 'undefined' ? el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => Decide.run('theme') } }) : null;
+    // (round 96, firstscreen96) decide.js loads with the 'assist' group, right after the first frame
+    const decide = el('button', { type: 'button', class: 'ghost small decide-btn', text: '✦ Let Astra pick', title: 'Astra picks a look for you (Undo puts yours back)', on: { click: () => (window.Lazy ? Lazy.load('assist') : Promise.resolve()).then(() => Decide.run('theme')).catch((err) => toast(err.message, { type: 'error' })) } });
     const top = el('div', { class: 'look-top' }, now, el('span', { class: 'spacer' }), typeof NativeFeel !== 'undefined' ? NativeFeel.followButton() : null, decide);
     let box;
     if (split) {
