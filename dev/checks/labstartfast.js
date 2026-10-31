@@ -10,6 +10,9 @@
 // Each stretch: wall ms, the window's main-thread CPU ms (trace: dev/trace-stats.js), CPU ms per process (window, Lab
 // preview, GPU, main: app.getAppMetrics, hub.power.test), runs of the scene, and for the heavy ones when the model
 // and the text are in. "Correct" = the first frame after the scene's last run, with its model loaded.
+// (round 95, labflake95) Between stretches it waits for a steady GPU (a quiet one never came: 3 min of the run), the
+// window's CPU budgets are judged on how fast the box ran right then (speedNow / slowBy: "can't tell" within that),
+// and the Lab's first reads are checked by name (no versions or pictures before its scenes are up).
 // Budgets (the verdict, `done` in the measuring part): loose on time (a software GPU on a shared machine), strict on
 // what round 48 fixed: a scene with references runs once, the preview keeps its size while a song comes in, the window's
 // own work until the scenes are read. window.LSF_BUDGET overrides them, window.LSF_REPORT = 1 only reports.
@@ -61,6 +64,7 @@ const labelOf = (m, pid) => {
 };
 const cpuOf = (m0, m1) => { const o = {}; for (const p1 of m1.procs) { const p0 = m0.procs.find((x) => x.pid === p1.pid); const k = labelOf(m1, p1.pid); o[k] = (o[k] || 0) + Math.round(((p1.cpuS ?? 0) - (p0?.cpuS ?? 0)) * 1000); } o.all = Object.values(o).reduce((a, b) => a + b, 0); return o; };
 const step = localStorage.getItem('lsf.step') || '1';
+if (window.LSF_BUDGET) localStorage.setItem('lsf.budget', JSON.stringify(window.LSF_BUDGET)); else localStorage.removeItem('lsf.budget'); // (round 95: kept across the reloads; done() runs in the last page)
 
 if (step === '1') {
   await until(() => window.hub && performance.getEntriesByName('hearth:ready').length);
@@ -169,6 +173,9 @@ const ev = []; let T0 = 0;
 addEventListener('message', (e) => { const d = e.data; if (d?.source !== 'three-sandbox') return; ev.push({ t: performance.now(), type: d.type }); if (d.type === 'stack-drawn' && T0) performance.mark(`at:drawn${ev.filter((x) => x.type === 'stack-drawn' && x.t >= T0).length}`); });
 addEventListener('hearth:lab-ran', (e) => { ev.push({ t: performance.now(), type: 'labran', partial: e.detail?.partial }); });
 addEventListener('hearth:lab-ready', () => { ev.push({ t: performance.now(), type: 'labready' }); if (T0) performance.mark('at:labready'); });
+// (round 95, labflake95) the stores the Lab reads, in order: round 48's fix (the versions and the scenes' pictures, the
+// two biggest, read after the first frame is on its way) checked as such, not only through the window's CPU
+if (window.LabSceneSafe?.read && !window.LabSceneSafe.__lsf) { const rd = window.LabSceneSafe.read; window.LabSceneSafe.read = function (k, ...a) { ev.push({ t: performance.now(), type: `kv ${k}` }); return rd.call(this, k, ...a); }; window.LabSceneSafe.__lsf = 1; }
 const sbx = async (code) => { const d = ThreeLab.director; if (!d) return null; const r = await d.evalInSketch(code); return r?.ok ? r.value : null; };
 // one stretch: go() → the first frame drawn; → the first frame after the scene's last run (and its model / song in);
 // CPU per process until then; the window's main-thread CPU (trace)
@@ -181,10 +188,48 @@ const settle = async () => {
   if (typeof ThreeLab !== 'undefined' && ThreeLab.director && document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame')?.checkVisibility?.()) {
     let ok = 0; while (ok < 2 && performance.now() - t < 25000) { const a = performance.now(); await sbx('return 1'); ok = performance.now() - a < 150 ? ok + 1 : 0; await wait(100); }
   }
-  while (performance.now() - t < 30000) { const m0 = await M(); await wait(500); const m1 = await M(); if ((cpuOf(m0, m1).gpu || 0) < 125) break; }
+  // (round 95, labflake95) …or steady: three half-seconds in a row within 12 % of each other. A software GPU draws an
+  // animated scene on screen with about 3 of this box's 4 CPUs (1,350–1,660 ms of GPU CPU every half second, measured
+  // after every switch): it never went under a quarter of a CPU, so each of the six switches waited the whole 30 s
+  // (3 of the check's 6–7 minutes) and still started on a busy GPU. Steady is the most quiet it gets; a heavy scene's
+  // leftover work (shaders finishing after its first frame) shows as half-seconds that are still changing.
+  const seen = []; const g = [];
+  while (performance.now() - t < 30000) {
+    const m0 = await M(); await wait(500); const m1 = await M(); const c = cpuOf(m0, m1);
+    seen.push(`${c.gpu || 0}/${c.preview || 0}`); g.push(c.gpu || 0);
+    if ((c.gpu || 0) < 125) break;
+    if (g.length >= 3) { const l = g.slice(-3); const m = (l[0] + l[1] + l[2]) / 3; if (l.every((x) => Math.abs(x - m) <= 0.12 * m)) break; }
+  }
+  return seen;
 };
-async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = {}) {
-  await settle();
+// (round 95, labflake95) how fast the window's thread gets through a fixed piece of work right now: dev/perfguard-
+// calib.js's benchmark (integer mixing, short-lived objects for the GC, layout of an off-screen box of wrapped words),
+// a smaller dose, plus reads all over 16 MB (memory-bound, as layout is), three times, each run's own thread CPU time
+// from a light trace (smoke tasks: tdur). The window's CPU budgets are judged against it (see slowBy). Taken right
+// after an open, the scene drawing as it was during the open (taken before the press it read 13–15 ms against 10–13
+// after: the page still busy from its reload). The median of the three, ms; null without a trace.
+const probeBox = (() => { let box = null; return () => { if (!box?.isConnected) { box = document.createElement('div'); box.style.cssText = 'position:absolute;left:-5000px;top:0;width:400px;font:14px sans-serif;contain:layout'; box.textContent = 'lorem ipsum dolor sit amet '.repeat(150); box.append(document.createElement('span')); document.body.append(box); } return box; }; })();
+const probeRun = () => {
+  let h = 0x811c9dc5 | 0; for (let i = 0; i < 3000000; i++) { h ^= i & 0xff; h = Math.imul(h, 16777619); h ^= h >>> 15; }
+  const keep = []; let s = 0; for (let i = 0; i < 80000; i++) { const o = { i, a: [i, i * 2], t: `k${i & 4095}` }; s += o.a.length; if ((i & 255) === 0) keep.push(o); }
+  const box = probeBox(); for (let k = 0; k < 8; k++) { box.style.width = `${400 + (k % 4) * 60}px`; s += box.lastChild.offsetTop; }
+  const mem = (window.__lsfMem ||= new Int32Array(1 << 22)); let j = 7; for (let i = 0; i < 120000; i++) { j = (j * 1103515245 + 12345) & 0x3fffff; s += mem[j]; } // (16 MB read at random: memory, as layout is)
+  window.__lsfH = h ^ s ^ keep.length;
+};
+const speedNow = async () => {
+  try {
+    probeRun(); // (a run first, not counted: its code compiled, its 16 MB and its box made)
+    await smoke({ trace: 'start', tasks: true });
+    for (let k = 0; k < 3; k++) { await wait(30); performance.mark('lsfspeed'); probeRun(); }
+    const r = await smoke({ trace: 'stop', tasks: { min: 1e9, mark: 'lsfspeed', marked: 'lsfspeed' } });
+    const c = (r?.marked || []).map((x) => x?.cpuMs).filter(Number.isFinite).sort((a, b) => a - b);
+    return c.length === 3 ? c[1] : null;
+  } catch { return null; }
+};
+async function stretch(name, go, { ready = null, quiet = 1500, trace = true, speed = false } = {}) {
+  const s0 = performance.now();
+  const seen = await settle();
+  const settled = performance.now() - s0;
   await wait(300);
   if (trace) await smoke({ trace: 'start', detail: true });
   const m0 = await M();
@@ -207,9 +252,12 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true } = 
   const mine = ev.slice(i0);
   const first = mine.find((x) => x.type === 'stack-drawn');
   let win = null;
-  if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
+  if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, fgAtReady: s.at?.labready?.fgMs ?? null, msAtReady: s.at?.labready?.ms ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
   const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: lateResizes(mine), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
+  { const lr = mine.find((x) => x.type === 'labready'); if (lr) r.firstReads = mine.filter((x) => /^kv /.test(x.type) && x.t <= lr.t).map((x) => x.type.slice(3)); }
   T0 = 0;
+  if (speed) r.speedMs = await speedNow();
+  r.settleMs = Math.round(settled); r.settleGpu = seen.slice(0, 64).join(' '); r.ms = Math.round(performance.now() - s0); // (round 95: where the check's own time goes)
   return r;
 }
 // (round 88, checkfix88) the preview's size changes that cost something: after the scene's first layer run (its canvases
@@ -238,7 +286,7 @@ const pool = async () => { const v = await sbx('return JSON.stringify({ ...windo
 if (step === '2') {
   // ---------- cold start: no warm page ----------
   res.boot2 = window.LabBoot?.state().skipped || null;
-  res.coldOpen = await stretch('coldOpen', pressLab);
+  res.coldOpen = await stretch('coldOpen', pressLab, { speed: true });
   res.coldOpen.pool = await pool();
   await wait(1500);
   const open = (id) => () => { ThreeLab.scenes.open(id); };
@@ -273,18 +321,39 @@ if (step === '2') {
 }
 // (the parts after another reload: the song scene, then a plain warm one)
 // the verdict (budgets on this software GPU under load: loose on time, strict on what was fixed)
+// (round 95, labflake95) the window's CPU, judged on how fast the box ran right then. The same work cost up to twice the
+// CPU from one run to the next: the Lab's first layout on a song open, the same 46 of 214 objects, took 6.6 ms in one
+// run and 13.4 ms in another, and the whole click 35 vs 51 ms (other programs on the same 4 CPUs: the GPU process
+// drawing with ~3 of them, other checks). Round 94's one failure was songOpen at 152 ms of 150. slowBy(k): the probe
+// (speedNow, right after stretch k, the scene still drawing as during it) against the fastest of this run's three,
+// 1–2. Over budget but within budget × slowBy is "can't tell" (listed, not failed); over that, it fails. A run that is
+// slow throughout gets no allowance at all.
+const cantTell = [];
+const probes = () => ['coldOpen', 'songOpen', 'warmOpen'].map((k) => res[k]?.speedMs).filter(Number.isFinite);
+const slowBy = (k) => {
+  const v = res[k]?.speedMs; const all = probes();
+  if (!Number.isFinite(v) || all.length < 2) return 1;
+  return Math.min(2, Math.max(1, Math.round((v / Math.min(...all)) * 100) / 100));
+};
+const cpuOver = (fails, k, v, budget, what) => {
+  if (!(v > budget)) return;
+  const f = slowBy(k);
+  if (v <= budget * f) cantTell.push(`${k}: ${what} ${v} ms (budget ${budget}), with the box ${f}× slower than at its fastest in this run (probe ${res[k]?.speedMs} ms, fastest ${Math.min(...probes())})`);
+  else fails.push(`${k}: ${what} ${v} ms (budget ${budget}${f > 1 ? `; ${Math.round(budget * f)} with the box ${f}× slower` : ''})`);
+};
 const done = () => {
-  const B = window.LSF_BUDGET || { coldOpenCpu: 6000, coldWindowCpu: 900, warmShown: 1500, warmFirst: 5000, songFirst: 6000, readyCpu: 150, heavyRuns: 1, lateResizes: 0, returnShown: 600, switchSimpleCpu: 2500 };
+  const B = window.LSF_BUDGET || JSON.parse(localStorage.getItem('lsf.budget') || 'null') || { coldOpenCpu: 6000, coldWindowCpu: 900, warmShown: 1500, warmFirst: 5000, songFirst: 6000, readyCpu: 150, heavyRuns: 1, lateResizes: 0, returnShown: 600, switchSimpleCpu: 2500 };
   const fails = [];
   const c = (k) => res[k]?.cpu?.all;
   if (res.coldOpen?.first == null) fails.push('the cold open never drew');
   if (res.warmOpen?.first == null) fails.push('the warm open never drew');
   if (c('coldOpen') > B.coldOpenCpu) fails.push(`cold open used ${c('coldOpen')} ms CPU (budget ${B.coldOpenCpu})`);
-  if (res.coldOpen?.cpu?.window > B.coldWindowCpu) fails.push(`cold open: the window used ${res.coldOpen.cpu.window} ms CPU (budget ${B.coldWindowCpu})`);
+  cpuOver(fails, 'coldOpen', res.coldOpen?.cpu?.window, B.coldWindowCpu, 'the window used');
   if (res.warmOpen?.shown > B.warmShown) fails.push(`warm open took ${res.warmOpen.shown} ms to show the scene (budget ${B.warmShown})`);
   if (res.warmOpen?.first > B.warmFirst) fails.push(`warm open: the Lab's own run drew after ${res.warmOpen.first} ms (budget ${B.warmFirst})`);
   if (res.songOpen?.first > B.songFirst) fails.push(`open with a song: first frame after ${res.songOpen.first} ms (budget ${B.songFirst})`);
-  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) if (res[k]?.win?.cpuAtReady > B.readyCpu) fails.push(`${k}: the window's CPU until the Lab's scenes were read: ${res[k].win.cpuAtReady} ms (budget ${B.readyCpu})`);
+  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) { const early = (res[k]?.firstReads || []).filter((x) => x === 'three-history' || x === 'three-thumbs'); if (early.length) fails.push(`${k}: the Lab read ${early.join(' and ')} before its scenes were up (round 48: after the first frame)`); }
+  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) cpuOver(fails, k, res[k]?.win?.cpuAtReady, B.readyCpu, "the window's CPU until the Lab's scenes were read:");
   for (const k of ['switchHeavy', 'switchHeavy2', 'switchHeavyAgain']) if (res[k] && res[k].runs > B.heavyRuns) fails.push(`${k} ran the scene ${res[k].runs}× (budget ${B.heavyRuns}: its references come first)`);
   for (const k of ['songOpen', 'warmOpen']) if (res[k] && res[k].resizes > B.lateResizes) fails.push(`${k}: the preview changed size ${res[k].resizes}× after it was laid out (each resizes every canvas)`);
   for (const k of ['switchSimple', 'switchSimpleAgain', 'switchHeavy', 'switchHeavy2', 'switchHeavyAgain', 'switchHeavyToSimple', 'songOpen']) if (res[k] && res[k].correct == null) fails.push(`${k} never reached its correct frame`);
@@ -299,7 +368,7 @@ if (step === '3') {
   res.boot3 = window.LabBoot?.state ? (({ warmed, skipped, drawn }) => ({ warmed, skipped, drawn }))(window.LabBoot.state()) : null;
   let songAt = null;
   const t0 = performance.now();
-  res.songOpen = await stretch('songOpen', async () => { await pressLab(); (async () => { await until(() => ThreeLab.director && ThreeLab.cmd, 10000); const c = await ThreeLab.cmd(); await until(() => c.player.loaded, 15000); songAt = performance.now() - t0; })(); });
+  res.songOpen = await stretch('songOpen', async () => { await pressLab(); (async () => { await until(() => ThreeLab.director && ThreeLab.cmd, 10000); const c = await ThreeLab.cmd(); await until(() => c.player.loaded, 15000); songAt = performance.now() - t0; })(); }, { speed: true });
   await until(() => songAt != null, 15000);
   res.songOpen.song = songAt != null ? Math.round(songAt) : null;
   activate(H.agents()[0].id);
@@ -312,13 +381,14 @@ if (step === '3') {
   if (step === '4') {
     res.boot4 = window.LabBoot?.state ? (({ warmed, skipped, drawn }) => ({ warmed, skipped, drawn }))(window.LabBoot.state()) : null;
     let shownAt = null; let tw = 0;
-  res.warmOpen = await stretch('warmOpen', async () => { tw = performance.now(); await pressLab(); until(() => { const f = document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame'); if (f?.checkVisibility?.({ visibilityProperty: true })) { shownAt = performance.now() - tw; return true; } return false; }, 10000); });
+  res.warmOpen = await stretch('warmOpen', async () => { tw = performance.now(); await pressLab(); until(() => { const f = document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame'); if (f?.checkVisibility?.({ visibilityProperty: true })) { shownAt = performance.now() - tw; return true; } return false; }, 10000); }, { speed: true });
   res.warmOpen.pool = await pool();
   res.warmOpen.shown = window.LabBoot?.state().taken && shownAt != null ? Math.round(shownAt) : res.warmOpen.first;
     localStorage.removeItem('lsf.step'); localStorage.removeItem('lsf.res');
     await window.hub.kvSet('three-sketches', []);
     const fails = window.LSF_REPORT ? [] : done();
-    return `[LSF]${JSON.stringify(res)}${fails.length ? `\nFAIL: ${fails.join('; ')}` : '\nPASS'}`;
+    window.__lsfMem = null;
+    return `[LSF]${JSON.stringify(res)}${cantTell.length ? `\nCAN'T TELL ${cantTell.join('; ')}` : ''}${fails.length ? `\nFAIL: ${fails.join('; ')}` : '\nPASS'}`;
   }
   return '[LSF] no step';
 }

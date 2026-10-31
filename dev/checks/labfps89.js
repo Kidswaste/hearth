@@ -24,7 +24,8 @@
 // compile on screen where shaders compile in the background (≤ 1 setup frame where they can't); a hidden object shown
 // mid-scene compiles nothing; a filter toggled compiles nothing; big pictures one a frame, uploaded outside frames;
 // app-judged hitches ≤ LF89_HITCH (1) a stretch; steady p99 ≤ 2× budget unless every frame over it is can't-tell.
-// window.LF89_REPORT = 1 only reports; LF89_ONLY = 'steady,switch,…'; LF89_SCENES = 'outrun,galaxy'; LF89_SIZE = '480x270'.
+// window.LF89_REPORT = 1 only reports; LF89_ONLY = 'steady,switch,…'; LF89_SCENES = 'outrun,galaxy'; LF89_SIZE = '480x270';
+// (round 95) LF89_CATS = more trace categories ('devtools.timeline'), LF89_DUMP = a folder: each stretch's trace as JSON.
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --script dev/checks/labfps89.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000, every = 120) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(every); } return false; };
@@ -56,7 +57,7 @@ const itemOf = (id) => LabGallery.items().find((x) => x.key === `b:${id}`) || La
 async function record(name, during, { ms = 3000, pre = 300 } = {}) {
   await sbx('return window.__labHitch ? 1 : 0').then((v) => { if (v !== 1) throw new Error('no window.__labHitch in the preview'); });
   let traced = false;
-  try { await smoke({ trace: 'start', tasks: true }); traced = true; } catch { /* judged on wall time */ }
+  try { await smoke({ trace: 'start', tasks: true, ...(window.LF89_CATS ? { cats: window.LF89_CATS } : {}) }); traced = true; } catch { /* judged on wall time */ }
   await sbx("performance.mark('labfps89'); return window.__labHitch.start()");
   await wait(pre);
   const t0 = performance.now();
@@ -87,7 +88,7 @@ async function record(name, during, { ms = 3000, pre = 300 } = {}) {
   let judged = null;
   if (traced) {
     try {
-      judged = await smoke({ trace: 'stop', tasks: { budget: 2 * budget, min: 0, mark: 'labfps89', observed: hitches.map((h) => ({ at: h.at, ms: h.ms })) } });
+      judged = await smoke({ trace: 'stop', ...(window.LF89_DUMP ? { dump: `${window.LF89_DUMP}/${name.replace(/[^\w-]/g, '_')}.json` } : {}), tasks: { budget: 2 * budget, min: 0, mark: 'labfps89', observed: hitches.map((h) => ({ at: h.at, ms: h.ms })) } });
     } catch (err) { judged = { verdict: 'unknown', why: String(err).slice(0, 200) }; }
   }
   // each hitch's verdict, on CPU (round 88's rule, for a page that waits on a GPU process):
@@ -97,22 +98,34 @@ async function record(name, during, { ms = 3000, pre = 300 } = {}) {
   //   load     neither: the page's thread was off the CPU, waiting for a CPU or for the GPU process (a software GPU
   //            rasterising on a busy box): can't tell, listed in cantTell (with the thread's own wait for a CPU)
   //   wall     no trace (off Linux, tracing failed): judged on wall time as before
+  //   upload   (round 95) a big picture uploaded inside the frame there (kept apart from a compile: a new layer's setup
+  //            frame may compile where shaders can't compile in the background, an upload inside a frame never may)
+  // (round 95, labflake95) one compile frame / in-frame upload explains ONE late frame: the frame it fell in (its gap)
+  // or, when that one wasn't late, the next. A new layer's one setup frame (3 compiles) used to be counted for two
+  // neighbouring late frames (the setup frame itself, then the next one while the software GPU caught up), so one
+  // setup made "2 hitches judged the app's". The second late frame is now judged on its own (CPU, else load).
+  const blamed = new Set();
+  const cause = (j, pick) => (j >= 0 && !blamed.has(j) && pick(j) ? j : -1);
   for (const h of hitches) {
     const tk = judged?.tasks?.find((x) => Math.abs(x.at - h.at) < 0.6 && Math.abs(x.ms - r1(h.ms)) < 0.6);
     h.cpuMs = tk?.cpuMs ?? null;
-    const i = h.i; const vc = (vis(i) && f.compiles[i]) || (i > 0 && vis(i - 1) && f.compiles[i - 1]);
-    const inUp = f.upMPframe[i] >= 1 || (i > 0 && f.upMPframe[i - 1] >= 1);
+    const i = h.i;
+    const isC = (j) => vis(j) && f.compiles[j] > 0; const isU = (j) => f.upMPframe[j] >= 1;
+    const jc = cause(i, isC) >= 0 ? i : cause(i - 1, isC);
+    const ju = cause(i, isU) >= 0 ? i : cause(i - 1, isU);
     if (!judged || !Array.isArray(judged.tasks)) h.judged = 'wall';
     else if (h.cpuMs != null && h.cpuMs > 2 * budget) { h.judged = 'over'; h.why = `${h.cpuMs} ms of the preview's own CPU`; }
-    else if (vc || inUp) { h.judged = 'compile'; h.why = vc ? `${vc} shader compiles / links in a frame on screen` : 'a big picture uploaded inside the frame'; }
+    else if (ju >= 0) { blamed.add(ju); h.judged = 'upload'; h.why = `a big picture (${f.upMPframe[ju]} MP) uploaded inside frame ${ju}`; }
+    else if (jc >= 0) { blamed.add(jc); h.judged = 'compile'; h.compiles = f.compiles[jc]; h.why = `${f.compiles[jc]} shader compiles / links in frame ${jc}, on screen`; }
     else { h.judged = 'load'; h.why = `${h.cpuMs ?? 0} ms of the preview's CPU; the rest off the CPU (the thread waited ${judged.runDelayMs ?? '?'} ms for a CPU over the run, the rest for the GPU process)`; }
   }
   const app = hitches.filter((h) => h.judged !== 'load');
   const cpuOver = hitches.filter((h) => h.judged === 'over' || h.judged === 'wall').length;
+  const uploadHitches = hitches.filter((h) => h.judged === 'upload').length;
   const compileHitches = hitches.filter((h) => h.judged === 'compile').length;
   const load = hitches.filter((h) => h.judged === 'load');
   const s = { frames: f.n, drawn: f.drew.reduce((a, x) => a + x, 0), budget: r1(budget), p50: pct(gaps, 0.5), p95: pct(gaps, 0.95), p99: pct(gaps, 0.99), max: r1(Math.max(0, ...gaps)),
-    over2x: hitches.length, over2xApp: app.length, over2xCpu: cpuOver, over2xCompile: compileHitches, over2xLoad: load.length, compiles: f.compiles.reduce((a, x) => a + x, 0), visibleCompileFrames: visibleCompiles.length, compileWaitMs: r1(f.waitMs.reduce((a, x) => a + x, 0)),
+    over2x: hitches.length, over2xApp: app.length, over2xCpu: cpuOver, over2xCompile: compileHitches, over2xUpload: uploadHitches, over2xLoad: load.length, compiles: f.compiles.reduce((a, x) => a + x, 0), visibleCompileFrames: visibleCompiles.length, compileWaitMs: r1(f.waitMs.reduce((a, x) => a + x, 0)),
     uploads: f.uploads.reduce((a, x) => a + x, 0), bigUploadFrames: bigUploads.length, mostBigInFrame: Math.max(0, ...bigUploads.map((b) => b.n)), bigMPinFrames: r1(f.upMPframe.reduce((a, x) => a + x, 0)), stillMs: r1(stillMs), swap: f.swap, up: f.up, khr: f.khr, note: f.note,
     hitches: hitches.slice().sort((a, b) => b.ms - a.ms).slice(0, 5).map((h) => ({ at: h.at, ms: r1(h.ms), cpuMs: h.cpuMs, judged: h.judged, compiles: h.compiles, waitMs: h.waitMs, upMP: h.upMP, work: h.work, why: h.why })),
     runDelayMs: judged?.runDelayMs ?? null, ...(info && typeof info === 'object' ? { info } : {}) };
@@ -187,7 +200,19 @@ const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, 
 const a = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: refTexture('big0') })); a.position.x = -1; scene.add(a);
 const b = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshBasicMaterial({ map: refTexture('big1') })); b.position.x = 1; scene.add(b);
 renderer.setAnimationLoop((t) => { a.rotation.z = t / 3000; b.rotation.z = -t / 3000; renderer.render(scene, camera); });`;
-  await record('texture', async () => { await D.addLayer({ name: 'Big pictures', code: TEX }, 0); return null; }, { ms: 5000 });
+  // (round 95, labflake95) the stretch lasts until both pictures are in: every slice, the mipmaps and the take-over
+  // (window.__labUploads: nothing waiting, no picture being sliced, two more pictures sliced or handed over), then
+  // 1 s more. A fixed 5 s ended before the last slices on SwiftShader under load (round 90): their late frames were
+  // never judged, and the leftovers ran into what came next. layers: 1, the new picture layer (its setup frame).
+  const u0 = JSON.parse(await sbx('return JSON.stringify(window.__labUploads())'));
+  await record('texture', async () => {
+    const t = performance.now();
+    await D.addLayer({ name: 'Big pictures', code: TEX }, 0);
+    const inAt = await until(async () => { const u = JSON.parse(await sbx('return JSON.stringify(window.__labUploads())')); return u.held - u0.held >= 2 && !u.waiting && !u.slices.active ? performance.now() : false; }, 30000, 100);
+    if (inAt) await wait(1000);
+    const dec = JSON.parse(await sbx('return JSON.stringify(window.__labDecode?.() || null)'));
+    return { layers: 1, inMs: inAt ? Math.round(inAt - t) : null, dec };
+  }, { ms: 5000 });
 });
 
 // ---------- post: a bloom filter added, hidden, shown ----------
@@ -238,19 +263,24 @@ for (const [k, s] of of(/^switch-on:/)) step(`${k}: the old scene kept drawing u
 }
 // where shaders compile in the background (KHR_parallel_shader_compile: the owner's card), none in a frame that showed
 // anything; without (a software GPU), a new layer's programs are all made in its one setup frame, never later
-for (const [k, s] of of(/^(switch-on|reload|post:add)/)) {
+// (round 95, labflake95: the texture stretch adds a layer too, the picture layer: the same rule, one setup frame)
+const SETUP = /^(switch-on|reload|post:add|texture$)/;
+for (const [k, s] of of(SETUP)) {
   const most = s.khr ? 0 : (s.info?.layers ?? 3);
   step(`${k}: shaders compiled ahead (${s.khr ? 'in the background: none in a frame on screen' : 'no background compile here: each new layer\'s in its one setup frame'})`, s.visibleCompileFrames <= most, { frames: s.visibleCompileFrames, most, compiles: s.compiles, waitMs: s.compileWaitMs, khr: s.khr });
 }
 if (S.firstuse) step('firstuse: a hidden object shown mid-scene costs no shader compile (compiled with the scene, before its first frame)', S.firstuse.compiles === 0, { compiles: S.firstuse.compiles, waitMs: S.firstuse.compileWaitMs, worst: S.firstuse.hitches[0] });
 if (S['post:toggle']) step('post: a filter hidden and shown again compiles nothing', S['post:toggle'].compiles === 0, S['post:toggle'].compiles);
 // (a hitch from a new layer's setup compile counts only where shaders compile in the background; without, it is the
-// setup frame allowed above)
+// setup frame allowed above; a big upload inside a frame always counts)
 for (const [k, s] of Object.entries(S).filter(([n]) => !n.startsWith('switch-off'))) {
-  const n = s.over2xCpu + (s.khr || !/^(switch-on|reload|post:add)/.test(k) ? s.over2xCompile : 0);
-  step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
+  const n = s.over2xCpu + s.over2xUpload + (s.khr || !SETUP.test(k) ? s.over2xCompile : 0);
+  step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, upload: s.over2xUpload, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
 }
 if (S.texture) {
+  step('texture: both pictures were in (every slice, the mipmaps, the take-over) inside the stretch', S.texture.info?.inMs != null, { inMs: S.texture.info?.inMs, slices: S.texture.up?.slices });
+  // (round 95) decoded and flipped in a worker: the flip made on the page's thread was an 80 ms task per 4K picture
+  step('texture: the pictures were decoded and flipped off the page\'s thread (worker)', S.texture.info?.dec?.worker && S.texture.info.dec.decoded >= 2 && S.texture.info.dec.onPage === 0, S.texture.info?.dec);
   step('texture: big pictures reach the graphics card one a frame', S.texture.mostBigInFrame <= 1 && S.texture.bigUploadFrames >= 1, { frames: S.texture.bigUploadFrames, most: S.texture.mostBigInFrame });
   step('texture: … uploaded right after a frame, not inside one (0 MP of them inside a frame)', S.texture.bigMPinFrames < 1 && S.texture.up?.ahead >= 2, { inFrames: S.texture.bigMPinFrames, up: S.texture.up });
 }
