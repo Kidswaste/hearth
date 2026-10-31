@@ -234,7 +234,8 @@ function runOff(op, args) {
   return new Promise((resolve, reject) => { filesJobs.set(id, { resolve, reject }); filesWorker.postMessage({ ...args, op, id }); });
 }
 // resolves when every save asked so far is on disk (the thread works in order: a ping answers after them)
-function idle() { return worker ? ask({ op: 'ping' }).catch(() => null) : Promise.resolve(null); }
+function ping() { return worker ? ask({ op: 'ping' }).catch(() => null) : Promise.resolve(null); }
+function idle() { return gates.size ? Promise.all([...gates.values()].map((g) => g.tail)).then(ping) : ping(); } // (round 98, syncrace98) + saves waiting for sync's write
 // on quit: the thread is stopped and what is still pending is written here, synchronously
 function flushSync() {
   // (round 82, bigchat82) giant chats' changes on their way: the thread finishes them first (≤ 5 s)
@@ -245,6 +246,9 @@ function flushSync() {
   if (statsLive) { try { writeStats(statsLive); statsLive = null; } catch (err) { console.error('save failed', STATS_PATH, err.message); } } // (round 65) the token stats not written yet
   for (const [file, { value }] of pending) { try { writeSync(file, value, null, SS.guardedName(file) ? { sent: SS.idsOf(value) } : null); } catch (err) { console.error('save failed', file, err.message); } }
   pending.clear();
+  // (round 98, syncrace98) saves still waiting for sync's write of their store, after the ones already on their way
+  for (const g of gates.values()) for (const x of g.q) if (!x.done) { x.done = true; try { writeSync(x.file, x.value, null, SS.guardedName(x.file) ? { sent: SS.idsOf(x.value) } : null); } catch (err) { console.error('save failed', x.file, err.message); } }
+  gates.clear();
 }
 
 // (round 78, guardloss78) a store written by the main process while the window may hold it (🛟 Recover): until the
@@ -272,11 +276,46 @@ function outsideAck(rels, since = 0) {
   }
 }
 
+// (round 98, syncrace98) sync writing a store into the data folder (a pull, a merge, a choice, a restore):
+// settle(file) → release(). Saves of that file already handed to the store thread land first (the engine's check right
+// before its rename then sees the file changed and leaves it: the next pass merges). A save made from then until
+// release() waits (in the order made) and goes through sync's guard after it, when what arrived and its base are in
+// place: merged with it, never written over it. Before, such a save (its guard looked before the arrival) landed after
+// sync's write and wrote the window's older copy over what arrived: lost on both computers at the next push.
+const gates = new Map(); // file → { n (writes of sync in progress), open, tail (the saves waiting, in order), q }
+function settle(file) {
+  const k = path.resolve(String(file));
+  let g = gates.get(k);
+  if (!g || g.n === 0) { const before = g ? g.tail : null; let open; const opened = new Promise((r) => { open = r; }); g = { n: 0, open, tail: before ? Promise.all([before, opened]) : opened, q: g ? g.q : [] }; gates.set(k, g); }
+  g.n += 1;
+  let done = false;
+  const release = () => {
+    if (done) return; done = true; clearTimeout(t);
+    if (--g.n > 0) return;
+    g.open();
+    const tail = g.tail; tail.then(() => { if (gates.get(k) === g && g.n === 0 && g.tail === tail) gates.delete(k); });
+  };
+  const t = setTimeout(release, 60000); t.unref?.(); // (never held longer: sync's write is milliseconds)
+  return (thread() && (pending.has(k) || deltaFiles.has(k)) ? ping() : Promise.resolve()).then(() => release);
+}
+function gated(file, value, o) {
+  const k = path.resolve(file); const g = gates.get(k);
+  const x = { file, value, done: false }; g.q.push(x);
+  let res; const out = new Promise((r) => { res = r; });
+  const tail = g.tail = g.tail.then(() => {
+    g.q.splice(g.q.indexOf(x), 1);
+    if (!x.done) { x.done = true; res(writeJson(file, value, { ...o, gated: true })); } else res();
+    if (gates.get(k) === g && g.n === 0 && g.tail === tail) gates.delete(k);
+  });
+  return out;
+}
+
 // Write to a temp file first so a crash mid-write can't corrupt a chat.
 // Sync (syncmain.js) can merge a save with a version that just arrived from another computer (beforeWrite).
 let beforeWrite = null;
 let beforeWants = null; // (round 75, syncstate75) which files the guard may change (null: any); the others merge on the store thread
 function writeJson(file, value, o) {
+  if (o?.off && !o.gated && gates.size && gates.has(path.resolve(file))) return gated(file, value, o); // (round 98, syncrace98) sync is writing it: after
   // (round 43, scenesafe) the ids the caller sent, before sync's merge: the guard tells "not sent" from "merged away"
   const sent = SS.guardedName(file) && Array.isArray(value) ? SS.idsOf(value) : undefined;
   // (round 77, storeack77) o.fresh: the value was made from what is on disk right now (a store saved by what changed:
@@ -338,7 +377,7 @@ async function openChat(id, o) {
 // while it's held / in doubt (those saves merge with the disk, whole)
 function saveChatDelta(d) {
   let file; try { file = chatPath(d?.id); } catch { return { ok: false, why: 'id' }; }
-  if (!thread() || guardWants(file) || held.has(file) || doubts.has(file) || !seen.has(file)) return { ok: false, why: 'whole' };
+  if (!thread() || guardWants(file) || held.has(file) || doubts.has(file) || !seen.has(file) || gates.has(path.resolve(file))) return { ok: false, why: 'whole' }; // (round 98, syncrace98) + sync writing it now: a whole save, after it, through the guard
   deltaSent += 1; deltaFiles.set(file, (deltaFiles.get(file) || 0) + 1);
   return ask({ op: 'chatDelta', file, from: d.from, to: d.to, keys: d.keys, set: d.set, n: d.n, msgs: d.msgs, trunc: Boolean(d.trunc) }) // (round 86: trunc, a chat cut shorter on purpose)
     .then((r) => { if (r?.ok) wstats.writes += 1; return r || { ok: false, why: 'none' }; }, (err) => ({ ok: false, why: err.message }))
@@ -797,6 +836,7 @@ module.exports = {
     if (o && o.base !== undefined) outsideWrite(name, o.base);
     return writeJson(file, value, { off: true, prev: file.replace(/\.json$/, '.prev.json'), removed, outside: Boolean(o?.outside) || (o && o.base !== undefined) }); // (round 78) o.outside: 🛟 Recover's own write
   },
+  settle, _gated: (file) => gates.has(path.resolve(String(file))), // (round 98, syncrace98) sync's writes into the data folder (syncmain.js → the engine's localWrite)
   outsideWrite, outsideAck, _outside: () => outside.size, // (round 78, guardloss78) 🛟 Recover's writes vs the window's copy
   mergeKV, applyOps, // (round 73, chatsteady73) a store saved by what changed (usage.js)
   saveAttachment,

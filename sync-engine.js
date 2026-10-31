@@ -794,14 +794,21 @@ function createEngine(o) {
       await fh.close(); fh = null;
     } catch (err) { await fh?.close().catch(() => {}); await fsp.rm(tmp, { force: true }).catch(() => {}); throw err; }
   }
+  // (round 98, syncrace98) a write into the data folder: the app's saves of that file already on their way land first
+  // (the check before the rename then sees them: the next pass merges), and its saves made meanwhile wait until this
+  // write and its guard base are in place (o.localWrite: store.js settle → release; released after the caller's own
+  // synchronous steps: remember(), the base)
+  async function settled(file, fn) {
+    const release = o.localWrite && relOfLocal(file) ? await Promise.resolve(o.localWrite(file)).catch(() => null) : null;
+    try { return await fn(); } finally { if (typeof release === 'function') setImmediate(release); }
+  }
   async function casWrite(file, ent, data, fault) {
     const d = path.dirname(file);
     if (!madeDirs.has(d)) { await fsp.mkdir(d, { recursive: true }); if (madeDirs.size > 20000) madeDirs.clear(); madeDirs.add(d); }
     const tmp = path.join(d, `.hearth-tmp-${rand()}-${path.basename(file)}`);
     try { await writeFlushed(tmp, data); } catch (err) { if (err.code !== 'ENOENT') throw err; await fsp.mkdir(d, { recursive: true }); await writeFlushed(tmp, data); } // (its folder went away meanwhile)
-    o.fault?.(fault, file);
     let ok = false;
-    try { ok = await renameRetry(tmp, file, () => same(file, ent)); } finally { if (!ok) await fsp.rm(tmp, { force: true }).catch(() => {}); }
+    try { ok = await settled(file, () => { o.fault?.(fault, file); return renameRetry(tmp, file, () => same(file, ent)); }); } finally { if (!ok) await fsp.rm(tmp, { force: true }).catch(() => {}); } // (round 98, syncrace98) settled
     return ok;
   }
   // big files: copied in chunks into "<name>.hearth-part" next to the target; a copy cut short (quit, crash, the
@@ -2068,7 +2075,7 @@ function createEngine(o) {
     if (was !== undefined) remember(rel, was);
     // (round 97, syncsweep97) only over the version read: a save that landed meanwhile is merged in (a small store) or it
     // says to try again (a big one); nothing put back yet
-    if (!(await renameRetry(tmp, dst, S.isJsonRel(rel) ? () => same(dst, ent) : undefined))) {
+    if (!(await settled(dst, () => renameRetry(tmp, dst, S.isJsonRel(rel) ? () => same(dst, ent) : undefined)))) { // (round 98, syncrace98) settled
       await fsp.rm(tmp, { force: true }).catch(() => {});
       if (restored === undefined || !(await choiceWrite(rel, dst, ent, was && typeof was.lazy !== 'string' ? was : null, restored))) { if (!had) pulledPrev.delete(rel); return { ok: false, error: CHANGED }; }
     }

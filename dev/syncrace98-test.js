@@ -11,9 +11,10 @@
 //     during-thread   …the same on the store-thread pull path; two saves meanwhile, the later one wins
 //     restore         Restore from Deleted files with a save handed over while it copies the version in place aside
 //     quit            a save waiting for sync's write is still written on quit (flushSync); idle() waits for it
-//   Case 2: a rename here and a window holding the old name
-//     rename-here     the Mac renamed a store; the PC's window holds it under the old name with a change not written:
-//                     its change lands in the new name, the old name isn't written back
+//   Case 2: a rename here and a window holding the old name (pinned as it is, not changed: see the write-up)
+//     rename-kv       the Mac renames a kv store a window holds: not renamed here (put back), nothing lost
+//     rename-held     a store under another name (no window holds one today) renamed by the Mac: the window's change
+//                     comes back under the old name, the new name has what moved, nothing lost
 // Never touches real data or a real cloud drive: temp folders only.
 //   node dev/syncrace98-test.js [--only name,name] [--verbose]
 'use strict';
@@ -95,7 +96,6 @@ async function setup(tag, o = {}) {
       ...(o.thread ? { offMin: 0, hashJson: (file, a) => runOff('syncHash', { file, ...a }), pullJson: (a) => runOff('syncPull', a), mergeJson: (a) => runOff('syncMerge', a) } : {}),
       // as syncmain.js wires them (when the store has them)
       ...(store.settle ? { localWrite: (file) => { const r = store.settle(file); hooks.settle?.(file); return r; } } : {}),
-      ...(store.movedHere ? { movedHere: (from, to) => store.movedHere(from, to) } : {}),
       ...extra,
     });
   };
@@ -126,6 +126,7 @@ async function settle(s, win, max = 40) {
     s.hold.off();
     await s.store.idle();
     const l = take(s.pc);
+    if (VERBOSE) console.log(`  round ${i}: PC ${JSON.stringify(s.pc.last?.last || {})} arrived ${JSON.stringify(l.map((x) => `${x.rel}:${x.kind}`))}`);
     if (l.length && win) await win.arrive(l);
     await s.store.idle();
     if (i >= 2 && T.settled(s.w)) return i;
@@ -243,8 +244,11 @@ scenario('quit', async () => {
 });
 
 // ---------- case 2: a rename here and a window holding the old name ----------
-scenario('rename-here', async () => {
-  const tag = 'rename-here';
+// Pinned as it is (not changed this round: see docs/upgrades/syncrace98.md). Every store a window holds is a kv store
+// (named by the app: its name is how the app finds it) or has a fixed name. A kv store is never renamed here: one gone
+// from the cloud is put back (the engine's appStore rule), so the app keeps finding it.
+scenario('rename-kv', async () => {
+  const tag = 'rename-kv';
   const s = await setup(tag);
   const { store, pc, mac } = s;
   const OLD = 'kv/board-b1.json'; const NEW = 'kv/board-b2.json';
@@ -253,14 +257,44 @@ scenario('rename-here', async () => {
   ok(await settle(s, null) > 0, `${tag}: first sync`, T.why(s.w));
   const win = windowOf(store, pc, 'board-b1'); win.load(); pc.e.ackPulled(); take(pc);
   win.change((v) => { v.items.push(note('typed', 'typed on the PC under the old name')); });
-  // the Mac renames it (as a move: same content, new name)
-  fs.renameSync(mac.p(OLD), mac.p(NEW));
+  fs.renameSync(mac.p(OLD), mac.p(NEW)); // (by hand: the app never renames a kv store)
   ok(await settle(s, win) > 0, `${tag}: converges`, T.why(s.w));
+  ok(!pc.last?.last?.renamed && !pc.pulled.some((x) => /-deleted$/.test(x.kind)), `${tag}: not renamed here (a kv store gone from the cloud is put back)`);
   for (const [m, who] of [[pc, 'PC'], [mac, 'Mac']]) {
-    ok(!m.has(OLD), `${tag}: the old name isn't written back on the ${who} (the rename stays)`, fs.readdirSync(m.p('kv')));
-    ok(has(m.json(NEW), 'a card') && has(m.json(NEW), 'typed on the PC under the old name'), `${tag}: the window's change is in the new name on the ${who}`, m.json(NEW));
+    ok(has(m.json(OLD), 'a card') && has(m.json(OLD), 'typed on the PC under the old name'), `${tag}: the name the app reads keeps the card and the window's change on the ${who}`, m.json(OLD));
+    ok(has(m.json(NEW), 'a card'), `${tag}: the new name is there too on the ${who} (nothing lost)`, m.json(NEW));
   }
   s.done();
+});
+// a store under another name that a window would hold (none does today) and the other computer renames: the window's
+// change waiting is written under the old name (the rename is undone there), the new name has what was moved, both
+// computers end the same and nothing is lost. Through sync's guard and the real StoreAck core, as syncsweep97's windows.
+scenario('rename-held', async () => {
+  const tag = 'rename-held';
+  const w = T.world(`sr98-${tag}`); roots.add(path.dirname(w.dir));
+  const pc = T.computer(w, 'PC', { platform: 'win32' }); const mac = T.computer(w, 'Mac', { platform: 'darwin' });
+  const OLD = 'lists/plan.json'; const NEW = 'lists/plan-renamed.json';
+  pc.write(OLD, [note('n1', 'a line')]);
+  ok(await T.converge(w) > 0, `${tag}: first sync`, T.why(w));
+  const win = { held: pc.json(OLD), dirty: false };
+  win.sa = SA.create({ ack: (rels, since) => pc.e.ackPulled(rels, since) });
+  win.sa.hold(OLD, { pending: () => win.dirty, flush: () => { pc.write(OLD, pc.e.guardWrite(pc.p(OLD), clone(win.held))); win.dirty = false; }, read: async () => pc.json(OLD) ?? [], apply: (v) => { win.held = v; } });
+  pc.e.ackPulled(); pc.pulled.length = 0;
+  win.held.push(note('typed', 'typed on the PC under the old name')); win.dirty = true;
+  fs.renameSync(mac.p(OLD), mac.p(NEW));
+  let renamed = false;
+  for (let i = 0; i < 40; i++) {
+    await T.round(w);
+    if (pc.last?.last?.renamed) renamed = true;
+    const l = take(pc); if (l.length) await win.sa.arrived(l);
+    if (i >= 2 && T.settled(w)) break;
+  }
+  ok(renamed, `${tag}: renamed here`);
+  ok(T.settled(w), `${tag}: converges`, T.why(w));
+  for (const [m, who] of [[pc, 'PC'], [mac, 'Mac']]) {
+    ok(has(m.json(OLD), 'typed on the PC under the old name'), `${tag}: the window's change is kept on the ${who} (under the old name)`, m.json(OLD));
+    ok(has(m.json(NEW), 'a line'), `${tag}: what was moved is under the new name on the ${who}`, m.json(NEW));
+  }
 });
 
 async function main() {

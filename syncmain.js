@@ -107,6 +107,7 @@ function start() {
     textJson: opts.store?.runOff ? (a) => opts.store.runOff('syncText', a) : undefined, // (round 82, bigchat82) a giant chat's cloud form for a push, made on the files thread
     asideBig: opts.store?.runOff ? require('./asidework').create({ runOff: (op, a) => opts.store.runOff(op, a), log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync: aside', ...a); } }) : undefined, // (round 95, aside95) a choice on two versions of a big store (Use the one kept aside, Keep the other, Merge, Keep both, Restore): its JSON work on the files thread, not the main process; + Keep the other's replaced version in the synced Deleted files
     jsonSettleMs: JSON_SETTLE, // (round 77, synclatency77)
+    localWrite: opts.store?.settle ? (file) => opts.store.settle(file) : undefined, // (round 98, syncrace98) a store sync writes: the saves on their way land first, the ones made meanwhile go through the guard after
     hold: holdHot, // (round 77) a chat a reply is streaming into goes up when it calms down (≥ every 20 s / 60 s while busy)
     log: (...a) => { if (process.env.HEARTH_SYNC_LOG) console.log('sync:', ...a); },
     onStatus: (st) => { lastStatus = st; send('sync:status', publicStatus()); },
