@@ -35,10 +35,12 @@ const LabProj = (() => {
     } catch { /* storage is a convenience */ }
     return null;
   }
+  // (the old whole file, kv/three-history.json, is read only when the Lab hasn't read it: once it has, the versions still
+  // waiting there to move are in its memory, and the file — its trash of deleted scenes — isn't copied into this window)
   async function historyOf(id, ctx) {
     let v = LP.segVersions(await read(LP.histSegName(id)));
-    if (ctx.legacy === undefined) ctx.legacy = LP.segVersions(await read('three-history'));
-    v = LP.histJoin(v, LP.histSegOf(ctx.legacy, id));
+    const inLab = labOn() && (ThreeLab.scenes.okStores?.() || []).includes('three-history');
+    if (!inLab) { if (ctx.legacy === undefined) ctx.legacy = LP.segVersions(await read('three-history')); v = LP.histJoin(v, LP.histSegOf(ctx.legacy, id)); }
     if (labOn()) { try { v = LP.histJoin(v, await ThreeLab.scenes.versionsOf(id)); } catch { /* its file, read above */ } }
     return LP.histSegOf(v, id);
   }
