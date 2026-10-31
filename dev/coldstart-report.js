@@ -25,6 +25,9 @@
 //   there, with the top functions per phase (start → first paint → ready → settled). Every launch also reports
 //   'settled' (the window's last long task, after 3 quiet seconds, ≤ 45 s) and the window's long tasks.
 // (round 82, perfguard82) each launch also reports every process's CPU time (cpu.ready / cpu.settled, ms by process type)
+// (round 93, perf93) --cpu-at <ms>: each counted launch (not the warm-up, not the profiled one) also waits until <ms>
+//   after it was launched and reports every process's CPU time then (cpu.at; cpu.atMs = when it was read): "the CPU of
+//   the first 30 s" with --cpu-at 30000
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -71,7 +74,8 @@ async function cdp(wsUrl) {
   return { ws, send, evaluate };
 }
 
-async function launch(dir, userData, port, { traceOut, shot, hold, profDir } = {}) {
+async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuAt } = {}) {
+  const spawned = Date.now();
   const probeOut = path.join(userData, `probe-${Date.now()}.json`);
   const mainProf = profDir ? path.join(profDir, 'main.cpuprofile') : null;
   if (profDir && !traceOut) traceOut = path.join(profDir, 'trace.json');
@@ -156,6 +160,12 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir } = {
     }
     await wait(300);
     const cpuSettled = await procCpu();
+    // (round 93, perf93) --cpu-at: every process's CPU at <ms> after the launch (left as is till then: nobody touching it)
+    let cpuAtV = null; let cpuAtMs = null;
+    if (cpuAt) { const left = spawned + cpuAt - Date.now(); if (left > 0) await wait(left); cpuAtV = await procCpu(); cpuAtMs = Date.now() - spawned; }
+    // (--cpu-also <ms,ms…>: more readings later on, e.g. 65000,75000 for idle at 1 min on a warm profile: cpu.also)
+    const also = [];
+    for (const t of String(opt('--cpu-also', '')).split(',').map(Number).filter((x) => x > 0)) { if (!cpuAt) break; const left = spawned + t - Date.now(); if (left > 0) await wait(left); also.push({ ms: Date.now() - spawned, cpu: await procCpu() }); }
     const page = await c.evaluate(`(() => {
       const m = (n) => { const e = performance.getEntriesByName(n)[0]; return e ? e.startTime : null; };
       const paint = Object.fromEntries(performance.getEntriesByType('paint').map((e) => [e.name, e.startTime]));
@@ -185,7 +195,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir } = {
     const profiles = profDir ? summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) : null;
     return {
       settled: toMain(lastLong || page.ready),
-      cpu: { ready: cpuReady, settled: cpuSettled }, // (round 82) every process's CPU ms: at the first screen + its 'soon' groups, and once settled
+      cpu: { ready: cpuReady, settled: cpuSettled, at: cpuAtV, atMs: cpuAtMs, also }, // (round 82) every process's CPU ms: at the first screen + its 'soon' groups, and once settled
       longBeforeReady: cs.longs.filter(([s]) => s < readyAt).map(([, d]) => d),
       longAfterReady: cs.longs.filter(([s]) => s >= readyAt).map(([, d]) => d),
       keys: args.includes('--keys') ? { typed: cs.typed, slow: keysAfter.length, worstHandled: Math.max(0, ...keysAfter.map((k) => k[1])), worstToPaint: Math.max(0, ...keysAfter.map((k) => k[2])) } : null,
@@ -248,7 +258,7 @@ function summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) {
         const hold = args.includes('--hold') && (i === 0 ? 'set' : i === RUNS);
         const profDir = i === RUNS && opt('--profile') ? path.resolve(opt('--profile')) : null;
         if (profDir) fs.mkdirSync(profDir, { recursive: true });
-        const r = await launch(dir, userData, port, { traceOut: i === RUNS && opt('--trace'), shot: i === RUNS && opt('--shot'), hold, profDir });
+        const r = await launch(dir, userData, port, { traceOut: i === RUNS && opt('--trace'), shot: i === RUNS && opt('--shot'), hold, profDir, cpuAt: i && !profDir ? Number(opt('--cpu-at', 0)) || 0 : 0 });
         if (i === 0) { console.log('warm-up launch done (profile created, not counted)'); continue; }
         runs.push(r);
         if (args.includes('--groups')) console.log(`  groups: ${r.groups}`);

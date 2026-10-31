@@ -22,6 +22,11 @@
 //   - has a PAIRED A/B MODE (--ab <base ref>, the recommended mode for release checks): a throwaway git worktree of the
 //     base, base and new launched alternately in the same minutes, the difference judged with statistics (Mann–Whitney
 //     on every sample, a launch-level bootstrap 95 % interval of the median difference) — no stored baseline at all.
+// (round 93, perf93) more measures: startup also gives the first picture (the splash), "usable" (every early feature
+// group in) and the CPU of the first 30 s; the app part types with key → paint; and an opt-in part `fresh`
+// (dev/perfguard-fresh.js, --only …,fresh / --fresh N launches, ≈ 6 min each) starts Hearth on the heavy profile + one
+// giant chat and leaves it alone: memory at 30 s (window, main, store thread), idle at 1 and 5 min, then Settings'
+// first open, the Lab's first start, the giant chat opened and typing in it. docs/upgrades/perf93.md.
 // Compare mode (the default, against dev/perf-baseline.json): a metric REGRESSES when it is worse than the baseline by
 // more than max(15 %, 3 × its recorded spread, its floor) — a wall time after dividing by the calibration factor; a wall
 // time over the line whose own CPU time is fine, on a box slower than at the baseline, is "load?" (inconclusive), not a
@@ -59,7 +64,8 @@ const FILE = path.resolve(opt('--file', path.join(DEV, 'perf-baseline.json')));
 const FIXTURE = opt('--fixture', '/tmp/hearth-bigprofile72'); // (run-checks makes the same one for projects72)
 const SYNC_FIXTURE = opt('--sync-fixture', path.join(os.tmpdir(), 'hearth-sync72-bigprofile'));
 const AB = opt('--ab');
-const N = { runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
+const FRESH_FIXTURE = opt('--fresh-fixture', '/tmp/hearth-perf93-fresh'); // (round 93: the heavy profile + one giant chat)
+const N = { fresh: Number(opt('--fresh', 3)), runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
 const PARTS = (opt('--only', 'startup,app,sync')).split(',').map((s) => s.trim()).filter(Boolean);
 const LOCK = has('--lock');
 const CALIB = path.join(DEV, 'perfguard-calib.js');
@@ -74,6 +80,11 @@ const METRICS = {
   'start.settled': { part: 'startup', label: 'Start → settled (last long task)', unit: 'ms', floor: 120, section: 'startup', kind: 'wall', cpu: 'start.cpuSettled' },
   'start.cpuReady': { part: 'startup', label: 'Start → first screen: CPU, main + window', unit: 'ms', floor: 80, section: 'startup', kind: 'cpu' },
   'start.cpuSettled': { part: 'startup', label: 'Start → settled: CPU, main + window', unit: 'ms', floor: 120, section: 'startup', kind: 'cpu' },
+  // (round 93, perf93) the first picture (the window on screen with its splash), usable (every early feature group in),
+  // and the CPU of the first 30 s (coldstart-report --cpu-at 30000: left alone after the start)
+  'start.firstPicture': { part: 'startup', label: 'Start → first picture (splash on screen)', unit: 'ms', floor: 60, section: 'startup', kind: 'wall' },
+  'start.usable': { part: 'startup', label: 'Start → usable (every early feature in)', unit: 'ms', floor: 80, section: 'startup', kind: 'wall', cpu: 'start.cpuReady' },
+  'start.cpu30': { part: 'startup', label: 'First 30 s: CPU, main + window', unit: 'ms', floor: 150, section: 'startup', kind: 'cpu' },
   'project.coldOpen': { part: 'app', label: 'Project cold open (Hearth\'s part)', unit: 'ms', floor: 40, section: 'projects', kind: 'wall', cpu: 'project.coldOpenCpu' },
   'project.warmOpen': { part: 'app', label: 'Project warm open (Hearth\'s part)', unit: 'ms', floor: 40, section: 'projects', kind: 'wall', cpu: 'project.warmOpenCpu' },
   'project.switch': { part: 'app', label: 'Project switch (Hearth\'s part)', unit: 'ms', floor: 40, section: 'projects', kind: 'wall', cpu: 'project.switchCpu' },
@@ -86,6 +97,7 @@ const METRICS = {
   'chat.clickCpu': { part: 'app', label: 'Chat list click: window busy in 600 ms', unit: 'ms', floor: 8, section: 'chats', kind: 'wall', cpu: 'chat.clickThreadCpu' },
   'chat.clickThreadCpu': { part: 'app', label: 'Chat list click: window CPU in 700 ms', unit: 'ms', floor: 8, section: 'chats', kind: 'cpu' },
   'chat.keyHandler': { part: 'app', label: 'Typing: window handlers per key', unit: 'ms', floor: 1, section: 'chats', kind: 'wall', cpu: 'chat.keyCpu' },
+  'chat.keyPaint': { part: 'app', label: 'Typing: key → paint', unit: 'ms', floor: 8, section: 'chats', kind: 'wall', cpu: 'chat.keyCpu' },
   'chat.keyCpu': { part: 'app', label: 'Typing: window CPU per key', unit: 'ms', floor: 1, section: 'chats', kind: 'cpu' },
   'lab.toolCall': { part: 'app', label: 'Lab tool call (no picture), end to end', unit: 'ms', floor: 8, section: 'lab', kind: 'wall', cpu: 'lab.toolCallCpu' },
   'lab.toolCallCpu': { part: 'app', label: 'Lab tool call: CPU, main + window', unit: 'ms', floor: 15, section: 'lab', kind: 'cpu' },
@@ -93,6 +105,27 @@ const METRICS = {
   'idle.windowCpu': { part: 'app', label: 'Idle on a chat: the window', unit: '% CPU', floor: 0.5, section: 'idle', kind: 'level' },
   'idle.allCpu': { part: 'app', label: 'Idle on a chat: every process', unit: '% CPU', floor: 1, section: 'idle', kind: 'level' },
   'mem.windowHeap': { part: 'app', label: 'Window JS heap after GC (end of run)', unit: 'MB', floor: 4, section: 'memory', kind: 'level' },
+  // (round 93, perf93) part `fresh` (dev/perfguard-fresh.js): a start left alone, then Settings, the Lab, a giant chat
+  'fresh.memWindow': { part: 'fresh', label: 'After start (30 s): window JS heap', unit: 'MB', floor: 4, section: 'fresh', kind: 'level' },
+  'fresh.memMain': { part: 'fresh', label: 'After start: main process JS heap', unit: 'MB', floor: 4, section: 'fresh', kind: 'level' },
+  'fresh.memStore': { part: 'fresh', label: 'After start: store thread JS heap', unit: 'MB', floor: 4, section: 'fresh', kind: 'level' },
+  'fresh.idle1All': { part: 'fresh', label: 'Idle at 1 min: every process', unit: '% CPU', floor: 1, section: 'fresh', kind: 'level' },
+  'fresh.idle1Main': { part: 'fresh', label: 'Idle at 1 min: main process', unit: '% CPU', floor: 0.5, section: 'fresh', kind: 'level' },
+  'fresh.idle1Window': { part: 'fresh', label: 'Idle at 1 min: the window', unit: '% CPU', floor: 0.5, section: 'fresh', kind: 'level' },
+  'fresh.idle5All': { part: 'fresh', label: 'Idle at 5 min: every process', unit: '% CPU', floor: 1, section: 'fresh', kind: 'level' },
+  'fresh.idle5Main': { part: 'fresh', label: 'Idle at 5 min: main process', unit: '% CPU', floor: 0.5, section: 'fresh', kind: 'level' },
+  'fresh.idle5Window': { part: 'fresh', label: 'Idle at 5 min: the window', unit: '% CPU', floor: 0.5, section: 'fresh', kind: 'level' },
+  'fresh.settings': { part: 'fresh', label: 'Settings: first open', unit: 'ms', floor: 40, section: 'fresh', kind: 'wall', cpu: 'fresh.settingsCpu' },
+  'fresh.settingsCpu': { part: 'fresh', label: 'Settings first open: window CPU', unit: 'ms', floor: 20, section: 'fresh', kind: 'cpu' },
+  'fresh.settingsAgain': { part: 'fresh', label: 'Settings: opened again', unit: 'ms', floor: 30, section: 'fresh', kind: 'wall', cpu: 'fresh.settingsAgainCpu' },
+  'fresh.settingsAgainCpu': { part: 'fresh', label: 'Settings again: window CPU', unit: 'ms', floor: 15, section: 'fresh', kind: 'cpu' },
+  'fresh.labFirst': { part: 'fresh', label: 'Lab first start: press → first frame', unit: 'ms', floor: 150, section: 'fresh', kind: 'wall', cpu: 'fresh.labFirstCpu' },
+  'fresh.labShown': { part: 'fresh', label: 'Lab first start: press → preview on screen', unit: 'ms', floor: 80, section: 'fresh', kind: 'wall', cpu: 'fresh.labFirstCpu' },
+  'fresh.labFirstCpu': { part: 'fresh', label: 'Lab first start: window CPU', unit: 'ms', floor: 40, section: 'fresh', kind: 'cpu' },
+  'fresh.bigChat': { part: 'fresh', label: 'Giant chat (6,000 messages) opened', unit: 'ms', floor: 60, section: 'fresh', kind: 'wall', cpu: 'fresh.bigChatCpu' },
+  'fresh.bigChatCpu': { part: 'fresh', label: 'Giant chat opened: window CPU', unit: 'ms', floor: 30, section: 'fresh', kind: 'cpu' },
+  'fresh.keyPaint': { part: 'fresh', label: 'Typing in the giant chat: key → paint', unit: 'ms', floor: 8, section: 'fresh', kind: 'wall', cpu: 'fresh.keyCpu' },
+  'fresh.keyCpu': { part: 'fresh', label: 'Typing in the giant chat: window CPU per key', unit: 'ms', floor: 1, section: 'fresh', kind: 'cpu' },
   'sync.steadyStall': { part: 'sync', label: 'Sync steady pass: main-process stall', unit: 'ms', floor: 10, section: 'sync', kind: 'wall', cpu: 'sync.steadyCpu' },
   'sync.changeStall': { part: 'sync', label: 'Sync small-change pass: main-process stall', unit: 'ms', floor: 10, section: 'sync', kind: 'wall', cpu: 'sync.changeCpu' },
   'sync.steadyWall': { part: 'sync', label: 'Sync steady pass: wall time', unit: 'ms', floor: 40, section: 'sync', kind: 'wall', cpu: 'sync.steadyCpu' },
@@ -143,7 +176,7 @@ function startup(m, tag, side = THIS) {
   const json = path.join(OUT, `startup${tag}.json`); const prof = path.join(OUT, `startup${tag}-profiles`);
   const profiled = !AB; // (A/B: no profiled start; the culprits are the start's phases and IPC answers)
   log(`startup${side === THIS ? '' : ` [${side.name}]`}: a warm-up launch + ${N.starts} cold starts${profiled ? ' + 1 profiled' : ''} (dev/coldstart-report.js)…`);
-  const r = sh([path.join(DEV, 'coldstart-report.js'), '--app', side.root, '--data', FIXTURE, '--runs', String(N.starts + (profiled ? 1 : 0)), '--json', json, ...(profiled ? ['--profile', prof] : [])], path.join(OUT, `startup${tag}-calib.json`));
+  const r = sh([path.join(DEV, 'coldstart-report.js'), '--app', side.root, '--data', FIXTURE, '--runs', String(N.starts + (profiled ? 1 : 0)), '--json', json, '--cpu-at', '30000', ...(profiled ? ['--profile', prof] : [])], path.join(OUT, `startup${tag}-calib.json`));
   fs.writeFileSync(path.join(OUT, `startup${tag}.log`), `${r.stdout || ''}${r.stderr || ''}`);
   readCalib(m, 'startup', side.name, path.join(OUT, `startup${tag}-calib.json`));
   let j = null; try { j = JSON.parse(fs.readFileSync(json, 'utf8')); } catch { m.problems.push(`startup${tag}: no measurements (exit ${r.status}; ${path.join(OUT, `startup${tag}.log`)})`); return; }
@@ -155,6 +188,8 @@ function startup(m, tag, side = THIS) {
     // whose worker threads spin while they wait, so its CPU grows with the box's load — on the owner's Mac it's a GPU)
     const own = (c) => (c && Number.isFinite(c.browser) && Number.isFinite(c.renderer) ? c.browser + c.renderer : NaN);
     push(m, 'start.cpuReady', [own(run.cpu?.ready)]); push(m, 'start.cpuSettled', [own(run.cpu?.settled)]);
+    push(m, 'start.firstPicture', [run.firstPicture]); push(m, 'start.usable', [run.features]); // (round 93)
+    if (run.cpu?.atMs >= 29000 && run.cpu.atMs <= 33000) push(m, 'start.cpu30', [own(run.cpu.at)]); // (round 93: read on time only)
   }
   // culprits, waits: the start's phases (splash milestones) and how long the main process took to answer each IPC
   // channel in the first 5 s (medians over the starts): work off the main thread (the store thread reading chats) shows
@@ -199,6 +234,27 @@ function appLaunch(m, tag, i, side = THIS, div = N.runs) {
 }
 function app(m, tag) { for (let i = 1; i <= N.runs; i++) appLaunch(m, tag, i); }
 
+// (round 93, perf93) one fresh launch (dev/perfguard-fresh.js against side.root's app) on the heavy profile + a giant chat
+function ensureFreshFixture() {
+  if (fs.existsSync(path.join(FRESH_FIXTURE, 'chats', 'claude-giant0.json')) && fs.existsSync(path.join(FRESH_FIXTURE, 'kv', 'projects.json'))) return;
+  log(`making the fixture ${FRESH_FIXTURE} (dev/bigprofile.js --projects 40 --giant 1)…`);
+  execFileSync('node', [path.join(DEV, 'bigprofile.js'), FRESH_FIXTURE, '--projects', '40', '--giant', '1'], { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] });
+}
+function freshLaunch(m, tag, i, side = THIS) {
+  const dir = path.join(OUT, `fresh${tag}-${i}`); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+  log(`fresh${side === THIS ? '' : ` [${side.name}]`}: launch ${i} (dev/perfguard-fresh.js: left alone 5 min, then Settings, the Lab, a giant chat; ≈ 6 min)…`);
+  const t0 = Date.now();
+  const r = sh([path.join(DEV, 'smoke.js'), '--app', side.root, '--fake-engines', '--no-lazy-wait', '--data', FRESH_FIXTURE, '--wait', '300', '--check-timeout', '900000', '--tmp', path.join(dir, 'tmp'), '--script', path.join(DEV, 'perfguard-fresh.js'), '--shot', path.join(dir, 'end.png')], path.join(dir, 'calib.json'));
+  fs.writeFileSync(path.join(dir, 'smoke.log'), `${r.stdout || ''}${r.stderr || ''}`);
+  readCalib(m, 'fresh', side.name, path.join(dir, 'calib.json'));
+  let p = null; try { p = JSON.parse(fs.readFileSync(path.join(dir, 'tmp', 'perfguard-fresh.json'), 'utf8')); } catch { m.problems.push(`fresh launch ${tag}${i}: no measurements (exit ${r.status}; ${path.join(dir, 'smoke.log')})`); return; }
+  for (const pr of p.problems || []) m.problems.push(`fresh launch ${tag}${i}: ${pr}`);
+  for (const [k, xs] of Object.entries(p.samples || {})) if (METRICS[k]) push(m, k, xs);
+  (m.notes.fresh ||= []).push({ launch: `${tag}${i}`, side: side.name, secs: Math.round((Date.now() - t0) / 1000), ...p.notes });
+  try { fs.rmSync(path.join(dir, 'tmp'), { recursive: true, force: true }); fs.mkdirSync(path.join(dir, 'tmp')); fs.writeFileSync(path.join(dir, 'tmp', 'perfguard-fresh.json'), JSON.stringify(p)); } catch { /* fine */ }
+}
+function freshPart(m, tag) { for (let i = 1; i <= N.fresh; i++) freshLaunch(m, tag, i); }
+
 function syncRun(m, tag, i, side = THIS, div = N.sync) {
   log(`sync${side === THIS ? '' : ` [${side.name}]`}: run ${i} (dev/sync72-perf.js: the engine on the heavy profile, a Windows-slow disk, ≈ 35 s)…`);
   const cf = path.join(OUT, `sync${tag}-${i}-calib.json`);
@@ -227,6 +283,7 @@ function measure(parts, tag = '') {
   if (parts.includes('startup') || parts.includes('app')) ensureFixture();
   if (parts.includes('startup')) startup(m, tag);
   if (parts.includes('app')) app(m, tag);
+  if (parts.includes('fresh')) { ensureFreshFixture(); freshPart(m, tag); }
   if (parts.includes('sync')) sync(m, tag);
   return m;
 }
@@ -367,6 +424,8 @@ function judgeAB(mb, mn) {
   for (const [k, d] of Object.entries(METRICS)) {
     if (!PARTS.includes(d.part)) continue;
     const xc = mb.raw[k] || []; const yc = mn.raw[k] || [];
+    // (round 93) a measure the base's build can't give (e.g. the store thread's heap before round 91): listed, not judged
+    if (!xc.length && yc.length && d.part === 'fresh') { const y = yc.flat(); rows.push({ k, d, bm: null, nm: rnd(median(y)), nn: y.length, verdict: 'base lacks it' }); continue; }
     if (!xc.length || !yc.length) { if (xc.length || yc.length) rows.push({ k, d, verdict: 'not measured' }); continue; }
     const x = xc.flat(); const y = yc.flat(); const bm = median(x); const nm = median(y);
     const delta = nm - bm; const tol = Math.max(0.1 * Math.abs(bm), d.floor);
@@ -396,6 +455,7 @@ function measureAB(base) {
   if (PARTS.includes('startup') || PARTS.includes('app')) ensureFixture();
   if (PARTS.includes('startup')) for (let i = 0; i < N.rounds; i++) for (const [s, m] of order(i)) startup(m, `-${s.name}-${i + 1}`, s);
   if (PARTS.includes('app')) for (let i = 0; i < N.runs; i++) for (const [s, m] of order(i)) appLaunch(m, `-${s.name}`, i + 1, s, N.runs);
+  if (PARTS.includes('fresh')) { ensureFreshFixture(); for (let i = 0; i < N.fresh; i++) for (const [s, m] of order(i)) freshLaunch(m, `-${s.name}`, i + 1, s); }
   if (PARTS.includes('sync')) for (let i = 0; i < N.sync; i++) for (const [s, m] of order(i)) syncRun(m, `-${s.name}`, i + 1, s, N.sync);
   return { mb, mn };
 }
