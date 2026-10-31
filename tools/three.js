@@ -3782,7 +3782,7 @@ const ThreeLab = (() => {
         ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
         ['Safe zones', 'Platform buttons / captions / crops for the size (TikTok, Reels, Shorts)', () => stage.setSafe(), stage.safe, 'Safe zones'],
         ['◐ Pin this frame to compare', '|', () => pinFrame()],
-        typeof Decide !== 'undefined' ? ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => Decide.run('size')] : null,
+        ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => (window.Lazy ? Lazy.load('assist') : Promise.resolve()).then(() => Decide.run('size'))], // (round 96: decide.js is in the 'assist' group)
         [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
         ['Frame rate', `${(FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1]}${lightOn ? ' · light' : ''}`, [...FPS_OPTS.map(([v, l]) => [l, v === '-1' ? 'Follows the screen; 30 in the background; nothing when hidden' : '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(fpsPref()) === v, 'Preview fps']),
           ['🪶 Light mode', 'Slower machine: 30 fps, 1× pixels, filters at half size', () => setLight(!lightOn), lightOn, 'Light mode'],

@@ -6,6 +6,10 @@ const Tools = (() => {
   const DEFAULT_ORDER = ['forgeheart', 'three'];
 
   function define(tool) { registry.set(tool.id, tool); }
+  // (round 96, firstscreen96) director-dock.js (the dock's strip, chips, collapse) is a lazy group, in right after the
+  // first frame (every tool with a dock is lazy too, so no dock shows before it). Not in yet: nothing to detach, and a
+  // dock attached meanwhile gets its strip the moment it is in
+  const dd = () => (!window.Lazy?.isIn || Lazy.isIn('directordock') ? (typeof DirectorDock !== 'undefined' ? DirectorDock : null) : null);
 
   // config.tools: { order: [...ids], hidden: [...ids], placed: [...ids] }
   // (round 53, appcalm) a tool defined with `offRail: true` (the Creative Playground) starts in the rail's ⋯ "Not in
@@ -103,7 +107,7 @@ const Tools = (() => {
     s.divider.hidden = !open;
     s.dockBtn?.classList.toggle('on', open);
     store.set(`dockOpen.${s.tool.id}`, open);
-    if (typeof DirectorDock !== 'undefined') DirectorDock.applyCollapsed(s); // the thin bar only shows while the dock is open
+    dd()?.applyCollapsed(s); // the thin bar only shows while the dock is open
   }
 
   function syncDock(s) {
@@ -120,7 +124,7 @@ const Tools = (() => {
     s.dockBtn?.remove();
     s.dockedId = want;
     if (!agent && waiting.length) {
-      if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id);
+      dd()?.detach(s.tool.id);
       const label = Panel.missing(waiting[0]).name;
       s.dockBtn = el('button', { class: 'ghost small dock-toggle', text: `💬 ${label}`, title: `Its chats, read-only until it is back`, on: { click: () => setDockOpen(s, s.dock.hidden) } });
       s.head.append(s.dockBtn);
@@ -128,10 +132,11 @@ const Tools = (() => {
       Lazy.load('chatsafe').then(() => { if (s.dockedId === want) ChatSafe.mountDock(s, waiting); }).catch((err) => console.warn('chatsafe', err));
       return;
     }
-    if (!agent) { if (typeof DirectorDock !== 'undefined') DirectorDock.detach(s.tool.id); s.dock.hidden = true; s.divider.hidden = true; return; } // (round 55: the owner's open / closed choice isn't forgotten while no AI is docked)
+    if (!agent) { dd()?.detach(s.tool.id); s.dock.hidden = true; s.divider.hidden = true; return; } // (round 55: the owner's open / closed choice isn't forgotten while no AI is docked)
     Native.mount(agent.id, s.dock);
     // activity strip, quick chips, undo, collapse (director-dock.js)
-    if (typeof DirectorDock !== 'undefined') { try { DirectorDock.attach(s, agent); } catch (err) { console.warn(err); } }
+    const attach = () => { if (s.dockedId !== want) return; try { DirectorDock.attach(s, agent); DirectorDock.applyCollapsed(s); } catch (err) { console.warn(err); } };
+    if (dd()) attach(); else if (window.Lazy) Lazy.load('directordock').then(attach).catch((err) => console.warn('directordock', err));
     s.dockBtn = el('button', { class: 'ghost small dock-toggle', text: `💬 ${agent.name}`, title: `Show or hide the ${agent.name} chat`, on: { click: () => setDockOpen(s, s.dock.hidden) } });
     s.head.append(s.dockBtn);
     setDockOpen(s, store.get(`dockOpen.${s.tool.id}`, true));
@@ -171,6 +176,19 @@ const Tools = (() => {
     const s = H.surfaces.get(`tool:${toolId}`);
     if (s?.dockedId && s.dock.hidden) setDockOpen(s, true);
   }
+
+  // (round 96, firstscreen96) director-task.js (a director chat's task state: its goal and latest asks) loads right
+  // after the first frame: what the owner sends a director before it is in is kept for it (DirectorTask takes it)
+  addEventListener('DOMContentLoaded', () => {
+    if (typeof Native === 'undefined' || !window.Lazy?.isIn || Lazy.isIn('directortask')) return;
+    const early = (window.DirectorTaskEarly = []);
+    Native.hooks.send.push((agentId, chat, text) => {
+      const a = H.agent(agentId);
+      if (Lazy.isIn('directortask') || !(a?.mode === 'native' && (a.dock || a.threeTools))) return;
+      if (early.length < 20) early.push([agentId, chat, text]);
+      Lazy.load('directortask').catch(() => {});
+    });
+  });
 
   return { define, all, enabled, move, setHidden, createSurface, shown, warm, syncDocks, openDock, dockedAgent, get: (id) => registry.get(id) };
 })();

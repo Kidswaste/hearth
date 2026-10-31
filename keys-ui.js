@@ -487,8 +487,9 @@ const KeysUI = (() => {
       { area: 'Present', keys: 'I', what: 'The info line (sketch, time, BPM)', when: inLab },
       { area: 'Present', keys: 'PgUp / PgDn', what: 'Previous / next sketch', when: inLab },
       // the director dock
-      { area: 'Director dock', keys: 'Alt+Shift+Z', what: 'Undo the director’s last code edit', when: inLab, run: () => DirectorDock.undoEdit() },
-      { area: 'Director dock', keys: 'Alt+Shift+Y', what: 'Redo it', when: inLab, run: () => DirectorDock.redoEdit() },
+      // (round 96, firstscreen96) director-dock.js is a lazy group (right after the first frame)
+      { area: 'Director dock', keys: 'Alt+Shift+Z', what: 'Undo the director’s last code edit', when: inLab, run: () => Lazy.load('directordock').then(() => DirectorDock.undoEdit()) },
+      { area: 'Director dock', keys: 'Alt+Shift+Y', what: 'Redo it', when: inLab, run: () => Lazy.load('directordock').then(() => DirectorDock.redoEdit()) },
       { area: 'Director dock', keys: 'Alt+Shift+D', what: 'Collapse / open the docked chat' },
       { area: 'Director dock', keys: 'Double-click', what: 'The divider: collapse / expand the chat', sel: '.tool-dock-divider' },
       // nodes

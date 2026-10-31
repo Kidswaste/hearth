@@ -1070,6 +1070,7 @@ const ThreeSeq = (() => {
   }
   // ✦ Let Astra pick the arrangement: one small question (decide.js), applied with Undo
   async function decideArrangement(goal = '') {
+    await window.Lazy?.load?.('assist').catch(() => {}); // (round 96: decide.js is in the 'assist' group)
     if (typeof Decide === 'undefined' || !Decide.KINDS?.arrangement) return arrange();
     if (!S.edit) await current();
     const song = D.songOf(S.edit) ? await songInfo() : null;
@@ -2626,7 +2627,9 @@ const ThreeSeq = (() => {
 
   // "/decide arrangement" (and ✦ Let Astra pick one): Astra picks the template from a picture of the scene and a few
   // words about the scenes and the song (decide.js: one small question, Undo, a local default without tokens)
-  addEventListener('DOMContentLoaded', () => {
+  // (round 96, firstscreen96) decide.js loads with the 'assist' group (right after the first frame): added once it is in
+  addEventListener('DOMContentLoaded', () => (window.Lazy?.when ? Lazy.when('assist', addArrangement) : addArrangement()));
+  const addArrangement = () => {
     if (typeof Decide === 'undefined' || !Decide.KINDS || Decide.KINDS.arrangement || !A) return;
     Decide.KINDS.arrangement = {
       label: 'an arrangement for the Lab sequence', goal: 'the shape that suits these scenes on this song', visual: true,
@@ -2634,7 +2637,7 @@ const ThreeSeq = (() => {
       async apply(c) { const before = S.edit ? JSON.stringify(S.edit) : null; await arrange({ template: c.id }); return () => { if (before) commit(JSON.parse(before), 'Back to before'); }; },
       local: async (cands) => { const song = S.edit && D.songOf(S.edit) ? await songInfo() : null; const want = !song ? 'reel' : song.dur > 90 ? 'teaser' : 'music-video'; return cands.find((c) => c.id === want) || cands[0]; },
     };
-  });
+  };
   // each scene's sequence in a few words for the chat rows / scene menus, once the Lab is up (no reads after that
   // but the listings the sequence makes anyway)
   // another scene on screen while the sequence is hidden: the next ▤ Sequence opens that scene's own

@@ -16,8 +16,9 @@
 // Token frugality: nothing reaches an engine unless the owner turns on `/progress tags on` (one line for directors).
 const ProgressHooks = (() => {
   const P = Progress;
-  const UI = () => (typeof ProgressUI !== 'undefined' ? ProgressUI : null);
-  const railOf = (agentId) => UI()?.railOf(agentId) || `rail:${agentId}`;
+  // the rail button of an agent (a docked director lives on its tool's button); (round 96, firstscreen96) here, not
+  // through ProgressUI: the bars on screen (progress-ui.js) load right after the first frame
+  const railOf = (agentId) => `rail:${H.surfaceIdFor ? H.surfaceIdFor(agentId) : agentId}`;
   const cap = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
   const base = (p) => String(p || '').split(/[\\/]/).pop();
   const go = (agentId, chatId) => () => { try { activate(agentId); } catch { /* a docked director opens with its tool */ } Native.open(agentId, chatId); };
@@ -220,6 +221,8 @@ const ProgressHooks = (() => {
 
   // ---------- wiring ----------
   function boot() {
+    // what Hearth learned of how long things take (round 96, firstscreen96: from progress-ui.js, which loads after the first frame)
+    Progress.configure({ load: () => store.get('progress.hist', null), save: (h) => store.set('progress.hist', h) });
     if (typeof Native !== 'undefined') Native.hooks.send.push(replyStart);
     window.hub.onEngineEvent?.(onEngine);
     if (typeof HubBridge !== 'undefined') HubBridge.onResult(onHubResult);
