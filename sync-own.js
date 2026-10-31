@@ -70,11 +70,12 @@ function record(blocked) {
 function longHere(o = {}) {
   const data = String(o.dataDir || '').length; const cloud = o.cloudRoot ? String(o.cloudRoot).length + 14 : 0;
   const len = Math.max(data, cloud);
+  const room = Hard.WIN_MAX - len - 1;
   let n = 0; let over = 0; const sample = [];
   const seen = new Set(); let by = '';
   for (const it of o.rels || []) {
     for (const rel of it || []) {
-      if (seen.has(rel) || !appNamed(rel)) continue;
+      if (rel.length <= room || seen.has(rel) || !appNamed(rel)) continue; // (most names fit: one comparison each, 100,000 names at 50,000 files)
       seen.add(rel);
       const bad = Hard.winBad(rel, { rootLen: len });
       if (!bad || bad.why !== 'win-long') continue;
