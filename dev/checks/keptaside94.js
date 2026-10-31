@@ -42,9 +42,12 @@ const plain = (rel) => String(rel).replace(/(^|\/)[0-9a-f]{6,8}-([^/]+)$/, '$1$2
 const inTrash = async (rel) => (await trash()).filter((t) => plain(t.rel) === rel);
 async function synced(rel, test, ms = 15000) { return until(async () => { await syncNow(); return test(await cloudJson(rel)); }, ms); }
 // both changed: this computer's change first, the Mac's in the cloud copy, then Sync now → a conflict (or a version kept aside)
+// (round 96, checkfix96) both changes are made while no pass can run (sync paused, the pass in flight over first): on a
+// busy box a pass started by the watcher between the two pushed this computer's change first, the Mac's edit was then
+// made on top of it, and there was nothing to choose ("… waits for a choice · null", the base check too)
+async function still(fn) { await api.pause(true); try { await api.now(); await fn(); } finally { await api.pause(false); } }
 async function both(rel, here, mac) {
-  await here(); await wait(300);
-  await macEdit(rel, mac);
+  await still(async () => { await here(); await wait(300); await macEdit(rel, mac); });
   let got = null;
   await until(async () => { await syncNow(); const c = (await api.conflicts()).find((x) => x.rel === rel); const a = (Sync.status().aside || []).find((x) => x.rel === rel); got = c ? { conflict: c.id } : a ? { aside: a.id } : null; return got; }, 20000);
   return got;
@@ -300,8 +303,10 @@ await section('picture', async () => {
   const rel = 'refs/ka94-cover.png';
   await window.hub.fs.write(`${dataDir}/${rel}`, PNG_RED, { base64: true });
   await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat?.(cloudOf(rel)).catch(() => null)); }, 20000);
-  await window.hub.fs.write(`${dataDir}/${rel}`, PNG_BLUE, { base64: true }); await wait(1100);
-  await window.hub.fs.write(cloudOf(rel), PNG_GREEN, { base64: true });
+  await still(async () => { // (round 96, checkfix96: see still())
+    await window.hub.fs.write(`${dataDir}/${rel}`, PNG_BLUE, { base64: true }); await wait(1100);
+    await window.hub.fs.write(cloudOf(rel), PNG_GREEN, { base64: true });
+  });
   let src = null;
   await until(async () => { await syncNow(); const c = (await api.conflicts()).find((x) => x.rel === rel); src = c ? { conflict: c.id } : null; return src; }, 20000);
   step('picture: changed on both → waits for a choice', Boolean(src), src);
@@ -325,8 +330,10 @@ await section('sound', async () => {
   const rel = 'stems/ka94-loop.wav';
   await window.hub.fs.write(`${dataDir}/${rel}`, WAV(800));
   await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat?.(cloudOf(rel)).catch(() => null)); }, 20000);
-  await window.hub.fs.write(`${dataDir}/${rel}`, WAV(1600)); await wait(1100);
-  await window.hub.fs.write(cloudOf(rel), WAV(3200));
+  await still(async () => { // (round 96, checkfix96: see still())
+    await window.hub.fs.write(`${dataDir}/${rel}`, WAV(1600)); await wait(1100);
+    await window.hub.fs.write(cloudOf(rel), WAV(3200));
+  });
   let src = null;
   await until(async () => { await syncNow(); const c = (await api.conflicts()).find((x) => x.rel === rel); src = c ? { conflict: c.id } : null; return src; }, 20000);
   step('sound: changed on both → waits for a choice', Boolean(src), src);
