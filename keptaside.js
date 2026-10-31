@@ -274,7 +274,7 @@ const KeptAside = (() => {
     if (cur?.state !== 'ok' || cur.value == null) throw Error('It can\'t be read right now, so nothing was changed'); // (never "empty")
     let v = cur.value;
     for (const e of edits || []) { const n = K.setAt(v, e.path, e.text); if (!n) throw Error('It changed meanwhile: open it again'); v = n; }
-    const w = await window.hub.kvSet(name, v);
+    const w = await window.hub.kvSet(name, v, { base: cur.value }); // (round 97, syncsweep97) base: a holder's copy saved before it reads again (typed meanwhile) merges in, never over the combined text
     if (w?.error) throw Error(w.error);
     await window.StoreAck?.arrived([{ rel }]);
   }

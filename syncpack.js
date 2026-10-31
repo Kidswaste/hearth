@@ -158,6 +158,7 @@ function createPackLane(o = {}) {
       if (r.out) {
         const ok = await api.casWrite(file, r.sig ? { size: r.sig.size, mtime: r.sig.mtime } : null, r.out);
         if (!ok) { out.waiting.push({ rel, why: 'pieces' }); continue; } // (changed here meanwhile: next pass)
+        api.guardBase?.(rel); // (round 97, syncsweep97) the chat window's older copy, saved after this, is merged with it (sync's guard, as after a pull), never written over it
         await api.afterLocalWrite(rel, r.lh); out.touched.push(rel);
         api.notePulled(rel, x.by);
         L = { size: r.out.length, mtime: 0 }; // (written: looked at again below)

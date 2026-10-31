@@ -1874,10 +1874,10 @@ function createEngine(o) {
     let made = null;
     if (keep === 'theirs' || keep === 'merge') {
       if (keep === 'merge' && !isJson) return { ok: false, error: 'Only data (chats, scenes, settings…) can be merged; pictures and files are one version or the other.' };
-      let ours = null;
+      let ours = null; let ent = null; // (round 97, syncsweep97) ent: this computer's file as read (choiceWrite)
       const big = isJson ? await o.asideBig?.take({ how: keep, rel: rec.rel, file, src: copy, cloud: true, theirsNewer: (rec.theirsAt || 0) > (rec.oursAt || 0), ctx }) : null; // (round 95, aside95) a big store: its JSON work on the store thread (asidework.js); null: here, as before
       if (big && !big.ok) return big;
-      if (isJson && !big) { try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
+      if (isJson && !big) { ent = entNow(file); try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
       if (big?.prev) remember(rec.rel, big.prev);
       let keptHere = await keepHere(rec.rel, file).catch(async (err) => { await big?.drop(); throw err; });
       if (keep === 'theirs' && keptHere && o.asideBig) keptHere = await o.asideBig.share({ rel: rec.rel, kept: keptHere, trash: TRASH, day: day(now()), ctx }); // (round 95, aside95) the version replaced also in the synced Deleted files: the other computer lists it too
@@ -1899,7 +1899,7 @@ function createEngine(o) {
           if (await exists(dst)) dst = path.join(tdir, `${rand()}-${path.basename(rec.rel)}`);
           try { await fsp.copyFile(copy, dst); noteLoser(rec, 'theirs', dst, TRASH); } catch (err) { log('aside copy', rec.rel, err.message); }
         }
-        if (big) { const p = await big.put(); if (!p.ok) return p; } else await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null)); // (round 95, aside95)
+        if (big) { const p = await big.put(); if (!p.ok) return p; } else if (!(await choiceWrite(rec.rel, file, ent, ours, v))) return { ok: false, error: CHANGED }; // (round 95, aside95) · (round 97, syncsweep97) choiceWrite
       } else {
         // (a copy whose content is still only in the cloud downloads now: this choice asks for it)
         const tmp = path.join(path.dirname(file), `.hearth-tmp-${rand()}-${path.basename(file)}`);
@@ -1917,11 +1917,12 @@ function createEngine(o) {
         const m = /^chats\/(.+)\.json$/.exec(rec.rel);
         if (!m && rec.rel === 'app/config.json') return { ok: false, error: 'Settings are one version or the other: pick one, or Merge.' };
         if (!m) { // (round 72, sync72) Keep both for data: a scene / board changed two ways stays twice ("… (from Mac)")
+          const ent = entNow(file); // (round 97, syncsweep97)
           let ours = null; try { ours = oursValue(); } catch { /* none here */ }
           const theirs = await theirsValue();
           if (ours) remember(rec.rel, ours);
           await keepHere(rec.rel, file);
-          await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(ours ? S.keepBoth(ours, theirs, from, undefined, { inPlace: S.inPlaceOf(rec.rel) }) /* (round 91, projaudit91) */ : theirs, ctx), statSync(file) ? { file } : null));
+          if (!(await choiceWrite(rec.rel, file, ent, ours, ours ? S.keepBoth(ours, theirs, from, undefined, { inPlace: S.inPlaceOf(rec.rel) }) /* (round 91, projaudit91) */ : theirs))) return { ok: false, error: CHANGED }; // (round 97, syncsweep97) choiceWrite
           made = rec.rel;
         }
         if (m) {
@@ -2018,6 +2019,26 @@ function createEngine(o) {
     await walk(path.join(stateDir,'recovery'),async(e,r)=>{if(e.isFile())out.push({id:`recovery:${r}`,rel:r,where:'recovery',recovery:true,day:'Before last sync'});});
     return out.sort((a,b)=>Number(Boolean(b.recovery))-Number(Boolean(a.recovery)));
   }
+  // (round 97, syncsweep97) a choice's result written only over the version it read (ent: [size, time] then, null: none
+  // was there): a save that landed meanwhile (the window's, through the guard) is merged in, base = the version read,
+  // the choice winning a field both changed; never written over. → false: it kept changing (the caller says try again)
+  const CHANGED = 'It changed while this was being prepared. Try again.';
+  const entNow = (f) => { const st = statSync(f); return st ? { size: st.size, mtime: st.mtimeMs } : null; };
+  async function choiceWrite(rel, file, ent, base, v) {
+    for (let i = 0; ; i++) {
+      if (await casWrite(file, ent, localJsonText(rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null), 'choice')) return true;
+      const e2 = entNow(file);
+      if (i >= 3 || !e2) return false;
+      let cur; try { const x = S.parseJson(fs.readFileSync(file, 'utf8')); cur = S.toCloud(rel === 'app/config.json' ? S.portableConfig(x) : x, ctx); } catch { return false; }
+      ent = e2; v = S.merge3(base, v, cur, { counters: S.isCounterRel(rel) }).value;
+    }
+  }
+  // (round 97, syncsweep97) a big store's version in cloud form, as text (the guard's base; parsed only if a save needs
+  // it): made on the store thread; null when it can't be (no common base)
+  async function prevText(rel, file) {
+    const out = path.join(stateDir, `.hearth-tmp-${rand()}-prev.json`);
+    try { if (!(await o.asideBig?.form(file, out, ctx, { rel, to: 'cloud' }))) return null; return { lazy: await fsp.readFile(out, 'utf8') }; } catch { return null; } finally { await fsp.rm(out, { force: true }).catch(() => {}); }
+  }
   async function restore(id, ro = {}) {
     const recovery=/^recovery:(.+)$/.exec(String(id));
     const m = recovery ? [id,'recovery','',recovery[1]] : /^(cloud|here):(\d{4}-\d\d-\d\d)\/(.+)$/.exec(String(id));
@@ -2028,19 +2049,29 @@ function createEngine(o) {
     const rel = recovery ? r : r.replace(/(^|\/)\.([^/]+)\.icloud$/, '$1$2').replace(/(^|\/)[0-9a-f]{8}-([^/]+)$/, '$1$2');
     const dst = localPathOf(rel);
     let was; // (round 96, checkfix96) the version replaced, in cloud form: the write guard's base, as after a pull
+    let ent = null; let restored; // (round 97, syncsweep97) the file as read (a save landing meanwhile is merged in, never written over) · the version put back (cloud form, a small store)
     if (await exists(dst)) {
       if (!ro.replace) return { ok: false, error: `${rel} is already there`, exists: true };
-      if (S.isJsonRel(rel)) { try { const st = await fsp.stat(dst); if (st.size < 1024 * 1024) { const v = S.parseJson(await fsp.readFile(dst, 'utf8')); was = S.toCloud(rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } } catch { /* unreadable: no base (guard: false below) */ } }
+      // (round 97, syncsweep97) a store over 1 MB: its cloud form made on the store thread and kept as text (parsed only
+      // if a save needs it, as a pull's); without the thread, parsed here up to 16 MB. Unreadable: no common base (null:
+      // a save of the window's copy then keeps everything of both)
+      if (S.isJsonRel(rel)) { try { const st = await fsp.stat(dst); ent = { size: st.size, mtime: st.mtimeMs }; if (st.size < 1024 * 1024 || (!o.asideBig && st.size < 16e6)) { const v = S.parseJson(await fsp.readFile(dst, 'utf8')); was = S.toCloud(rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } else if (o.asideBig) was = await prevText(rel, dst); } catch { was = null; } }
       await keepHere(rel, dst); // (round 19) undoing a choice: the version in place goes to the trash first
-    }
+    } else if (S.isJsonRel(rel)) was = null; // (round 97, syncsweep97) none here: a window's copy saved after merges with no base (both kept)
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
-    if (S.isJsonRel(rel) && await o.asideBig?.form(src, tmp, ctx, { rel })) { /* (round 95, aside95) a big store: put in this computer's form on the store thread */ } else if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
+    if (S.isJsonRel(rel) && await o.asideBig?.form(src, tmp, ctx, { rel })) { /* (round 95, aside95) a big store: put in this computer's form on the store thread */ } else if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); restored = S.toCloud(S.fromCloud(v, ctx), ctx); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
     await flushed(tmp);
     // (round 96, checkfix96) a window holding the replaced version (a StoreAck holder with a save waiting, the Lab's
     // presets) writes it first on the arrival: merged with what came back, never written over it (keptaside94's 8 bars)
+    const had = pulledPrev.has(rel);
     if (was !== undefined) remember(rel, was);
-    await renameRetry(tmp, dst);
+    // (round 97, syncsweep97) only over the version read: a save that landed meanwhile is merged in (a small store) or it
+    // says to try again (a big one); nothing put back yet
+    if (!(await renameRetry(tmp, dst, S.isJsonRel(rel) ? () => same(dst, ent) : undefined))) {
+      await fsp.rm(tmp, { force: true }).catch(() => {});
+      if (restored === undefined || !(await choiceWrite(rel, dst, ent, was && typeof was.lazy !== 'string' ? was : null, restored))) { if (!had) pulledPrev.delete(rel); return { ok: false, error: CHANGED }; }
+    }
     await fsp.rm(src, { force: true });
     if (S.isJsonRel(rel)) pulledAt.set(rel, Date.now()); // (round 96, checkfix96) an ack for a read from before this is ignored
     o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash', ...(S.isJsonRel(rel) && !pulledPrev.has(rel) ? { guard: false } : {}) }]); // (round 96, checkfix96) guard: false: no base kept (big / unreadable / new here)
@@ -2108,6 +2139,7 @@ function createEngine(o) {
     if (isJson) {
       const big = await o.asideBig?.take({ how, rel: n.rel, file, src, from: fromName, ctx }); // (round 95, aside95) a big store: read, kept both and written on the store thread (asidework.js); null: here, as before
       if (big && !big.ok) return big;
+      const ent = big ? null : entNow(file); // (round 97, syncsweep97) as read (choiceWrite)
       let ours = null; if (!big) try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
       const kept = big ? null : S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
       const v = big ? null : how === 'both' && ours ? S.keepBoth(ours, kept, fromName, undefined, { inPlace: S.inPlaceOf(n.rel) }) /* (round 91, projaudit91) one project with both names */ : kept;
@@ -2115,7 +2147,7 @@ function createEngine(o) {
       // with this version; the line it had won stays replaced), else this version's predecessor on the disk
       if (pulledPrev.has(n.rel) && guardOurs.has(n.rel)) pulledPrev.set(n.rel, guardOurs.get(n.rel)); else if (big ? big.prev : ours) remember(n.rel, big ? big.prev : ours);
       await keepHere(n.rel, file).catch(async (err) => { await big?.drop(); throw err; });
-      if (big) { const p = await big.put(); if (!p.ok) return p; } else await atomicWrite(file, localJsonText(n.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
+      if (big) { const p = await big.put(); if (!p.ok) return p; } else if (!(await choiceWrite(n.rel, file, ent, ours, v))) return { ok: false, error: CHANGED }; // (round 97, syncsweep97) choiceWrite
     } else {
       const ext = path.extname(n.rel); const stem = n.rel.slice(0, n.rel.length - ext.length);
       if (how === 'both') { made = `${stem} (from ${fromName})${ext}`; for (let i = 2; await exists(localPathOf(made)); i++) made = `${stem} (from ${fromName} ${i})${ext}`; } else await keepHere(n.rel, file);
@@ -2134,7 +2166,7 @@ function createEngine(o) {
   function writeJsonSync(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true }); const t = `${f}.${rand()}.tmp`; fs.writeFileSync(t, JSON.stringify(v)); fs.renameSync(t, f); }
 
   // (round 89, packs89) what the pack lane may use (the engine's own writes, so it follows the same rules)
-  PK?.attach({ cloudDir, stateDir, machineId: () => machine.id, ctx: () => ctx, localPathOf, casWrite: (file, ent, data) => casWrite(file, ent, data, 'pack-take'), afterLocalWrite, notePulled: (rel) => notePulled(rel, kindOf(rel)), asideAdd: (n) => { const r = aside.add(n); setTimeout(emit, 0); return r; }, nameOf: (by) => peers.find((p) => P_safe(p.id) === by)?.name || nameOf(by),
+  PK?.attach({ cloudDir, stateDir, machineId: () => machine.id, ctx: () => ctx, localPathOf, casWrite: (file, ent, data) => casWrite(file, ent, data, 'pack-take'), afterLocalWrite, notePulled: (rel) => notePulled(rel, kindOf(rel)), guardBase: (rel) => remember(rel, null), /* (round 97, syncsweep97) a chat taken from pieces keeps the guard as a giant pull does (no base: a window's older copy saved after merges in, both kept) */ asideAdd: (n) => { const r = aside.add(n); setTimeout(emit, 0); return r; }, nameOf: (by) => peers.find((p) => P_safe(p.id) === by)?.name || nameOf(by),
     dataDir, knows: (rel) => Boolean(state.base[rel]), autoResolve: () => Boolean(o.autoResolve?.()), conflictsDir: CONFL, conflictId: () => `${day(now())}-${rand()}`,
     conflict: async (c) => { const mid = peers.find((p) => P_safe(p.id) === c.by)?.id || null; await writeConflictRecord({ id: c.id, rel: c.rel, kind: 'json', copy: c.copy, at: now(), by: machine.name, from: nameOf(mid), ...sides(mid, c.oursAt, c.theirsAt), fields: c.fields.slice(0, 20) }); sum.conflicts += 1; } });
   return {
