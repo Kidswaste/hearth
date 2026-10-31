@@ -149,6 +149,16 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   not "Tool data “1a2b3c4d-…”", and Restore brings it back.
 - Report what you saw for each line (works / what happened instead), and which computer showed the note.
 
+## 11. A project's Lab work from the PC to the Mac in one file (round 97, labproj97)
+- On the PC, in a test project: a scene with a texture, a 3D model and a song from your Music folder (click **Keep a
+  copy with this scene** when offered, or type `/song keep`), set its ⚡ trigger bars and a loop, run it a few times,
+  pin a second scene. Projects › the project's ⋯ › **Export project…**. Copy the `.hearthproject` to the Mac (USB stick
+  or AirDrop, not the synced folder), then on the Mac: Projects ⋯ › **Import project…**. Open each scene: it runs, the
+  texture and model show, the song plays with the PC's trigger bars and loop, History lists the PC's versions, the pin
+  and each scene's picture are there. Also try a project whose files have capitals or accents in their names
+  (`Été Brick.PNG`). Then the other way (Mac → PC). Then ⧉ **Duplicate project** on either: change the copy's bars and
+  code; the original's stay as they were.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.

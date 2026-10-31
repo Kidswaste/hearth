@@ -23,6 +23,8 @@
 //   body:     scrub(obj) · prepare(body, { chats, files }) · parts(body) · summarize(body) · describe(manifest)
 //   ids:      remap(body, { ids, suffix }) → { body, map, dropped } · canon(body) (deep compare minus ids, for checks)
 const ProjBundleCore = (() => {
+  // (round 97, labproj97) a scene's Lab work (History, its song's ⚡ bars and loop, its pin, its sequence pick): labproj-core.js
+  const LP = typeof LabProjCore !== 'undefined' ? LabProjCore : typeof require === 'function' ? require('./labproj-core.js') : null;
   const FORMAT = 'hearthproject';
   const VERSION = 1;
   const EXT = '.hearthproject';
@@ -43,7 +45,7 @@ const ProjBundleCore = (() => {
     scenes: 500, layers: 128, code: 8 * MB, chats: 3000, boards: 300, items: 50000, sequences: 500, refs: 2000,
   };
   // the stores a bundle's parts come from, with the shape version this Hearth writes (a newer one on import: ⬆ Update)
-  const STORES = { projects: 1, 'three-sketches': 1, 'three-lab-extras': 1, 'three-refs': 1, 'three-notes': 1, 'three-thumbs': 1, 'three-beatmaps': 1, 'video-cuts': 1, boards: 1, chats: 1, 'chat-scenes': 1, workbench: 1 };
+  const STORES = { projects: 1, 'three-history': 1, 'lab-presets': 1, 'three-sketches': 1, 'three-lab-extras': 1, 'three-refs': 1, 'three-notes': 1, 'three-thumbs': 1, 'three-beatmaps': 1, 'video-cuts': 1, boards: 1, chats: 1, 'chat-scenes': 1, workbench: 1 };
   const KIND_ITEMS = ['file', 'capture', 'render', 'download']; // items that are files on disk (the optional "Files and captures")
 
   // ---------- small helpers ----------
@@ -164,6 +166,7 @@ const ProjBundleCore = (() => {
       if (sk.layers != null && (!Array.isArray(sk.layers) || sk.layers.length > LIMITS.layers)) { problems.push(`"${String(sk.name).slice(0, 40)}" has broken layers or too many.`); continue; }
       for (const L of sk.layers || []) if (typeof (L?.code ?? '') !== 'string' || String(L?.code || '').length > LIMITS.code) problems.push(`A layer of "${String(sk.name).slice(0, 40)}" has code that's too big or not text.`);
       if (s.refs != null && (!Array.isArray(s.refs) || s.refs.length > LIMITS.refs)) problems.push(`"${String(sk.name).slice(0, 40)}" has broken references.`);
+      if (s.lab != null && LP) problems.push(...LP.checkLab(s.lab, LIMITS).map((t) => `"${String(sk.name).slice(0, 40)}": ${t}`)); // (round 97, labproj97)
     }
     for (const c of chats) if (!isObj(c?.chat) || typeof c.id !== 'string' || !Array.isArray(c.chat.messages)) problems.push('A chat in it is broken.');
     for (const x of boards) if (!isObj(x?.board) || typeof x.id !== 'string' || !Array.isArray(x.board.items)) problems.push('A board in it is broken.');
@@ -263,7 +266,8 @@ const ProjBundleCore = (() => {
     const refs = (b.scenes || []).reduce((n, s) => n + (s.refs || []).length, 0);
     const notes = (b.scenes || []).reduce((n, s) => n + (s.notes || []).length, 0);
     const messages = (b.chats || []).reduce((n, c) => n + (c.chat?.messages?.length || 0), 0);
-    return { scenes: (b.scenes || []).length, layers, refs, sceneNotes: notes, sequences: (b.sequences || []).length, boards: (b.boards || []).length, chats: (b.chats || []).length, messages, files: (b.files || []).length, captures: count('capture'), renders: count('render'), notes: Boolean(b.project?.notes), worktable: b.workbench != null };
+    const lab = LP ? LP.count(b.scenes) : { versions: 0, bars: 0, pinned: 0 }; // (round 97, labproj97)
+    return { scenes: (b.scenes || []).length, layers, refs, sceneNotes: notes, versions: lab.versions, songBars: lab.bars, pinned: lab.pinned, sequences: (b.sequences || []).length, boards: (b.boards || []).length, chats: (b.chats || []).length, messages, files: (b.files || []).length, captures: count('capture'), renders: count('render'), notes: Boolean(b.project?.notes), worktable: b.workbench != null };
   }
   // plain lines for the import card: what will be added
   function describe(m, s = m?.counts || {}) {
@@ -273,6 +277,7 @@ const ProjBundleCore = (() => {
     lines.push(s.chats ? `${plural(s.chats, 'chat')} (${plural(s.messages || 0, 'message')})` : m?.leftOut?.chats ? `Chats left out when it was saved (${m.leftOut.chats})` : 'No chats');
     const f = (s.files || 0);
     lines.push(f ? `${plural(f, 'file')} and captures${m?.bytes ? ` · ${fmtSize(m.bytes)} in all` : ''}` : m?.leftOut?.files ? `Files and captures left out when it was saved (${m.leftOut.files})` : `${m?.files ? `${plural(m.files, 'file')} it uses · ${fmtSize(m.bytes)}` : 'No files'}`);
+    if (s.versions || s.songBars) lines.push([s.versions ? `History (${plural(s.versions, 'version')})` : '', s.songBars ? `⚡ trigger bars for ${plural(s.songBars, 'song')}` : '', s.pinned ? plural(s.pinned, 'pinned scene') : ''].filter(Boolean).join(' · ')); // (round 97, labproj97)
     if (s.notes || s.sceneNotes) lines.push(['Project notes', s.sceneNotes ? plural(s.sceneNotes, 'scene note') : ''].filter(Boolean).join(' · '));
     if (m?.secrets) lines.push(`${plural(m.secrets, 'secret')} (API keys, tokens) ${m.secrets === 1 ? 'was' : 'were'} removed when it was saved`);
     if ((m?.skipped || []).length) lines.push(`${plural(m.skipped.length, 'file')} weren't on the computer it came from: ${m.skipped.slice(0, 3).join(', ')}${m.skipped.length > 3 ? '…' : ''}`);
@@ -291,13 +296,13 @@ const ProjBundleCore = (() => {
     const I = { ...DEFAULT_IDS, ...ids };
     const b = copy(body);
     const dropped = [];
-    const map = { project: null, scene: new Map(), board: new Map(), chat: new Map() };
+    const map = { project: null, scene: new Map(), board: new Map(), chat: new Map(), seq: new Map() };
     const p = b.project;
     const oldPid = p.id;
     map.project = I.project();
     p.id = map.project;
     if (suffix) p.name = `${String(p.name || 'Project').slice(0, 48 - suffix.length)}${suffix}`;
-    for (const s of b.scenes || []) { const n = I.scene(s.id); map.scene.set(s.id, n); s.id = n; if (s.sketch) { s.sketch.id = n; if (suffix) s.sketch.name = `${s.sketch.name || 'Scene'}${suffix}`; } }
+    for (const s of b.scenes || []) { const n = I.scene(s.id); map.scene.set(s.id, n); if (s.lab != null && LP) s.lab = LP.remapLab(s.lab, s.id, n) || undefined; s.id = n; if (s.sketch) { s.sketch.id = n; if (suffix) s.sketch.name = `${s.sketch.name || 'Scene'}${suffix}`; } } // (round 97, labproj97: s.lab's History follows the scene)
     for (const x of b.boards || []) { const n = I.board(x.id); map.board.set(x.id, n); x.id = n; if (x.board) { x.board.id = n; if (suffix) x.board.name = `${String(x.board.name || 'Board').slice(0, 60 - suffix.length)}${suffix}`; } }
     for (const c of b.chats || []) {
       const agentId = c.chat?.agentId || c.agent?.id || '';
@@ -321,11 +326,14 @@ const ProjBundleCore = (() => {
       q.edit.seq = { ...q.edit.seq, scene: sc };
       q.edit.clips = (q.edit.clips || []).map((cl) => (cl?.kind === 'scene' && sMap(cl.sketch) ? { ...cl, sketch: sMap(cl.sketch) } : cl));
       const nm = `${String(q.key).slice(4) || 'Sequence'}${suffix}`;
+      const oldKey = q.key;
       q.key = I.seqKey(nm);
+      map.seq.set(oldKey, q.key); // (round 97, labproj97) a scene's sequence pick follows
       if (q.edit.seq.name != null) q.edit.seq.name = q.key.slice(4);
       keep.push(q);
     }
     b.sequences = keep;
+    for (const s of b.scenes || []) if (s.lab?.seqpick) { const k = map.seq.get(s.lab.seqpick); if (k) s.lab.seqpick = k; else delete s.lab.seqpick; } // (round 97, labproj97)
     // boards: the chats they're linked to
     for (const x of b.boards || []) if (x.board) x.board.chats = (x.board.chats || []).map(cMap).filter(Boolean);
     // chats: their links, where they came from

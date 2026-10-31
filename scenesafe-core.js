@@ -591,5 +591,17 @@
     if (inside(roots.cloud) || (roots.drives || []).some((x) => x && inside(x.root))) return 'drive';
     return null;
   }
-  return { BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge, MINE_KINDS, mineKey, mineMerge, labStoreMerge, histSegName, histSegOf, histSceneOf, histJoin, histSame, histTake, histFlush, segVersions, HIST_MAX, thumbHash, thumbDistance, thumbChanged, songTravels };
+  // (round 97, labproj97) a reference's file another scene still points at (a copied project whose copy of the file
+  // couldn't be made shares the original's; a song kept with a scene): removing the reference never trashes it.
+  // refsAll: { scene: [refs] } (the one removed already out, or given as `except`), extras: { scene: { media } }.
+  // Paths compare as both systems do (\ or /, any case)
+  function refShared(p, { refsAll = {}, extras = {}, except = null } = {}) {
+    if (!p) return false;
+    const n = (x) => String(x || '').replace(/\\/g, '/').normalize('NFC').toLowerCase();
+    const k = n(p);
+    for (const list of Object.values(refsAll || {})) for (const r of Array.isArray(list) ? list : []) if (r && r !== except && !(except && r.id === except.id) && r.path && n(r.path) === k) return true;
+    for (const ex of Object.values(extras || {})) if (ex?.media?.path && n(ex.media.path) === k) return true;
+    return false;
+  }
+  return { refShared, BUSY, onUiThread, waitFor, readRetry, readStatus, idsOf, guardScenes, onlyStarter, copyName, parseCopy, pruneCopies, copyDue, GUARDED, guardedName, prepareWrite, afterWrite, cleanScene, fromHistory, fromTm, collect, mergeInto, trashArrived, dedupeTrash, presetsMerge, MINE_KINDS, mineKey, mineMerge, labStoreMerge, histSegName, histSegOf, histSceneOf, histJoin, histSame, histTake, histFlush, segVersions, HIST_MAX, thumbHash, thumbDistance, thumbChanged, songTravels };
 }));

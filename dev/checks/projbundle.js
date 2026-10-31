@@ -22,7 +22,10 @@ const strip = (b) => { const c = ProjBundleCore.prepare({ ...b, away: undefined,
 // where two canons differ: the key paths and both values (the first 8)
 const diff = (a, b, at = '', out = []) => { if (out.length >= 8) return out; if (a && b && typeof a === 'object' && typeof b === 'object') { for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) diff(a[k], b[k], `${at}.${k}`, out); return out; } if (JSON.stringify(a) !== JSON.stringify(b)) out.push(`${at}: ${JSON.stringify(a)?.slice(0, 80)} ≠ ${JSON.stringify(b)?.slice(0, 80)}`); return out; };
 // the Lab's own view state (the frame fit it sets when a scene is shown, and the timeline's playhead, which moves while a scene plays) isn't the project's content
-const noView = (c) => { for (const s of c.scenes || []) if (s.extras) { delete s.extras.frame; if (s.extras.timeline) delete s.extras.timeline.time; } return c; };
+// (round 97, labproj97) …nor History's newest version, taken when the imported scene opens and runs: History is
+// compared on its own (every version of the original is in the import's)
+const noView = (c) => { for (const s of c.scenes || []) { if (s.extras) { delete s.extras.frame; if (s.extras.timeline) delete s.extras.timeline.time; } if (s.lab) { delete s.lab.history; if (!Object.keys(s.lab).length) delete s.lab; } } return c; };
+const histCovers = (a, b) => a.scenes.every((s) => { const o = b.scenes.find((x) => x.sketch.name === s.sketch.name); const hb = Object.values(o?.lab?.history || {}).flat().map((v) => v.code); return Object.values(s.lab?.history || {}).flat().every((v) => hb.includes(v.code)); });
 
 try {
   step('first screen: the projbundle group is not loaded (loaded on first use)', lazyState() === 'stub', lazyState());
@@ -90,7 +93,7 @@ try {
   step('Import as a new project: one more project, a fresh id, the same name, the card closed, nothing skipped', B && B.id !== p.id && B.name === 'Bundletrip' && P.all().length === before + 1 && !card() && ProjBundle.last.skipped.length === 0, { id: bid, skipped: ProjBundle.last.skipped, items: B?.items.map((x) => x.type) });
   const gB = await ProjBundle.gather(B);
   const cA = noView(strip(A)); const cB = noView(strip(gB));
-  step('round trip: the imported project is the same project (deep compare minus ids; files by name)', JSON.stringify(cA) === JSON.stringify(cB), [...diff(cA, cB), JSON.stringify({ stamps0, a: A.scenes.map((x) => [x.sketch.name, x.sketch.updatedAt]), b: gB.scenes.map((x) => [x.sketch.name, x.sketch.updatedAt]), cur: ThreeLab.scenes.currentId() })]);
+  step('round trip: the imported project is the same project (deep compare minus ids; files by name; every History version there)', JSON.stringify(cA) === JSON.stringify(cB) && histCovers(A, gB), [...diff(cA, cB), JSON.stringify({ stamps0, a: A.scenes.map((x) => [x.sketch.name, x.sketch.updatedAt]), b: gB.scenes.map((x) => [x.sketch.name, x.sketch.updatedAt]), cur: ThreeLab.scenes.currentId() })]);
   const ids = (b) => [b.project.id, ...b.scenes.map((s) => s.id), ...b.boards.map((x) => x.id), ...b.chats.map((c) => c.id), ...b.scenes.flatMap((s) => s.refs.map((r) => r.id))];
   step('every id is fresh: project, scenes, board, chat, references (nothing overwritten)', ids(gB).every((id) => !ids(A).includes(id)) && S.get(sid) && P.get(p.id), { a: ids(A), b: ids(gB) });
   const bChat = gB.chats[0];

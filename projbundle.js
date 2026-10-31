@@ -66,8 +66,9 @@ const ProjBundle = (() => {
           if (Array.isArray(sketch.layers) && sketch.layers[0]) sketch.code = sketch.layers[0].code ?? sketch.code;
         } catch { /* as saved */ }
       }
-      scenes.push({ id, sketch, extras, refs: C.copy(lab ? ThreeLab.refsOf(id) : refsAll[id] || []), notes: C.copy(notesAll[id] || []), thumb: thumbsAll[id]?.url ? { ...thumbsAll[id] } : (lab && ThreeLab.scenes.thumbOf(id) ? { url: ThreeLab.scenes.thumbOf(id), at: Date.now() } : null), maps });
+      scenes.push({ id, sketch, extras, refs: C.copy(lab ? ThreeLab.refsOf(id) : refsAll[id] || []), notes: C.copy(notesAll[id] || []), thumb: lab && ThreeLab.scenes.thumbOf(id) && ThreeLab.scenes.thumbOf(id) !== thumbsAll[id]?.url ? { url: ThreeLab.scenes.thumbOf(id), at: Date.now() } /* (round 97, labproj97: the Lab's newest, not yet written) */ : thumbsAll[id]?.url ? { ...thumbsAll[id] } : null, maps });
     }
+    await LabProj.addTo(scenes); // (round 97, labproj97) each scene's History, its song's ⚡ bars and loop, its pin, its sequence pick
     // their sequences (the Lab sequence keeps them in video-cuts, keyed "seq:<name>", each saying its scene)
     const sequences = [];
     const ids = new Set(scenes.map((s) => s.id));
@@ -398,16 +399,23 @@ const ProjBundle = (() => {
     const { body: b, map, dropped } = C.remap(body, { ids, suffix });
     skipped.push(...dropped);
     await nextTask(); // (round 86, projopen86) the copy above (≈ 30 ms for a long chat) and the scenes below: tasks of their own
+    let labCtx = null; // (round 97, labproj97)
     try {
+      labCtx = await LabProj.start(b, { mode, skipped }); // (round 97, labproj97) a duplicate's own copy of a song kept with its scene
       // scenes (a duplicate's references are copied: removing a reference deletes its file)
       for (const s of b.scenes || []) {
-        if (mode === 'duplicate') for (const r of s.refs || []) { try { const np = await hub().importRef(r.path); if (np) r.path = np; } catch { /* the original stays shared */ } }
+        // (round 97, labproj97) a reference whose copy can't be made is named (it shares the original's file: removing it
+        // in the copy never trashes it, tools/three.js trashRefFile)
+        if (mode === 'duplicate') for (const r of s.refs || []) { try { const np = await hub().importRef(r.path); if (np) r.path = np; } catch { skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}” ${(await hub().fs.stat(r.path).catch(() => null)) ? 'couldn\'t be copied: the copy shares the original\'s file' : 'isn\'t on this computer'}`); } }
         if (mode === 'import') s.refs = (s.refs || []).filter((r) => { if (r.path) return true; skipped.push(`The reference ${r.name || r.key} of “${s.sketch.name}” (its file wasn't in the file)`); return false; });
+        await LabProj.history(s, labCtx); // (round 97, labproj97) its History, in its own file before the Lab can open it
         const x = ThreeLab.scenes.adoptScene({ sketch: s.sketch, extras: s.extras, refs: s.refs, notes: s.notes, thumb: s.thumb, maps: s.maps });
         if (!x) throw new Error(`The scene “${s.sketch?.name}” couldn't be added`);
         made.scenes.push(x.id);
+        LabProj.place(s, labCtx); // (round 97, labproj97) its pin, its song's ⚡ bars and loop, its sequence pick
         await nextTask(); // (round 86, projopen86) the scenes added in slices: one per task (a big scene's copy is a few ms)
       }
+      LabProj.finish(labCtx); // (round 97, labproj97)
       for (const q of b.sequences || []) await CutStore.storeEdit(q.key, q.edit, mode === 'duplicate' ? 'Copied with its project' : 'Imported with its project');
       if ((b.sequences || []).length) await window.ThreeSeq?.list?.().catch?.(() => {});
       // boards: their content into the boards made above
@@ -461,6 +469,7 @@ const ProjBundle = (() => {
     } catch (err) {
       // what was added before the failure goes back (scenes to the Lab's deleted, chats to the trash)
       for (const id of made.scenes) { try { ThreeLab.scenes.remove(id); } catch { /* kept */ } }
+      await LabProj.undo(labCtx); // (round 97, labproj97) the pins and bars it put back
       for (const id of made.chats) { try { await hub().deleteChat(id); } catch { /* kept */ } }
       throw err;
     }

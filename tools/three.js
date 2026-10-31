@@ -2008,11 +2008,15 @@ const ThreeLab = (() => {
       if (refsDlg?.open) renderRefsDlg();
       return r;
     }
+    // (round 97, labproj97) a removed reference's file to the Trash: given as a list (a bare path was walked letter by
+    // letter by fs:trash: the file never went, and "/" was asked for), and only when no other scene's reference or song
+    // still uses it (a copied project whose copy of the file couldn't be made shares the original's)
+    function trashRefFile(r) { if (r?.path && !SceneSafeCore.refShared(r.path, { refsAll, extras, except: r })) window.hub.fs.trash([r.path]).catch(() => {}); }
     function removeRef(r) {
       refsAll[current.id] = refsOf().filter((x) => x !== r);
       refBytes.delete(r.id);
       saveRefs(); sendRefs(); renderRefsBtn();
-      window.hub.fs.trash(r.path).catch(() => {});
+      trashRefFile(r); // (round 97, labproj97)
     }
     function renameRef(r, to) {
       const k = refKey(to, r);
@@ -2137,7 +2141,7 @@ const ThreeLab = (() => {
       if (owner === current?.id) { removeRef(r); return true; }
       refsAll[owner] = refsAll[owner].filter((x) => x !== r);
       saveRefs();
-      window.hub.fs.trash(r.path).catch(() => {});
+      trashRefFile(r); // (round 97, labproj97)
       return true;
     };
     const noteBtn = btn('📌 Note', 'Take a screenshot and a note at this moment, for a change you want here (N)', () => takeNote(), 'ghost small imp-capture');
@@ -2795,7 +2799,7 @@ const ThreeLab = (() => {
       if (i.big) return ask ? `${songName(path)} is over 400 MB: too big to keep a copy with the scene.` : null;
       store.set('three.songCopyAsked', [path, ...songAsked().filter((x) => x !== path)].slice(0, 200));
       const label = `Keep a copy with this scene so it plays on your other computer (${fmtBytes(i.size)})`;
-      const done = (copy) => toast(`A copy of ${songName(path)} is kept with your scenes (${fmtBytes(i.size)}) and goes to your other computer. The original stays where it was.`, { timeout: 7000, action: { label: 'Undo', fn: () => player.follow(path).then(() => window.hub.fs.trash(copy).catch(() => {})).catch((err) => toast(err.message, { type: 'error' })) } });
+      const done = (copy) => toast(`A copy of ${songName(path)} is kept with your scenes (${fmtBytes(i.size)}) and goes to your other computer. The original stays where it was.`, { timeout: 7000, action: { label: 'Undo', fn: () => player.follow(path).then(() => window.hub.fs.trash([copy]).catch(() => {})) /* (round 97, labproj97: a list) */.catch((err) => toast(err.message, { type: 'error' })) } });
       const go = () => keepSongCopy(path).then(done).catch((err) => toast(err.message, { type: 'error' }));
       if (ask) { if (await Modal.confirm('Keep a copy with this scene?', `${songName(path)} is on this computer only. A copy (${fmtBytes(i.size)}) goes into Hearth's folder and syncs to your other computer, so the scene plays there too. The original stays where it is.`, { ok: 'Keep a copy' })) { await go(); return null; } return 'Nothing copied.'; }
       toast(`${songName(path)} is on this computer only: your other computer won't have it.`, { timeout: 20000, action: { label, fn: go } });
