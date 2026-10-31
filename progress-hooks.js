@@ -223,6 +223,8 @@ const ProgressHooks = (() => {
   function boot() {
     // what Hearth learned of how long things take (round 96, firstscreen96: from progress-ui.js, which loads after the first frame)
     Progress.configure({ load: () => store.get('progress.hist', null), save: (h) => store.set('progress.hist', h) });
+    // and the bars come with the first thing in progress, if their group isn't in yet (it is, right after the first frame)
+    if (window.Lazy?.isIn) { const off = Progress.on(() => { if (Lazy.isIn('progressui')) { off(); return; } Lazy.load('progressui').catch(() => {}); }); }
     if (typeof Native !== 'undefined') Native.hooks.send.push(replyStart);
     window.hub.onEngineEvent?.(onEngine);
     if (typeof HubBridge !== 'undefined') HubBridge.onResult(onHubResult);
