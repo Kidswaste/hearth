@@ -824,5 +824,6 @@ module.exports = {
   onDoubt: (fn) => { doubtCb = typeof fn === 'function' ? fn : null; },
   MEMORY_PATH, CHATS_DIR, TRASH_DIR, KV_DIR,
   _sync: { list: () => listChatsSync(), search: (q) => searchChatsSync(q) }, // (tests) the code the thread replaces
+  _hold: (sab) => ask({ op: '_hold', sab }).catch(() => false), // (round 98, syncrace98; tests only, behind HEARTH_TEST_STORE_HOLD) the store thread held
   idle, flushSync, runOff, pendingCount: () => pending.size, writerStats: () => ({ ...wstats, thread: Boolean(worker), pending: pending.size }),
 };
