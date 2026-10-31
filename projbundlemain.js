@@ -615,7 +615,7 @@ async function copyAsset(src) {
   const h = here(String(src || ''));
   if (!h || h.dir) return { ok: false, error: 'it isn\'t on this computer' };
   const pl = (await modelPlans([h.path], 0, { syncSafe: true })).get(h.path);
-  if (!pl || (!pl.files.length && !pl.main.data && !pl.main.rel.includes('/'))) return { ok: true, single: true, missing: pl ? AD.missingLines(pl.missing) : [], gone: pl?.missing || [], used: [] };
+  if (!pl || (!pl.files.length && !pl.main.data && !pl.main.rel.includes('/'))) return { ok: true, single: true, missing: pl ? AD.missingLines(pl.missing) : [], ...(pl?.missing?.length ? { gone: pl.missing } : {}) };
   fs.mkdirSync(REFS(), { recursive: true });
   const stem = safeBase(h.path, 60).replace(/\.[^.]+$/, '') || 'model';
   let dir = null;

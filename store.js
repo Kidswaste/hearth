@@ -19,7 +19,6 @@ const ssEnv = { fs, path, cache: new Map() };
 // (round 43, datasafe) the same for every other store: a read that failed is never "empty", a store read with a
 // fallback is merged with the disk before it's saved, a held file is never written blind (datasafe-core.js)
 const DS = require('./datasafe-core');
-const LabModelsCore = require('./labmodels-core'); // (round 99, labmodels99) importRef: a model of several files copied whole
 const dfs = DS.faults(fs, DATA_DIR); // (tests: Windows-style errors from data/.datasafe-faults.json, smoke runs only)
 const dsEnv = { fs: dfs, path, cache: new Map() };
 const doubts = new Map(); // file → { name, why, code, at } — read with a fallback / a copy in this window's session
@@ -587,7 +586,7 @@ const kvPath = (name) => {
 // .glb naming outside files) is copied whole: its folder in refs/<time>-<name>/, the layout kept (importRefWhole). The
 // answer is then a Promise of the model's path (the IPC waits for it); every other file as before.
 function importRef(src) {
-  if (LabModelsCore.isMulti(src)) return importRefWhole(src).then((r) => r.path);
+  if (/\.(gltf|glb|obj)$/i.test(String(src))) return importRefWhole(src).then((r) => r.path);
   return importRefOne(src);
 }
 function importRefOne(src) {
@@ -605,7 +604,7 @@ function importRefOne(src) {
 async function importRefWhole(src) {
   const c = await require('./projbundlemain').copyAsset(String(src));
   if (!c || c.ok === false) throw new Error(`${path.basename(String(src))} couldn't be copied: ${c?.error || 'error'}`);
-  const missing = LabModelsCore.missingText(c.gone);
+  const missing = require('./labmodels-core').missingText(c.gone);
   if (c.path) return { path: c.path, dir: c.dir, files: c.files, missing, used: c.used || [] };
   return { path: importRefOne(src), files: 1, missing, used: [] };
 }

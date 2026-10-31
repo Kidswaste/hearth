@@ -5801,6 +5801,8 @@ ${frag}\`,
     // Files dropped in the Three Director's chat become references of the open sketch.
     // (round 72, labbridge72) o.sketchId: that scene's references (a chat's scene backstage), not the one on screen
     addReference: (p, o = {}) => (api.addRef ? api.addRef(p, o) : Promise.reject(new Error('Open the Three.js Lab first'))),
+    addReferences: (paths) => (api.addRefs ? api.addRefs(paths) : Promise.reject(new Error('Open the Three.js Lab first'))), // (round 99, labmodels99) a folder, or a model with its files
+    refAdded: () => api.refAdded?.() || null, // (round 99, labmodels99) the last reference added: its files, what it came without
     refsOf: (id) => api.refsFor?.(id) || [],
     removeReference: (refId, o = {}) => (api.removeRef ? api.removeRef(refId, o) : false), // (round 73)
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
