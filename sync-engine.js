@@ -2027,16 +2027,23 @@ function createEngine(o) {
     const src = path.join(where === 'cloud' ? TRASH : path.join(stateDir, where === 'recovery'?'recovery':'trash'), d, ...r.split('/'));
     const rel = recovery ? r : r.replace(/(^|\/)\.([^/]+)\.icloud$/, '$1$2').replace(/(^|\/)[0-9a-f]{8}-([^/]+)$/, '$1$2');
     const dst = localPathOf(rel);
+    let was; // (round 96, checkfix96) the version replaced, in cloud form: the write guard's base, as after a pull
     if (await exists(dst)) {
       if (!ro.replace) return { ok: false, error: `${rel} is already there`, exists: true };
+      if (S.isJsonRel(rel)) { try { const st = await fsp.stat(dst); if (st.size < 1024 * 1024) { const v = S.parseJson(await fsp.readFile(dst, 'utf8')); was = S.toCloud(rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } } catch { /* unreadable: no base (guard: false below) */ } }
       await keepHere(rel, dst); // (round 19) undoing a choice: the version in place goes to the trash first
     }
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
     if (S.isJsonRel(rel) && await o.asideBig?.form(src, tmp, ctx, { rel })) { /* (round 95, aside95) a big store: put in this computer's form on the store thread */ } else if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
-    await flushed(tmp); await renameRetry(tmp, dst);
+    await flushed(tmp);
+    // (round 96, checkfix96) a window holding the replaced version (a StoreAck holder with a save waiting, the Lab's
+    // presets) writes it first on the arrival: merged with what came back, never written over it (keptaside94's 8 bars)
+    if (was !== undefined) remember(rel, was);
+    await renameRetry(tmp, dst);
     await fsp.rm(src, { force: true });
-    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash' }]);
+    if (S.isJsonRel(rel)) pulledAt.set(rel, Date.now()); // (round 96, checkfix96) an ack for a read from before this is ignored
+    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash', ...(S.isJsonRel(rel) && !pulledPrev.has(rel) ? { guard: false } : {}) }]); // (round 96, checkfix96) guard: false: no base kept (big / unreadable / new here)
     return { ok: true, rel };
   }
 

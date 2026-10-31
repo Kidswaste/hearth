@@ -66,7 +66,19 @@ const text = (n) => (n?.textContent || '').replace(/\s+/g, ' ').trim();
 const see = (name, extra = {}) => { const v = view(); audit[name] = { chip: chip(), title: text(v?.querySelector('h2')), heads: [...(v?.querySelectorAll('.ka-h b') || [])].map(text), body: text(v?.querySelector('.ka-main')).slice(0, 400), buttons: [...(v?.querySelectorAll('button') || [])].map(text).filter(Boolean), ...extra }; console.log(`[KA94] ${name} ${JSON.stringify(audit[name])}`); return audit[name]; };
 const JARGON = /(\/tmp\/|\.json\b|\bkv\/|\bchats\/|studio-mac-|\bundefined\b|\bnull\b|\bNaN\b|\[object)/;
 async function choose(sel) { await click(view().querySelector(sel)); await until(() => !view(), 15000); await wait(400); }
-async function undo(re = /^Undo$/) { await until(() => toastBtn(re), 6000); const b = toastBtn(re); if (!b) return false; await click(b); await wait(1200); await Sync.refresh(); return true; }
+// (round 96, checkfix96) the Undo is judged once it is done: its own note ("Back as it was…", "That copy is in…") or its
+// error, not after a fixed 1.2 s (on a busy box the restore could still be on its way: the preset read its 8 bars once)
+const undone = J.out.undone = [];
+async function undo(re = /^Undo$/) {
+  await until(() => toastBtn(re), 6000); const b = toastBtn(re); if (!b) return false;
+  const t0 = Date.now();
+  await click(b);
+  const outcome = () => recentToasts().find((x) => x.at >= t0 && (/^(Back as it was|That copy is in)/.test(x.message) || x.type === 'error'));
+  await wait(1200); // (as before: the pass the restore asks for runs before what comes next)
+  await until(outcome, 20000);
+  undone.push({ label: b.textContent.trim(), ms: Date.now() - t0, said: outcome()?.message?.slice(0, 80) || null, labHolder: Boolean(window.LabPresets) });
+  await Sync.refresh(); return true;
+}
 const section = async (name, fn) => { try { await fn(); } catch (err) { step(`${name}: ran to the end`, false, String(err?.stack || err).slice(0, 400)); } finally { document.querySelectorAll('dialog.ka-view').forEach((d) => d.close()); SyncPanel?.close?.(); for (const t of toasts()) t.querySelector('.toast-x')?.click(); await wait(200); } };
 
 // ---------- a chat ----------
@@ -254,7 +266,7 @@ await section('preset', async () => {
   await choose('.ka-keep-a');
   step('preset: Keep this one (8 bars) — said, with "Use the Mac\'s instead"', JSON.parse((await kv('lab-presets')).items[pid].data).bars === 8 && Boolean(toastBtn(/^Use .*Mac's instead$/)), lastToastText());
   await undo(/^Use .*Mac's instead$/);
-  step('preset: "Use the Mac\'s instead" → 16 bars', JSON.parse((await kv('lab-presets')).items[pid].data).bars === 16, (await kv('lab-presets')).items[pid]);
+  step('preset: "Use the Mac\'s instead" → 16 bars', JSON.parse((await kv('lab-presets')).items[pid].data).bars === 16, { item: (await kv('lab-presets')).items[pid], undo: undone[undone.length - 1] });
 });
 
 // ---------- settings ----------
