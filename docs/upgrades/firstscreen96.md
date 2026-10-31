@@ -98,7 +98,14 @@ Startup was not A/B timed (round 83 showed a cut this size is below this box's n
 features.
 
 ## Tested
-See the end of this file (final runs).
+- `node --check` on every touched file; `node dev/lazy-manifest.js` (rewritten, then `--check`: ✓ every list, dups 0);
+  `node dev/boot-test.js` (3,100 checks, new budget).
+- App checks (under `flock /tmp/hearth-run.lock`, ≤ 5 per run): **firstscreen96** (new, 38 steps), firstscreen87,
+  firstscreen83, lazy, calmstart, chatwindow72, projects, sync72, syncpanel92, keptaside94, labload94, and the moved
+  features' own checks: director-dock, decide, progress, declutter: all pass.
+- Unit: lazymanifest-test, boot-test, datasafe-scan, winmac-test, errorcalm-scan, storeack-scan, chatsafe-scan,
+  chatwin-scan: all pass.
+- checkfix96's checks (sync72-test --thread, the keptaside94 preset, labcompile90) were not run or touched.
 
 `dev/checks/firstscreen96.js` (group `firstscreen96` in dev/run-checks.js, with the fake engines) proves each moved
 feature from the first moment, once with its group loaded and once after a reload with every group held back (the
