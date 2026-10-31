@@ -30,8 +30,9 @@ const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 
-const MAPS = ['base', 'local', 'cloud', 'prev', 'keepAll', 'freed'];
-const KEYS = { base: 'b', local: 'l', cloud: 'c', prev: 'p', keepAll: 'k', freed: 'f' };
+// (round 96, checkfix96) own: the base is a version this computer uploaded itself (sync-engine.js setBase)
+const MAPS = ['base', 'local', 'cloud', 'prev', 'keepAll', 'freed', 'own'];
+const KEYS = { base: 'b', local: 'l', cloud: 'c', prev: 'p', keepAll: 'k', freed: 'f', own: 'o' };
 const NB = 256;
 const BUSY = new Set(['EBUSY', 'EPERM', 'EACCES', 'EAGAIN', 'EMFILE', 'ENFILE', 'UNKNOWN', 'ETIMEDOUT', 'ECANCELED']);
 const HELD = 'held';

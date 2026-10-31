@@ -497,6 +497,36 @@ scenario('provider-copies', async () => {
   }
 });
 
+// ---------- 11b. (round 96, checkfix96) several saves pushed while offline, then the cloud client moves ours aside ----------
+// The PC is offline and Hearth pushes its notes twice (two passes, two lines): neither upload reaches the cloud. The Mac
+// adds its own line and uploads first. When the PC comes back, its provider moves the PC's last upload aside; the base
+// must go back to what the Mac started from (before BOTH offline pushes), not to the first offline push: from there,
+// the Mac's file "deleted" the PC's first line, and it was lost on both computers (random 1 under --thread).
+scenario('offline-pushes', async () => {
+  for (const thread of [false, true]) for (const style of ['onedrive', 'dropbox', 'icloud']) {
+    const tag = `offline-pushes (${style}${thread ? ', store thread' : ''})`;
+    const w = world(`offline-pushes-${style}-${thread ? 't' : 'm'}`);
+    const pc = computer(w, 'PC', { platform: 'win32', style, thread });
+    const mac = computer(w, 'Mac', { platform: 'darwin', style, thread });
+    pc.write('kv/projects.json', PROJECT('Notes'));
+    ok(await converge(w) > 0, `${tag}: first sync`, why(w));
+    pc.view.online = false;
+    pc.edit('kv/projects.json', (d) => { d.list[0].notes += '\nPC line 1'; });
+    await round(w); await round(w);
+    pc.edit('kv/projects.json', (d) => { d.list[0].notes += '\nPC line 2'; });
+    await round(w); await round(w);
+    mac.edit('kv/projects.json', (d) => { d.list[0].notes += '\nMac line'; });
+    await round(w); await round(w);
+    pc.view.online = true;
+    ok(await converge(w) > 0, `${tag}: converges`, why(w));
+    for (const m of [pc, mac]) {
+      const n = m.json('kv/projects.json').list[0].notes;
+      ok(['PC line 1', 'PC line 2', 'Mac line'].every((t) => n.includes(t)), `${tag}: every line of both computers in the notes, on the ${m.name}`, n);
+    }
+    ok(!copies(pc).length && !copies(mac).length, `${tag}: no duplicate files`, [...copies(pc), ...copies(mac)]);
+  }
+});
+
 // ---------- 12. conflicts the owner settles (Keep PC / Keep Mac / Keep both), and what "waiting" says ----------
 scenario('choices', async () => {
   const w = world('choices');
