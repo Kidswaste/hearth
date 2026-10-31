@@ -75,14 +75,24 @@ async function record(name, during, { ms = 3000, pre = 300 } = {}) {
     try { judged = await smoke({ trace: 'stop', tasks: { budget: 2 * budget, min: 0, mark: 'labcompile90', observed: hitches.map((h) => ({ at: h.at, ms: h.ms })) } }); } catch (err) { judged = { verdict: 'unknown', why: String(err).slice(0, 200) }; }
   }
   const bigIn = f.bigUpInFrame || f.upMPframe;
+  // (round 96, checkfix96: labflake95's rule from labfps89) one compile frame / in-frame upload explains ONE late frame:
+  // the frame it fell in or, when that one wasn't late, the next. A setup frame's compiles were counted for two
+  // neighbouring late frames (the frame itself, then the next while the software GPU caught up): one setup, "2 hitches
+  // judged the app's". The second late frame is judged on its own (CPU, else load). An upload inside a frame is a
+  // verdict of its own (upload) and always counts (it shared 'compile', so the texture stretch's setup allowance hid it).
+  const blamed = new Set();
+  const cause = (j, pick) => (j >= 0 && !blamed.has(j) && pick(j) ? j : -1);
+  const isC = (j) => vis(j) && inF[j] > 0; const isU = (j) => bigIn[j] >= 1;
   for (const h of hitches) {
     const tk = judged?.tasks?.find((x) => Math.abs(x.at - h.at) < 0.6 && Math.abs(x.ms - r1(h.ms)) < 0.6);
     h.cpuMs = tk?.cpuMs ?? null;
-    const i = h.i; const vc = (vis(i) && inF[i]) || (i > 0 && vis(i - 1) && inF[i - 1]);
-    const inUp = bigIn[i] >= 1 || (i > 0 && bigIn[i - 1] >= 1);
+    const i = h.i;
+    const jc = cause(i, isC) >= 0 ? i : cause(i - 1, isC);
+    const ju = cause(i, isU) >= 0 ? i : cause(i - 1, isU);
     if (!judged || !Array.isArray(judged.tasks)) h.judged = 'wall';
     else if (h.cpuMs != null && h.cpuMs > 2 * budget) { h.judged = 'over'; h.why = `${h.cpuMs} ms of the preview's own CPU`; }
-    else if (vc || inUp) { h.judged = 'compile'; h.why = vc ? `${vc} shader compiles / links inside a frame on screen` : 'a big picture uploaded inside the frame'; }
+    else if (ju >= 0) { blamed.add(ju); h.judged = 'upload'; h.why = `a big picture (${r1(bigIn[ju])} MP) uploaded inside frame ${ju}`; }
+    else if (jc >= 0) { blamed.add(jc); h.judged = 'compile'; h.why = `${inF[jc]} shader compiles / links inside frame ${jc}, on screen`; }
     else { h.judged = 'load'; h.why = `${h.cpuMs ?? 0} ms of the preview's CPU; the rest off the CPU (the thread waited ${judged.runDelayMs ?? '?'} ms for a CPU over the run, the rest for the GPU process)`; }
   }
   const load = hitches.filter((h) => h.judged === 'load');
@@ -90,7 +100,7 @@ async function record(name, during, { ms = 3000, pre = 300 } = {}) {
     frames: f.n, budget: r1(budget), p50: pct(gaps, 0.5), p99: pct(gaps, 0.99), max: r1(Math.max(0, ...gaps)),
     compiles: sum(f.compiles), compilesInFrames: sum(inF), visibleInFrameCompiles: visIn, visibleCompileFrames: visFrames, waitInFramesMs: r1(waitIn), compileWaitMs: r1(sum(f.waitMs)),
     biggestUploadMP: r1(Math.max(0, ...(f.bigUp || f.upMP))), biggestInFrameMP: r1(Math.max(0, ...bigIn)), bigMPinFrames: r1(sum(f.upMPframe)),
-    over2x: hitches.length, over2xApp: hitches.length - load.length, over2xCpu: hitches.filter((h) => h.judged === 'over' || h.judged === 'wall').length, over2xCompile: hitches.filter((h) => h.judged === 'compile').length, over2xLoad: load.length,
+    over2x: hitches.length, over2xApp: hitches.length - load.length, over2xCpu: hitches.filter((h) => h.judged === 'over' || h.judged === 'wall').length, over2xCompile: hitches.filter((h) => h.judged === 'compile').length, over2xUpload: hitches.filter((h) => h.judged === 'upload').length /* (round 96) */, over2xLoad: load.length,
     lc: f.lc, slices: f.slices, up: f.up, khr: f.khr, runDelayMs: judged?.runDelayMs ?? null,
     hitches: hitches.slice().sort((a, b) => b.ms - a.ms).slice(0, 4).map((h) => ({ at: h.at, ms: r1(h.ms), cpuMs: h.cpuMs, judged: h.judged, why: h.why })),
     ...(info && typeof info === 'object' ? { info } : {}),
@@ -291,9 +301,10 @@ if (S.reload) {
   step('reload: the new picture shows once its slices are in', diff > 30 && p.after[0] + p.after[1] + p.after[2] > 30, p);
 }
 // (texture adds a layer: without background compiles its programs are made in its one setup frame, as labfps89 allows)
+// (round 96: a big picture uploaded inside a frame is never part of that allowance)
 for (const [k, s] of Object.entries(S)) {
-  const n = s.over2xCpu + (s.khr || k !== 'texture' ? s.over2xCompile : 0);
-  step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
+  const n = s.over2xCpu + (s.over2xUpload || 0) + (s.khr || k !== 'texture' ? s.over2xCompile : 0); // (round 96) an upload inside a frame always counts
+  step(`${k}: hitches over 2× budget judged the app's ≤ ${HITCH}`, n <= HITCH, { app: n, cpu: s.over2xCpu, upload: s.over2xUpload, compile: s.over2xCompile, load: s.over2xLoad, worst: s.hitches.slice(0, 3) });
 }
 const all = Object.values(S);
 out.summary = { stretches: all.length, visibleInFrameCompiles: all.reduce((a, s) => a + s.visibleInFrameCompiles, 0), over2xApp: all.reduce((a, s) => a + s.over2xApp, 0), biggestUploadMP: Math.max(0, ...all.map((s) => s.biggestUploadMP || 0)) };
