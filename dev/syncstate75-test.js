@@ -47,13 +47,14 @@ function canon(s) {
   return JSON.stringify(Object.keys(out).sort().map((k) => [k, out[k]]));
 }
 function makeState(cloudRoot, n, tag = 'a') {
-  const s = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, prev: {}, keepAll: {}, freed: {}, ext: { 'renders/x.mp4': '/v/x.mp4' }, lastPass: 1, lastOk: 1, purgedAt: 0 };
+  const s = { v: 1, cloudRoot, base: {}, local: {}, cloud: {}, prev: {}, keepAll: {}, freed: {}, own: {} /* (round 96, checkfix96) */, ext: { 'renders/x.mp4': '/v/x.mp4' }, lastPass: 1, lastOk: 1, purgedAt: 0 };
   for (let i = 0; i < n; i++) {
     const rel = i % 3 ? `workspace/p${i % 7}/f${i}.txt` : `chats/claude-${i}.json`;
     s.base[rel] = `${tag}${i}`; s.local[rel] = [i, 1000 + i, `${tag}${i}`]; s.cloud[rel] = [i, 2000 + i, `${tag}${i}`, 0];
     if (i % 50 === 0) s.prev[rel] = `old${i}`;
     if (i % 97 === 0) s.keepAll[rel] = 1;
     if (i % 113 === 0) s.freed[rel] = 1;
+    if (i % 61 === 0) s.own[rel] = 1; // (round 96, checkfix96) a base this computer uploaded itself
   }
   return s;
 }

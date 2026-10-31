@@ -4563,10 +4563,14 @@ ${code}
         if (r.aside?.length) { const song = (a) => String(a.key).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').slice(0, 28); toast(`Your other computer changed the ⚡ triggers of ${r.aside.slice(0, 2).map((a) => `“${song(a)}”`).join(' and ')}${r.aside.length > 2 ? ` and ${r.aside.length - 2} more` : ''} at the same time. Yours stay; its setup is kept as the trigger preset “${song(r.aside[0])} (other setup)”, to load from the trigger presets any time.`, { timeout: 12000 }); }
         return r;
       }
+      // (round 96, checkfix96) an arrival while start() is still reading: that read may be older than what arrived, so
+      // it is read again before anything is taken or saved, and the arrival isn't acked (sync's guard stays meanwhile)
+      let reading = false; let again = false;
       SA?.hold(KV, { name: 'Lab presets', saver: saveKv, read: () => SA.kv(KV, null),
-        apply: (v) => { if (!ok) return undefined; if (!v || typeof v !== 'object' || Array.isArray(v)) return false; take(v); return undefined; } });
+        apply: (v) => { if (!ok) { if (reading) { again = true; return false; } return undefined; } if (!v || typeof v !== 'object' || Array.isArray(v)) return false; take(v); return undefined; } });
+      const readKv = () => (SA ? SA.kv(KV, null) : window.hub.kvGet(KV, null));
       return {
-        async start() { if (ok) return; try { const disk = SA ? await SA.kv(KV, null) : await window.hub.kvGet(KV, null); ok = true; take(disk); } catch { ok = false; } },
+        async start() { if (ok || reading) return; reading = true; try { let disk = await readKv(); while (again) { again = false; disk = await readKv(); } ok = true; take(disk); } catch { ok = false; } finally { reading = false; again = false; } },
         changed() { if (ok) take(kv); }, // a preset saved / deleted here (the menus wrote this window's storage)
       };
     })();

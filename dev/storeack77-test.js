@@ -270,6 +270,45 @@ scenario('counts', async () => {
   ok(/if \(beforeWrite && !o\?\.fresh\)/.test(src) && /prev: file\.replace\(\/\\\.json\$\/, '\.prev\.json'\), fresh: true \}/.test(src), 'counts: store.js writes a merge made from the disk without the guard (o.fresh)');
 });
 
+// ---------- 4b. (round 96, checkfix96) a version put back from Deleted files while the window holds the older one ----------
+// keptaside94's preset step: Keep this one (8 bars), then "Use the Mac's instead" (Restore from Deleted files: 16 bars).
+// The Lab's presets holder (StoreAck, a debounced save) still held the 8-bar store with a save waiting. On the arrival it
+// writes its change first, as it should; but a restore kept no guard base, so that write was not merged with what was
+// put back: it wrote the 8 bars over the 16 (a StoreAck holder writing back stale data). Now a restore keeps the version
+// it replaced as the guard's base, like a pull: the waiting save is merged with what came back.
+scenario('restore', async () => {
+  const { w, pc, mac } = await pair('restore');
+  pc.auto = false; mac.auto = false;
+  const rel = 'kv/lab-presets.json';
+  const item = (bars) => ({ kind: 'trig', name: 'Drop hits', data: JSON.stringify({ bars, every: 2 }), at: bars });
+  pc.write(rel, { v: 1, items: { p: item(4), q: item(1) } });
+  ok(await T.converge(w) > 0, 'restore: first sync', T.why(w));
+  const win = windowOf(pc, rel); win.load(); pc.e.ackPulled([rel]); take(pc);
+  pc.view.online = false; // (the PC notices the conflict, as in the app check)
+  win.change((v) => { v.items.p = item(8); }); win.save(); // this PC: 8 bars (saved)
+  mac.edit(rel, (v) => { v.items.p = item(16); return v; }); // the Mac: 16 bars
+  for (let i = 0; i < 4; i++) await T.round(w);
+  mac.view.online = false; pc.view.online = true;
+  for (let i = 0; i < 6 && !(await pc.e.conflicts()).length; i++) await T.round(w);
+  mac.view.online = true;
+  const c = (await pc.e.conflicts()).find((x) => x.rel === rel);
+  ok(Boolean(c), 'restore: changed on both → a conflict on the PC', await pc.e.conflicts());
+  const got0 = await win.sa.arrived(take(pc)); void got0;
+  const before = (await pc.e.trash()).map((t) => t.id);
+  ok((await pc.e.resolve(c.id, 'mine')).ok, 'restore: Keep this one (8 bars)');
+  const other = (await pc.e.trash()).find((t) => !before.includes(t.id) && t.where === 'cloud' && /lab-presets/.test(t.rel));
+  ok(Boolean(other) && JSON.parse(pc.json(rel).items.p.data).bars === 8, 'restore: 8 bars here, the Mac\'s in Deleted files', { other, here: pc.json(rel).items.p, conflict: c });
+  win.change((v) => { v.items.q = item(2); }); // the holder's save waiting (a change of its own, not written yet)
+  ok((await pc.e.restore(other.id, { replace: true })).ok, 'restore: "Use the Mac\'s instead" (Restore from Deleted files)');
+  const got = await win.sa.arrived(take(pc));
+  const v = pc.json(rel);
+  ok(JSON.parse(v.items.p.data).bars === 16, 'restore: the holder\'s waiting save didn\'t write the 8 bars back over the 16 put back', v.items.p);
+  ok(JSON.parse(v.items.q.data).bars === 2 && JSON.parse(win.held.items.q.data).bars === 2, 'restore: …and its own change is kept', v.items.q);
+  ok(JSON.parse(win.held.items.p.data).bars === 16 && got.acked.includes(rel), 'restore: the window holds the 16 bars and acked', { held: win.held.items.p, got });
+  ok(await T.converge(w) > 0, 'restore: converges', T.why(w));
+  ok(JSON.parse(mac.json(rel).items.p.data).bars === 16 && JSON.parse(mac.json(rel).items.q.data).bars === 2, 'restore: the Mac has the 16 bars and the PC\'s change', mac.json(rel).items);
+});
+
 // ---------- 5. the sound bank (main process, its own writes) ----------
 scenario('soundbank', async () => {
   const Bank = require('../soundbankmain');

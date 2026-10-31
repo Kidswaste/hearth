@@ -165,7 +165,7 @@ function createEngine(o) {
     if (checkpoint && now() - checkedAt < Math.max(5000, store.stats().costMs * 40)) return; // (round 74) ≤ ~2.5 % of a pass
     checkedAt = now();
     store.watch(state);
-    const small = JSON.stringify({ ...state, base: 0, local: 0, cloud: 0, prev: 0, keepAll: 0, freed: 0, lastPass: 0, lastOk: 0 }); // everything but the big maps: small
+    const small = JSON.stringify({ ...state, base: 0, local: 0, cloud: 0, prev: 0, keepAll: 0, freed: 0, own: 0 /* (round 96) */, lastPass: 0, lastOk: 0 }); // everything but the big maps: small
     if (!store.isDirty() && small === savedSmall && now() - savedAt < 10 * 60000) return;
     savedSmall = small; savedAt = now();
     stateQ = store.save(state); // in order, never throws; a pass ends only once it is on disk
@@ -194,12 +194,18 @@ function createEngine(o) {
       await fsp.rename(`${f}.tmp`, f);
     });
   }
-  function dropBase(rel) { delete state.base[rel]; if (state.prev) delete state.prev[rel]; if (state.keepAll) delete state.keepAll[rel]; const f = basePath(rel); baseJob(rel, () => Promise.all([fsp.rm(f, { force: true }), fsp.rm(`${f}.prev`, { force: true })])); }
+  function dropBase(rel) { delete state.base[rel]; if (state.prev) delete state.prev[rel]; if (state.own) delete state.own[rel]; /* (round 96, checkfix96) */ if (state.keepAll) delete state.keepAll[rel]; const f = basePath(rel); baseJob(rel, () => Promise.all([fsp.rm(f, { force: true }), fsp.rm(`${f}.prev`, { force: true })])); }
   // (round 72, sync72) the base before the last one is kept too (its hash; a JSON store's text as base/<rel>.prev, a
   // rename, no copy): when a cloud client moves our upload aside, ours and theirs merge from it (rebase)
-  function setBase(rel, h, text) {
+  // (round 96, checkfix96) own: this computer wrote that version to the cloud (a push / a merge it uploads). Two own
+  // versions in a row (offline, or the cloud client not yet uploading) never reached the other computer between them,
+  // so the step back stays the version before the first of them: a rebase to the last own push lost the lines of the
+  // ones before it (sync72 --thread "PC note 5"). Any version that came from the cloud ends the run.
+  function setBase(rel, h, text, own) {
     const old = state.base[rel];
-    if (old && old !== h) { (state.prev ||= {})[rel] = old; if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(f, `${f}.prev`).catch(() => fsp.rm(`${f}.prev`, { force: true }))); } }
+    const run = Boolean(own && state.own?.[rel] && state.prev?.[rel]); // (round 96, checkfix96)
+    if (old && old !== h && !run) { (state.prev ||= {})[rel] = old; if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(f, `${f}.prev`).catch(() => fsp.rm(`${f}.prev`, { force: true }))); } }
+    if (own) (state.own ||= {})[rel] = 1; else if (state.own) delete state.own[rel]; // (round 96, checkfix96)
     state.base[rel] = h; if (text !== undefined && S.isJsonRel(rel)) writeBase(rel, text);
     if (state.keepAll) delete state.keepAll[rel]; // a new version both sides agree on: settled
     if (state.freed) delete state.freed[rel]; // (round 73) a new version: its cloud copy is whole again
@@ -210,7 +216,7 @@ function createEngine(o) {
     if (!p) { dropBase(rel); return; }
     // (the previous text missing: no base text, so they merge two-way, keeping everything)
     if (S.isJsonRel(rel)) { const f = basePath(rel); baseJob(rel, () => fsp.rename(`${f}.prev`, f).catch(() => fsp.rm(f, { force: true }))); }
-    state.base[rel] = p; delete state.prev[rel];
+    state.base[rel] = p; delete state.prev[rel]; if (state.own) delete state.own[rel]; // (round 96, checkfix96)
   }
   // (round 72, sync72) "still being written": a modified time just now on this computer's clock. A time AHEAD of this
   // clock (the other computer's clock runs ahead, its cloud client keeps its times) says nothing: such a file counts as
@@ -1026,15 +1032,15 @@ function createEngine(o) {
       const text = big?.text || await localText(rel, L);
       if ((big?.text ? big.h : hashed.get(text) ?? sha(text)) !== h) return false; // (round 20) a text hashed on the store thread isn't hashed again
       ok = await casWrite(dst, target, text, 'push');
-      if (ok) setBase(rel, h, text);
+      if (ok) setBase(rel, h, text, true); // (round 96, checkfix96) own
     } else if (L.size <= SMALL) {
       const buf = await fsp.readFile(L.file);
       if (sha(buf) !== h) return false;
       ok = await casWrite(dst, target, buf, 'push');
-      if (ok) setBase(rel, h);
+      if (ok) setBase(rel, h, undefined, true); // (round 96, checkfix96) own
     } else {
       ok = Boolean(await copyBig(L.file, dst, target, h, { stage: STAGE, onChunk: acc?.onChunk })); // (round 73) staged, with progress
-      if (ok) setBase(rel, h);
+      if (ok) setBase(rel, h, undefined, true); // (round 96, checkfix96) own
     }
     if (!ok) return false;
     await afterCloudWrite(rel, h);
@@ -1160,7 +1166,7 @@ function createEngine(o) {
         if (!ok) return false;
         await afterCloudWrite(rel, hm);
       }
-      setBase(rel, hm, text); rebased.delete(rel);
+      setBase(rel, hm, text, hm !== ch); rebased.delete(rel); // (round 96, checkfix96) own when this pass uploads it
       if (m.conflicts.length) await saveConflict(rel, { kind: 'json', text: m.theirsText, fields: m.conflicts, from: journalLatest.get(rel)?.m, oursAt: L.mtime, theirsAt: journalLatest.get(rel)?.t || C.mtime });
       sum.merged += 1;
       return true;
@@ -2021,16 +2027,23 @@ function createEngine(o) {
     const src = path.join(where === 'cloud' ? TRASH : path.join(stateDir, where === 'recovery'?'recovery':'trash'), d, ...r.split('/'));
     const rel = recovery ? r : r.replace(/(^|\/)\.([^/]+)\.icloud$/, '$1$2').replace(/(^|\/)[0-9a-f]{8}-([^/]+)$/, '$1$2');
     const dst = localPathOf(rel);
+    let was; // (round 96, checkfix96) the version replaced, in cloud form: the write guard's base, as after a pull
     if (await exists(dst)) {
       if (!ro.replace) return { ok: false, error: `${rel} is already there`, exists: true };
+      if (S.isJsonRel(rel)) { try { const st = await fsp.stat(dst); if (st.size < 1024 * 1024) { const v = S.parseJson(await fsp.readFile(dst, 'utf8')); was = S.toCloud(rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } } catch { /* unreadable: no base (guard: false below) */ } }
       await keepHere(rel, dst); // (round 19) undoing a choice: the version in place goes to the trash first
     }
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
     if (S.isJsonRel(rel) && await o.asideBig?.form(src, tmp, ctx, { rel })) { /* (round 95, aside95) a big store: put in this computer's form on the store thread */ } else if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
-    await flushed(tmp); await renameRetry(tmp, dst);
+    await flushed(tmp);
+    // (round 96, checkfix96) a window holding the replaced version (a StoreAck holder with a save waiting, the Lab's
+    // presets) writes it first on the arrival: merged with what came back, never written over it (keptaside94's 8 bars)
+    if (was !== undefined) remember(rel, was);
+    await renameRetry(tmp, dst);
     await fsp.rm(src, { force: true });
-    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash' }]);
+    if (S.isJsonRel(rel)) pulledAt.set(rel, Date.now()); // (round 96, checkfix96) an ack for a read from before this is ignored
+    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash', ...(S.isJsonRel(rel) && !pulledPrev.has(rel) ? { guard: false } : {}) }]); // (round 96, checkfix96) guard: false: no base kept (big / unreadable / new here)
     return { ok: true, rel };
   }
 
