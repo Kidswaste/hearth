@@ -107,8 +107,9 @@ function helpers(m) {
   KM.register((ch, fn) => H.set(ch, fn), { engine: () => m.e, dataDir: () => m.data, store: { runOff }, schedule: () => {} });
   return (ch, ...a) => H.get(ch)(...a);
 }
+const roots = new Set();
 async function pair(name) {
-  const w = T.world(`ka94-${name}`);
+  const w = T.world(`ka94-${name}`); roots.add(path.dirname(w.dir)); // (the simulator's temp folder: removed at the end)
   const pc = T.computer(w, 'PC', { platform: 'win32' }); const mac = T.computer(w, 'Mac', { platform: 'darwin' });
   pc.auto = false; mac.auto = false; // conflicts wait for a choice
   return { w, pc, mac };
@@ -237,5 +238,6 @@ async function engine() {
   await engine();
   console.log(`keptaside94-test: ${passes} passed, ${failures} failed`);
   worker?.terminate();
+  for (const r of roots) fs.rmSync(r, { recursive: true, force: true });
   process.exit(failures ? 1 : 0);
 })().catch((err) => { console.error(err); process.exit(1); });
