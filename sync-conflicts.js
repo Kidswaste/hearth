@@ -104,13 +104,22 @@ const SyncConflicts = (() => {
           choice('theirs', `Keep ${there}'s version`, `${there}'s version replaces the one on ${HERE_NAME} (${HERE_NAME}'s goes to Deleted files)`),
           choice('mine', `Keep ${HERE_NAME}'s version`, `${HERE_NAME}'s version stays everywhere (${there}'s goes to Deleted files)`),
           c.canBoth ? choice('both', 'Keep both', `${there}'s version is saved next to it as “… (from ${there})”`) : null,
-          c.canMerge ? choice('merge', 'Merge', 'Everything from both; where they differ, the newer one wins (the current one goes to Deleted files first)') : null));
+          c.canMerge ? choice('merge', 'Merge', 'Everything from both; where they differ, the newer one wins (both go to Deleted files first)') : null,
+          el('button', { type: 'button', class: 'ghost small sync-compare', text: 'Compare…', title: 'Both versions side by side, in full, with Combine… for text', on: { click: async () => { // (round 94, keptaside94) the shared compare view
+            try { if (typeof KeptAside === 'undefined') await Lazy.load('keptaside'); dialog.close(); await KeptAside.open({ conflict: c.id }); } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error' }); }
+          } } })));
     };
     const draw = (l) => rows.replaceChildren(...(l.length ? l.map(rowOf) : [el('p', { class: 'modal-text', text: 'No conflicts. Changes made on both computers merged by themselves.' })]));
     apply.addEventListener('click', async () => {
       apply.disabled = true;
       const fails = [];
-      for (const [id, keep] of picks) { const r = await api().resolve(id, keep).catch((err) => ({ ok: false, error: err.message })); if (!r?.ok) fails.push(r?.error || 'failed'); }
+      for (const [id, keep] of picks) {
+        // (round 94, keptaside94) Merge / Keep both: where both changed one value, one side wins; the other version is
+        // put in Deleted files whole first (it was only in a hidden folder). Can't keep it: nothing is changed.
+        const c = full.find((x) => x.id === id);
+        if (c?.kind === 'json' && (keep === 'merge' || (keep === 'both' && !/^chats\//.test(c.rel)))) { const k = await api().keepTheirs?.(id).catch((err) => ({ ok: false, error: err.message })); if (k && !k.ok) { fails.push(k.error || 'failed'); continue; } }
+        const r = await api().resolve(id, keep).catch((err) => ({ ok: false, error: err.message })); if (!r?.ok) fails.push(r?.error || 'failed');
+      }
       const done = picks.size - fails.length;
       const said = summary.textContent.split('.')[0];
       picks.clear();

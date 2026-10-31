@@ -150,23 +150,24 @@ const SyncPanel = (() => {
         el('span', { class: 'hint', text: edited(mine ? c.oursAt : c.theirsAt) }),
         side(c, which));
     };
-    const keep = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-keep${how === 'both' ? ' both' : ''}`, text: label, title, dataset: { keep: how }, on: { click: () => choose(c, how, label) } });
+    const keep = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-keep${how === 'both' ? ' both' : ''}`, text: label, title, dataset: { keep: how }, on: { click: () => choose(c, how) } });
     const kHere = keep(`Keep ${HERE}`, 'mine', `The version on this ${HERE} stays everywhere; the ${t} version waits in Deleted files`);
     const kThere = keep(`Keep ${t}`, 'theirs', `The ${t} version replaces this one; this one waits in Deleted files`);
     return el('div', { class: 'sp-conflict', dataset: { id: c.id } },
       el('div', { class: 'sp-what', text: Sync.whatIs(c) }),
       el('div', { class: 'sp-sides' }, ...(hereFirst ? [col('ours'), col('theirs')] : [col('theirs'), col('ours')])),
       el('div', { class: 'sp-acts' }, ...(hereFirst ? [kHere, kThere] : [kThere, kHere]),
-        c.canBoth ? keep('Keep both', 'both', /^chats\//.test(c.rel) || c.kind === 'file' ? `Both stay: the ${t} version is added next to it as “… (from ${t})”` : `Both stay: what differs is kept twice (a scene or a board as “… (from ${t})”, text as both texts)`) : null));
+        c.canBoth ? keep('Keep both', 'both', /^chats\//.test(c.rel) || c.kind === 'file' ? `Both stay: the ${t} version is added next to it as “… (from ${t})”` : `Both stay: what differs is kept twice (a scene or a board as “… (from ${t})”, text as both texts)`) : null,
+        el('button', { type: 'button', class: 'ghost small sp-compare', text: 'Compare…', title: 'Both versions side by side, in full (the messages, the lines, the pictures), with Combine… for text', on: { click: () => compare({ conflict: c.id }) } }))); // (round 94, keptaside94)
   }
-  async function choose(c, how, label) {
+  // (round 94, keptaside94) the shared compare view (keptaside.js, lazy group keptaside): its choice also keeps every
+  // side in Deleted files first and gives the Undo
+  const ka = () => (typeof KeptAside === 'undefined' ? window.Lazy.load('keptaside') : Promise.resolve());
+  async function compare(src) { try { await ka(); await KeptAside.open(src); } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error', raw: err }); } }
+  async function choose(c, how) {
     if (busy) return; busy = true;
     for (const b of box?.querySelectorAll(`.sp-conflict[data-id="${c.id}"] button`) || []) b.disabled = true;
-    const r = await api().resolve(c.id, how).catch((err) => ({ ok: false, error: err.message }));
-    busy = false;
-    if (!r?.ok) { toast(window.calmError ? calmError(r?.error || 'failed', { where: 'sync' }) : r?.error, { type: 'error', raw: r?.error }); sig = ''; render(); return; }
-    toast(how === 'both' ? `Kept both versions of ${Sync.whatIs(c)}.` : `${label}: done. The other version waits in Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => Sync.trash() } });
-    await Sync.refresh();
+    try { await ka(); await KeptAside.choose({ conflict: c.id }, how === 'mine' ? 'a' : how === 'theirs' ? 'b' : 'both'); } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error', raw: err }); } finally { busy = false; }
     sig = ''; render();
   }
 
@@ -294,7 +295,7 @@ const SyncPanel = (() => {
     const auto = Sync.lastAuto();
     const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, /* (round 74) + what can't sync */ st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000), // (round 92, syncpanel92) these were inside the comment: a new conflict with the same count, or "checked 2 min ago", didn't redraw
       (st.skippedBig || []).length, st.big, (st.peers || []).map((x) => `${x.name}:${Math.floor((x.lastSeen || 0) / 864e5)}`), st.need,
-      mode, kindsOpen, freeList, freeDone, (st.aside || []).map((n) => n.id), [...asideOpen.keys()], /* (round 78) + kept aside */ (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
+      mode, kindsOpen, freeList, freeDone, (st.aside || []).map((n) => n.id), /* (round 78) + kept aside */ (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
     if (my !== seq || !box) return;
     if (s === sig) { paintBars(st); return; } // nothing it shows changed: the DOM stays as it is (only the bars move)
     sig = s;
@@ -427,8 +428,8 @@ const SyncPanel = (() => {
   // ---------- (round 78, guardloss78) kept aside ----------
   // Where both computers changed the same thing and sync picked one version by itself (a save right after the other
   // computer's version arrived, or a conflict settled by itself), the other version is in Deleted files. One plain line
-  // each: "Mac's version of Notes kept aside — compare", then Compare (both, side by side), Keep both, Use that one, OK.
-  const asideOpen = new Map(); // note id → its compare (both versions), once opened
+  // each: "Mac's version of Notes kept aside — compare", then (round 94, keptaside94) Compare… (the shared compare view:
+  // both in full, Combine… for text), Keep the one in use, Use the one kept aside, Keep both. Each choice can be undone.
   const whoseOf = (n) => (n.side === 'ours' ? `This ${HERE}'s` : `${(() => { const t = there(n); return t[0].toUpperCase() + t.slice(1); })()}'s`);
   function asideSec(st) {
     const list = st.aside || [];
@@ -436,34 +437,23 @@ const SyncPanel = (() => {
     const row = (n) => {
       const what = Sync.whatIs({ rel: n.rel, fields: n.fields, kind: n.kind });
       const act = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-aside-${how}`, text: label, title, on: { click: () => asideDo(n, how) } });
-      const cmp = asideOpen.get(n.id);
       return el('div', { class: 'sp-aside', dataset: { id: n.id } },
         el('div', { class: 'sp-what', text: `${whoseOf(n)} version of ${what.replace(/^The /, 'the ')} kept aside — compare` }),
         el('span', { class: 'hint', text: `${n.why === 'guard' ? 'Changed here and there at once' : 'Settled by itself'} ${ago(n.at)}; it waits in Deleted files.` }),
-        cmp ? el('div', { class: 'sp-sides' },
-          el('div', { class: 'sp-side here' }, el('b', { text: 'In use now' }), side({ ...cmp, kind: n.kind === 'file' ? 'file' : 'json', ours: cmp.now, theirs: cmp.kept, here: cmp.here, there: cmp.there }, 'ours')),
-          el('div', { class: 'sp-side there' }, el('b', { text: 'Kept aside' }), side({ ...cmp, kind: n.kind === 'file' ? 'file' : 'json', ours: cmp.now, theirs: cmp.kept, here: cmp.here, there: cmp.there }, 'theirs'))) : null,
         el('div', { class: 'sp-acts' },
-          cmp ? null : act('Compare', 'compare', 'Both versions side by side'),
-          n.rel === 'app/config.json' ? null : act('Keep both', 'both', 'Both stay: what differs is kept twice (a scene or a board as “… (from …)”, text as both texts)'),
-          act('Use that one', 'theirs', 'The version kept aside comes back; the one in use now waits in Deleted files'),
-          act('OK', 'dismiss', 'Keep things as they are (the other version stays in Deleted files for 30 days)')));
+          act('Compare…', 'compare', 'Both versions side by side, in full, with Combine… for text'),
+          act('Keep the one in use', 'dismiss', 'Things stay as they are (the other version stays in Deleted files for 30 days)'),
+          act('Use the one kept aside', 'theirs', 'The version kept aside comes back; the one in use now waits in Deleted files'),
+          n.rel === 'app/config.json' ? null : act('Keep both', 'both', 'Both stay: what differs is kept twice (a scene or a board as “… (from …)”, text as both texts)')));
     };
     return el('div', { class: 'sp-sec sp-aside-sec' }, el('b', { text: `Kept aside (${list.length})` }),
       el('span', { class: 'hint', text: 'Both computers changed the same thing and sync kept one version. The other one is safe in Deleted files.' }),
       ...list.slice(0, 5).map(row));
   }
   async function asideDo(n, how) {
+    if (how === 'compare') { compare({ aside: n.id }); return; }
     if (busy) return; busy = true;
-    try {
-      const r = await api().aside?.(n.id, how).catch((err) => ({ ok: false, error: err.message }));
-      if (!r?.ok) { toast(window.calmError ? calmError(r?.error || 'failed', { where: 'sync' }) : r?.error, { type: 'error', raw: r?.error }); return; }
-      if (how === 'compare') { asideOpen.set(n.id, r); return; }
-      asideOpen.delete(n.id);
-      if (how === 'both') toast(`Kept both versions of ${Sync.whatIs({ rel: n.rel })}.`, { timeout: 4000 });
-      else if (how === 'theirs') toast(`${whoseOf(n)} version is back. The other one waits in Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => Sync.trash() } });
-      await Sync.refresh();
-    } finally { busy = false; sig = ''; render(); }
+    try { await ka(); await KeptAside.choose({ aside: n.id }, how === 'dismiss' ? 'a' : how === 'theirs' ? 'b' : 'both'); } catch (err) { toast(window.calmError ? calmError(err, { where: 'sync' }) : String(err?.message || err), { type: 'error', raw: err }); } finally { busy = false; sig = ''; render(); }
   }
   async function settleAll() {
     const r = await api().resolveAll('auto').catch((err) => ({ ok: false, error: err.message }));

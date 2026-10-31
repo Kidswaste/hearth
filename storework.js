@@ -701,6 +701,15 @@ const OPS = {
   // (round 84, bigchat84) a chat's own fields and its message count, its messages never parsed when it is big (the
   // Trash list, Deleted things, a backup's restore compare titles and times): { head: { id, title, agentId, createdAt,
   // updatedAt, pinned }, n } or { error } (a file that can't be read is said so: never "no chat")
+  // (round 94, keptaside94) the compare view of a very long chat kept two ways: the messages that differ between two
+  // versions (keptaside-core chatDiff), worked out here so neither the main process nor the window parses them whole.
+  // A version that can't be read is said so ({ error }): never "no messages".
+  chatDiff({ a, b, max = 40 }) {
+    const read = (f) => { let got; try { got = readStill(f); } catch (e) { return { error: e.code || 'read' }; } if (!got) return { error: 'changing' }; try { return { v: JSON.parse(got.buf.toString('utf8').replace(/^﻿/, '')) }; } catch { return { error: 'parse' }; } };
+    const A = read(a); if (A.error) return { error: A.error, side: 'here' };
+    const B = read(b); if (B.error) return { error: B.error, side: 'there' };
+    return require('./keptaside-core').chatDiff(A.v, B.v, { max: Math.min(200, Number(max) || 40) });
+  },
   chatHead({ file }) {
     let buf; try { buf = dfs.readFileSync(file); } catch (e) { return { error: e.code || 'read' }; }
     let head; let n;

@@ -1,0 +1,35 @@
+/* (round 94, keptaside94) the compare view (keptaside.js): two versions side by side, the lines that differ highlighted */
+.ui-modal.ka-view { width: min(980px, 95vw); max-width: 95vw; max-height: 92vh; overflow: auto; }
+.ka-view form { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ka-view h2 { margin: 0; }
+.ka-view h4 { margin: 10px 0 4px; font-size: 13px; font-weight: 650; }
+.ka-view .hint { opacity: .75; font-size: .92em; }
+.ka-heads, .ka-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ka-swap.ka-heads > .ka-a, .ka-swap .ka-pair > .ka-a { order: 2; }
+.ka-h { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line, #333); border-radius: 9px; }
+.ka-h b { font-size: 14px; }
+.ka-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ka-c { min-width: 0; overflow-wrap: anywhere; }
+.ka-pair { padding: 4px 0; }
+.ka-pair.ka-chg > .ka-a { background: color-mix(in srgb, var(--fh-ember, #ff8a3d) 10%, transparent); border-radius: 6px; padding: 3px 6px; }
+.ka-pair.ka-chg > .ka-b { background: color-mix(in srgb, var(--fh-info, #5aa9ff) 12%, transparent); border-radius: 6px; padding: 3px 6px; }
+.ka-say { margin: 4px 0; }
+.ka-msg { display: block; padding: 5px 7px; margin: 4px 0; border: 1px solid var(--line, #333); border-radius: 7px; }
+.ka-msg-t { white-space: pre-wrap; max-height: 220px; overflow: auto; margin-top: 2px; }
+/* the line diff: number · line | number · line */
+.ka-diff { display: grid; grid-template-columns: 3.2em 1fr 3.2em 1fr; font: 12px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); border: 1px solid var(--line, #333); border-radius: 8px; overflow: auto; max-height: 52vh; }
+.ka-row { display: contents; }
+.ka-n { text-align: right; padding: 0 6px; opacity: .5; user-select: none; }
+.ka-l { white-space: pre-wrap; overflow-wrap: anywhere; padding: 0 6px; min-width: 0; }
+.ka-l.ka-del { background: color-mix(in srgb, var(--fh-ember, #ff8a3d) 22%, transparent); }
+.ka-l.ka-add { background: color-mix(in srgb, var(--fh-info, #5aa9ff) 24%, transparent); }
+.ka-l.ka-none { background: repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--line, #333) 50%, transparent) 4px 5px); }
+.ka-fold { grid-column: 1 / -1; text-align: center; opacity: .6; font-style: italic; padding: 1px 0; border-block: 1px dashed var(--line, #333); }
+.ka-fig { margin: 0; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.ka-fig img, .ka-fig video { max-width: 100%; max-height: 42vh; border-radius: 6px; background: repeating-conic-gradient(#8882 0 25%, transparent 0 50%) 50% / 16px 16px; }
+.ka-fig audio { width: 100%; }
+.ka-glyph { font-size: 40px; }
+.ka-combine { display: flex; flex-direction: column; gap: 8px; }
+.ka-ed { width: 100%; box-sizing: border-box; font: 12px/1.45 var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); white-space: pre; overflow: auto; resize: vertical; }
+.ka-row-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 640px) { .ka-heads, .ka-pair { grid-template-columns: 1fr; } }

@@ -143,6 +143,7 @@ const LazyData = (() => {
     { name: 'appdialogs', at: 'appui.js', files: ['appui-dialogs.js'], globals: ['AppUIDialogs'] },
     { name: 'meterdash', at: 'meter.js', files: ['meter-dash.js'], globals: ['MeterDash'] },
     { name: 'syncconflicts', at: 'sync.js', files: ['sync-conflicts.js'], globals: ['SyncConflicts'] },
+    { name: 'keptaside', tier: 'use', at: 'sync.js', files: ['keptaside-core.js', 'keptaside.js'], css: ['keptaside.css'], globals: ['KeptAsideCore', 'KeptAside'] }, // (round 94, keptaside94) · docs/lazy-groups.md
     { name: 'devices90', tier: 'use', at: 'sync.js', files: ['devices90.js'], css: ['devices90.css'], globals: ['Devices90'] }, // (round 90, devices90) · docs/lazy-groups.md
     { name: 'memorytidycore', at: 'manager.js', files: ['memorytidy-core.js'], globals: ['MemoryTidyCore'] }, // (round 87, firstscreen87) · docs/lazy-groups.md
     { name: 'updater', asap: true, at: 'speed-learn.js', files: ['updater.js'], globals: ['Updater'] }, // (round 87, firstscreen87) · docs/lazy-groups.md
