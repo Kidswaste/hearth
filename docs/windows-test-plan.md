@@ -126,6 +126,29 @@ Only real machines with the real cloud drive can show these; the checks use a te
 - With a project open in the Lab (its Scene tab), Sketch ▾ › Duplicate: the copy is listed in the project's files.
 - Report what you saw for each line (works / what happened instead).
 
+## 10. Two versions kept: compare and choose (round 94, keptaside94)
+Only the real PC and Mac with the real cloud drive show these; the checks use a temp folder and a made-up Mac.
+- With Wi-Fi off on the Mac, rename the same mood board on both computers, then turn Wi-Fi back on. Within a minute,
+  on the computer that notices it: a note "Something was changed on both computers: choose…" and "⚠ 1 conflict" in the
+  rail. Open the sync panel, click **Compare…**: the PC's name on the left, the Mac's on the right, **on both
+  computers** (also on the one whose version became the copy: it must say "This PC" / "This Mac" over its own name).
+  Click **Keep this one** under the Mac's: the board has the Mac's name on both computers; the note has **Undo**; Undo
+  brings the PC's name back on both.
+- The same with a Lab scene's code (change the same line on each computer): Compare shows the code line by line with
+  the changed line coloured on each side. **Combine…**, edit, **Save the combined version**: open the scene in the Lab
+  on both computers: the combined code runs.
+- A picture in a scene's references changed on both (save it from Photoshop on each): Compare shows both pictures.
+  A sound (a stem) changed on both: both play in Compare.
+- A long chat (a few hundred replies) written in on both computers offline, with its title changed on both: Compare
+  shows the titles and the messages only one side has, within a few seconds, without the app freezing.
+- With "Settle new conflicts by themselves" on (the default): change a board's name on both; one name stays, the rail
+  shows "◐ 1 to compare" and a note "Both computers changed … at the same time" with **Compare**.
+- In the Lab, change a song's ⚡ triggers on both computers at the same time: a note says the other computer's setup is
+  kept as the trigger preset "… (other setup)", and it is in the trigger presets.
+- Deleted files: after any of the above, the version not kept is listed by its name ("Mood boards", "Lab scenes"),
+  not "Tool data “1a2b3c4d-…”", and Restore brings it back.
+- Report what you saw for each line (works / what happened instead), and which computer showed the note.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
