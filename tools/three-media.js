@@ -192,7 +192,9 @@ const ThreeMedia = (() => {
     let soon = 0; let soonT = 0;
     const layoutNow = () => { cancelAnimationFrame(soon); clearTimeout(soonT); soon = 0; soonT = 0; layout(); };
     function layoutSoon() { if (!soon) { soon = requestAnimationFrame(layoutNow); soonT = setTimeout(layoutNow, 60); } }
-    new ResizeObserver(layoutNow).observe(host); // (its first call: the first layout)
+    // (round 94) a resize lays out with the next frame (layoutSoon): laying out inside the observer could resize what
+    // it watches in the same frame ("ResizeObserver loop…", labsync88). Its first call is still the first layout.
+    new ResizeObserver(layoutSoon).observe(host);
     return {
       get params() { return current().w ? '&dpr=1' : ''; },
       get size() { const s = current(); return s.w ? { id: s.id, width: s.w, height: s.h } : { id: 'fit', width: host.clientWidth, height: host.clientHeight }; },
@@ -3262,8 +3264,11 @@ const ThreeMedia = (() => {
         if (e.target === minimap) { sizes.mw = minimap.clientWidth; sizes.mh = minimap.clientHeight; sizes.mOk = true; }
         else { sizes.cw = canvas.clientWidth; sizes.ch = canvas.clientHeight; sizes.cOk = true; }
       }
-      draw();
+      // (round 94) the draw goes to the next frame: drawing inside the observer could change an observed size in the
+      // same frame ("ResizeObserver loop completed with undelivered notifications", labsync88)
+      if (!sizeDraw) sizeDraw = requestAnimationFrame(() => { sizeDraw = 0; draw(); });
     });
+    let sizeDraw = 0;
     sizeRo.observe(minimap); sizeRo.observe(canvas);
     // (round 36, nativefeel) a new screen scale (another monitor, Windows' scaling) redraws the wave crisp (the sizes didn't change)
     const onDpr = () => { if (!canvas.isConnected) removeEventListener('hearth:dpr', onDpr); else draw(); };
