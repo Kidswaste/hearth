@@ -1180,7 +1180,7 @@ function createEngine(o) {
   }
   // (round 19) each side's computer, platform and time of its last change, so the choice says what it saves over
   const platOf = (mid) => peers.find((p) => p.id === mid)?.platform || (peers.length === 1 ? peers[0].platform : null);
-  const sides = (mid, oursAt, theirsAt) => ({ byPlatform: platform, fromId: mid || null, fromPlatform: platOf(mid), oursAt: oursAt || now(), theirsAt: theirsAt || null });
+  const sides = (mid, oursAt, theirsAt) => ({ byPlatform: platform, byId: machine.id, /* (round 95, aside95) the noticing computer's id: each side labelled exactly (round 94 reads by / fromId: unchanged) */ fromId: mid || null, fromPlatform: platOf(mid), oursAt: oursAt || now(), theirsAt: theirsAt || null });
   async function saveConflict(rel, { text, fields, from, oursAt, theirsAt }) {
     const cid = `${day(now())}-${rand()}`;
     await atomicWrite(path.join(CONFL, `${cid}.copy.json`), text);
@@ -1865,15 +1865,19 @@ function createEngine(o) {
     if (keep === 'theirs' || keep === 'merge') {
       if (keep === 'merge' && !isJson) return { ok: false, error: 'Only data (chats, scenes, settings…) can be merged; pictures and files are one version or the other.' };
       let ours = null;
-      if (isJson) { try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
-      const keptHere = await keepHere(rec.rel, file);
+      const big = isJson ? await o.asideBig?.take({ how: keep, rel: rec.rel, file, src: copy, cloud: true, theirsNewer: (rec.theirsAt || 0) > (rec.oursAt || 0), ctx }) : null; // (round 95, aside95) a big store: its JSON work on the store thread (asidework.js); null: here, as before
+      if (big && !big.ok) return big;
+      if (isJson && !big) { try { ours = oursValue(); remember(rec.rel, ours); } catch { /* none here */ } }
+      if (big?.prev) remember(rec.rel, big.prev);
+      let keptHere = await keepHere(rec.rel, file).catch(async (err) => { await big?.drop(); throw err; });
+      if (keep === 'theirs' && keptHere && o.asideBig) keptHere = await o.asideBig.share({ rel: rec.rel, kept: keptHere, trash: TRASH, day: day(now()), ctx }); // (round 95, aside95) the version replaced also in the synced Deleted files: the other computer lists it too
       let lost = keep === 'theirs' && ro.auto && keptHere ? 'ours' : null; // (round 78, guardloss78) newest wins: this one lost
       if (isJson) {
-        let v = await theirsValue();
-        if (keep === 'merge' && ours) {
+        let v = big ? null : await theirsValue();
+        if (keep === 'merge' && (big ? big.ours : ours)) {
           const theirsNewer = (rec.theirsAt || 0) > (rec.oursAt || 0);
-          const mr = S.merge3(null, theirsNewer ? v : ours, theirsNewer ? ours : v, { counters: S.isCounterRel(rec.rel) });
-          v = mr.value;
+          const mr = big ? { conflicts: { length: big.conflicts } } : S.merge3(null, theirsNewer ? v : ours, theirsNewer ? ours : v, { counters: S.isCounterRel(rec.rel) });
+          if (!big) v = mr.value;
           // (round 78, guardloss78) fields changed two ways: the newer side's value won; the older side is kept whole
           // (this computer's: in Deleted files already; the other's: put there under its real name, not only in conflicts/)
           if (ro.auto && mr.conflicts.length) lost = theirsNewer ? (keptHere ? 'ours' : null) : 'theirs';
@@ -1885,7 +1889,7 @@ function createEngine(o) {
           if (await exists(dst)) dst = path.join(tdir, `${rand()}-${path.basename(rec.rel)}`);
           try { await fsp.copyFile(copy, dst); noteLoser(rec, 'theirs', dst, TRASH); } catch (err) { log('aside copy', rec.rel, err.message); }
         }
-        await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
+        if (big) { const p = await big.put(); if (!p.ok) return p; } else await atomicWrite(file, localJsonText(rec.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null)); // (round 95, aside95)
       } else {
         // (a copy whose content is still only in the cloud downloads now: this choice asks for it)
         const tmp = path.join(path.dirname(file), `.hearth-tmp-${rand()}-${path.basename(file)}`);
@@ -1911,10 +1915,12 @@ function createEngine(o) {
           made = rec.rel;
         }
         if (m) {
-        const v = S.fromCloud(await theirsValue(), ctx);
         const nid = `${m[1].slice(0, 40)}-${rand().slice(0, 5)}`;
         made = `chats/${nid}.json`;
+        if (!(await o.asideBig?.form(copy, localPathOf(made), ctx, { rel: rec.rel, copyOf: { id: nid, from } }))) { // (round 95, aside95) a big chat: copied on the store thread
+        const v = S.fromCloud(await theirsValue(), ctx);
         await atomicWrite(localPathOf(made), localForm({ ...v, ...(v && 'id' in v ? { id: nid } : {}), title: `${v?.title || 'Chat'} (from ${from})` }, true));
+        }
         }
       } else {
         const ext = path.extname(rec.rel); const stem = rec.rel.slice(0, rec.rel.length - ext.length);
@@ -2017,7 +2023,7 @@ function createEngine(o) {
     }
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const tmp = path.join(path.dirname(dst), `.hearth-tmp-${rand()}-${path.basename(dst)}`);
-    if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
+    if (S.isJsonRel(rel) && await o.asideBig?.form(src, tmp, ctx, { rel })) { /* (round 95, aside95) a big store: put in this computer's form on the store thread */ } else if (S.isJsonRel(rel)) { const v = S.parseJson(await fsp.readFile(src, 'utf8')); await fsp.writeFile(tmp, localForm(S.fromCloud(v, ctx), true)); } else await fsp.copyFile(src, tmp);
     await flushed(tmp); await renameRetry(tmp, dst);
     await fsp.rm(src, { force: true });
     o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash' }]);
@@ -2083,14 +2089,16 @@ function createEngine(o) {
     const fromName = String(kind(n.fromPlatform) || n.from || 'the other computer').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 40);
     let made = n.rel;
     if (isJson) {
-      let ours = null; try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
-      const kept = S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
-      const v = how === 'both' && ours ? S.keepBoth(ours, kept, fromName, undefined, { inPlace: S.inPlaceOf(n.rel) }) /* (round 91, projaudit91) one project with both names */ : kept;
+      const big = await o.asideBig?.take({ how, rel: n.rel, file, src, from: fromName, ctx }); // (round 95, aside95) a big store: read, kept both and written on the store thread (asidework.js); null: here, as before
+      if (big && !big.ok) return big;
+      let ours = null; if (!big) try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
+      const kept = big ? null : S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
+      const v = big ? null : how === 'both' && ours ? S.keepBoth(ours, kept, fromName, undefined, { inPlace: S.inPlaceOf(n.rel) }) /* (round 91, projaudit91) one project with both names */ : kept;
       // the guard's base for the window's next save: its copy as it last saved it (its change waiting since then merges
       // with this version; the line it had won stays replaced), else this version's predecessor on the disk
-      if (pulledPrev.has(n.rel) && guardOurs.has(n.rel)) pulledPrev.set(n.rel, guardOurs.get(n.rel)); else if (ours) remember(n.rel, ours);
-      await keepHere(n.rel, file);
-      await atomicWrite(file, localJsonText(n.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
+      if (pulledPrev.has(n.rel) && guardOurs.has(n.rel)) pulledPrev.set(n.rel, guardOurs.get(n.rel)); else if (big ? big.prev : ours) remember(n.rel, big ? big.prev : ours);
+      await keepHere(n.rel, file).catch(async (err) => { await big?.drop(); throw err; });
+      if (big) { const p = await big.put(); if (!p.ok) return p; } else await atomicWrite(file, localJsonText(n.rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null));
     } else {
       const ext = path.extname(n.rel); const stem = n.rel.slice(0, n.rel.length - ext.length);
       if (how === 'both') { made = `${stem} (from ${fromName})${ext}`; for (let i = 2; await exists(localPathOf(made)); i++) made = `${stem} (from ${fromName} ${i})${ext}`; } else await keepHere(n.rel, file);

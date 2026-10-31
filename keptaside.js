@@ -63,10 +63,10 @@ const KeptAside = (() => {
     return finish(m);
   }
   // which side of a conflict is this computer's: { a: the version in place, b: the copy }
+  // (round 95, aside95) exactly by the noticing computer's id when the record has it (Sync.whose); older records by name
   function mineOf(p) {
-    const me = Sync.status().machine || {};
-    const b = Boolean(p.fromId && me.id && p.fromId === me.id);
-    return { a: !b && (!p.by || !me.name || p.by === me.name), b };
+    const w = Sync.whose(p);
+    return { a: w.a, b: w.b };
   }
   function finish(m) {
     const json = !m.file && /\.json$/i.test(m.rel);

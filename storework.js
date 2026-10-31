@@ -710,6 +710,10 @@ const OPS = {
     const B = read(b); if (B.error) return { error: B.error, side: 'there' };
     return require('./keptaside-core').chatDiff(A.v, B.v, { max: Math.min(200, Number(max) || 40) });
   },
+  // (round 95, aside95) a choice on two versions of a big store (sync-engine.js asideDo / resolve / restore through
+  // asidework.js): both read, merged / kept both, and the result written next to its place here, never on the main process
+  asideTake(a) { return require('./asidework').work('take', a); },
+  asideForm(a) { return require('./asidework').work('form', a); },
   chatHead({ file }) {
     let buf; try { buf = dfs.readFileSync(file); } catch (e) { return { error: e.code || 'read' }; }
     let head; let n;

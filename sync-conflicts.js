@@ -81,7 +81,7 @@ const SyncConflicts = (() => {
     const paint = () => {
       const by = { theirs: 0, mine: 0, both: 0, merge: 0 }; const from = new Set();
       for (const [id, k0] of picks) {
-        const c = full.find((x) => x.id === id) || {}; const flip = Boolean(c.fromId && c.fromId === Sync.status().machine?.id); // (round 94) as this computer sees it
+        const c = full.find((x) => x.id === id) || {}; const flip = Sync.whose(c).flip; // (round 94) as this computer sees it · (round 95) by id when the record has it
         const k = flip && k0 === 'mine' ? 'theirs' : flip && k0 === 'theirs' ? 'mine' : k0;
         by[k] += 1; if (k === 'theirs') from.add(thereName(flip ? { from: c.by, fromPlatform: c.byPlatform } : c));
       }
@@ -93,7 +93,8 @@ const SyncConflicts = (() => {
       // (round 94, keptaside94) the record syncs: on the computer the copy came from, the copy is this computer's version
       // (it was labelled as the other computer's there). The sides are put the way round this computer sees them; the
       // choices keep their meaning (mine: the one in place).
-      const flip = Boolean(c0.fromId && c0.fromId === Sync.status().machine?.id);
+      const w = Sync.whose(c0); const flip = w.flip; // (round 95, aside95) by the noticing computer's id when the record has it
+      const hereN = w.third ? thereName({ from: c0.by }) : HERE_NAME; // (a third computer: neither version is this one's)
       const c = flip ? { ...c0, from: c0.by, fromPlatform: c0.byPlatform, oursAt: c0.theirsAt, theirsAt: c0.oursAt, ours: c0.theirs, theirs: c0.ours, here: c0.there, there: c0.here, size: c0.theirsSize, theirsSize: c0.size, fields: (c0.fields || []).map((f) => ({ ...f, ours: f.theirs, theirs: f.ours })) } : c0;
       const K = flip ? { mine: 'theirs', theirs: 'mine' } : { mine: 'mine', theirs: 'theirs' };
       const newer = c.oursAt && c.theirsAt ? (c.oursAt > c.theirsAt ? 'here' : 'there') : null;
@@ -107,12 +108,12 @@ const SyncConflicts = (() => {
       return el('div', { class: 'sync-row sync-conflict', dataset: { id: c.id } },
         el('div', { class: 'sync-row-main' },
           el('b', { class: 'sync-what', text: whatIs(c) }),
-          el('div', { class: 'sync-sides' }, side(hereLabel(), c.oursAt, newer === 'here'), side(thereLabel(c), c.theirsAt, newer === 'there')),
+          el('div', { class: 'sync-sides' }, side(w.third ? thereLabel({ from: c0.by, fromPlatform: c0.byPlatform }) : hereLabel(), c.oursAt, newer === 'here'), side(thereLabel(c), c.theirsAt, newer === 'there')),
           diffOf(c),
           el('details', { class: 'sync-details' }, el('summary', { text: 'Details' }), el('div', { class: 'hint', text: `${c.rel} · noticed ${timeAgo(c.at)}${c.fields?.length ? ` · ${c.fields.length} field${c.fields.length === 1 ? '' : 's'} changed two ways` : ''}` }))),
         el('div', { class: 'sync-row-acts sync-choices' },
-          choice(K.theirs, `Keep ${there}'s version`, `${there}'s version replaces the one on ${HERE_NAME} (${HERE_NAME}'s goes to Deleted files)`),
-          choice(K.mine, `Keep ${HERE_NAME}'s version`, `${HERE_NAME}'s version stays everywhere (${there}'s goes to Deleted files)`),
+          choice(K.theirs, `Keep ${there}'s version`, `${there}'s version replaces the one on ${hereN} (${hereN}'s goes to Deleted files)`),
+          choice(K.mine, `Keep ${hereN}'s version`, `${hereN}'s version stays everywhere (${there}'s goes to Deleted files)`),
           c.canBoth ? choice('both', 'Keep both', `${there}'s version is saved next to it as “… (from ${there})”`) : null,
           c.canMerge ? choice('merge', 'Merge', 'Everything from both; where they differ, the newer one wins (both go to Deleted files first)') : null,
           el('button', { type: 'button', class: 'ghost small sync-compare', text: 'Compare…', title: 'Both versions side by side, in full, with Combine… for text', on: { click: async () => { // (round 94, keptaside94) the shared compare view
@@ -185,7 +186,11 @@ const SyncConflicts = (() => {
   async function trash() {
     // (round 94, keptaside94) a version kept twice the same day has a short random prefix on disk: named without it
     // ("Notes", not "Tool data “1a2b3c4d-notes”")
-    const list = (await api().trash()).map((t) => ({ ...t, rel: String(t.rel).replace(/(^|\/)[0-9a-f]{6,8}-([^/]+)$/, '$1$2'), disk: t.rel }));
+    const all = await api().trash();
+    // (round 95, aside95) "Keep the other": the version it replaced is in this computer's Deleted files and in the synced
+    // ones (the other computer lists it), both with the same short prefix: listed once here
+    const twin = (t) => t.where === 'cloud' && /(^|\/)[0-9a-f]{8}-[^/]+$/.test(String(t.rel)) && all.some((x) => x.where === 'here' && x.day === t.day && x.rel === t.rel);
+    const list = all.filter((t) => !twin(t)).map((t) => ({ ...t, rel: String(t.rel).replace(/(^|\/)[0-9a-f]{6,8}-([^/]+)$/, '$1$2'), disk: t.rel }));
     const dialog = el('dialog', { class: 'ui-modal sync-list' });
     const q = el('input', { type: 'search', placeholder: 'Filter…', class: 'sync-filter' });
     const rows = el('div', { class: 'sync-rows' });
