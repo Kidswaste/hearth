@@ -265,6 +265,7 @@ contextBridge.exposeInMainWorld('hub', {
     onStatus: on('sync:status'), onPulled: on('sync:pulled'),
     kinds: call('sync:kinds'), freeable: call('sync:freeable'), free: call('sync:free'), // (round 73, syncmedia73) What syncs · Free up space
     fix: call('sync:fix'), // (round 74, synchard74) a blocked file's fix button
+    showFolder: call('sync:showFolder'), // (round 99, kvrename99) the folder path too long for Hearth's own files: show the folder to move
     aside: call('sync:aside'), // (round 78, guardloss78) conflicts' losing sides kept aside (sync panel)
     packs: call('sync:packs'), // (round 89, packs89) Send very long chats in pieces (Settings › Sync)
     keepCopy: call('sync:keepCopy'), keepTheirs: call('sync:keepTheirs'), putAway: call('sync:putAway'), chatDiff: call('sync:chatDiff'), // (round 94, keptaside94) the compare view (keptasidemain.js)

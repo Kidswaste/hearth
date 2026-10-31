@@ -56,6 +56,10 @@ const SyncPanel = (() => {
     denied: (b) => ({ text: `macOS didn't let Hearth change it${b.where === 'cloud' ? ' in the cloud folder' : ''}. In System Settings › Privacy & Security › Files and Folders (or Full Disk Access), allow Hearth, then try again.`, fix: 'Try again now' }),
     'newer-app': () => ({ text: `It was last saved by a newer Hearth on your ${OTHER}. Update Hearth here (⬆ Update) to sync it; nothing is lost meanwhile.` }),
     'secret-cloud': () => ({ text: 'A key or password file an older version put in your cloud copy. Keys never sync now.', fix: 'Remove from the cloud' }),
+    // (round 99, kvrename99) one of Hearth's own files (a project, a board, a Lab preset, a chat…): Hearth finds it by its
+    // name, so it is never renamed; what is too long is the folder path on the PC. No button here: the fix is on the PC.
+    'win-long-app': (b) => ({ text: `One of Hearth's own files: Hearth finds it by this name, so it isn't renamed. The folder Hearth uses on your ${OTHER} is ${b.over ? `${b.over} character${b.over === 1 ? '' : 's'} ` : ''}too long for it. On the ${OTHER}, move Hearth's folder or the cloud folder somewhere shorter (this panel there says which, once Hearth is up to date there). Meanwhile it stays as it is on this ${HERE}; nothing is lost.` }),
+    'win-name-app': (b) => ({ text: `One of Hearth's own files, and “${clip(b.part, 30)}” is a name Windows can't use. Hearth finds it by this name, so it isn't renamed: it stays on this ${HERE}; nothing is lost.` }),
   };
   const FIX = { 'win-chars': 'rename', 'win-ending': 'rename', 'win-reserved': 'rename', 'win-long': 'rename', 'too-long': 'rename', 'bad-name': 'rename', 'read-only': 'writable', 'secret-cloud': 'unsecret', locked: 'retry', drive: 'retry', denied: 'retry', 'disk-full': 'space' };
   function blockedSec(st) {
@@ -71,6 +75,21 @@ const SyncPanel = (() => {
     return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: `Can't sync (${list.length})` }) : null,
       list.length ? el('span', { class: 'hint', text: 'Each stays as it is on this computer: nothing is lost.' }) : null,
       list.length ? el('ul', { class: 'sp-wait' }, ...rows) : null, list.length > 8 ? el('span', { class: 'hint', text: `…and ${list.length - 8} more` }) : null, ...old);
+  }
+  // (round 99, kvrename99) on a PC whose folders' path is too long for some of Hearth's own files (a long project or board
+  // id): said plainly, with the folder to move. Never a rename: Hearth finds those files by their names.
+  function longPathSec(st) {
+    const lp = st.longPath;
+    if (!lp || !lp.n) return null;
+    const files = `${lp.n} of Hearth's own file${lp.n === 1 ? '' : 's'}${lp.by ? ` (on your ${clip(lp.by, 18)})` : ''}`;
+    const which = lp.which === 'cloud'
+      ? 'Your cloud drive\'s folder is the long one: move it somewhere shorter in the cloud app\'s own settings (OneDrive: Settings › Account › Unlink this PC, then choose a shorter place when you sign in again), then turn sync on again here.'
+      : 'Hearth\'s folder is the long one: quit Hearth, move the whole Hearth folder somewhere short (a folder named Hearth right on the C: drive, for example), and start Hearth from there. Your chats, projects and settings come along; saved file locations follow.';
+    return el('div', { class: 'sp-sec sp-warn sp-longpath' }, el('b', { text: 'The folder path on this computer is too long' }),
+      el('p', { text: `Windows can't hold ${files} in a path this long (${lp.over} character${lp.over === 1 ? '' : 's'} too many). Hearth finds its own files by their names, so they are never renamed: they stay where they are, nothing is lost.` }),
+      el('p', { class: 'hint', text: which }),
+      el('div', { class: 'sp-row' },
+        el('button', { type: 'button', class: 'ghost small sp-showfolder', text: lp.which === 'cloud' ? 'Show the cloud folder' : 'Show Hearth\'s folder', dataset: { which: lp.which }, on: { click: () => api().showFolder?.(lp.which) } })));
   }
   async function fixOne(b, how, label, button) {
     if (busy) return;
@@ -299,7 +318,7 @@ const SyncPanel = (() => {
       list = (await Promise.all(raw.slice(0, 12).map((c) => api().preview?.(c.id).catch(() => null)))).map((p, i) => p || raw[i]);
     }
     const auto = Sync.lastAuto();
-    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, /* (round 74) + what can't sync */ st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000), // (round 92, syncpanel92) these were inside the comment: a new conflict with the same count, or "checked 2 min ago", didn't redraw
+    const s = JSON.stringify([st.on, st.state, st.paused, st.pending, st.conflicts, st.lastOk, st.at, st.waiting, st.lastError, st.error, (st.blocked || []).map((b) => `${b.rel}:${b.why}:${b.where}`), (st.peersOld || []).length, /* (round 74) + what can't sync */ st.longPath ? `${st.longPath.n}:${st.longPath.which}:${st.longPath.over}` : '', /* (round 99, kvrename99) */ st.held?.deletes, st.cloudOnly?.length, list.map((c) => c.id), auto, Math.floor(Date.now() / 60000), // (round 92, syncpanel92) these were inside the comment: a new conflict with the same count, or "checked 2 min ago", didn't redraw
       (st.skippedBig || []).length, st.big, (st.peers || []).map((x) => `${x.name}:${Math.floor((x.lastSeen || 0) / 864e5)}`), st.need,
       mode, kindsOpen, freeList, freeDone, (st.aside || []).map((n) => n.id), /* (round 78) + kept aside */ (st.transfers || []).map((t) => `${t.rel}:${t.op}:${t.moving}`), st.moving, kindsOpen ? (st.kinds || []).map((k) => `${k.id}:${k.on}:${k.n}:${Math.round(k.bytes / 1e5)}:${Math.round(k.cloudBytes / 1e5)}`) : (st.kinds || []).map((k) => k.on)]); // (round 73) + moving files, What syncs, Free up space
     if (my !== seq || !box) return;
@@ -325,6 +344,7 @@ const SyncPanel = (() => {
         typeof ErrorCalm !== 'undefined' && ErrorCalm.details ? ErrorCalm.details(`${err.op ? `${err.op} ` : ''}${err.rel ? `${err.rel}: ` : ''}${err.message}`) : null)); // the word-for-word reason, with Copy
     }
     parts.push(blockedSec(st)); // (round 74, synchard74) what can't sync, why, and its fix
+    parts.push(longPathSec(st)); // (round 99, kvrename99) this PC's folder path too long for Hearth's own files
     // conflicts, side by side
     if (list.length) {
       parts.push(el('div', { class: 'sp-sec' }, el('b', { text: `${list.length} thing${list.length === 1 ? ' was' : 's were'} changed on both computers — choose` }),
@@ -413,6 +433,7 @@ const SyncPanel = (() => {
     if (st.held) L.push(`deletions waiting for a yes: ${st.held.deletes}`);
     if (st.conflicts) L.push(`conflicts: ${st.conflicts}`);
     for (const b of (st.blocked || []).slice(0, 20)) L.push(`can't sync: ${b.rel} (${b.why}${b.where ? `, ${b.where}` : ''})`);
+    if (st.longPath) L.push(`folder path too long here for Hearth's own files: ${st.longPath.n} (${st.longPath.over} over; data folder ${st.longPath.data}, cloud ${st.longPath.cloud} characters; ${st.longPath.sample.join(', ')})`); // (round 99, kvrename99)
     for (const w of (st.waiting || []).slice(0, 20)) L.push(`waiting: ${w.rel} (${w.why})`);
     for (const t of (st.transfers || []).slice(0, 10)) L.push(`big file: ${t.op} ${t.rel} ${t.done || 0}/${t.total || 0} bytes${t.moving ? ', moving' : ''}`);
     for (const a of (st.aside || []).slice(0, 8)) L.push(`kept aside: ${a.rel} (${a.why}, ${a.side})`);
