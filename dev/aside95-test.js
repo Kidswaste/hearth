@@ -202,10 +202,10 @@ async function giantPart() {
     ok(r && r.ok === false && /can't be read/.test(r.error) && fs.readFileSync(G.file, 'utf8').length === before, 'giant: a kept version that can\'t be read → said so, nothing changed', r);
     // this computer's can't be read: Keep both stops; Use the one kept aside goes on (the damaged one kept in Deleted files first)
     fs.writeFileSync(tf, JSON.stringify(G.theirs));
-    fs.writeFileSync(G.file, G.oursText.slice(0, 3e6));
+    const cut = Math.floor(G.oursText.length / 2); fs.writeFileSync(G.file, G.oursText.slice(0, cut));
     const hb = (await hereEntries(e)).length;
     const r2 = await e.aside(id, 'both');
-    ok(r2 && r2.ok === false && /can't be read/.test(r2.error) && fs.readFileSync(G.file, 'utf8').length === 3e6, 'giant: Keep both with this computer\'s version damaged → said so, nothing changed (never taken as empty)', r2);
+    ok(r2 && r2.ok === false && /can't be read/.test(r2.error) && fs.readFileSync(G.file, 'utf8').length === cut, 'giant: Keep both with this computer\'s version damaged → said so, nothing changed (never taken as empty)', r2);
     const r3 = await e.aside(id, 'theirs');
     ok(r3?.ok && readJson(G.file).title === 'Tour diary (Mac)' && (await hereEntries(e)).length === hb + 1, 'giant: Use the one kept aside replaces a damaged one, which waits in Deleted files', r3);
     // changed while being prepared: nothing changes, try again
@@ -303,6 +303,28 @@ async function twoPart(OLD) {
     ok(await T.converge(w) > 0, 'picture: synced', T.why(w));
     const onO = K.newEntries(beforeO, await o.e.trash(), rel).filter((t) => t.where === 'cloud');
     ok(onO.length === 1 && fs.statSync(inTrash(o, onO[0].id)).size === size, 'picture: the replaced picture is in Deleted files on the other computer, as it was', onO);
+  }
+  // settled by itself: while a pass that will settle a conflict runs, the Conflicts list doesn't show it (keptaside94's
+  // flake: the record was listed between the moment the pass wrote it and its auto-settle at the end of the same pass)
+  {
+    const { w, pc, mac } = await pair('autosettle');
+    const rel = 'kv/boards.json';
+    pc.write(rel, [{ id: 'b1', name: 'Flyers', updatedAt: 1, items: [] }]);
+    ok(await T.converge(w) > 0, 'auto-settle: first sync', T.why(w));
+    pc.auto = true; mac.auto = true;
+    mac.offline = true;
+    pc.edit(rel, (v) => { v[0].name = 'Flyers (PC)'; v[0].updatedAt = 2; });
+    for (let i = 0; i < 6; i++) await T.round(w);
+    mac.edit(rel, (v) => { v[0].name = 'Flyers (Mac)'; v[0].updatedAt = 3; });
+    mac.offline = false; mac.view.tick();
+    // the Mac's pass notices it and settles it; meanwhile the window asks for the conflicts again and again
+    const seen = []; let done = false;
+    const poll = (async () => { while (!done) { const l = await mac.e.conflicts(); if (l.some((c) => c.rel === rel)) seen.push(l.length); await new Promise((r) => setImmediate(r)); } })();
+    for (let i = 0; i < 8 && !(mac.e.status().aside || []).some((x) => x.rel === rel); i++) { w.clock.advance(2000); mac.view.tick(); await T.pass(mac); }
+    done = true; await poll;
+    const aside = (mac.e.status().aside || []).find((x) => x.rel === rel);
+    ok(Boolean(aside) && !(await mac.e.conflicts()).length, 'auto-settle: settled by itself, the other version kept aside', { aside, st: T.why(w) });
+    ok(!seen.length, 'auto-settle: the conflict it settles is never listed while its pass runs (nothing to click that the pass is about to settle)', seen.length);
   }
   // mixed: round 94 on one computer, this one on the other
   if (!oldEngine()) { console.log('(round 94\'s engine is not in this checkout: the mixed part is skipped)'); return; }

@@ -1187,7 +1187,11 @@ function createEngine(o) {
     await writeConflictRecord({ id: cid, rel, kind: 'json', copy: `${cid}.copy.json`, at: now(), by: machine.name, from: nameOf(from), ...sides(from, oursAt, theirsAt), fields: fields.slice(0, 20) });
     sum.conflicts += 1;
   }
-  async function writeConflictRecord(rec) { await atomicWrite(path.join(CONFL, `${rec.id}.json`), JSON.stringify(rec, null, 2)); }
+  async function writeConflictRecord(rec) { if (running && o.autoResolve?.()) settling.add(rec.id); await atomicWrite(path.join(CONFL, `${rec.id}.json`), JSON.stringify(rec, null, 2)); } // (round 95, aside95) settling: see conflicts below
+  // (round 95, aside95) the records a pass writes while conflicts settle by themselves are settled at the end of that
+  // same pass: not listed meanwhile (the Conflicts list showed them for that moment, and a choice made on one raced the
+  // pass's own settling of it). One the pass couldn't settle is listed once the pass is over.
+  const settling = new Set();
 
   async function moveToCloudTrash(rel, C) {
     const dir = path.join(TRASH, day(now()), ...rel.split('/').slice(0, -1));
@@ -1497,7 +1501,7 @@ function createEngine(o) {
       await stateQ; // (round 74) its state on disk before the pass counts as done
       return r;
     })();
-    try { return await running; } finally { running = null; }
+    try { return await running; } finally { running = null; settling.clear(); /* (round 95, aside95) */ }
   }
   async function passOnce(opts) {
     sum = counts(); pulledNow = []; texts = new Map(); hashed = new Map(); status.resumed = 0; status.bytes = 0;
@@ -2123,7 +2127,7 @@ function createEngine(o) {
   return {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
     laneIdle, freeable: afterLoad(freeable), free: wrote(afterLoad(free)), /* (round 73, syncmedia73) */ fix: wrote(afterLoad(fix)), woke: (ms) => { excuse(ms); needFull = 'wake'; if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => { needFull = 'set'; return Object.assign(o, patch); }, option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: listConflicts, aside: wrote(afterLoad(asideDo)), /* (round 78, guardloss78) */ resolve: wrote(afterLoad(resolve)), resolveAll: wrote(afterLoad(resolveAll)), preview, incoming, trash: listTrash, restore: wrote(afterLoad(restore)), guardWrite, relOfLocal, /* (round 75) after the state is read */
+    conflicts: async () => (await listConflicts()).filter((c) => !settling.has(c.id)), /* (round 95, aside95) */ aside: wrote(afterLoad(asideDo)), /* (round 78, guardloss78) */ resolve: wrote(afterLoad(resolve)), resolveAll: wrote(afterLoad(resolveAll)), preview, incoming, trash: listTrash, restore: wrote(afterLoad(restore)), guardWrite, relOfLocal, /* (round 75) after the state is read */
     scope: () => ({ ...scopeStats, need: needFull }), // (round 79) tests / the main side: the last pass's look
     ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); guardOurs.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); guardOurs.delete(r); } }, // (round 78) + guardOurs // (round 77, storeack77) since: when the reader began reading
     hasPulled: (rel) => pulledPrev.has(rel),

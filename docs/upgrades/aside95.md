@@ -124,6 +124,49 @@ the Conflicts list (`sync-conflicts.js`) and the compare view (`keptaside.js`) a
 neither version is called "This PC": both are named by their computers. Two computers with the same name are no
 longer mixed up.
 
+## A conflict sync is about to settle by itself is no longer listed meanwhile
+
+After the merge with labflake95, the `keptaside94` app check failed 2 of 3 runs at "kept aside: settled by itself"
+(auto-settle on): it found a conflict where it expected a version kept aside.
+
+**Cause (in the app, not new this round).** With auto-settle on, a pass that finds a field changed on both computers
+does two things. It writes the conflict record in the middle of the pass (`merge` → `saveConflict`). Then, at the very
+end of the same pass, after the journal, the machine record and the trash purge, it settles it (`resolveAll('auto')`).
+Between those two moments, `conflicts()` listed the record.
+
+The check polls `Sync.now()`, waits 600 ms, then reads the conflicts. A pass started by the file watcher in those
+600 ms (the Mac's edit landing in the cloud folder, the window's save) could be anywhere in that gap. On a loaded box
+the gap is longer, so the check saw the record that its own pass settled a moment later.
+
+The owner could see this too: the Conflicts list opened at that moment showed a conflict that vanished. A choice made
+on it raced the pass's own settling of the same file, so both wrote it.
+
+**Fix.** `sync-engine.js`, marked `(round 95, aside95)`, three lines:
+- the ids of records written during a pass while auto-settle is on are kept in `settling`;
+- the public `conflicts()` leaves them out;
+- the set is cleared when the pass ends, so one the pass couldn't settle is listed then.
+
+The engine's own `listConflicts` (used by `resolve` / `resolveAll` and the status count) is unchanged. The check is
+unchanged.
+
+**Proof.**
+- `dev/aside95-test.js` "auto-settle" polls `conflicts()` continuously while the noticing computer's pass runs (sync
+  simulator).
+  - Before the fix it saw the record 15–16 times mid-pass.
+  - After the fix: never, and the pass ends with the other version kept aside.
+- `keptaside94` under the lock, after the merge with labflake95 and this fix: 10 runs. "Kept aside: settled by itself"
+  passed in all 10, and 9 of the 10 runs passed whole. One run failed a different step, the preset's "Use the Mac's
+  instead" → 16 bars (it read 8, the version from before the Undo). It didn't come back in the other 9 runs.
+  - That step runs with auto-settle off, so this fix doesn't touch it.
+  - Its path (Keep this one = `resolve('mine')`, then Restore of the Deleted-files entry) is round 94's for a store
+    under 1 MB. Round 95 only adds one `stat` before Restore.
+  - The value it read is the check's own 8-bar item, unchanged (its `at` too). So the restore didn't land, or the old
+    text was written back. A Lab preset holder merging (`LabPresets.take`) would have stamped a new `at`.
+  - Not found yet; noted here for whoever sees it again.
+- Also passed after the fix: `sync72`, `syncpanel92`, `guardloss78`, `projaudit91-sync` and `sync` (app checks), and the
+  unit tests `aside95-test` (76), `sync72-test`, `sync-test`, `guardloss78-test`, `keptaside94-test`,
+  `twocomputers-test`, `devices90-test` and `packs89-test`.
+
 ## Two computers on different versions
 
 `dev/aside95-test.js` runs round 94's engine on one computer (from git, compiled next to this tree) and this one on the
@@ -189,6 +232,9 @@ untouched.
   `false` (small) runs the code as before.
 - **`restore`.** `o.asideBig?.form(src, tmp, ctx, { rel })` for a big JSON file. Then `flushed` and `renameRetry` run
   as before.
+- **`writeConflictRecord` / `pass` / the public `conflicts`.** `settling`: records a pass writes while auto-settle
+  is on aren't listed until that pass ends (it settles them itself at its end). The set is cleared in `pass()`'s
+  `finally`. `listConflicts` itself is unchanged.
 - **Not changed, for you to weigh:**
   - `guardWrite`'s synchronous whole read: an async guard for big stores, or no guard after a giant pull
     (`remember(rel, null)` → `guard: false`, as for the ≥ 16 MB local path).
