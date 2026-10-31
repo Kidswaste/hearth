@@ -103,6 +103,7 @@ const AUDIT = [
   ['sendpreview-core.js', 2, 'not-chat', 'pure: the chat it is handed (sendpreview.js hands a windowed one to the store thread)'],
   ['sendpreview.js', 8, 'thread', 'the history it re-reads from the store thread (chatCalc preview, round 86); calibration skips a windowed chat'],
   ['store.js', 7, 'not-chat', 'main process: chat files'],
+  ['keptaside-core.js', 1, 'not-chat', 'two versions of a chat sync kept (files read whole on the store thread, or a preview under 6 MB), compared (round 94)'],
   ['storework.js', 15, 'not-chat', 'store thread: chat files'],
   ['swarmlean.js', 3, 'throws', "a mission's estimate sums every text (in a try: no estimate)"],
   ['sync-conflicts.js', 2, 'not-chat', 'two versions of a chat from sync'],
