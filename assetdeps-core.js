@@ -163,7 +163,9 @@ const AssetDepsCore = (() => {
 
   // ---------- the plan ----------
   // refuse(path): a file never carried (projbundle-core.js secretFile: keys, credentials, dotfolders): named instead
-  function plan(mainAbs, { fs, path, name = null, maxLen = 220, maxDepth = 14, refuse = null } = {}) {
+  // (round 99, labmodels99) relOk(segs): a place the caller can't use (the Lab's copy in refs/: a name sync never carries,
+// sync-merge.js localOnly) is treated as a name that can't travel: moved to hearth-files/, or named when it still can't
+function plan(mainAbs, { fs, path, name = null, maxLen = 220, maxDepth = 14, refuse = null, relOk = null } = {}) {
     // (its own name: the caller's safe one, as before this round: nothing names the model itself)
     const main = { abs: mainAbs, kind: kindOf(mainAbs), vpath: [name || safeSeg(base(mainAbs), 120)], depth: 0, refs: [], main: true };
     const nodes = [main]; const byAbs = new Map([[ciKey(path.resolve(mainAbs)), main]]);
@@ -216,7 +218,7 @@ const AssetDepsCore = (() => {
         const seen = new Map();
         for (const n of live) {
           const f = finalOf(n);
-          const ok = f.length && !f.includes('..') && f.every(segOk) && f.join('/').length <= maxLen && f.length <= maxDepth;
+          const ok = f.length && !f.includes('..') && f.every(segOk) && f.join('/').length <= maxLen && f.length <= maxDepth && (!relOk || n.main || relOk(f));
           if (!ok && !n.main) { bad.add(n); continue; }
           const key = ciKey(f.join('/'));
           if (seen.has(key) && !n.main) { bad.add(n); continue; }
@@ -224,7 +226,7 @@ const AssetDepsCore = (() => {
         }
       }
       if (!bad.size) break;
-      for (const n of bad) { if (n.moved) { n.drop = true; missing.push({ name: n.shown, of: base(n.parent?.abs || mainAbs), why: 'its place in the project file is too deep' }); } else move(n); }
+      for (const n of bad) { if (n.moved) { n.drop = true; missing.push({ name: n.shown, of: base(n.parent?.abs || mainAbs), why: relOk && finalOf && !relOk(finalOf(n)) ? 'its name never syncs (a temporary or system file\'s name)' : 'its place in the project file is too deep' }); } else move(n); }
       finalOf = null;
     }
     if (!finalOf) return { main: { rel: main.vpath.join('/') }, files: [], missing: [...missing, ...nodes.filter((n) => !n.main && !n.drop).map((n) => ({ name: n.shown, of: base(n.parent.abs), why: 'it couldn\'t be placed' }))], moved: 0 };

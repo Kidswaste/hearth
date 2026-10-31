@@ -176,7 +176,12 @@ const DragDrop = (() => {
     if (alt && pic && typeof LookMatch !== 'undefined') { LookMatch.offerDrop(pic, x, y); last.drop = { zone: 'lab', steps: ['look'], line: '' }; return last.drop; }
     const { cmd, d } = await labApi();
     const songLoaded = Boolean(d.media?.loaded && !d.media?.isClock);
-    const plan = C.planLab(entries, { songLoaded });
+    // (round 99, labmodels99) a folder (a "glTF Separate" export) adds the models in it; a .gltf dropped with its .bin
+    // and pictures (an .obj with its .mtl) adds the model once: those files come with it (labmodels-core.js groupDrop)
+    let g = null;
+    if (typeof LabModelsCore !== 'undefined') { try { g = await LabModelsCore.groupDrop(entries, { list: (dir) => window.hub.fs.list(dir, { recursive: true, depth: 6 }), uses: (ps) => window.hub.refUses?.(ps) || {} }); } catch { g = null; } }
+    const plan = C.planLab(g ? g.add : entries, { songLoaded });
+    if (g) for (const f of g.folders) if (f.why) plan.skipped.push({ name: f.name, why: f.why });
     const done = []; const layers = [];
     for (const s of plan.steps) {
       const e = s.e; const name = C.nice(e.name || C.baseName(e.path));
@@ -198,8 +203,9 @@ const DragDrop = (() => {
       } catch (err) { plan.skipped.push({ name, why: `${name}: ${err.message}` }); }
     }
     await Promise.all(layers.map((p) => p.catch(() => null)));
+    for (const w of g?.with || []) done.push(`${w.model}: ${w.n === 1 ? 'its file came' : `its ${w.n} files came`} with it`); // (round 99, labmodels99)
     const line = C.summary(plan, done.length > 3 ? [`${done.length} added to this scene`] : done);
-    last.drop = { zone: 'lab', steps: plan.steps.map((s) => s.do), skipped: plan.skipped.map((s) => s.why), more: plan.more, done, line };
+    last.drop = { zone: 'lab', steps: plan.steps.map((s) => s.do), skipped: plan.skipped.map((s) => s.why), more: plan.more, done, line, ...(g ? { with: g.with, folders: g.folders } : {}) };
     const picOnly = pic && plan.steps.every((s) => s.do === 'picture');
     say(line, { type: plan.skipped.length && !done.length ? 'error' : 'info',
       action: picOnly && typeof LookMatch !== 'undefined' ? { label: '🎨 Match its look', fn: () => LookMatch.offerDrop(pic, x, y) } : undefined });

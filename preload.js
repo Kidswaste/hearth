@@ -62,6 +62,7 @@ contextBridge.exposeInMainWorld('hub', {
   parisPhotos: { put: call('parisphotos:put'), dir: call('parisphotos:dir'), trash: call('parisphotos:trash'), heic: call('parisphotos:heic'), scan: call('parisphotos:scan') }, // (round 69, photos69) My Paris photos (parisphotosmain.js)
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
+  importRefWhole: call('refs:importWhole'), refUses: call('refs:uses'), // (round 99, labmodels99)
   attachmentsDir: call('attachments:dir'),
   getUsage: call('usage:get'),
   getTokenStats: call('usage:stats'),

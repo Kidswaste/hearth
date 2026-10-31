@@ -193,9 +193,13 @@ const OPS = {
   // that isn't such a model, or can't be read: null, it travels alone as before)
   deps({ files = [] } = {}) {
     const AD = require('./assetdeps-core');
-    return files.map(({ file, name, maxLen, maxDepth }) => {
+    // (round 99, labmodels99) syncSafe: the Lab's copy in refs/ (synced to the other computer): a name sync never
+    // carries (sync-merge.js localOnly: a .tmp / .part, Thumbs.db, a venv/ folder…) is moved or named, never left behind
+    const S = files.some((f) => f.syncSafe) ? require('./sync-merge') : null;
+    return files.map(({ file, name, maxLen, maxDepth, syncSafe }) => {
       if (!AD.isModel(file)) return null;
-      try { return AD.plan(file, { fs, path, name, maxLen, maxDepth, refuse: P.secretFile }); } catch { return null; }
+      const relOk = syncSafe && S ? (segs) => !S.localOnly(['refs', '0-model', ...segs].join('/')) : null;
+      try { return AD.plan(file, { fs, path, name, maxLen, maxDepth, refuse: P.secretFile, relOk }); } catch { return null; }
     });
   },
 };

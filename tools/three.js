@@ -1962,7 +1962,16 @@ const ThreeLab = (() => {
     const assetCacheOn = () => store.get('three.assetCache', true) !== false; // (a dev switch for before / after: dev/checks/labload75.js)
     const heldNow = () => (assetCacheOn() && box.ready && pageHeld.n != null && pageHeld.n === pageN ? pageHeld.sigs : null);
     const refHeld = (r) => Boolean(heldNow()?.has(refSigs.get(r.id)));
-    const refReady = (r) => refBytes.has(r.id) || refHeld(r);
+    // (round 99, labmodels99) a model copied whole (data/refs/<time>-<name>/: a .gltf with its .bin and pictures, an .obj
+    // with its .mtl, LabModelsCore.folderOf): its other files go to the preview with it, where its loaders find them
+    // (three-sandbox.html refModelResolve), each kept in the page's asset cache by its own sig; the model's sig covers
+    // them all (a picture changed on disk: the model is parsed again)
+    const refFiles = new Map(); // id → { main: rel, list: [{ rel, path, size, sig }] }
+    const fileBytes = new Map(); // a file's sig → its bytes (until the page holds it)
+    const FILES_MAX = 400 * 1048576;
+    let refAdded = null; // the last reference added: its files and what it came without (api.refAdded)
+    const filesReady = (r) => { const fl = refFiles.get(r.id); if (!fl) return true; const held = heldNow(); return fl.list.every((x) => fileBytes.has(x.sig) || Boolean(held?.has(x.sig))); };
+    const refReady = (r) => (refBytes.has(r.id) || refHeld(r)) && filesReady(r);
     let refsHold = null; // (round 48, labstartfast) a scene switch waiting for its references' bytes before its run (openSketch)
     const refsOf = () => (current ? (refsAll[current.id] ||= []) : []);
     const saveRefs = saver(() => { dispatchEvent(new Event('hearth:lab-refs')); return kvOk.has('three-refs') ? window.hub.kvSet('three-refs', refsAll) : null; }, 300); // (round 42: filewatch follows them)
@@ -1981,6 +1990,21 @@ const ThreeLab = (() => {
       while (taken.has(out)) { out = `${k}${i}`; i += 1; }
       return out;
     }
+    // (round 99, labmodels99) the folder's files (the model's own copy: what the copy wrote, or what sync brought)
+    const hashStr = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
+    async function listRefFiles(r) {
+      const f = r.kind === 'model' && typeof LabModelsCore !== 'undefined' ? LabModelsCore.folderOf(r.path) : null;
+      if (!f) { refFiles.delete(r.id); return null; }
+      let all; try { all = await window.hub.fs.list(f.dir, { recursive: true, depth: 14 }); } catch { return refFiles.get(r.id) || null; } // (a listing that failed: what it had)
+      const mainKey = LabModelsCore.key(r.path); let total = 0;
+      const list = (all || []).filter((x) => x && !x.isDir && x.path && LabModelsCore.key(x.path) !== mainKey)
+        .map((x) => ({ rel: String(x.path).slice(f.dir.length + 1).split(/[\\/]+/).join('/'), path: x.path, size: x.size || 0, sig: `${x.path}|${x.size || 0}|${Math.round(x.mtime || 0)}` }))
+        .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0)).filter((x) => (total += x.size) <= FILES_MAX);
+      const fl = { main: f.rel, list };
+      refFiles.set(r.id, fl);
+      return fl;
+    }
+    const withFiles = (r, sig) => { const fl = refFiles.get(r.id); return sig && fl?.list.length ? `${sig}+${fl.list.length}-${hashStr(fl.list.map((x) => x.sig).join('\n'))}` : sig; };
     async function addRef(src, { key, sketchId = null } = {}) {
       // (round 72, labbridge72) sketchId: another scene's references (a chat's scene that runs backstage): saved with that
       // scene, its bytes go to the preview when it's opened
@@ -1997,9 +2021,13 @@ const ThreeLab = (() => {
       if (st.size > 400 * 1048576) throw new Error(`${name} is over 400 MB`);
       const existing = list().find((r) => r.name === name && r.size === st.size);
       if (existing) return existing;
-      const path = await window.hub.importRef(src);
+      // (round 99, labmodels99) a model of several files: its folder copied whole; a file it names that isn't there is said
+      const whole = kind === 'model' && window.hub.importRefWhole && /[.](gltf|glb|obj)$/i.test(name) ? await window.hub.importRefWhole(src) : null;
+      const path = whole ? whole.path : await window.hub.importRef(src);
       if(!other&&current?.id!==owner)throw new Error('Sketch changed while importing; the copied asset was kept safely');
-      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name, null, list()), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }) }; // (round 42) src: the original, followed when you save it again
+      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name, null, list()), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }), ...(whole?.files > 1 ? { files: whole.files } : {}), ...(whole?.missing?.length ? { missing: whole.missing.slice(0, 20) } : {}) }; // (round 42) src: the original, followed when you save it again
+      if (whole?.missing?.length) toast(`${name} came without ${whole.missing.length === 1 ? 'a file it uses' : `${whole.missing.length} files it uses`}: ${whole.missing.slice(0, 3).join(' · ')}${whole.missing.length > 3 ? ` (and ${whole.missing.length - 3} more)` : ''}. Put ${whole.missing.length === 1 ? 'it' : 'them'} next to it and add it again.`, { timeout: 9000 });
+      refAdded = { name, files: whole?.files || 1, missing: whole?.missing || [], used: whole?.used || [] }; // (round 99: dev/checks/labmodels99.js)
       list().push(r);
       saveRefs();
       if (other) return r;
@@ -2017,6 +2045,17 @@ const ThreeLab = (() => {
       if (!r?.path || SceneSafeCore.refShared(r.path, { refsAll, extras, except: r })) return;
       const dir = /^(.*[\\/]refs[\\/]\d{10,}-[^\\/]+)[\\/]/.exec(r.path)?.[1];
       window.hub.fs.trash([dir && !SceneSafeCore.refShared(dir, { refsAll, extras, except: r, under: true }) ? dir : r.path]).catch(() => {});
+    }
+    // (round 99, labmodels99) several files or folders at once (the References dialog's pick and drop): a folder adds the
+    // models in it; a file a model of the same drop names (its .bin, .mtl, pictures) comes with the model, not on its own
+    async function addRefs(paths) {
+      const entries = await Promise.all((paths || []).map(async (p) => { const st = await window.hub.fs.stat(p).catch(() => null); return { name: String(p).split(/[\\/]/).pop(), path: p, isDir: Boolean(st?.isDir) }; }));
+      const g = await LabModelsCore.groupDrop(entries, { list: (d) => window.hub.fs.list(d, { recursive: true, depth: 6 }), uses: (ps) => window.hub.refUses?.(ps) || {} });
+      for (const f of g.folders) if (f.why) toast(f.why, { type: 'error' });
+      const added = [];
+      for (const e of g.add) { try { added.push(await addRef(e.path)); } catch (err) { toast(err.message, { type: 'error' }); } }
+      if (g.with.length) toast(g.with.map((w) => `${w.model}: ${w.n === 1 ? 'its file came' : `its ${w.n} files came`} with it`).join(' · '), { timeout: 4000 });
+      return { added, with: g.with, folders: g.folders };
     }
     function removeRef(r) {
       refsAll[current.id] = refsOf().filter((x) => x !== r);
@@ -2042,11 +2081,21 @@ const ThreeLab = (() => {
       const mine = new Set(refsOf().map((r) => r.id));
       for (const id of [...refBytes.keys()]) if (!mine.has(id)) refBytes.delete(id);
       for (const id of [...refSigs.keys()]) if (!mine.has(id)) refSigs.delete(id);
+      // (round 99, labmodels99) a model's other files: listed, the ones another scene's model used let go
+      for (const id of [...refFiles.keys()]) if (!mine.has(id)) refFiles.delete(id);
+      await Promise.all(refsOf().map((r) => listRefFiles(r).catch(() => null)));
+      if (current?.id !== owner || workspaceReleased) return false;
+      { const keep = new Set([...refFiles.values()].flatMap((fl) => fl.list.map((x) => x.sig))); for (const k of [...fileBytes.keys()]) if (!keep.has(k)) fileBytes.delete(k); }
       // (round 75, labload75) each file's sig (path | size | modified) first: a file the page holds isn't read at all
-      if (assetCacheOn()) await Promise.all(refsOf().map(async (r) => { try { const st = await window.hub.fs.stat(r.path); const sig = st && !st.error ? `${r.path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}` : null; if (sig && refSigs.get(r.id) !== sig) { refSigs.set(r.id, sig); if (refBytes.has(r.id) && st.size !== refBytes.get(r.id).byteLength) refBytes.delete(r.id); } } catch { /* file gone */ } }));
+      if (assetCacheOn()) await Promise.all(refsOf().map(async (r) => { try { const st = await window.hub.fs.stat(r.path); const sig = withFiles(r, st && !st.error ? `${r.path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}` : null); if (sig && refSigs.get(r.id) !== sig) { refSigs.set(r.id, sig); if (refBytes.has(r.id) && st.size !== refBytes.get(r.id).byteLength) refBytes.delete(r.id); } } catch { /* file gone */ } }));
       // (round 48, labstartfast) read at once, not one after the other
       await Promise.all(refsOf().filter((r) => !refReady(r)).map(async (r) => {
-        try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); if(current?.id!==owner||workspaceReleased)return; refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ }
+        if (!(refBytes.has(r.id) || refHeld(r))) { try { const u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); if(current?.id!==owner||workspaceReleased)return; refBytes.set(r.id, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { /* file gone */ } }
+        // (round 99, labmodels99) the model's other files (the ones the page doesn't hold), side by side
+        const held = heldNow();
+        await Promise.all((refFiles.get(r.id)?.list || []).filter((x) => !fileBytes.has(x.sig) && !held?.has(x.sig)).map(async (x) => {
+          try { const u8 = await window.hub.fs.read(x.path, { encoding: 'buffer', maxBytes: FILES_MAX }); if (current?.id !== owner || workspaceReleased) return; fileBytes.set(x.sig, u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); added = true; } catch { fileBytes.set(x.sig, new ArrayBuffer(0)); /* gone meanwhile: sent empty (its loader then says which) */ }
+        }));
       }));
       if(current?.id===owner&&!workspaceReleased)sendRefs();
       return added;
@@ -2054,7 +2103,7 @@ const ThreeLab = (() => {
     // (round 39, labmemory) the same references and palette as the page already has aren't copied over again (each
     // scene switch sent every file whole: a video reference was copied twice per switch); a new page asks afresh
     let refsSig = null;
-    const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refSigs.get(r.id) || refBytes.get(r.id)?.byteLength]), current?.palette || []]);
+    const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refSigs.get(r.id) || refBytes.get(r.id)?.byteLength, ...(refFiles.get(r.id)?.list || []).map((x) => x.sig)]), current?.palette || []]);
     // (round 42, filewatch) a reference changed on disk (saved again in Photoshop, replaced in Finder; from: its original,
     // copied over Hearth's copy first): read again and swapped into the textures using it in place, no re-run; a model /
     // sound / data reference runs the scene again (in place). Another scene's is read when that scene opens.
@@ -2077,6 +2126,14 @@ const ThreeLab = (() => {
     }
     // (round 75, labload75) fresh: a run in a page that just started; a file the last page held (so not read) is read
     // now, and the scene runs again once it's here
+    // (round 99, labmodels99) a model copied whole: where it sits in its folder and its other files (each with its sig; its
+    // bytes unless the page holds it)
+    function refFilesItem(r, held) {
+      const fl = refFiles.get(r.id);
+      if (!fl?.list.length) return {};
+      const on = assetCacheOn();
+      return { main: fl.main, files: fl.list.map((x) => ({ rel: x.rel, mime: MIMES[x.rel.split('.').pop().toLowerCase()] || '', ...(on ? { sig: x.sig } : {}), ...(on && held?.has(x.sig) ? {} : { buffer: (fileBytes.get(x.sig) || new ArrayBuffer(0)).slice(0) }) })) };
+    }
     function sendRefs({ fresh = false } = {}) {
       const refs = refsOf().filter((r) => refReady(r));
       const missing = refsOf().filter((r) => !refReady(r) && refSigs.has(r.id));
@@ -2085,7 +2142,7 @@ const ThreeLab = (() => {
       if (sig === refsSig && refs.length) return;
       refsSig = sig;
       const held = heldNow(); const warm = layersOf().map((L) => L.code).join('\n');
-      const items = refs.map((r) => { const s = assetCacheOn() ? refSigs.get(r.id) : null; return { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', ...(s ? { sig: s, ...(warm.includes(r.key) ? { warm: true } : {}) } : {}), ...(s && held?.has(s) ? {} : { buffer: refBytes.get(r.id).slice(0) }) }; });
+      const items = refs.map((r) => { const s = assetCacheOn() ? refSigs.get(r.id) : null; return { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', ...(s ? { sig: s, ...(warm.includes(r.key) ? { warm: true } : {}) } : {}), ...(s && held?.has(s) ? {} : { buffer: refBytes.get(r.id).slice(0) }), ...refFilesItem(r, held) }; });
       box.send({ type: 'refs', items, palette: current?.palette || [] });
     }
     const refsBtn = btn('🖼 References', 'Images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.', () => openRefs());
@@ -2097,13 +2154,13 @@ const ThreeLab = (() => {
       refsGrid = el('div', { class: 'refs-grid' });
       const add = btn('＋ Add files…', 'Pick images, videos, models…', async () => {
         const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'References for this sketch' });
-        for (const p of paths) { try { await addRef(p); } catch (err) { toast(err.message, { type: 'error' }); } }
+        await addRefs(paths); // (round 99, labmodels99: a model's .bin / pictures picked with it come with it)
       }, 'primary small');
       refsDlg = el('dialog', { class: 'ui-modal refs-dialog' },
         el('div', { class: 'refs-head' }, el('h3', { text: `References · ${current?.name || ''}` }), el('span', { class: 'spacer' }), add, btn('Close', '', () => refsDlg.close())),
         el('p', { class: 'muted small', text: 'Drop files here. In code: refTexture(\'name\') for images and videos, refs.name (a URL) for models, sounds and data. Or just ask the director: "use the logo on the cube".' }),
         refsGrid);
-      dropZone(refsDlg, async (files) => { for (const f of files) { try { await addRef(window.hub.pathForFile(f)); } catch (err) { toast(err.message, { type: 'error' }); } } }, { hint: 'Drop to add references' });
+      dropZone(refsDlg, (files) => addRefs(files.map((f) => window.hub.pathForFile(f)).filter(Boolean)), { hint: 'Drop to add references' }); // (round 99, labmodels99: a folder, or a model with its files)
       refsDlg.addEventListener('close', () => { refsDlg.remove(); refsDlg = null; });
       document.body.append(refsDlg);
       renderRefsDlg();
@@ -2119,7 +2176,7 @@ const ThreeLab = (() => {
         const keyIn = el('input', { class: 'refs-key', value: r.key, spellcheck: false, title: 'The name code uses for it' });
         keyIn.addEventListener('change', () => { keyIn.value = renameRef(r, keyIn.value); renderRefsDlg(); });
         return el('div', { class: 'refs-card' }, el('div', { class: 'refs-thumb' }, thumb), keyIn,
-          el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}` }),
+          el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}${r.files > 1 ? ` · ${r.files} files` : ''}${r.missing?.length ? ` · ⚠ ${r.missing.length} missing` : ''}`, title: r.missing?.length ? `It came without: ${r.missing.join(' · ')}` : '' }), // (round 99, labmodels99)
           el('div', { class: 'refs-actions' },
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
             btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
@@ -2137,6 +2194,8 @@ const ThreeLab = (() => {
       if (r.kind === 'image') Native.attachPaths(agent.id, [r.path]);
     }
     api.addRef = (p, o) => addRef(p, o);
+    api.refAdded = () => refAdded; // (round 99, labmodels99)
+    api.addRefs = (paths) => addRefs(paths);
     api.refsFor = (id) => (refsAll[id] || []).slice(); // (round 72) a scene's references, on screen or not
     // (round 73, labtools73) one taken out of a scene, on screen or not (a backstage chat's references remove, a tool call
     // undone as a whole): the file goes to the Trash like the References dialog's remove
@@ -3388,7 +3447,7 @@ const ThreeLab = (() => {
       if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') fbOn = false; // (round 64, framebar64) a fresh page measures nothing until the stats line shows again
       if (msg.type === 'ready') { refsSig = null; pageN = msg.n ?? null; pageHeld = { n: null, sigs: new Set() }; } // (round 39, labmemory) a fresh page has no references yet · (round 75) nor any kept file
-      if (msg.type === 'refs-held') { if (msg.n === pageN) { pageHeld = { n: msg.n, sigs: new Set(msg.sigs || []) }; for (const r of refsOf()) if (pageHeld.sigs.has(refSigs.get(r.id))) refBytes.delete(r.id); } return; } // (round 75, labload75: the window keeps no copy of what the page holds)
+      if (msg.type === 'refs-held') { if (msg.n === pageN) { pageHeld = { n: msg.n, sigs: new Set(msg.sigs || []) }; for (const r of refsOf()) if (pageHeld.sigs.has(refSigs.get(r.id))) refBytes.delete(r.id); for (const k of [...fileBytes.keys()]) if (pageHeld.sigs.has(k)) fileBytes.delete(k); /* (round 99, labmodels99) */ } return; } // (round 75, labload75: the window keeps no copy of what the page holds)
       if (msg.type === 'refs-need') { if (msg.n === pageN) { for (const x of msg.sigs || []) pageHeld.sigs.delete(x); refsSig = null; const want = current; loadRefBytes().then(() => { if (current === want) run({ sync: true }); }).catch(() => {}); } return; }
       if (msg.type === 'asset-progress') return;
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
@@ -5742,6 +5801,8 @@ ${frag}\`,
     // Files dropped in the Three Director's chat become references of the open sketch.
     // (round 72, labbridge72) o.sketchId: that scene's references (a chat's scene backstage), not the one on screen
     addReference: (p, o = {}) => (api.addRef ? api.addRef(p, o) : Promise.reject(new Error('Open the Three.js Lab first'))),
+    addReferences: (paths) => (api.addRefs ? api.addRefs(paths) : Promise.reject(new Error('Open the Three.js Lab first'))), // (round 99, labmodels99) a folder, or a model with its files
+    refAdded: () => api.refAdded?.() || null, // (round 99, labmodels99) the last reference added: its files, what it came without
     refsOf: (id) => api.refsFor?.(id) || [],
     removeReference: (refId, o = {}) => (api.removeRef ? api.removeRef(refId, o) : false), // (round 73)
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),

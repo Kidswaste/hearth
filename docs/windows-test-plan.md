@@ -168,6 +168,17 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   its textures. Delete the `.bin` on the PC first and export again: the toast's **What was skipped** names
   `….bin (used by ….gltf: not on this computer)`. Then the other way (Mac → PC).
 
+## 13. A model made of several files in the Lab, PC → Mac (round 99, labmodels99)
+- On the PC, export a model from Blender as **glTF Separate (.gltf + .bin + textures)** into a folder with a `textures`
+  sub-folder (a texture name with a space and a capital, e.g. `Wood Grain.PNG`). Drag **the whole folder** onto the Lab
+  preview: one 🧊 model layer, with its textures (not grey), and the note "…: its N files came with it". Drag the
+  `.gltf`, the `.bin` and the textures selected together: the same, one model. In References, **Show** on it: Hearth's
+  copy sits in `data\refs\<number>-<name>\` with the `.bin` and `textures\` next to it. With sync on, open the same
+  scene on the Mac (OneDrive keeping files online-only on the PC, iCloud optimised storage on the Mac if you can): the
+  model shows with its textures there too. Delete the `.bin` and add the `.gltf` again: the note says
+  "….bin isn't next to ….gltf". Remove the reference on the PC: its whole folder is in the Recycle Bin (and in the Mac's
+  sync **Deleted files**).
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
