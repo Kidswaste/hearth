@@ -111,6 +111,9 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
       return 1; })()`).catch(() => null);
     // --shot: a picture of the splash (with --hold: held up past the "taking longer" hint, set by the warm-up launch)
     if (hold === 'set') await c.evaluate("localStorage.setItem('splash.hold', '1')");
+    // (round 94, labload94) --local k=v[,k=v]: localStorage keys set in every launch's page (they hold for the next
+    // launch: the Lab's start mode, 'lazy.lab.mode' = calm, measures a start of someone who opens the Lab most times)
+    for (const kv of String(opt('--local', '')).split(',').filter(Boolean)) { const [k, v] = kv.split('='); await c.evaluate(`localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v ?? '')}); 1`).catch(() => null); }
     if (shot) {
       if (hold) await wait(4200);
       else for (let i = 0; i < 200 && !(await c.evaluate("Boolean(document.querySelector('#splash svg'))").catch(() => false)); i++) await wait(5);
