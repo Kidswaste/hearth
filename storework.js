@@ -1033,6 +1033,9 @@ const OPS = {
   },
   forget({ file }) { written.delete(file); merged.delete(file); bigs.delete(file); calcs.delete(file); drop(file); if (findIdx) findIdx.stale(file); return true; },
   ping() { return { chats: index.size, textChars }; },
+  // (round 98, syncrace98; tests only: behind HEARTH_TEST_STORE_HOLD, never set by the app) this thread held until the
+  // test lets it go (sab[0] = 1, ≤ 20 s), so a save handed to it waits while sync writes the same store
+  _hold({ sab }) { if (!process.env.HEARTH_TEST_STORE_HOLD || !sab) return false; Atomics.wait(new Int32Array(sab), 0, 0, 20000); return true; },
   // (round 93, perf93) tokenaudit's one-time seed of the tool-use log (tokenauditmain.js seedSync), off the main thread
   toolSeed({ dir, days, now }) { return require('./tokenauditmain').seedSync(dir, days, now); },
   // (round 91, longrun91; tests only: asked only by power:test { threadMem } behind HEARTH_TEST_SAVE_DIR) this thread's
