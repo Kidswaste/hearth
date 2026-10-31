@@ -136,7 +136,11 @@ own project when it can't finish, and writes no `kv/workbench-<id>.json` it does
 (`sync-engine.js`, `store.js`, the StoreAck paths) nor the creative-direction session's were touched.
 
 ## Tests run (final code)
-See the commit message of the last commit of this round for the exact list and results.
+- App checks under the run lock: `bundle98` (14/14), `labproj97`, `projbundle`, `projaudit91`, `projects`,
+  `projbig85` (PROJBIG85=1), `labboot`, `lazy`: pass.
+- `unit:bundle98-test` (86/86), `unit:labproj97-test`, `unit:projbundle-test`, `unit:projbig85-test`,
+  `unit:scenesafe-test`, `unit:datasafe-scan`, `unit:winmac-test`, `unit:errorcalm-scan`, `unit:storeack-scan`,
+  `unit:chatsafe-scan`, `unit:boot-test` (first screen 1686 / 1696 KB, unchanged), `unit:lazymanifest-test`: pass.
 
 ## For the patch notes
 - A 3D model made of several files (a `.gltf` with its `.bin` and texture pictures, or an `.obj` with its `.mtl`) now
