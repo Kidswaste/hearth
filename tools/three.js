@@ -4558,6 +4558,9 @@ ${code}
         store.set('three.presetsKnown', r.presetsKnown);
         if (r.kvChanged) saveKv();
         if (r.mineChanged.size) dispatchEvent(new CustomEvent('hearth:lab-mine', { detail: { kinds: [...r.mineChanged] } }));
+        // (round 94, keptaside94) a song's ⚡ triggers changed on both computers at once: this computer's stay, the other
+        // one became a trigger preset — said, with where to find it (before: nothing told him)
+        if (r.aside?.length) { const song = (a) => String(a.key).split(/[\\/]/).pop().replace(/\.[^.]+$/, '').slice(0, 28); toast(`Your other computer changed the ⚡ triggers of ${r.aside.slice(0, 2).map((a) => `“${song(a)}”`).join(' and ')}${r.aside.length > 2 ? ` and ${r.aside.length - 2} more` : ''} at the same time. Yours stay; its setup is kept as the trigger preset “${song(r.aside[0])} (other setup)”, to load from the trigger presets any time.`, { timeout: 12000 }); }
         return r;
       }
       SA?.hold(KV, { name: 'Lab presets', saver: saveKv, read: () => SA.kv(KV, null),

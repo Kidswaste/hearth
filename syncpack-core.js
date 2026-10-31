@@ -217,7 +217,7 @@ function take(fs, o) {
   if (hm === O.h && !lost && !confl) return { same: true, hm, sig };
   if (hm === T.h) { const lr = BC.localFromCloud(T, o.ctx, S, pretty); out = lr.out; } // (the same chat as theirs: taken as they wrote it, so both settle on one text)
   if (lost && o.trash) { // the losing side's whole version, in this computer's Deleted files (sync-aside notes it)
-    const d = day(o.now || Date.now()); const name = `${crypto.randomBytes(3).toString('hex')}-${path.basename(o.file)}`;
+    const d = day(o.now || Date.now()); const name = `${crypto.randomBytes(4).toString('hex')}-${path.basename(o.file)}`; // (round 94, keptaside94) 8 hex like the engine's: Restore takes it off again (6 left a second chat file "abc123-<id>.json")
     const rel = `${d}/chats/${name}`;
     try { atomic(fs, path.join(o.trash, d, 'chats', name), Buffer.from(lost.text)); lost.trash = `here:${rel}`; } catch (err) { return { wait: `aside-${err.code || 'failed'}` }; } // (kept first, or nothing changes)
   }

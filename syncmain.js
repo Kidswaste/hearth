@@ -7,6 +7,7 @@
 //        sync:download · sync:ack (rels?) · sync:preview (id)        events → 'sync:status', 'sync:pulled'
 //        (round 73, syncmedia73) sync:kinds (id, on) · sync:freeable · sync:free (rels)
 //        (round 74, synchard74) sync:fix (rel, how): the sync panel's fix buttons for a file that can't sync
+//        (round 94, keptaside94) sync:keepCopy · sync:keepTheirs · sync:putAway · sync:chatDiff (keptasidemain.js)
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -488,6 +489,9 @@ function register(ipcMain, win, o) {
     if (r?.ok) schedule(300, 'fix');
     return r;
   });
+  // (round 94, keptaside94) the compare view's helpers: copies into Deleted files before a choice and a very long
+  // chat's differing messages (keptasidemain.js)
+  require('./keptasidemain').register(h, { engine: () => engine, dataDir: () => opts.dataDir, store: opts.store, schedule: (ms, why) => schedule(ms, why) });
   start();
 }
 // before the window opens: the first pass gets a moment, so a fresh start shows what the other computer did

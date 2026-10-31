@@ -83,11 +83,12 @@ await section('rename both', async () => {
   const row = document.querySelector('.sync-panel .sp-aside');
   step('the sync panel: "Mac\'s version of Projects kept aside — compare"', /kept aside/.test(row?.textContent || '') && /project/i.test(row?.textContent || ''), row?.textContent);
   if (row) {
+    // (round 94, keptaside94) Compare… opens the shared compare view (both in full); Keep both is there too
     await click(row.querySelector('.sp-aside-compare'));
-    await until(() => document.querySelector('.sync-panel .sp-aside .sp-sides'), 6000);
-    const sides = document.querySelector('.sync-panel .sp-aside .sp-sides')?.textContent || '';
+    await until(() => document.querySelector('dialog.ka-view[open] .ka-pair'), 8000);
+    const sides = document.querySelector('dialog.ka-view[open] .ka-main')?.textContent || '';
     step('Compare shows both names', /Neon \(Mac\)/.test(sides) && /Neon \(PC\)/.test(sides), sides.slice(0, 300));
-    await click(document.querySelector('.sync-panel .sp-aside .sp-aside-both'));
+    await click(document.querySelector('dialog.ka-view[open] .ka-both'));
     await until(() => /Neon \(PC\).*Neon \(Mac\)/.test(Projects.get(home.id)?.name || ''), 8000);
     const twins = Projects.all().filter((p) => /Neon/.test(p.name));
     step('Keep both: ONE project named with both (no second project sharing its chat)', twins.length === 1 && /Neon \(PC\) \/ Neon \(Mac\)/.test(twins[0].name), twins.map((p) => [p.id, p.name]));

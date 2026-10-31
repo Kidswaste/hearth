@@ -72,10 +72,10 @@ const Sync = (() => {
     if (blockedN() && !st.conflicts && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} to fix`; // (round 74, synchard74) (short: the rail is narrow; its name says "can't sync — see why")
     if (s === 'conflict') return st.conflicts ? `⚠ ${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}` : st.state === 'held' ? '⚠ Review' : '⚠ Problem';
     if (s === 'syncing') return st.state === 'pending' && st.pending ? `↻ ${n} waiting` : '↻ Syncing';
-    return '✓ Synced';
+    return asideN() ? `◐ ${asideN()} to compare` : '✓ Synced'; // (round 94, keptaside94) a version kept aside shows in the rail too
   };
   const glyphOf = () => chipOf().slice(0, 1);
-  const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes' };
+  const KV_NAMES = { 'three-sketches': 'Lab scenes', boards: 'Mood boards', notes: 'Notes', prompts: 'Prompts', 'video-cuts': 'Video edits', 'chat-scenes': 'Chat scenes', 'three-lab-extras': 'Lab looks and songs', 'chat-meta': 'Chat tags and folders', projects: 'Projects', 'three-beatmaps': 'Beat grids', 'video-notes': 'Video notes', 'lab-presets': 'Lab presets and trigger setups' }; // (round 94) + lab-presets
   function nameOf(rel) {
     let m = /^chats\/(.+)\.json$/.exec(rel);
     if (m) { const c = (H.chats || []).find((x) => x.id === m[1]); return c ? `Chat “${c.title}”` : 'A chat'; } // (round 92) never its id
@@ -167,7 +167,7 @@ const Sync = (() => {
   }
 
   // ---------- actions ----------
-  async function refresh() { try { st = await api().status(); } catch { /* not ready */ } mountDot(); return st; }
+  async function refresh() { try { st = await api().status(); } catch { /* not ready */ } mountDot(); notice(); return st; }
   async function now(o = {}) {
     st = { ...st, state: 'syncing' }; paintDot();
     st = await api().now({ mass: o.mass, fresh: o.fresh });
@@ -415,10 +415,20 @@ const Sync = (() => {
     });
   }
 
+  // (round 94, keptaside94) said when it happens (once each): a version kept aside → Compare; a new conflict → Choose
+  let seen = null;
+  function notice() {
+    const ids = (st.aside || []).map((x) => x.id); const was = seen; seen = { ids: new Set(ids), n: st.conflicts || 0 };
+    if (!was) return;
+    const n = (st.aside || []).find((x) => !was.ids.has(x.id) && Date.now() - x.at < 6e5);
+    if (n) toast(`Both computers changed ${whatIs({ rel: n.rel, fields: n.fields }).replace(/^The /, 'the ')} at the same time. One version is in use; the other is kept aside, nothing is lost.`, { timeout: 12000, action: { label: 'Compare', fn: () => Lazy.load('keptaside').then(() => KeptAside.open({ aside: n.id })) } });
+    else if (seen.n > was.n) toast(`${seen.n - was.n === 1 ? 'Something was' : `${seen.n - was.n} things were`} changed on both computers: choose which version to keep.`, { timeout: 12000, action: { label: 'Choose', fn: () => panel() } });
+  }
+
   // ---------- start ----------
   async function init() {
     if (!api()) return;
-    api().onStatus((s) => { st = s; mountDot(); for (const f of [...listeners, ...panelListeners]) { if (f.gone?.()) { listeners.delete(f); panelListeners.delete(f); continue; } try { f(); } catch { listeners.delete(f); panelListeners.delete(f); } } }); // (round 72) + the open sync panel; (longrun72) drop rows that left the page
+    api().onStatus((s) => { st = s; mountDot(); notice(); for (const f of [...listeners, ...panelListeners]) { if (f.gone?.()) { listeners.delete(f); panelListeners.delete(f); continue; } try { f(); } catch { listeners.delete(f); panelListeners.delete(f); } } }); // (round 72) + the open sync panel; (longrun72) drop rows that left the page
     api().onPulled((list) => onPulled(list).catch(() => {}));
     // (round 26) conflicts settled by themselves after a sync: one quiet line, undo one click away
     api().onAutoResolved?.((r) => { if (r?.done) lastAuto = { done: r.done, at: Date.now() }; if (r?.done) toast(`Sync settled ${r.done} conflict${r.done === 1 ? '' : 's'} by itself (data merged, files: the newer one). Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); });
