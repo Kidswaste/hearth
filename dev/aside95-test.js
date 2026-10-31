@@ -246,7 +246,7 @@ async function twoPart(OLD) {
   // sync.js's Sync.whose (its rule, taken from the file), for a computer { id, name }
   const whoseSrc = /const whose = (\(c\) => \{[^\n]+\});\n/.exec(fs.readFileSync(path.join(ROOT, 'sync.js'), 'utf8'))?.[1];
   // eslint-disable-next-line no-new-func
-  const whose = (c, me) => new Function('st', `return ${whoseSrc};`)({ machine: me })(c);
+  const whose = (c, me) => new Function('st', `return ${whoseSrc};`)({ machine: me.name, machineId: me.id })(c); // (the status as syncmain.js sends it)
   ok(Boolean(twinSrc && whoseSrc), 'the window\'s rules are where this test reads them');
 
   // Keep the other: the version it replaced, on both computers
@@ -281,6 +281,8 @@ async function twoPart(OLD) {
     ok(whose(c, meM).a && !whose(c, meM).flip && whose(c, meO).b && whose(c, meO).flip && !whose(c, meO).third, 'byId: the noticing computer sees its version in place; the other sees the copy as its own', [whose(c, meM), whose(c, meO)]);
     ok(whose(c, { id: 'Studio-00000000', name: 'Studio' }).third && !whose(c, { id: 'Studio-00000000', name: 'Studio' }).a, 'byId: a third computer: neither version is called its own');
     ok(whose(c, { id: 'other-1', name: m.name }).third, 'byId: a third computer named like the noticing one: not mistaken for it (by name it was)', whose(c, { id: 'other-1', name: m.name }));
+    const noId = new Function('st', `return ${whoseSrc};`)({ machine: o.name })(c); // eslint-disable-line no-new-func
+    ok(!noId.third && !noId.a, 'byId: a status without this computer\'s id (an older main side): guessed by name as before, never "a third computer"', noId);
     const oldRec = { ...c }; delete oldRec.byId;
     ok(whose(oldRec, meM).a && whose(oldRec, meO).flip && whose(oldRec, { id: 'x', name: m.name }).a, 'byId: a record without it (round 94) labelled as before (by name)', [whose(oldRec, meM), whose(oldRec, meO)]);
   }

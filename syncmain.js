@@ -359,6 +359,7 @@ function publicStatus() {
     on: Boolean(settings.on), paused: Boolean(settings.paused), big: settings.big !== false,
     root: settings.root || '', label: settings.label || '', provider: settings.provider || '',
     machine: engine?.machine()?.name || os.hostname(),
+    machineId: engine?.machine()?.id || null, // (round 95, aside95) this computer's id: a conflict's sides labelled by it (sync.js Sync.whose; `machine` is its name)
     kinds: K.list(settings.kinds, st?.kindSizes || {}), // (round 73, syncmedia73) What syncs: each kind, on / off here, sizes
     transfers: st?.transfers || [], moving: st?.moving || 0, // (round 73) big files on their way, with progress
     scope: st?.scope || null, // (round 79, syncscope79) the last pass: scoped or whole (why), how much it looked at

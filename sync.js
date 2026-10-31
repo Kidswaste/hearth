@@ -463,8 +463,9 @@ const Sync = (() => {
   else setTimeout(init, 0);
   // (round 95, aside95) a conflict's two sides as this computer sees them (the record syncs: both computers list it):
   // a: the version in place (the noticing computer's) is this computer's · b: the copy is · third: neither (a third
-  // computer). New records name the noticing computer by id (byId); older ones by name only (by): guessed from it
-  const whose = (c) => { const me = st?.machine || {}; const b = Boolean(c?.fromId && me.id && c.fromId === me.id); const a = c?.byId ? c.byId === me.id : !b && (!c?.by || !me.name || c.by === me.name); return { a, b, flip: b && !a, third: Boolean(c?.byId) && !a && !b }; };
+  // computer). The status names this computer: machine (its name), machineId. New records name the noticing computer by id (byId); older
+  // ones by name only (by): guessed from it
+  const whose = (c) => { const m = st?.machine; const me = { id: st?.machineId || m?.id || null, name: typeof m === 'string' ? m : m?.name }; const b = Boolean(c?.fromId && me.id && c.fromId === me.id); const a = c?.byId && me.id ? c.byId === me.id : !b && (!c?.by || !me.name || c.by === me.name); return { a, b, flip: b && !a, third: Boolean(c?.byId && me.id) && !a && !b }; };
 
   return { status: () => st, whose, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background,
     shortLine, glyph: glyphOf, nameOf, peersLine, download, panel, panelAt, lastAuto: () => lastAuto, where, listen: (f) => { panelListeners.add(f); return () => panelListeners.delete(f); },

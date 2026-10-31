@@ -111,7 +111,15 @@ called `byId`, not `by`, because round 94 reads `by` as a name: on the other com
 - `b`: the copy;
 - `third`: neither (a third computer).
 
-It uses the id when the record has one, and the name as before when it doesn't. The panel card (`sync-panel.js`),
+It uses the id when the record has one, and the name as before when it doesn't.
+
+**Found and fixed on the way: round 94's "the way this computer sees it" never ran in the app.** The window's sync
+status (`syncmain.js publicStatus`) gives `machine` as the computer's name (a string), not `{ id, name }`, so
+`Sync.status().machine?.id` was always undefined. On the computer the copy came from, "This PC" still labelled the
+other computer's version, and "Keep PC" kept the Mac's: exactly what round 94 meant to fix. Its checks didn't see this
+because in them the conflict was always noticed by the computer they ran on. The status now also carries `machineId`,
+and `Sync.whose` reads it. With a main side that doesn't send it, the labels are guessed by name as before, and no
+side is ever called "a third computer's". The panel card (`sync-panel.js`),
 the Conflicts list (`sync-conflicts.js`) and the compare view (`keptaside.js`) all use it. On a third computer,
 neither version is called "This PC": both are named by their computers. Two computers with the same name are no
 longer mixed up.
@@ -134,7 +142,8 @@ round 94 lists and restores it as well.
 - `asidework.js` (new): the thread side (`work`: take, form) and the main side (`create`: `take` / `put`, `form`,
   `share`).
 - `storework.js`: ops `asideTake`, `asideForm`.
-- `syncmain.js`: hands the engine `asideBig` (only when the store's files thread is there).
+- `syncmain.js`: hands the engine `asideBig` (only when the store's files thread is there). The status adds
+  `machineId`.
 - `sync-engine.js` (Codex's): the marked hooks below.
 - `sync.js` (first screen, about +0.5 KB: 1748 / 1751 KB, was 1747): `Sync.whose`.
 - `sync-panel.js`, `sync-conflicts.js`, `keptaside.js`: labels through `Sync.whose`. `sync-conflicts.js` also lists
@@ -144,13 +153,15 @@ round 94 lists and restores it as well.
 ## Runs
 
 All passed:
-- `unit:aside95-test` (71 at 60 MB; 66 at 10 MB);
+- `unit:aside95-test` (72 at 60 MB; 67 at 10 MB);
 - `unit:keptaside94-test` (57), `unit:sync72-test` (179), `unit:sync-test` (180), `unit:packs89-test` (100),
   `unit:devices90-test` (73), `unit:twocomputers-test` (117), `unit:guardloss78-test` (103);
 - `unit:datasafe-scan`, `unit:winmac-test` (609), `unit:errorcalm-scan`, `unit:storeack-scan`, `unit:chatsafe-scan`,
   `unit:chatwin-scan`, `unit:boot-test` (3074), `unit:lazymanifest-test`.
 
-App checks: see below.
+App checks under the lock, all passed: `keptaside94`, `sync72`, `syncpanel92`, `guardloss78`, `projaudit91-sync`,
+`sync`, `lazy`. A first run failed `keptaside94` and `sync72`, which is how the status `machine` problem above was
+found. They passed after the fix.
 
 `node dev/sync72-test.js --thread` (not in the list) fails "random 1: every line added to the notes" the same way on
 round 94's tree: it was already failing before this round.
@@ -194,6 +205,8 @@ untouched.
 - **The version you replace is in Deleted files on both computers.** When you choose "Keep the Mac's" on the PC (or
   the other way round), the PC's version now also shows up in Deleted files on the Mac, and you can bring it back from
   either computer. On the computer where you chose, it's listed once.
+- **Fixed: on the computer a conflict's other version came from, "Keep PC" could still keep the Mac's version.**
+  Round 94's fix for this didn't reach the app. It does now.
 - **Each side of a conflict is labelled exactly.** Hearth now records which computer noticed a conflict by its id, not
   just its name. "Keep PC" and "Keep Mac" are always the right way round, even if two computers have the same name or
   you look from a third one. Conflicts from an older version are labelled as before, and both computers can run
