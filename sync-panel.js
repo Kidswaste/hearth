@@ -143,20 +143,21 @@ const SyncPanel = (() => {
     // (round 94, keptaside94) a conflict's record syncs, so both computers list it: the version in place is the noticing
     // computer's (by), the copy the other's (from). On the computer the copy came from, "this PC" is the copy (before,
     // it was labelled the other way round there, and "Keep PC" kept the Mac's version)
-    const flip = Boolean(c.fromId && c.fromId === Sync.status().machine?.id);
+    const w = Sync.whose(c); const flip = w.flip; // (round 95, aside95) by the noticing computer's id when the record has it
     const t = there(flip ? { from: c.by, fromPlatform: c.byPlatform } : c);
+    const me = w.third ? there({ from: c.by, fromPlatform: c.byPlatform }) : null; // (a third computer: neither version is this one's)
     const mineSide = flip ? 'theirs' : 'ours'; const otherSide = flip ? 'ours' : 'theirs';
     // Windows PC on the left, the Mac on the right, on both computers (the same place each time)
     const hereFirst = !(MAC && t === 'PC');
     const col = (which) => {
       const mine = which === mineSide;
       return el('div', { class: `sp-side ${mine ? 'here' : 'there'}` },
-        el('b', { text: mine ? `This ${HERE}` : t[0].toUpperCase() + t.slice(1) }),
+        el('b', { text: mine ? (me ? me[0].toUpperCase() + me.slice(1) : `This ${HERE}`) : t[0].toUpperCase() + t.slice(1) }),
         el('span', { class: 'hint', text: edited(mine ? c.oursAt : c.theirsAt) }),
         side(c, which));
     };
     const keep = (label, how, title) => el('button', { type: 'button', class: `ghost small sp-keep${how === 'both' ? ' both' : ''}`, text: label, title, dataset: { keep: how }, on: { click: () => choose(c, how) } });
-    const kHere = keep(`Keep ${HERE}`, flip ? 'theirs' : 'mine', `The version on this ${HERE} stays everywhere; the ${t} version waits in Deleted files`);
+    const kHere = keep(`Keep ${me || HERE}`, flip ? 'theirs' : 'mine', me ? `The ${me} version stays everywhere; the ${t} version waits in Deleted files` : `The version on this ${HERE} stays everywhere; the ${t} version waits in Deleted files`);
     const kThere = keep(`Keep ${t}`, flip ? 'mine' : 'theirs', `The ${t} version replaces this one; this one waits in Deleted files`);
     return el('div', { class: 'sp-conflict', dataset: { id: c.id } },
       el('div', { class: 'sp-what', text: Sync.whatIs(c) }),

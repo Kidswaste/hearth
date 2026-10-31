@@ -461,8 +461,12 @@ const Sync = (() => {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(init, 0));
   else setTimeout(init, 0);
+  // (round 95, aside95) a conflict's two sides as this computer sees them (the record syncs: both computers list it):
+  // a: the version in place (the noticing computer's) is this computer's · b: the copy is · third: neither (a third
+  // computer). New records name the noticing computer by id (byId); older ones by name only (by): guessed from it
+  const whose = (c) => { const me = st?.machine || {}; const b = Boolean(c?.fromId && me.id && c.fromId === me.id); const a = c?.byId ? c.byId === me.id : !b && (!c?.by || !me.name || c.by === me.name); return { a, b, flip: b && !a, third: Boolean(c?.byId) && !a && !b }; };
 
-  return { status: () => st, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background,
+  return { status: () => st, whose, refresh, now, setup, conflicts, held, whatIs, trash, menu, items, line, settingsSection, pause, off, big, background,
     shortLine, glyph: glyphOf, nameOf, peersLine, download, panel, panelAt, lastAuto: () => lastAuto, where, listen: (f) => { panelListeners.add(f); return () => panelListeners.delete(f); },
     _setApi: (fn) => { api = fn || (() => window.hub?.sync); }, _conflicts: { MAC, api: () => api(), nameOf, refresh, now, HERE_NAME, itemNames, whatIs } }; // (round 72) for the panel · (round 83) _conflicts: for sync-conflicts.js
 })();
