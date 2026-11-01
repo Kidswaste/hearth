@@ -143,13 +143,13 @@ const ChatRest = (() => {
       if (ds.length === st.length) ds.forEach((d, i) => { if (d.open !== st[i]) { d.open = st[i]; if (d.open) R.fillFold?.({ target: d }); } });
     }
   }
-  // (round 103, cw103) a woken block's nodes in pieces of about PIECE elements, in order (a date line goes with the
-  // message under it)
+  // (round 103, cw103) a woken block's nodes in pieces of about PIECE elements (100 characters of a message's text
+  // counted as one), in order (a date line goes with the message under it)
   const PIECE = 260;
   function pieces(items) {
     const out = []; let cur = []; let n = 0;
     for (const x of items) {
-      const k = 1 + (x.getElementsByTagName?.('*').length || 0);
+      const k = 1 + (x.getElementsByTagName?.('*').length || 0) + (x.dataset?.raw?.length || 0) / 100; // (a long reply's text: its layout)
       if (n && n + k > PIECE && x.classList?.contains('msg') && !cur.at(-1)?.classList?.contains('day-sep')) { out.push(cur); cur = []; n = 0; }
       cur.push(x); n += k;
     }

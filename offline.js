@@ -228,7 +228,8 @@ const Offline = (() => {
   // A continuation that ended: stitched into the reply it continues (the short "continue" line and the second reply
   // go), so the chat reads as one reply. Failed or stopped: what it wrote joins the cut reply too.
   function mergeContinue(chat, ended) {
-    const ci = chat.messages.findLastIndex((m) => m.role === 'user' && m.cont);
+    // (round 103, cw103) only a continue line among the last 3 counts: those are all it reads (a giant chat's 6,000 were)
+    let ci = -1; for (let i = chat.messages.length - 1; i >= Math.max(0, chat.messages.length - 3) && ci < 0; i--) if (chat.messages[i].role === 'user' && chat.messages[i].cont) ci = i;
     if (ci < 1 || ci < chat.messages.length - 3) return false;
     const cut = chat.messages[ci - 1];
     if (cut?.role !== 'assistant') return false;

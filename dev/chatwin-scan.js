@@ -79,7 +79,7 @@ const AUDIT = [
   ['meter.js', 3, 'windowed', 'usage totals and lookups (small fields)'],
   ['missions.js', 11, 'windowed', 'push, the last message, lookups by role / time / mission (small fields), a result inserted after its message near the end'],
   ['tools/three-chatlink.js', 1, 'windowed', 'round 92: reads only messages.length (the true count) to tell a brand-new chat'],
-  ['native.js', 73, 'windowed', 'converted (round 86): drawing, saving, find / jump, actions on old messages load their block, branch / stats / second opinion / compact load the chat whole (round 93: stats counted in chat-cmds.js)'],
+  ['native.js', 74, 'windowed', 'converted (round 86): drawing, saving, find / jump, actions on old messages load their block, branch / stats / second opinion / compact load the chat whole (round 93: stats counted in chat-cmds.js; round 103: the end drawn first reads the text length of its drawn, loaded messages)'],
   ['nodes-code.js', 1, 'throws', 'the code blocks of the whole chat (the Nodes view, an explicit action): older ones throw'],
   ['notes.js', 1, 'windowed', 'your last message by role'],
   ['offline-project.js', 1, 'not-chat', 'main process: whether a chat file is here'],

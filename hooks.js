@@ -127,7 +127,7 @@ const Hooks = (() => {
   Native.hooks.finish.push((event, chat) => {
     if (waiting.size) setTimeout(flush, 1500); // after anything you typed meanwhile (native.js sends that at 250 ms)
     if (event.type !== 'done' || !chat) return;
-    const asked = [...chat.messages].reverse().find((m) => m.role === 'user');
+    const asked = chat.messages.findLast((m) => m.role === 'user'); // (round 103, cw103: from the end, no copy)
     if (asked?.hook) return; // a reply to a hook doesn't set off other hooks (no ping-pong)
     const who = H.agent(chat.agentId);
     emit('reply', { name: who?.name, title: chat.title, excerpt: visible(event.text) }, (h, a) => a.id !== chat.agentId && (h.when.from === 'any' || h.when.from === chat.agentId));

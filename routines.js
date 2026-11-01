@@ -567,7 +567,7 @@ const Routines = (() => {
   }
   Native.hooks.finish.push((event, chat, extras) => {
     if (!chat) return;
-    const asked = [...chat.messages].reverse().find((m) => m.role === 'user');
+    const asked = chat.messages.findLast((m) => m.role === 'user'); // (round 103, cw103: from the end, no copy)
     // A stopped loop can still have its last reply finishing. Keep that usage too.
     const r = (asked?.routine?.id && byId(asked.routine.id)) || forChat(chat.id);
     if (!r) return;
