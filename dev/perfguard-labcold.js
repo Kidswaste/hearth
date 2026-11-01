@@ -17,7 +17,7 @@ const thr = async () => { const m = (await cdp('Performance.getMetrics'))?.metri
 try {
   await until(() => typeof H !== 'undefined' && H.agents().length > 0 && document.querySelector('#agent-buttons .space-button'), 'app', 60000, 10);
   R.notes.readyAt = Math.round(performance.now());
-  await wait(3000);
+  await wait((Number(window.PF100_LAB_AT) || 3) * 1000); // (--eval "window.PF100_LAB_AT = 60": pressed after a calm start instead)
   R.notes.labBefore = window.LabBoot?.state ? JSON.stringify(LabBoot.state()).slice(0, 200) : null;
   R.notes.lazyLab = window.Lazy?.state ? JSON.stringify(Lazy.state()?.groups?.lab ?? Lazy.state()?.lab ?? null).slice(0, 120) : null;
   const drawn = async () => (await smoke({ target: 'three-sandbox', cdp: 'Runtime.evaluate', params: { expression: 'window.__labPace?.state()?.drawn', returnByValue: true } }))?.result?.value;
