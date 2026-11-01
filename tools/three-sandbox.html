@@ -601,7 +601,7 @@ for (const P of [window.WebGL2RenderingContext?.prototype, window.WebGLRendering
   const up = (f, m) => function (tg) {
     'use strict';
     const gl = this;
-    if (HX.on) { const mp = hxCall(m, arguments); if (mp > HX.big) HX.big = mp; if (FR.inRaf && mp > HX.bigF) HX.bigF = mp; }
+    if (HX.on) { const mp = hxCall(m, arguments); if (mp > HX.big) HX.big = mp; if (FR.inRaf && mp > HX.bigF) HX.bigF = mp; if (FR.inRaf && mp > 0) { HX.nF += 1; if (HX.inL.length < 40) HX.inL.push([HX.n, m, Math.round(mp * 1e4) / 1e4]); } } // (round 100, modeltex100: every pixel upload inside a frame, counted)
     const k = tg === gl.TEXTURE_2D ? gl.TEXTURE_BINDING_2D : tg === gl.TEXTURE_CUBE_MAP || (tg >= 0x8515 && tg <= 0x851a) ? gl.TEXTURE_BINDING_CUBE_MAP : tg === gl.TEXTURE_3D ? gl.TEXTURE_BINDING_3D : tg === gl.TEXTURE_2D_ARRAY ? gl.TEXTURE_BINDING_2D_ARRAY : 0;
     let tx = null; try { tx = k ? gl.getParameter(k) : null; } catch { /* counted as a re-upload */ }
     if (tx && !tx.__rdyUp) { tx.__rdyUp = 1; RDY.gl.uploads += 1; if (HX.on) { const mp = hxPx(arguments); HX.px += mp; if (FR.inRaf) HX.pxF += mp; } } else RDY.gl.reuploads += 1;
@@ -768,7 +768,8 @@ function replayDraw(r, renderFn, scene, camera) {
 // Not covered (compiled in the frame that first needs them, as before): a light's castShadow switched on, a group
 // holding a light hidden, materials made and drawn in the same render (three's nested renders: a mirror's), a
 // scene's background drawn inside the glass pass.
-const LC = { ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, dark: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0, shadows: 0, scenes: 0, sceneWait: 0, madeIn: 0, made: 0, raw: 0 };
+let LC_DFG = null; // (round 100: three's 16×16 table, once seen)
+const LC = { tex: 0, ver: 0, inR: 0, checks: 0, found: 0, hidden: 0, swapped: 0, lights: 0, dark: 0, glass: 0, ahead: 0, done: 0, late: 0, maxWait: 0, waits: 0, pending: 0, off: 0, khr: 0, shadows: 0, scenes: 0, sceneWait: 0, madeIn: 0, made: 0, raw: 0 };
 try {
   const OP = THREE.Object3D.prototype; const add0 = OP.add; const rm0 = OP.remove;
   if (typeof add0 === 'function') {
@@ -841,7 +842,7 @@ function lcCheck(r, scene, camera) {
     const m = o.material;
     if (!m || !(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
     if (!glass && (Array.isArray(m) ? m.some((x) => x?.transmission > 0) : m.transmission > 0)) glass = true;
-    if (lcHas(props, m)) { o.__lcM = m; return; }
+    if (lcHas(props, m)) { o.__lcM = m; if (!LC_DFG && !Array.isArray(m)) LC_DFG = props.get(m).uniforms?.dfgLUT?.value || null; return; } // (round 100: three's own 16×16 table, see lcTextures)
     if (o.castShadow) cast = true;
     if (o.__lcM && o.__lcM !== m && lcHas(props, o.__lcM)) swap.push(o); else objs.push(o);
   });
@@ -885,6 +886,7 @@ function lcAhead(r, P) {
     LC.inR -= 1;
   }
   if (P.shadow) lcShadows(r, P.scene, P.camera); // (round 91: three's depth materials for the new casters / lights)
+  lcTextures(r, P.objs, P.swap); // (round 100, modeltex100)
   LC.ahead += RDY.gl.links - l0;
   if (waits) { LC.khr += 1; const done = () => lcDone(r, P); Promise.all(waits).then(done, done); realSetTimeout(done, 2500); return; }
   // no background compile: each new program's status read here (the wait for the driver happens in this gap), so the
@@ -892,6 +894,33 @@ function lcAhead(r, P) {
   const ps = r.info?.programs || [];
   for (let i = n0; i < ps.length; i++) { try { ps[i].getUniforms(); } catch { /* its frame reports it */ } }
   lcDone(r, P);
+}
+// (round 100, modeltex100) the new things' textures go to the graphics card here too, in the same gap (they were
+// uploaded inside the frame that first showed them: a model's, with its pictures). Only ones not there yet, with a
+// picture ready; a model's big picture is its stand-in here (its full picture follows in slices: "a model's own
+// pictures"); a refTexture() still decoding has none yet (its own queue hands it over)
+function lcTextures(r, objs, swap) {
+  if (typeof r.initTexture !== 'function' || typeof r.properties?.has !== 'function') return 0;
+  let n = 0; const seen = new Set();
+  const take = (t) => {
+    if (!t?.isTexture || seen.has(t) || t.isRenderTargetTexture || t.isDepthTexture || t.isVideoTexture || !(t.version > 0)) return;
+    seen.add(t);
+    const im = t.image;
+    if (!im || (typeof HTMLImageElement !== 'undefined' && im instanceof HTMLImageElement && !im.complete)) return;
+    try { if (r.properties.has(t) && r.properties.get(t).__webglInit) return; r.initTexture(t); n += 1; } catch { /* its frame uploads it */ }
+  };
+  for (const list of [objs, swap]) {
+    for (const o of list || []) {
+      for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) {
+        for (const k in m) { const v = m[k]; if (v && v.isTexture) take(v); }
+        if (m.uniforms) for (const k in m.uniforms) take(m.uniforms[k]?.value);
+        // three's own 16×16 lookup table for lit materials (one per renderer, uploaded with the first one it draws)
+        try { const u = r.properties.get(m)?.uniforms; if (u?.dfgLUT) take(u.dfgLUT.value || LC_DFG); } catch { /* fine */ }
+      }
+    }
+  }
+  LC.tex += n;
+  return n;
 }
 // glass: the programs three's transmission pass draws the opaque things with (into a target: linear colours, no tone
 // mapping), and the back faces of double-sided glass there. Compiled under a 1×1 target, the see-through things set
@@ -2256,7 +2285,7 @@ window.__labPace = {
 // its gap, the layers' render work in it, and what the GPU was asked for in it (shader compiles / links, the ms the page
 // waited on a program's status, first uploads and the pixels they carried). Typed arrays made once at start: nothing
 // per frame, nothing at all while off. window.__labHitch.start() / mark(label) / stop() → JSON text.
-const HX = { on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, cf: null, sf: null, bx: null, bxf: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, cf0: 0, sf0: 0, px: 0, pxF: 0, big: 0, bigF: 0 };
+const HX = { nF: 0, nF0: 0, inL: [], uf: null, on: false, n: 0, max: 0, last: 0, g: null, w: null, c: null, s: null, u: null, p: null, f: null, d: null, cf: null, sf: null, bx: null, bxf: null, marks: [], c0: 0, s0: 0, u0: 0, p0: 0, f0: 0, cf0: 0, sf0: 0, px: 0, pxF: 0, big: 0, bigF: 0 };
 // (round 90, labcompile90) megapixels one upload call carried: texImage2D / texSubImage2D from a picture (its size) or
 // from data (the width × height asked for: a slice); texStorage carries none (memory only)
 function hxCall(m, a) {
@@ -2291,10 +2320,11 @@ function hxTick(t, drew) {
   HX.cf[i] = gl.inF - HX.cf0; HX.cf0 = gl.inF; // (round 90: compiles / links inside the frame's callbacks, ms waited there)
   HX.sf[i] = gl.waitF - HX.sf0; HX.sf0 = gl.waitF;
   HX.bx[i] = HX.big; HX.bxf[i] = HX.bigF; HX.big = 0; HX.bigF = 0; // (round 90: the biggest single upload since the last frame)
+  HX.uf[i] = HX.nF - HX.nF0; HX.nF0 = HX.nF; // (round 100, modeltex100: pixel uploads inside the frame)
 }
 window.__labHitch = {
   start: (max = 6000) => {
-    Object.assign(HX, { on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max), cf: new Uint16Array(max), sf: new Float32Array(max), bx: new Float32Array(max), bxf: new Float32Array(max), big: 0, bigF: 0 });
+    Object.assign(HX, { uf: new Uint16Array(max), inL: [], nF0: HX.nF, on: true, n: 0, max, last: 0, marks: [], g: new Float32Array(max), w: new Float32Array(max), c: new Uint16Array(max), s: new Float32Array(max), u: new Uint16Array(max), p: new Float32Array(max), f: new Float32Array(max), d: new Uint8Array(max), cf: new Uint16Array(max), sf: new Float32Array(max), bx: new Float32Array(max), bxf: new Float32Array(max), big: 0, bigF: 0 });
     HX.c0 = RDY.gl.compiles + RDY.gl.links; HX.s0 = RDY.gl.waitMs; HX.u0 = RDY.gl.uploads; HX.p0 = HX.px; HX.f0 = HX.pxF; HX.cf0 = RDY.gl.inF; HX.sf0 = RDY.gl.waitF;
     return realNow();
   },
@@ -2302,7 +2332,7 @@ window.__labHitch = {
   stop: () => {
     HX.on = false;
     const k = HX.n; const r = (a, d = 1) => Array.from(a.subarray(0, k), (x) => Math.round(x * d) / d);
-    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), compilesInFrame: r(HX.cf), waitInFrame: r(HX.sf, 10), bigUp: r(HX.bx, 100), bigUpInFrame: r(HX.bxf, 100), lc: window.__labCompile?.state?.() || null, slices: window.__labUploads().slices ?? null, swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
+    return JSON.stringify({ n: k, at: realNow(), gap: r(HX.g, 10), work: r(HX.w, 10), compiles: r(HX.c), waitMs: r(HX.s, 10), uploads: r(HX.u), upMP: r(HX.p, 100), upMPframe: r(HX.f, 100), drew: r(HX.d), compilesInFrame: r(HX.cf), waitInFrame: r(HX.sf, 10), bigUp: r(HX.bx, 100), bigUpInFrame: r(HX.bxf, 100), upInFrame: r(HX.uf), inFrameUploads: HX.inL.slice(), lc: window.__labCompile?.state?.() || null, slices: window.__labUploads().slices ?? null, swap: window.__labSwap.state(), up: window.__labUploads(), khr: [...renderers].some((r) => r.extensions?.has?.('KHR_parallel_shader_compile')), note: { warm: perfNote.warm, warmTex: perfNote.warmTex || 0, precompiled: perfNote.precompiled || 0 }, marks: HX.marks, cap: fpsCap, dispMs });
   },
 };
 // The gap between displayed frames; the worst one in each half second is what reads as a stutter.
@@ -4865,18 +4895,21 @@ function astRevoke(url) {
 // under load), so a frame stuck as each big picture arrived. In a worker the whole of it runs on the worker's thread
 // and the picture comes back transferred (no copy). Any trouble with the worker: the page decodes it, as before.
 const DEC = { w: null, seq: 0, wait: new Map(), off: typeof Worker !== 'function', n: 0, fell: 0 };
-function decOff(blob, opts, cib) {
+// (round 100, modeltex100) small: a model's big picture (a megapixel or more) also comes back as a stand-in of at most
+// `small` pixels a side (bmp.__small), made on the worker's thread from the decoded picture: shown until the picture's
+// last slice is on the graphics card
+function decOff(blob, opts, cib, small = 0) {
   const here = () => { DEC.fell += 1; return cib(blob, opts); };
   if (DEC.off || XP_PAGE || !(blob instanceof Blob)) return cib(blob, opts);
   if (!DEC.w) {
     try {
-      const url = URL.createObjectURL(new Blob(['onmessage = (e) => { const { id, blob, opts } = e.data; createImageBitmap(blob, opts).then((b) => postMessage({ id, b }, [b]), (err) => postMessage({ id, err: String((err && err.message) || err) })); };'], { type: 'text/javascript' }));
+      const url = URL.createObjectURL(new Blob(['onmessage = (e) => { const { id, blob, opts, small } = e.data; createImageBitmap(blob, opts).then(async (b) => { let s = null; if (small > 0 && b.width * b.height >= 1e6) { const k = small / Math.max(b.width, b.height); try { s = await createImageBitmap(b, { resizeWidth: Math.max(1, Math.round(b.width * k)), resizeHeight: Math.max(1, Math.round(b.height * k)), resizeQuality: "medium" }); } catch (err) { s = null; } } postMessage({ id, b, s }, s ? [b, s] : [b]); }, (err) => postMessage({ id, err: String((err && err.message) || err) })); };'], { type: 'text/javascript' }));
       DEC.w = new Worker(url); URL.revokeObjectURL(url);
-      DEC.w.onmessage = (e) => { const p = DEC.wait.get(e.data.id); if (!p) return; DEC.wait.delete(e.data.id); if (e.data.b) { DEC.n += 1; const M = window.__labMemRaw; if (M) { M.bitmapsMade += 1; if (M.bitmaps.size < 4096) M.bitmaps.add(new WeakRef(e.data.b)); } p.res(e.data.b); } else p.res(here()); };
+      DEC.w.onmessage = (e) => { const p = DEC.wait.get(e.data.id); if (!p) return; DEC.wait.delete(e.data.id); if (e.data.b) { DEC.n += 1; const M = window.__labMemRaw; if (M) { M.bitmapsMade += 1; if (M.bitmaps.size < 4096) M.bitmaps.add(new WeakRef(e.data.b)); } if (e.data.s) e.data.b.__small = e.data.s; p.res(e.data.b); } else p.res(here()); };
       DEC.w.onerror = () => { DEC.off = true; try { DEC.w.terminate(); } catch { /* gone */ } for (const p of DEC.wait.values()) p.res(here()); DEC.wait.clear(); };
     } catch { DEC.off = true; return cib(blob, opts); }
   }
-  return new Promise((res) => { const id = ++DEC.seq; DEC.wait.set(id, { res }); try { DEC.w.postMessage({ id, blob, opts }); } catch { DEC.wait.delete(id); res(here()); } });
+  return new Promise((res) => { const id = ++DEC.seq; DEC.wait.set(id, { res }); try { DEC.w.postMessage({ id, blob, opts, small }); } catch { DEC.wait.delete(id); res(here()); } });
 }
 window.__labDecode = () => ({ worker: Boolean(DEC.w) && !DEC.off, decoded: DEC.n, onPage: DEC.fell, waiting: DEC.wait.size });
 // a picture of the open scene, decoded once per page (flipped as three.js would at upload): a Promise of its
@@ -4905,6 +4938,7 @@ const AST_DATA = { HDRLoader: 1, RGBELoader: 1, EXRLoader: 1 };
 // (round 99, labmodels99) a model of several files (one of the scene's references): its loader finds the files (its
 // manager, its resource path); an .obj gets its .mtl's materials first. Then as before.
 globalThis.__labAssetLoad = (loader, name, url, onLoad, onProgress, onError, superLoad) => {
+  if (name === 'GLTFLoader') mtxGltf(loader); // (round 100, modeltex100: its pictures off the page's thread, in slices)
   const rm = RMOD.byUrl.get(String(url));
   if (!rm) return astLoad(loader, name, url, onLoad, onProgress, onError, superLoad);
   rmodManager(loader.manager);
@@ -5294,6 +5328,190 @@ function updateRef(it) {
   realSetTimeout(() => { if (!Object.values(refs).includes(old)) URL.revokeObjectURL(old); }, 5000);
   return n;
 }
+// ---------- (round 100, modeltex100) a model's own pictures: off the page's thread, in slices, followed on disk ----------
+// A model's pictures (a .gltf's / .glb's images, an .obj's .mtl maps) loaded through three's own loaders: the
+// GLTFLoader's ImageBitmapLoader, the MTLLoader's TextureLoader. A 4K picture went to the graphics card in one piece in
+// the first frame that drew the model (and an .mtl's was decoded there too). Now they take refTexture's path:
+//   - decoded in the decOff worker (round 95); a picture of a megapixel or more also comes back as a stand-in of at most
+//     64 pixels a side, made there too. The model gets its textures with the stand-in (its colours at once)
+//   - the model's new meshes wait while their programs compile in the gap after a frame (round 90's runtime
+//     precompile), and their textures (the stand-ins) are uploaded in that gap too (lcAhead: lcTextures)
+//   - once a renderer has one on the graphics card, the picture goes through the uploads' queue (round 72/90/91): 4 MP
+//     or more in slices after frames, the stand-in drawn until the last; 1–4 MP in one piece after a frame
+//   - every copy of the texture (the GLTFLoader's clones, the asset cache's copies) is followed (its own clone() notes
+//     the copy), so each takes the picture, without a second upload where it shares the graphics card's
+//   - (live) a picture of a reference's model changed on disk ('ref-file-update' from the window): decoded again and
+//     swapped in the same way, the old picture drawn until the new one's last slice. Nothing re-runs.
+// Where: the Lab's 🧊 model layers (tools/sandbox-lab3d.js registers its GLTFLoader), a scene's own GLTFLoader / OBJLoader
+// through the import map's hook (__labAssetLoad), an .mtl's maps (a handler for hearth-ref:// on three's default
+// manager). The export page (exact frames) gets each picture whole at once, as before. Off: ?mtex=0 or
+// window.__labModelTex.set({ on: false }) (a check's before). window.__labModelTex.state().
+const MTX = { on: new URLSearchParams(location.search).get('mtex') !== '0', of: new WeakMap(), jobs: new Set(), files: new Map(), armed: 0, idle: 0,
+  n: { textures: 0, small: 0, standins: 0, applied: 0, sliced: 0, whole: 0, live: 0, copies: 0, failed: 0, pending: 0 } };
+const MTX_BIG = 1e6; const MTX_SMALL = 64;
+// which of a model's files a hearth-ref:// URL names (null for any other URL)
+function rmodWhich(url) {
+  const m = /^hearth-ref:\/\/m\d+\//.exec(String(url || '')); const e = m && RMOD.byPrefix.get(m[0]);
+  if (!e) return null;
+  const u = refModelResolve(url, e.prefix, e.files);
+  if (!u) return null;
+  for (const [rel, v] of e.files) if (v === u) return { url: u, rel, key: `${e.key}|${rel}`, e };
+  return null;
+}
+// a loader with the TextureLoader's shape (load → a Texture, onLoad(texture)): the GLTFLoader's parser uses it in place
+// of its ImageBitmapLoader (flip: false, glTF pictures aren't flipped), the MTLLoader through the manager's handler
+// (flip: true: decoded flipped, as refTexture's, flipY false)
+function mtxLoader(manager, flip) {
+  return { manager: manager || THREE.DefaultLoadingManager, path: '', crossOrigin: 'anonymous', requestHeader: {}, isHearthModelTex: true,
+    setCrossOrigin(v) { this.crossOrigin = v; return this; }, setRequestHeader(v) { this.requestHeader = v || {}; return this; }, setPath(v) { this.path = v || ''; return this; }, setWithCredentials() { return this; },
+    load(url, onLoad, onProgress, onError) { return mtxLoad(this, url, flip, onLoad, onError); } };
+}
+const mtxOpts = (flip) => (flip ? { imageOrientation: 'flipY', premultiplyAlpha: 'none' } : { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+function mtxLoad(ld, url0, flip, onLoad, onError) {
+  const mgr = ld.manager || THREE.DefaultLoadingManager;
+  const url = ld.path && !/^[a-z][a-z0-9+.-]*:/i.test(String(url0)) ? ld.path + url0 : String(url0);
+  const which = rmodWhich(url);
+  const u = which?.url || (typeof mgr.resolveURL === 'function' ? mgr.resolveURL(url) : url);
+  const tex = new THREE.Texture(); tex.flipY = false;
+  mgr.itemStart?.(url);
+  fetch(u).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+    .then((blob) => decOff(blob, mtxOpts(flip), (b, o) => createImageBitmap(b, o), MTX_SMALL))
+    .then(async (bmp) => {
+      MTX.n.textures += 1;
+      let img = bmp; let full = null;
+      if (bmp.width * bmp.height >= MTX_BIG && !XP_PAGE && typeof ImageBitmap !== 'undefined' && bmp instanceof ImageBitmap) {
+        const k = MTX_SMALL / Math.max(bmp.width, bmp.height);
+        const s = bmp.__small || await createImageBitmap(bmp, { resizeWidth: Math.max(1, Math.round(bmp.width * k)), resizeHeight: Math.max(1, Math.round(bmp.height * k)) }).catch(() => null);
+        if (s) { img = s; full = bmp; MTX.n.standins += 1; } else MTX.n.small += 1;
+      } else MTX.n.small += 1;
+      // in the gap after a frame: an .mtl's texture is already on a drawn mesh (MTLLoader hands it out at once), so its
+      // picture (or stand-in) is uploaded there, not by the next frame
+      if (!XP_PAGE) await new Promise((res) => { let k = 0; const go = () => { if (!k++) res(); }; realRAF(() => realSetTimeout(go, 0)); realSetTimeout(go, 200); });
+      tex.image = img; tex.flipY = false; tex.needsUpdate = true;
+      upAhead(tex);
+      mtxNote(which?.key || null, tex, full, flip);
+      try { onLoad?.(tex); } finally { mgr.itemEnd?.(url); }
+    })
+    .catch((err) => { MTX.n.failed += 1; mgr.itemError?.(url); mgr.itemEnd?.(url); if (onError) onError(err); else console.error(err); });
+  return tex;
+}
+// a texture (and every copy made of it from now on) followed: its file's job (one per file of a reference's model, so a
+// change on disk finds every texture made from it), the full picture still to go up (full)
+function mtxNote(fileKey, tex, full, flip) {
+  let job = fileKey ? MTX.files.get(fileKey) : null;
+  if (!job) { job = { key: fileKey, texs: new Set(), bmp: null, cur: null, busy: false, gen: 0, flip }; if (fileKey) MTX.files.set(fileKey, job); }
+  mtxTrack(job, tex);
+  if (full) { job.bmp = full; job.cur = null; job.gen += 1; MTX.jobs.add(job); mtxArm(); } else if (!job.bmp) job.cur = tex.source;
+  return job;
+}
+function mtxTrack(job, t) { MTX.of.set(t, job); job.texs.add(new WeakRef(t)); t.clone = mtxClone; }
+function mtxClone() { const c = THREE.Texture.prototype.clone.call(this); const job = MTX.of.get(this); if (job) { mtxTrack(job, c); MTX.n.copies += 1; } return c; }
+// the renderer that has this texture on the graphics card (drawn, or uploaded ahead), or null
+function mtxOn(t) {
+  for (const r of renderers) {
+    if (r.__stale) continue;
+    try { if (r.properties?.has?.(t) && r.properties.get(t).__webglInit) return r; } catch { /* gone */ }
+  }
+  return null;
+}
+// after a frame: each job whose picture isn't up yet, once one of its textures is on the graphics card
+function mtxArm(ms = 0) {
+  if (MTX.armed) return;
+  const k = MTX.armed = (mtxArm.k = (mtxArm.k || 0) + 1);
+  const go = () => { if (MTX.armed !== k) return; MTX.armed = 0; mtxTick(); };
+  if (ms) realSetTimeout(go, ms); else { realRAF(() => realSetTimeout(go, 0)); realSetTimeout(go, 250); }
+}
+function mtxTick() {
+  let waiting = 0;
+  for (const job of [...MTX.jobs]) {
+    if (job.busy) { waiting += 1; continue; }
+    if (job.cur || !job.bmp) { MTX.jobs.delete(job); continue; }
+    const live = []; for (const w of [...job.texs]) { const t = w.deref(); if (t) live.push(t); else job.texs.delete(w); }
+    if (!live.length) { MTX.jobs.delete(job); if (job.key && MTX.files.get(job.key) === job) MTX.files.delete(job.key); continue; }
+    let lead = null; for (const t of live) if (mtxOn(t)) { lead = t; break; }
+    waiting += 1;
+    if (lead) mtxApply(job, lead, live);
+  }
+  MTX.n.pending = waiting;
+  if (!waiting) { MTX.idle = 0; return; }
+  // (nothing drawn yet: a model kept in the cache, a layer still compiling) looked at after each frame for a while, then calmly
+  MTX.idle += 1;
+  mtxArm(MTX.idle > 240 ? 400 : 0);
+}
+// the full picture to the graphics card through the uploads' queue (in slices when it can), then every other texture of
+// the file takes it (the same source: nothing uploaded again where it already is)
+function mtxApply(job, lead, live) {
+  const bmp = job.bmp; const gen = job.gen; const S = lead.source;
+  job.busy = true;
+  let done = false;
+  const finish = (src, sliced) => {
+    if (done) return; done = true;
+    for (const t of live) {
+      if (t === lead) continue;
+      const on = mtxOn(t);
+      if (t.source === src) { if (!sliced) { t.version += 1; if (on) upAhead(t); } continue; }
+      if (on) { try { t.dispose(); } catch { /* gone */ } }
+      t.source = src; t.flipY = false; t.version += 1;
+      if (on) upAhead(t);
+    }
+    job.cur = src; job.busy = false;
+    MTX.n.applied += 1; if (sliced) MTX.n.sliced += 1; else MTX.n.whole += 1;
+    if (job.gen !== gen) { job.cur = null; MTX.jobs.add(job); mtxArm(); } // (changed again on disk meanwhile)
+  };
+  try {
+    const p = upRelease(() => { S.data = bmp; lead.flipY = false; lead.needsUpdate = true; finish(S, false); if (bmp.width * bmp.height < MTX_BIG) upAhead(lead); }, bmp.width * bmp.height, lead, bmp, () => finish(lead.source, true));
+    p?.catch?.(() => {});
+  } catch { job.busy = false; MTX.n.failed += 1; }
+}
+// (live) a picture of a model changed on disk: every texture made from it gets the new one, the old one drawn meanwhile
+function mtxFileChanged(fileKey, blob) {
+  const job = MTX.files.get(fileKey);
+  if (!job) return 0;
+  let n = 0; for (const w of job.texs) if (w.deref()) n += 1;
+  if (!n) return 0;
+  decOff(blob, mtxOpts(job.flip), (b, o) => createImageBitmap(b, o)).then((bmp) => { job.bmp = bmp; job.cur = null; job.gen += 1; MTX.n.live += 1; MTX.jobs.add(job); mtxArm(); }).catch(() => { MTX.n.failed += 1; });
+  return n;
+}
+// a GLTFLoader whose pictures take this path (its parser's ImageBitmapLoader swapped for ours, every parse)
+function mtxGltf(loader) {
+  if (!loader || loader.__hearthTex || typeof loader.register !== 'function') return loader;
+  loader.__hearthTex = true;
+  loader.register((parser) => {
+    if (MTX.on && parser.textureLoader?.isImageBitmapLoader === true && typeof createImageBitmap === 'function') parser.textureLoader = mtxLoader(parser.options?.manager, false);
+    return { name: 'HEARTH_model_textures' };
+  });
+  return loader;
+}
+// an .mtl's maps (MTLLoader asks the manager for a handler by the map's URL: hearth-ref://… for a reference's model)
+try { if (typeof createImageBitmap === 'function') THREE.DefaultLoadingManager.addHandler(/^hearth-ref:\/\//, { load: (...a) => (MTX.on ? mtxLoader(THREE.DefaultLoadingManager, true).load(...a) : new THREE.TextureLoader(THREE.DefaultLoadingManager).load(...a)) }); } catch { /* its TextureLoader, as before */ }
+globalThis.__labModelTex = { gltf: mtxGltf };
+// (a reference's model changed on disk, one of its other files: tools/three.js reloadRefFile) its blob: URL replaced in the
+// model's entries, the asset cache told (the model's own sig too: it covers its files), its pictures swapped in place
+function rmodFileUpdate(it) {
+  if (!it?.key || !it.rel) return 0;
+  const b = new Blob([it.buffer], { type: it.mime || '' }); const url = URL.createObjectURL(b);
+  let oldUrl = null;
+  for (const e of RMOD.byPrefix.values()) if (e.key === it.key && e.files.has(it.rel)) { oldUrl = e.files.get(it.rel); e.files.set(it.rel, url); }
+  if (AST.on && it.sig) {
+    const was = oldUrl ? AST.urlSig.get(oldUrl) : null;
+    if (was && was !== it.sig) { AST.pin.delete(was); for (const e of [...AST.e.values()]) if (e.sig === was) astDrop(e); }
+    AST.pin.add(it.sig); AST.urlSig.set(url, it.sig);
+    astPut(`b|${it.sig}`, it.sig, it.buffer.byteLength, { blob: b, url }, () => astRevoke(url));
+    const ms = AST.keySig[it.key];
+    if (it.msig && ms && ms !== it.msig) {
+      // (the model's own bytes are the same: kept under its new sig; what was parsed from it under the old one goes)
+      const me = AST.e.get(`b|${ms}`);
+      if (me) { AST.e.delete(me.key); me.key = `b|${it.msig}`; me.sig = it.msig; AST.e.set(me.key, me); if (me.val?.url) AST.urlSig.set(me.val.url, it.msig); }
+      AST.pin.delete(ms); AST.pin.add(it.msig); AST.keySig[it.key] = it.msig;
+      for (const e of [...AST.e.values()]) if (e.sig === ms) astDrop(e);
+    }
+    astTrim();
+    post({ type: 'refs-held', n: PAGE_N, sigs: astHeld() });
+  } else RMOD.own.add(url);
+  if (oldUrl) realSetTimeout(() => { if (!rmodUses(oldUrl) && !AST.urlSig.has(oldUrl)) URL.revokeObjectURL(oldUrl); }, 5000);
+  return /^image\//.test(it.mime || '') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(it.rel) ? mtxFileChanged(`${it.key}|${it.rel}`, b) : 0;
+}
+Object.assign(globalThis.__labModelTex, { state: () => ({ on: MTX.on, ...MTX.n, jobs: MTX.jobs.size, files: MTX.files.size, decode: window.__labDecode() }), set: (o = {}) => { if ('on' in o) MTX.on = Boolean(o.on); return MTX.on; } });
 // ---------- for the Three Director: look inside the running sketch, press keys, click ----------
 // __scenes = { 'Layer name': { scene, camera, renderer } } from what each layer last rendered.
 function scenesByLayer() {
@@ -15582,6 +15800,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'input') runInput(msg);
   if (msg.type === 'refs') { setRefs(msg.items); palette.splice(0, palette.length, ...(msg.palette || [])); }
   if (msg.type === 'ref-update') { window.__refUpdates = (window.__refUpdates || 0) + 1; window.__refUpdated = updateRef(msg.item); } // (round 42, filewatch)
+  if (msg.type === 'ref-file-update') { window.__refFileUpdates = (window.__refFileUpdates || 0) + 1; window.__refFileUpdated = rmodFileUpdate(msg.item); } // (round 100, modeltex100: one of a model's other files)
   if (msg.type === 'dpr') { if (globalThis.__labSetDpr?.(msg.value)) globalThis.__labDprSync?.(); return; } // (round 37, labboot) fit ⇄ exact size, in this page
   if (msg.type === 'lib') { libGot(msg); return; } // (round 25, diet) motion / lab3d code from the hub
   if (msg.type === 'grade-lut') gradeSetLut(msg.name, msg.N, msg.data); // (round 24) an imported .cube LUT (tools/three-grade.js)

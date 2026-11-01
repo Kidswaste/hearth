@@ -111,6 +111,14 @@ Your job: check the things below on real Windows and report back plain results (
 - By eye: in a playing scene with shadows, ask the Director to "turn off the sun", then "turn it back on", then "add a
   spotlight that casts shadows": does the picture stick for a moment? Save a 4K photo used by a scene again from
   Photoshop (or replace the file): is there a jolt when the new one appears?
+- (round 100, modeltex100) A model's own pictures on the real GPU. Run `node dev/run-checks.js --exact modeltex100`
+  (about 2 min) and report the result line. From `modeltex100.log`, for each stretch (`add:car`, `add:robot`,
+  `add:chair`, `hook`, `live`), report `uploadsInFrames` (should be 0), `compilesInFrames` (should be 0),
+  `biggestUploadMP` (≤ 4.2), `over2xApp`, `khr` (true on the 4080), and from `slices` the `maxMs` (the longest single
+  slice on the real card). By eye: add a `.gltf` exported from Blender ("glTF Separate") whose textures are 4K. Does
+  the preview jolt when it appears, and do its textures look sharp a moment later? Then save one of its textures again
+  in Photoshop. Does the new one show by itself, without a jolt? Last, press ▶ Play on that scene. Does the model show
+  with its textures?
 
 ## 9. Projects on both computers, by hand (round 91, projaudit91)
 Only real machines with the real cloud drive can show these; the checks use a temp folder and a simulated provider.
