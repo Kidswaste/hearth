@@ -1100,7 +1100,8 @@ const ChatCmds = (() => {
     const s = await window.hub.saveStream.start({ defaultPath, filters: [{ name: EXPORT_FORMATS[f], extensions: [f] }] });
     if (!s) return { path: null };
     const enc = new TextEncoder();
-    try { await ChatExport.pump(pieces, (t) => window.hub.saveStream.part(s.id, enc.encode(t))); } catch (x) { window.hub.saveStream.end(s.id, false).catch(() => {}); throw x; }
+    // (round 103, cw103) parts of ≈ 0.5 MB: a 2 MB part's encoding and send was one 75–130 ms window task on a busy box
+    try { await ChatExport.pump(pieces, (t) => window.hub.saveStream.part(s.id, enc.encode(t)), { part: 5e5 }); } catch (x) { window.hub.saveStream.end(s.id, false).catch(() => {}); throw x; }
     return { path: await window.hub.saveStream.end(s.id, true) };
   }
   const EXPORT_FORMATS = { md: 'Markdown', json: 'JSON (re-import with /import)', html: 'Web page', txt: 'Plain text' };

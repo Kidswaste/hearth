@@ -753,7 +753,7 @@ const Access = (() => {
       Native.hooks.render.push(paintBadge);
       // the cards go when the reply ends; the reply keeps one small line of what it did with your files (→ the log)
       Native.hooks.finish.push((event, chat, extras) => {
-        const since = [...(chat.messages || [])].reverse().find((m) => m.role === 'user')?.at || 0;
+        const since = (chat.messages || []).findLast((m) => m.role === 'user')?.at || 0; // (round 103, cw103: from the end, no copy)
         const list = (logs?.[chat.id] || []).filter((e) => e.at >= since && !/^(level|folder|undo)$/.test(e.action));
         if (!list.length) return;
         const n = (f) => list.filter(f).length;

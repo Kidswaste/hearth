@@ -1011,7 +1011,11 @@ const Native = (() => {
     // layout of every reply, even the ones content-visibility lets the browser skip.
     const fresh = [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
       .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
-    const soon = now ? fresh.splice(-now) : [];
+    let soon = now ? fresh.splice(-now) : [];
+    // (round 103, cw103) a giant chat's reply out of view whose contents the browser skips (content-visibility) isn't laid
+    // out here just to be measured (each was a layout of its own in the frame): watched like the older ones, folded near
+    const lr = soon.length && cw(chat) && v.list.getBoundingClientRect(); const away = (n) => { const r = n.getBoundingClientRect(); return r.bottom < lr.top || r.top > lr.bottom; };
+    if (lr?.height) { const off = soon.filter((n) => getComputedStyle(n).contentVisibility === 'auto' && away(n)); if (off.length) { soon = soon.filter((n) => !off.includes(n)); fresh.push(...off); } }
     foldIfLong(soon, soon.map((node) => node.querySelector('.body').scrollHeight));
     for (const node of fresh) foldWhenNear(v, node);
     // nodes that left the list stop being watched (measured again if they come back)
@@ -1136,7 +1140,7 @@ const Native = (() => {
     list.restFrom = from;
     for (const b of awake) if (b >= nb || (cw(chat) && !W.x.has(chat, b * BLOCK, (b + 1) * BLOCK))) awake.delete(b); // (round 86: a windowed chat's block not loaded rests)
     let lastRest = nb - 1; while (lastRest >= 0 && awake.has(lastRest)) lastRest -= 1;
-    let day = '';
+    let day = ''; let dayK = -1;
     const busy = pending.has(chat.id);
     const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
     const plan = []; const spans = new Map(); const sepOf = new Map(); // block → [start, end) in plan · a line → its block
@@ -1146,11 +1150,12 @@ const Native = (() => {
         const hi = Math.min(from, (b + 1) * BLOCK);
         plan.push(restBit(list, used, chat, b, hi));
         if (b === lastRest) plan.push(bitOf(list, used, 'restline', () => restLine(agentId))); // "Earlier messages are resting · Show all"
-        const at = chat.messages[hi - 1]?.at; if (at) day = dayLabel(at);
+        dayK = hi - 1; // (round 103, cw103) its date read only when a drawn message follows: no stub per resting block
         i = hi - 1; continue;
       }
       if (b >= 0 && i % BLOCK === 0) spans.set(b, [plan.length]);
       const m = chat.messages[i];
+      if (dayK >= 0) { const at = chat.messages[dayK]?.at; if (at) day = dayLabel(at); dayK = -1; }
       if (!m.compactReq) { // the "please compact" request is shown as part of the divider
         const n0 = plan.length;
         // a quiet date line where the day changes (Today / Yesterday / the date)
@@ -1215,7 +1220,11 @@ const Native = (() => {
     // (a list that has to be filled: a chat not kept, or whose replies changed; a kept one only shows again)
     const kept = chat && v.panes.get(chatId)?.list;
     const filling = chat && (!kept || kept.childElementCount < 8 || (w && w.misses > TAIL / 2));
-    const tailFirst = Boolean(filling && !keepScroll && v.jumpAfter == null && !fullChats.has(chat.id));
+    // (round 103, cw103) a giant chat followed at its end, redrawn in place with its messages to make (sync brought a new
+    // version) or while its earlier part is still going in under its end (drawLater; a reply ending): its end first
+    // again, the rest in pieces (all of it in one frame was ≈ 550–600 elements, 50–80 ms)
+    const atEnd = keepScroll && cw(chat) && follows(v) && v.jump.hidden && (filling || v.laterOf?.chatId === chatId);
+    const tailFirst = Boolean(((filling && !keepScroll) || atEnd) && v.jumpAfter == null && !fullChats.has(chat.id));
     const warm = w?.wait || null;
     if (warm && !tailFirst) await warm;
     if (stale()) return;
@@ -1223,8 +1232,10 @@ const Native = (() => {
     if (!keepScroll) v.placeDue = chatId || null; // (round 73) placed at this draw's frame (below)
     if (v.enterNext) { v.enterNext = false; enterAnim(agentId); }
     // (round 45) read only when kept: reading the list's size here laid out the chat before it changed (twice per switch)
-    const wasNearBottom = keepScroll && (endDue || nearBottom(v.list));
-    const prevScroll = keepScroll ? v.list.scrollTop : 0;
+    // (round 103, cw103) a scroll to the end already due this frame (a reply followed as it streams: scrollToEnd) puts the
+    // list at its end: not measured (a reply ending before that frame laid all its text out here, in its event)
+    const wasNearBottom = keepScroll && (endDue || Boolean(v.list.endRaf) || nearBottom(v.list));
+    const prevScroll = keepScroll && !(wasNearBottom && v.follow !== false) ? v.list.scrollTop : null; // (round 103: read only when the place may be kept: it lays the list out too)
     // (round 35) reading higher up: what's at the top of the chat stays there (a reply finishing below, or changing
     // height above, used to move the chat under you: only the scroll offset was kept)
     const anchor = keepScroll && !(wasNearBottom && v.follow !== false) ? topAnchor(v.list) : null;
@@ -1263,8 +1274,16 @@ const Native = (() => {
       // (round 45) many messages to make (a chat opened afresh): its end first
       let cut = 0;
       if (tailFirst) {
-        let msgs = 0;
-        for (let k = plan.length - 1; k >= 0; k--) { if (typeof plan[k] !== 'number') continue; msgs += 1; if (msgs === TAIL) cut = k; }
+        let msgs = 0; let take = 0; let len = 0; const big = cw(chat);
+        // (round 103, cw103) a giant chat's long replies: its last 2–4 first, up to ≈ 16k characters (8 laid out were one
+        // 45–60 ms frame: a 45k-character reply is ≈ 20 ms of layout on its own), the rest next (drawLater, in pieces)
+        for (let k = plan.length - 1; k >= 0; k--) {
+          if (typeof plan[k] !== 'number') continue;
+          msgs += 1; if (take < 0) continue;
+          const n = big ? String(chat.messages[plan[k]].text ?? '').length : 0;
+          if (big ? take >= 2 && (take >= TAIL / 2 || len + n > 16000) : take >= TAIL) { take = -1; continue; }
+          take += 1; len += n; cut = k;
+        }
         if (msgs <= TAIL + 4) cut = 0;
         else while (cut > 0 && typeof plan[cut - 1] !== 'number') cut -= 1; // (its date line goes with it)
       }
@@ -1313,7 +1332,7 @@ const Native = (() => {
       v.drawing = Math.max(0, (v.drawing || 1) - 1);
       foldFresh(v, chat);
       const newSep = v.list.querySelector('.new-sep');
-      if (keepScroll && !(wasNearBottom && v.follow !== false)) { v.list.scrollTop = prevScroll; if (anchor) keepAnchor(v.list, anchor); }
+      if (keepScroll && !(wasNearBottom && v.follow !== false)) { if (prevScroll != null) v.list.scrollTop = prevScroll; if (anchor) keepAnchor(v.list, anchor); }
       else if (newSep && !keepScroll) { v.list.scrollTop = Math.max(0, newSep.offsetTop - 40); v.follow = v.list.scrollHeight - v.list.scrollTop - v.list.clientHeight < 4; }
       else if (!(v.scrollLock && keepScroll)) { v.follow = true; const top = v.list.scrollHeight - v.list.clientHeight; if (Math.abs(v.list.scrollTop - top) >= 1) v.list.scrollTop = top; }
       if (v.drawSeq === seq && v.placeDue === chatId) v.placeDue = v.list.clientHeight ? null : chatId; // (round 73) still due when out of sight (no layout: nothing took)
@@ -1373,7 +1392,8 @@ const Native = (() => {
   }
   async function drawLater(agentId, v, chat, chatId, later, warm, seq) {
     v.drawing += 1;
-    const stale = () => { if (v.drawSeq === seq && v.paneKey === chatId) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
+    const me = { chatId }; v.laterOf = me; const over = () => { if (v.laterOf === me) v.laterOf = null; }; // (round 103: under way)
+    const stale = () => { if (v.drawSeq === seq && v.paneKey === chatId) return false; v.drawing = Math.max(0, v.drawing - 1); over(); return true; };
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // the end goes on screen first
     if (warm) await warm;
     if (stale()) return;
@@ -1388,12 +1408,25 @@ const Native = (() => {
       }
     }
     const list = v.list;
-    if (later.before?.parentElement === list) later.before.before(...made);
-    else { v.drawing = Math.max(0, v.drawing - 1); return render(agentId, { keepScroll: true }); } // (changed meanwhile: drawn again as it is now)
+    // (round 103, cw103) a giant chat's part goes in from its end up, a piece a frame (≈ 300 elements, a 100 characters of
+    // text counted as one): the replies among the list's last 8 are laid out whole (chatcore.css; one ≈ 35 ms frame, and
+    // a reply ending before that frame laid it all out in its own event); the ones above, out of view, are skipped
+    let after = 0; for (let x = later.before; x; x = x.nextElementSibling) after += 1;
+    for (let end = made.length, at; end > 0; end = at) {
+      at = cw(chat) ? end : 0; let n = 0;
+      while (at > 0 && (at === end || n < 300)) { const x = made[--at]; n += made.length - at + after > 8 ? 3 : 1 + x.getElementsByTagName('*').length + (x.dataset?.raw?.length || 0) / 100; }
+      const next = end === made.length ? later.before : made[end];
+      if (next?.parentElement === list) next.before(...made.slice(at, end));
+      else { v.drawing = Math.max(0, v.drawing - 1); over(); return render(agentId, { keepScroll: true }); } // (changed meanwhile: drawn again as it is now)
+      if (!at) break;
+      // (each piece's replies in view folded in its own frame, before it's painted, and the chat kept at its end)
+      await new Promise((r) => requestAnimationFrame(() => { if (v.list === list) { foldFresh(v, chat, FOLD_NOW); if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; } } setTimeout(r, 0); }));
+      if (stale()) return;
+    }
     requestAnimationFrame(() => {
-      v.drawing = Math.max(0, v.drawing - 1);
+      v.drawing = Math.max(0, v.drawing - 1); over();
       if (v.list !== list) return;
-      foldFresh(v, chat, 0);
+      foldFresh(v, chat, cw(chat) ? FOLD_NOW : 0); // (round 103, cw103: a giant chat's 5th–8th last are in this part: the ones in view folded now, as the end's were)
       if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; }
       if (v.jumpAfter != null) takeJump(agentId, v, chat);
       restWatch(agentId, v);
@@ -1481,13 +1514,19 @@ const Native = (() => {
   }
 
   // ---------- day lines, unread replies, pinned messages ----------
+  // (round 103, cw103) kept per day while today is the same day (a draw of a long chat formatted one per message)
+  const dayMemo = new Map();
   function dayLabel(ms) {
     const d = new Date(ms); const today = new Date();
     const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const diff = Math.round((start(today) - start(d)) / 864e5);
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    return fmtLocal(ms, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }, 'date');
+    const s = start(d); const t = start(today);
+    if (dayMemo.get('t') !== t || dayMemo.size > 4000) { dayMemo.clear(); dayMemo.set('t', t); }
+    let x = dayMemo.get(s);
+    if (x !== undefined) return x;
+    const diff = Math.round((t - s) / 864e5);
+    x = diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : fmtLocal(ms, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }, 'date');
+    dayMemo.set(s, x);
+    return x;
   }
   // Replies that arrived while you looked elsewhere: chat id -> index of the first one you haven't seen.
   const unreadFrom = new Map();
@@ -2223,7 +2262,7 @@ const Native = (() => {
       el('div', { class: 'body', html: renderMarkdown(m.text) }));
   }
   function paintContext(v, chat) {
-    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    const last = chat?.messages.findLast((m) => m.usage); // (round 103, cw103: from the end, no copy: a giant chat's 6,000 stubs were made for this)
     // (round 34) continued lighter and nothing sent since: what the next message will send (≈), hover: what it was
     const lt = chat?.compact?.lighter && chat.messages.lastIndexOf(last) < chat.compact.index ? chat.compact.lighter : null;
     const n = lt ? lt.after : last?.usage.contextInput ?? last?.usage.input ?? 0;
@@ -2291,7 +2330,7 @@ const Native = (() => {
     });
   }
   function longChatBanner(agent, chat) {
-    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    const last = chat?.messages.findLast((m) => m.usage); // (round 103, cw103: no copy)
     if (!last || (last.usage.contextInput ?? last.usage.input) < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
     if (window.Autocompact?.handles(agent)) return null; // (round 34) one calm line under the reply instead (autocompact.js)
     return el('div', { class: 'long-chat' },

@@ -32,8 +32,9 @@ const ChatCost = (() => {
 
   // ---------- at send and at the end of a reply ----------
   Native.hooks.send.push((agentId, chat) => {
-    const talk = chat.messages.filter((m) => m.role === 'user' || m.role === 'assistant');
-    atSend.set(chat.id, { agentId, fresh: !chat.session?.id && talk.length === 1 });
+    // (round 103, cw103) counted until a second one (a giant windowed chat: every older message's record was read here)
+    let talk = 0; if (!chat.session?.id) chat.messages.some((m) => (m.role === 'user' || m.role === 'assistant') && ++talk > 1);
+    atSend.set(chat.id, { agentId, fresh: !chat.session?.id && talk === 1 });
     // keep the resolved cost at hand for finish (which must not wait)
     const a = agentFor(agentId, chat);
     if (a) fixed(agentId, chat).then((f) => { if (f) latest.set(`${agentId}|${sigOf(a)}`, f); });
@@ -46,7 +47,7 @@ const ChatCost = (() => {
     if (event.type !== 'done' || !u?.input || !s) return;
     const f = latest.get(`${s.agentId}|${sigOf(agentFor(s.agentId, chat) || {})}`);
     if (!f) return;
-    const user = [...chat.messages].reverse().find((m) => m.role === 'user');
+    const user = chat.messages.findLast((m) => m.role === 'user'); // (round 103, cw103: no copy)
     const sent = user ? C.tok(user.sent || user.text) : 0;
     const refs = (user?.attachments || []).reduce((n, a) => n + (a.tokens || 0), 0);
     const memory = user?.memTokens || 0;

@@ -143,10 +143,23 @@ const ChatRest = (() => {
       if (ds.length === st.length) ds.forEach((d, i) => { if (d.open !== st[i]) { d.open = st[i]; if (d.open) R.fillFold?.({ target: d }); } });
     }
   }
+  // (round 103, cw103) a woken block's nodes in pieces of about PIECE elements (100 characters of a message's text
+  // counted as one), in order (a date line goes with the message under it)
+  const PIECE = 260;
+  function pieces(items, max = PIECE) {
+    const out = []; let cur = []; let n = 0;
+    for (const x of items) {
+      const k = 1 + (x.getElementsByTagName?.('*').length || 0) + (x.dataset?.raw?.length || 0) / 100; // (a long reply's text: its layout)
+      if (n && n + k > max && x.classList?.contains('msg') && !cur.at(-1)?.classList?.contains('day-sep')) { out.push(cur); cur = []; n = 0; }
+      cur.push(x); n += k;
+    }
+    if (cur.length) out.push(cur);
+    return out;
+  }
   // block `b` drawn in place of its spacer, exactly as a full draw makes it (native.js planOf)
   // (round 76, chatjump76) hurry: a jump / a find is waiting on this block: its Markdown waits ≤ 120 ms and its media
   // sizes ≤ 150 ms (they go on being measured and kept); hold() then keeps the message in place as the rest arrive
-  async function wake(agentId, v, chat, b, { hurry = false } = {}) {
+  async function wake(agentId, v, chat, b, { hurry = false, at = null } = {}) {
     const list = v.list;
     if (list.awake?.has(b)) return false;
     v.waking = true;
@@ -173,7 +186,7 @@ const ChatRest = (() => {
       if (!sp) return true; // (drawn meanwhile)
       list.bits ||= new Map(); for (const [k, n] of used) list.bits.set(k, n);
       // what's at the top of the view stays put; inside this spacer: the same proportion of the block
-      const a = anchor(list);
+      let a = anchor(list);
       const frac = a?.node === sp ? (top(list) - top(sp)) / (sp.getBoundingClientRect().height || 1) : null;
       reopen(chat, items);
       // (round 73) drawn at their real size from the start: an older message off screen is otherwise laid out at a 180 px
@@ -181,8 +194,35 @@ const ChatRest = (() => {
       // shrank under your eyes (≈ 40 px per user message here). After a frame they go back to that rule, which now
       // remembers their real size.
       for (const n of items) if (n.classList?.contains('msg')) n.style.contentVisibility = 'visible';
-      requestAnimationFrame(() => requestAnimationFrame(() => { for (const n of items) if (n.style?.contentVisibility) n.style.contentVisibility = ''; }));
-      if (items.length) sp.replaceWith(...items); else sp.remove();
+      const back = () => requestAnimationFrame(() => requestAnimationFrame(() => { for (const n of items) if (n.style?.contentVisibility) n.style.contentVisibility = ''; }));
+      // (round 103, cw103) a block's first style and layout is ≈ 1,000 elements here (code, tables, tool folds): one task
+      // of 50–80 ms when it went in at once. It goes in a piece a frame, from the side you see: from its end up when the
+      // view is under it (each piece right under the spacer), from its top down when the view is in its upper half or
+      // above it (each piece right over the spacer: at the very top, #1 shows with the first piece). The spacer gives up
+      // the height each piece took, so nothing on the far side moves; what's at the top of the view is kept after each
+      // piece put in from the end. The last piece takes the spacer's place exactly as the whole block did. A jump or a
+      // find waiting on it (hurry) takes pieces twice as big, a task each without waiting for a frame, and the piece
+      // holding its message goes in last: the message shows when the jump lands on it, as soon as before
+      const pcs = pieces(items, hurry ? 2 * PIECE : PIECE);
+      const down = frac != null ? frac < 0.5 : Boolean(a?.node && top(a.node) < top(sp));
+      const tp = at == null ? -1 : pcs.findIndex((pc) => pc.some((n) => Number(n.dataset?.index) === at));
+      const L = tp >= 0 ? tp : down ? pcs.length - 1 : 0; // (the piece that takes the spacer's place: above it, top down; under it, end up)
+      const order = [...pcs.keys()].filter((i) => i < L).concat([...pcs.keys()].filter((i) => i > L).reverse(), [L]);
+      for (let j = 0; j < order.length - 1; j++) {
+        const pc = pcs[order[j]]; const over = order[j] < L;
+        if (over) sp.before(...pc); else sp.after(...pc);
+        const h = Math.max(0, sp.getBoundingClientRect().height - span(pc));
+        sp.restPx = h; sp.style.height = `${h}px`;
+        if (a && !(over && (a.node === sp || (a.node && top(a.node) < top(sp))))) R.keepAnchor(list, a); // (a piece over the spacer moves nothing above it)
+        await (hurry ? R.nextSlice() : new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))); // (a jump waiting: a task each, no frame waited)
+        // (another draw placed the whole block meanwhile, or the chat went: the rest goes in at once, as before)
+        const rest = () => order.slice(j + 1).sort((x, y) => x - y).flatMap((i) => pcs[i]);
+        if (!sp.isConnected) { back(); return true; }
+        if (gone()) { back(); sp.replaceWith(...rest()); placeLine(list, agentId); return true; }
+        a = anchor(list);
+      }
+      back();
+      if (pcs.length) sp.replaceWith(...pcs[order.at(-1)]); else sp.remove();
       placeLine(list, agentId);
       if (frac != null && items.length) list.scrollTop += top(items[0]) + frac * span(items) - top(list);
       else if (a) R.keepAnchor(list, a);
@@ -227,7 +267,7 @@ const ChatRest = (() => {
     if (!v || !chat || !chat.messages[index]) return false;
     for (let i = 0; i < 150 && (v.drawing || v.waking); i++) await new Promise((r) => setTimeout(r, 20));
     if (H.activeChat[agentId] !== id) return false;
-    return Boolean(v.list.querySelector(`.msg[data-index="${index}"]`)) || (index < R.shownFrom(chat, R.unreadFrom.get(id)) && wake(agentId, v, chat, Math.floor(index / R.BLOCK), { hurry: true }));
+    return Boolean(v.list.querySelector(`.msg[data-index="${index}"]`)) || (index < R.shownFrom(chat, R.unreadFrom.get(id)) && wake(agentId, v, chat, Math.floor(index / R.BLOCK), { hurry: true, at: index }));
   }
   // (round 76, chatjump76) a jump or a find lands its message in view and HOLDS it there while what's around it settles:
   // the blocks next to it waking (their messages laid out at the 180 px guess of chatcore.css until drawn), pictures
