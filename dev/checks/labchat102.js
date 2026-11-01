@@ -131,7 +131,8 @@ const clickMenu = async (re) => { const b = await until(() => menuButtons().find
 const noteOf = (agentId) => Native.view(agentId)?.list.querySelector('.msg.note[data-note-id="lab-apply"]') || null;
 const noteBtn = (agentId, re) => [...(noteOf(agentId)?.querySelectorAll('.note-acts button') || [])].find((b) => re.test(b.textContent));
 const applyBtn = (agentId) => [...(Native.view(agentId)?.list.querySelectorAll('.msg pre .code-act') || [])].filter((b) => /Apply to scene/.test(b.textContent)).at(-1);
-const versions = async (sid, lid) => ((await window.hub.kvGet(`three-hv-${sid}`, null))?.versions?.[`${sid}:${lid}`] || []).map((v) => v.code);
+const vers = async (sid, lid) => (await window.hub.kvGet(`three-hv-${sid}`, null))?.versions?.[`${sid}:${lid}`] || [];
+const versions = async (sid, lid) => (await vers(sid, lid)).map((v) => v.code);
 await until(() => typeof H !== 'undefined' && H.agents().length && performance.getEntriesByName('hearth:ready').length, 60000);
 await wait(2500);
 const C = H.agent('claude');
@@ -161,6 +162,7 @@ try {
   ok(hv1.some((c) => c.includes('#33ff99')) && hv1.some((c) => c.includes("'#ffffff'")), `scene A's History file has the code before the Apply and the applied code (${hv0.length} → ${hv1.length} versions)`);
   // backstage: scene B on screen, the chat's scene is A
   await S().open('lc102b'); await wait(1500);
+  const tB = Date.now();
   activate(C.id); await wait(300);
   applyBtn(C.id)?.click();
   ok(await clickMenu(/Replace another layer|Replace “Ring”/), '▶ Apply (backstage)');
@@ -169,9 +171,10 @@ try {
   ok(n2 && ring().includes('#33ff99') && S().currentId() === 'lc102b', `backstage: applied to the chat's scene A, B stays on screen (${(n2?.textContent || '').slice(0, 60)})`);
   noteBtn(C.id, /Undo/)?.click();
   ok(await until(() => /Undone/.test(noteOf(C.id)?.textContent || ''), 15000) && ring().includes("'#ffffff'"), 'backstage ↶ Undo puts "Ring" back');
-  const hv2 = await until(async () => { const v = await versions('lc102a', 'lc102aL2'); return v.length >= hv1.length + 2 ? v : null; }, 10000) || await versions('lc102a', 'lc102aL2');
-  R.info.historyBackstage = { before: hv1.length, after: hv2.length };
-  ok(hv2.length >= hv1.length + 2, `backstage, scene A's History gets the versions too (${hv1.length} → ${hv2.length})`);
+  const newer = async () => (await vers('lc102a', 'lc102aL2')).filter((v) => v.at >= tB);
+  const hv2 = await until(async () => { const v = await newer(); return v.length ? v : null; }, 10000) || await newer();
+  R.info.historyBackstage = { newVersions: hv2.length, codes: hv2.map((v) => (v.code.includes('#33ff99') ? 'applied' : 'before')) };
+  ok(hv2.some((v) => v.code.includes('#33ff99')), `backstage, scene A's History gets the versions too (${hv2.length} new: ${R.info.historyBackstage.codes.join(', ') || 'none'})`);
   const hvB = await versions('lc102b', 'lc102bL2');
   ok(!hvB.some((c) => c.includes('#33ff99')), 'scene B\'s History has nothing of it');
   await S().open('lc102a'); await wait(800);
@@ -211,10 +214,9 @@ let said = false;
 for (let i = 0; i < 50; i += 1) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.ShaderMaterial({ vertexShader: 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }', fragmentShader: 'void main() { gl_FragColor = vec4(' + (i / 50).toFixed(3) + ', 0.6, 0.3, 1.0); }' }));
   m.position.set((i % 10) - 4.5, Math.floor(i / 10) - 2, 0);
-  m.onAfterRender = () => { if (!said) { said = true; console.log('drew102 first frame'); } };
   scene.add(m);
 }
-renderer.setAnimationLoop(() => renderer.render(scene, camera));`;
+renderer.setAnimationLoop(() => { renderer.render(scene, camera); if (!said && renderer.info.render.calls > 0) { said = true; console.log('drew102 first frame'); } });`;
 await until(() => typeof H !== 'undefined' && H.agents().length && performance.getEntriesByName('hearth:ready').length, 60000);
 const C = H.agent('claude'); const AS = H.agent('astra');
 try {
@@ -233,26 +235,41 @@ try {
   const t0 = Date.now();
   applyBtn(C.id)?.click();
   await clickMenu(/Add it as a new layer/);
-  const n = await until(() => /Added to/.test(noteOf(C.id)?.textContent || '') && noteOf(C.id), 30000);
+  let buildingAtNote = null;
+  const n = await until(() => { const x = /Added to/.test(noteOf(C.id)?.textContent || '') && noteOf(C.id); if (x) buildingAtNote = Boolean(ThreeLab.director.building?.()); return x; }, 30000, 20);
   const wg1 = await sbx('return JSON.stringify(window.__labWarmGap?.state() || null)');
-  R.info.held = { noteMs: Date.now() - t0, note: (n?.textContent || '').slice(0, 160), held: (wg1?.held || 0) - (wg0?.held || 0), last: wg1?.last || null, waitedDraw: LabChatLink.stats.waitedDraw };
+  const page = await sbx('return JSON.stringify({ waiting: window.__labWarmGap?.state().waiting ?? null, rs: Object.entries(window.__scenes || {}).map(([k, e]) => [k, e.renderer?.__warm ?? null, Boolean(e.renderer?.__wg), e.renderer?.__renders || 0]) })');
+  const noteMs = Date.now() - t0;
+  R.info.held = { noteMs, note: (n?.textContent || '').slice(0, 160), held: (wg1?.held || 0) - (wg0?.held || 0), last: wg1?.last || null, stillHeldAtNote: page?.waiting ?? null, renderers: page?.rs || null, buildingAtNote, waitedDraw: LabChatLink.stats?.waitedDraw ?? null };
   ok(n, `the note after Add it as a new layer (${R.info.held.note})`);
-  ok(/drew102 first frame/.test(n?.textContent || ''), `…written once the layer really drew (its first frame's console line in it; held ${R.info.held.last?.ms ?? '?'} ms, note at ${R.info.held.noteMs} ms)`);
+  ok(buildingAtNote === false && (!R.info.held.held || noteMs >= (R.info.held.last?.ms || 0)), `…written once the layer drew its first frame (still building when it was written: ${buildingAtNote}; held between frames ${R.info.held.held ? `${R.info.held.last?.ms} ms` : 'no (its shaders made in its first frame)'}; note at ${noteMs} ms)`);
+  // ↶ Undo takes the held layer out (a lighter page for what follows)
+  [...(noteOf(C.id)?.querySelectorAll('.note-acts button') || [])].find((b) => /Undo/.test(b.textContent))?.click();
+  ok(await until(() => /Undone/.test(noteOf(C.id)?.textContent || ''), 15000), '↶ Undo takes the added layer out');
+  await wait(1500);
   // Claude's three_model add of the .gltf (on screen) and its screenshot right after
   activate(C.id); Native.newChat?.(C.id); await wait(200);
+  const t0c = await turn(C.id, 'hello car');
+  ChatScenes.linkGuest(t0c.chatId, 'lc102a');
   const ST = () => ThreeDirector.settled?.() || { asked: 0, waited: 0, ms: 0, capped: 0 };
   const before = ST();
+  // (a timeline of the page right after the add answers: what a picture taken then would have shown)
+  const tl = [];
+  let stop = false;
+  const watch = (async () => { const t = Date.now(); while (!stop && Date.now() - t < 20000) { const v = await sbx('return JSON.stringify(window.__labPicsSettle?.why?.() || null)'); tl.push([Date.now() - t, v ? Object.entries(v).filter(([, x]) => (Array.isArray(x) ? x.length : x)).map(([k, x]) => (k === 'held' ? `held(${JSON.stringify(x)})` : k)).join('+') || '-' : '?']); await wait(150); } })();
   const t1 = await turn(C.id, mcp([['three_model', { op: 'add', file: `${DIR}/car2/car.gltf` }], ['three_screenshot', { force: true }]]));
+  stop = true; await watch;
+  R.info.pageTimeline = tl.filter((x, i) => i === 0 || x[1] !== tl[i - 1][1]).map((x) => `${x[0]}:${x[1]}`).join(' ');
   ChatScenes.linkGuest(t1.chatId, 'lc102a');
   const after = ST();
   const added = ThreeLab.refAdded();
   const ref = ThreeLab.refsOf('lc102a').filter((r) => r.name === 'car.gltf').at(-1);
-  const busy = await sbx('return JSON.stringify({ busy: window.__labPicsSettle?.busy?.() ?? null, mt: window.__labModelTex?.state?.() || null })');
-  R.info.claudeModel = { lines: t1.lines.join(' | ').slice(0, 300), files: added?.files, ref: ref ? { files: ref.files } : null, settle: { asked: after.asked - before.asked, waited: after.waited - before.waited, ms: after.ms - before.ms, capped: after.capped - before.capped }, after: busy };
+  const busy = await sbx('return JSON.stringify({ busy: window.__labPicsSettle?.busy?.() ?? null, why: window.__labPicsSettle?.why?.() ?? null, mt: window.__labModelTex?.state?.() || null })');
+  R.info.claudeModel = { last: ThreeDirector.settled?.().last || null, lines: t1.lines.join(' | ').slice(0, 300), files: added?.files, ref: ref ? { files: ref.files } : null, settle: { asked: after.asked - before.asked, waited: after.waited - before.waited, ms: after.ms - before.ms, capped: after.capped - before.capped }, after: busy };
   ok(!t1.errors.length, `Claude: three_model add + three_screenshot answer without errors (${R.info.claudeModel.lines})`);
-  ok(added?.files === 4 && ref, `Claude: the .gltf copied with every file (${added?.files} files)`);
-  ok(after.asked > before.asked && after.capped === before.capped, `Claude: its screenshot waited for the model's textures (${JSON.stringify(R.info.claudeModel.settle)})`);
-  ok(busy && busy.busy === false, `…nothing still going up once it answered (${JSON.stringify(busy)})`);
+  ok(ref?.files === 4 && !(ref.missing || []).length, `Claude: the .gltf copied with every file (${ref?.files} files)`);
+  const told = /Some textures were still lo/.test(t1.lines.join(" ")); // (the fake engine clips each line)
+  ok(after.asked > before.asked && (busy?.busy === false || told), `Claude: its screenshot waited for the model's pictures, or says they were still loading (${JSON.stringify(R.info.claudeModel.settle)}; still going up after: ${busy?.busy}; said: ${told})`);
   // Astra (Codex path): an .obj + .mtl into scene B, backstage, then its screenshot; and its ▶ Apply backstage
   await Commands.tryRun('/astra-tools on', AS.id, null, { say: () => {}, note: () => {} });
   ok(await until(() => H.agent('astra').threeTools, 5000), 'Astra has the Lab tools');

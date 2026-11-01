@@ -514,8 +514,14 @@ const ThreeDirector = (() => {
     if (!d.evalInSketch) return null;
     settleStat.asked += 1;
     try {
-      const r = await d.evalInSketch('return window.__labPicsSettle ? JSON.stringify(await window.__labPicsSettle.wait(3000)) : null');
-      const v = r?.ok && typeof r.value === 'string' ? JSON.parse(r.value) : null;
+      // (2.5 s: under the page's own 4 s limit for an eval)
+      // a page too busy to answer in 3.5 s (a model being parsed, shaders compiled on a slow card): the picture goes now,
+      // said as still loading
+      const t0 = performance.now();
+      const r = await Promise.race([d.evalInSketch('return window.__labPicsSettle ? JSON.stringify(await window.__labPicsSettle.wait(2500)) : null'), sleep(3500).then(() => ({ ok: false, error: 'busy' }))]);
+      let v = r?.ok && typeof r.value === 'string' ? JSON.parse(r.value) : null;
+      if (!v && r?.error === 'busy') v = { ms: Math.round(performance.now() - t0), busy: true };
+      settleStat.last = v || { failed: r?.error || String(r?.value ?? 'none') };
       if (v?.ms) { settleStat.waited += 1; settleStat.ms += v.ms; }
       if (v?.busy) settleStat.capped += 1;
       return v;

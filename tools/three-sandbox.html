@@ -5486,6 +5486,7 @@ function mtxLoad(ld, url0, flip, onLoad, onError) {
   const u = which?.url || (typeof mgr.resolveURL === 'function' ? mgr.resolveURL(url) : url);
   const tex = new THREE.Texture(); tex.flipY = false;
   mgr.itemStart?.(url);
+  MTX.inflight = (MTX.inflight || 0) + 1; let left = false; const out = () => { if (!left) { left = true; MTX.inflight -= 1; } }; // (round 102: picsBusy)
   fetch(u).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
     .then((blob) => decOff(blob, mtxOpts(flip), (b, o) => createImageBitmap(b, o), MTX_SMALL))
     .then(async (bmp) => {
@@ -5502,9 +5503,9 @@ function mtxLoad(ld, url0, flip, onLoad, onError) {
       tex.image = img; tex.flipY = false; tex.needsUpdate = true;
       upAhead(tex);
       mtxNote(which?.key || null, tex, full, flip);
-      try { onLoad?.(tex); } finally { mgr.itemEnd?.(url); }
+      try { onLoad?.(tex); } finally { out(); mgr.itemEnd?.(url); }
     })
-    .catch((err) => { MTX.n.failed += 1; mgr.itemError?.(url); mgr.itemEnd?.(url); if (onError) onError(err); else console.error(err); });
+    .catch((err) => { out(); MTX.n.failed += 1; mgr.itemError?.(url); mgr.itemEnd?.(url); if (onError) onError(err); else console.error(err); });
   return tex;
 }
 // a texture (and every copy made of it from now on) followed: its file's job (one per file of a reference's model, so a
@@ -5513,7 +5514,7 @@ function mtxNote(fileKey, tex, full, flip) {
   let job = fileKey ? MTX.files.get(fileKey) : null;
   if (!job) { job = { key: fileKey, texs: new Set(), bmp: null, cur: null, busy: false, gen: 0, flip }; if (fileKey) MTX.files.set(fileKey, job); }
   mtxTrack(job, tex);
-  if (full) { job.bmp = full; job.cur = null; job.gen += 1; MTX.jobs.add(job); mtxArm(); } else if (!job.bmp) job.cur = tex.source;
+  if (full) { job.bmp = full; job.cur = null; job.gen += 1; job.at = realNow(); MTX.jobs.add(job); mtxArm(); } else if (!job.bmp) job.cur = tex.source; // (round 102: at, picsBusy)
   return job;
 }
 function mtxTrack(job, t) { MTX.of.set(t, job); job.texs.add(new WeakRef(t)); t.clone = mtxClone; }
@@ -5581,7 +5582,7 @@ function mtxFileChanged(fileKey, blob) {
   if (!job) return 0;
   let n = 0; for (const w of job.texs) if (w.deref()) n += 1;
   if (!n) return 0;
-  decOff(blob, mtxOpts(job.flip), (b, o) => createImageBitmap(b, o)).then((bmp) => { job.bmp = bmp; job.cur = null; job.gen += 1; MTX.n.live += 1; MTX.jobs.add(job); mtxArm(); }).catch(() => { MTX.n.failed += 1; });
+  decOff(blob, mtxOpts(job.flip), (b, o) => createImageBitmap(b, o)).then((bmp) => { job.bmp = bmp; job.cur = null; job.gen += 1; job.at = realNow(); MTX.n.live += 1; MTX.jobs.add(job); mtxArm(); }).catch(() => { MTX.n.failed += 1; });
   return n;
 }
 // a GLTFLoader whose pictures take this path (its parser's ImageBitmapLoader swapped for ours, every parse)
@@ -15960,12 +15961,16 @@ function obsShot(msg) {
 // its stand-in (a job whose texture is up), slices or queued uploads, a renderer held for its shaders
 const PICS = { waits: 0, ms: 0, capped: 0 };
 function picsBusy() {
-  if (UPS.active > 0 || UPQ.q.length > 0) return true;
+  if (UPS.active > 0 || UPQ.q.length > 0 || LC.pending > 0 || MTX.inflight > 0) return true;
+  try { for (const S of globalThis.lab3d?.live?.values?.() || []) if (!S.loaded && !S.error) return true; } catch { /* no 🧊 layers */ } // a 🧊 model still loading
   for (const r of renderers) if (!r.__stale && (r.__wg || r.__warm === 'pending')) return true;
   for (const job of MTX.jobs) {
     if (job.busy) return true;
     if (job.cur || !job.bmp) continue;
-    for (const w of job.texs) { const t = w.deref(); if (t && mtxOn(t)) return true; }
+    // its full picture still to go up: on the graphics card already (behind the stand-in), or a model that just arrived
+    // (its meshes still compiling); one kept in the asset cache and never drawn doesn't hold a picture
+    const fresh = realNow() - (job.at || 0) < 8000;
+    for (const w of job.texs) { const t = w.deref(); if (t && (fresh || mtxOn(t))) return true; }
   }
   return false;
 }
@@ -15981,7 +15986,7 @@ function picsSettle(cap, fn) {
   tick();
 }
 // (the window's three_screenshot: eval 'return window.__labPicsSettle.wait(ms)' before its picture → { ms, busy })
-window.__labPicsSettle = { busy: () => picsBusy(), state: () => ({ ...PICS, ms: Math.round(PICS.ms) }),
+window.__labPicsSettle = { busy: () => picsBusy(), state: () => ({ ...PICS, ms: Math.round(PICS.ms) }), why: () => ({ slices: UPS.active, queued: UPQ.q.length, lc: LC.pending, loading: MTX.inflight || 0, models: [...(globalThis.lab3d?.live?.values?.() || [])].filter((S) => !S.loaded && !S.error).length, held: [...renderers].filter((r) => !r.__stale && (r.__wg || r.__warm === 'pending')).map((r) => [r.__layer, r.__warm, Boolean(r.__wg)]), jobs: MTX.jobs.size }),
   wait: (cap = 3000) => { if (!picsBusy()) return Promise.resolve({ ms: 0, busy: false }); const t0 = realNow(); return new Promise((res) => picsSettle(Math.min(3500, cap), () => res({ ms: Math.round(realNow() - t0), busy: picsBusy() }))); } };
 function smallShot(max, tag) {
   frameSoon(() => {
