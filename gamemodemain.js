@@ -156,14 +156,20 @@ function hostScript(S) {
   // were asked for only once it said 'ready'): page times, ms
   st.load = { asked: performance.now() };
   var early = {}; var bytes = function (f) { if (!early[f]) early[f] = read(f); return early[f]; };
-  S.refs.forEach(function (r) { bytes(r.file).catch(function () {}); if (r.ktx2) bytes(r.ktx2).catch(function () {}); });
+  S.refs.forEach(function (r) { bytes(r.file).catch(function () {}); if (r.ktx2) bytes(r.ktx2).catch(function () {}); (r.files || []).forEach(function (f) { bytes(f.file).catch(function () {}); }); });
+  // (round 100, modeltex100) a model of several files: each of its other files with it (an empty one when it didn't read:
+  // its loader then says which)
+  var withFiles = function (r, it) {
+    if (!r.files || !r.files.length) return it;
+    return Promise.all(r.files.map(function (f) { return bytes(f.file).catch(function () { return new ArrayBuffer(0); }).then(function (b) { return { rel: f.rel, mime: f.mime, buffer: b }; }); })).then(function (files) { it.main = r.main; it.files = files; return it; });
+  };
   if (S.song) bytes(S.song.file).catch(function () {});
   function go() {
     send({ type: 'ready-lock', on: true }); // 100 %: no adaptive steps, no doze, no fps cap
     send({ type: 'pace', on: false }); send({ type: 'adapt', on: false }); send({ type: 'fps-cap', value: 0, auto: false, focused: true });
     send({ type: 'game-plan', merge: S.plan.merge, why: S.plan.why, fast: Boolean(S.plan.fast) }); // (round 56, playlatency: fast = the one canvas swapped to the screen, not copied, each frame)
     // (round 53, gametex) a picture with a compressed copy brings it along (ktx2): the player uses it when the graphics card takes it
-    Promise.all(S.refs.map(function (r) { return Promise.all([bytes(r.file), r.ktx2 ? bytes(r.ktx2).catch(function () { return null; }) : null]).then(function (b) { var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: b[0] }; if (b[1]) it.ktx2 = b[1]; return it; }).catch(function () { return null; }); })).then(function (items) {
+    Promise.all(S.refs.map(function (r) { return Promise.all([bytes(r.file), r.ktx2 ? bytes(r.ktx2).catch(function () { return null; }) : null]).then(function (b) { var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: b[0] }; if (b[1]) it.ktx2 = b[1]; return withFiles(r, it); }).catch(function () { return null; }); })).then(function (items) {
       st.load.fetched = performance.now();
       send({ type: 'tweak-init', values: S.values || {}, keys: {}, mods: {} });
       send({ type: 'refs', items: items.filter(Boolean), palette: S.palette || [] });
@@ -213,7 +219,10 @@ async function buildScene(spec) {
   if (!layers.length) throw new Error('This scene has no code to play.');
   const version = String(spec.version || '0.186.1');
   const sandbox = path.join(__dirname, 'tools', 'three-sandbox.html');
-  const refStamps = await Promise.all((spec.refs || []).map((r) => (r.path ? stampOf(r.path) : '-')));
+  // (round 100, modeltex100) a model the Lab copied whole (a .gltf with its .bin and pictures, an .obj with its .mtl): its
+  // other files go with it (deploymain.modelFiles), and a change to any of them builds the page again
+  const models = await Promise.all((spec.refs || []).map((r) => (r.path ? deploy.modelFiles(r.path, r.kind).catch(() => null) : null)));
+  const refStamps = await Promise.all((spec.refs || []).map(async (r, i) => (r.path ? `${await stampOf(r.path)}${models[i] ? `+${(await Promise.all(models[i].files.map((x) => stampOf(x.abs)))).join(',')}` : ''}` : '-')));
   const [songStamp, sandboxStamp, meStamp] = await Promise.all([spec.song?.path ? stampOf(spec.song.path) : null, stampOf(sandbox), stampOf(__filename)]);
   const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r, i) => [r.key, r.path, refStamps[i], ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, songStamp] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: sandboxStamp, me: meStamp })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
@@ -240,8 +249,21 @@ async function buildScene(spec) {
   const songFile = spec.song?.path ? `assets/song${path.extname(spec.song.path).toLowerCase() || '.mp3'}` : null;
   const taken = new Set(songFile ? [songFile] : []); // (round 54, fixes54) "Logo" and "logo" are one file on a Mac / Windows disk (and a picture called "song" isn't the song): the second gets its own name
   for (const [i, r] of (spec.refs || []).entries()) {
-    if (!r.path || refStamps[i] === '-') { notes.push(`Picture / file "${r.key}" is missing`); continue; }
+    if (!r.path || /^-/.test(refStamps[i])) { notes.push(`Picture / file "${r.key}" is missing`); continue; }
     const stem = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}`;
+    const mf = models[i];
+    if (mf) {
+      // (round 100, modeltex100) its folder's files in their layout under assets/<key>/ (the player finds them as in the Lab)
+      let top = stem; for (let n = 2; taken.has(top.toLowerCase()); n += 1) top = `${stem}-${n}`;
+      taken.add(top.toLowerCase());
+      for (const x of [{ rel: mf.main, abs: ready()?.swapFor?.(r.path) || r.path }, ...mf.files]) {
+        const to = path.join(dir, top, ...x.rel.split('/'));
+        await P.mkdir(path.dirname(to), { recursive: true });
+        await P.copyFile(x.abs, to);
+      }
+      refs.push({ key: r.key, kind: r.kind, mime: C.mimeOf(r.path), file: `${top}/${deploy.urlRel(mf.main)}`, main: mf.main, files: mf.files.map((x) => ({ rel: x.rel, file: `${top}/${deploy.urlRel(x.rel)}`, mime: C.mimeOf(x.rel) })) });
+      continue;
+    }
     let file = `${stem}${path.extname(r.path)}`;
     for (let n = 2; taken.has(file.toLowerCase()); n += 1) file = `${stem}-${n}${path.extname(r.path)}`;
     taken.add(file.toLowerCase());

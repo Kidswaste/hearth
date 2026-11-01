@@ -242,6 +242,32 @@ function pruneBuilds(keep = 60) {
     for (const f of old) fs.rmSync(f, { recursive: true, force: true });
   } catch { /* housekeeping */ }
 }
+// (round 100, modeltex100) a model the Lab copied whole (data/refs/<time>-<name>/…: a .gltf with its .bin and pictures,
+// an .obj with its .mtl, labmodels99) → { dir, main, files: [{ rel, abs }] } (its other files, rel from the folder's top),
+// or null for a model of one file and anything else. Only read: published pages and ▶ Play's folder get copies.
+async function modelFiles(p, kind) {
+  if (kind && kind !== 'model') return null;
+  const f = require('./labmodels-core').folderOf(p);
+  if (!f) return null;
+  const files = []; let total = 0;
+  const walk = async (d, pre, depth) => {
+    if (depth > 14 || files.length >= 2000) return;
+    let es; try { es = await fs.promises.readdir(d, { withFileTypes: true }); } catch { return; }
+    for (const e of es) {
+      const abs = path.join(d, e.name); const rel = pre ? `${pre}/${e.name}` : e.name;
+      if (e.isDirectory()) await walk(abs, rel, depth + 1);
+      else if (e.isFile() && rel.toLowerCase() !== f.rel.toLowerCase()) {
+        try { total += (await fs.promises.stat(abs)).size; } catch { continue; }
+        if (total > 1024 * 1048576) return;
+        files.push({ rel, abs });
+      }
+    }
+  };
+  await walk(f.dir, '', 0);
+  files.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+  return { dir: f.dir, main: f.rel, files };
+}
+const urlRel = (rel) => String(rel).split('/').map(encodeURIComponent).join('/');
 // spec: { kind: scene|video|page|folder|project, name, … } (see deploy.js) → { dir, slug, kind, bytes, files, notes }
 async function build(spec, opts = {}) {
   const kind = spec.kind || 'scene';
@@ -278,6 +304,19 @@ async function build(spec, opts = {}) {
     const refs = [];
     for (const r of spec.refs || []) {
       if (!r.path || !exists(r.path)) { notes.push(`Reference "${r.key}" is missing (${r.path || 'no file'})`); continue; }
+      // (round 100, modeltex100) a model the Lab copied whole goes whole: its folder's files in their layout under
+      // assets/<key>/, the page given where each is (the player finds them as in the Lab: refModelResolve)
+      const mf = await modelFiles(r.path, r.kind);
+      if (mf) {
+        const stem = `assets/${String(r.key || 'model').replace(/[^\w.-]+/g, '_')}`;
+        for (const x of [{ rel: mf.main, abs: r.path }, ...mf.files]) {
+          const to = path.join(dir, stem, ...x.rel.split('/'));
+          fs.mkdirSync(path.dirname(to), { recursive: true });
+          fs.copyFileSync(x.abs, to);
+        }
+        refs.push({ key: r.key, kind: r.kind, mime: MIME[path.extname(r.path).toLowerCase()] || '', file: `${stem}/${urlRel(mf.main)}`, main: mf.main, files: mf.files.map((x) => ({ rel: x.rel, file: `${stem}/${urlRel(x.rel)}`, mime: MIME[path.extname(x.rel).toLowerCase()] || '' })) });
+        continue;
+      }
       const file = `assets/${String(r.key || path.basename(r.path)).replace(/[^\w.-]+/g, '_')}${path.extname(r.path)}`;
       fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
       fs.copyFileSync(r.path, path.join(dir, file));
@@ -487,4 +526,4 @@ function register(ipcMain, getWin, settings) {
   try { require('electron').app.on('before-quit', stopPreviews); } catch { /* tests */ }
 }
 
-module.exports = { register, vendorThree, labPage, status, providerStatus, login, build, preview, stopPreviews, verify, deploy, remove, rollback, findCli, runCli, _test: { setDataDir: (d) => { DATA_DIR = d; }, vendorThree, labPage, cache } };
+module.exports = { register, vendorThree, labPage, modelFiles, urlRel, status, providerStatus, login, build, preview, stopPreviews, verify, deploy, remove, rollback, findCli, runCli, _test: { setDataDir: (d) => { DATA_DIR = d; }, vendorThree, labPage, cache } };

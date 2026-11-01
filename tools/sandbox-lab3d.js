@@ -87,7 +87,9 @@ const lab3d = (() => {
   }
   async function loaders(need = Object.keys(DECODERS)) {
     if (!gltfLoader) {
-      gltfLoading ||= import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => { gltfLoader = new GLTFLoader(); });
+      // (round 100, modeltex100) its pictures decoded off the page's thread and sent up in slices after frames, a small
+      // stand-in shown until then (three-sandbox.html "a model's own pictures"; not in a published page's older player)
+      gltfLoading ||= import('three/addons/loaders/GLTFLoader.js').then(({ GLTFLoader }) => { gltfLoader = new GLTFLoader(); globalThis.__labModelTex?.gltf?.(gltfLoader); });
       await gltfLoading;
     }
     const l = gltfLoader;

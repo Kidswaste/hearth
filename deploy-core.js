@@ -158,13 +158,19 @@ ${meta(spec)}
 <script>
 // Made with Hearth: the scene's layers run in the Lab's own player (lab.html), three.js r${esc(String(spec.version).split('.')[1] || '')} from ./three/.
 (function () {
-  var SCENE = ${json({ layers: spec.layers, palette: spec.palette || [], refs: (spec.refs || []).map((r) => ({ key: r.key, kind: r.kind, mime: r.mime, file: r.file })) })};
+  var SCENE = ${json({ layers: spec.layers, palette: spec.palette || [], refs: (spec.refs || []).map((r) => ({ key: r.key, kind: r.kind, mime: r.mime, file: r.file, ...(r.files?.length ? { main: r.main, files: r.files.map((f) => ({ rel: f.rel, file: f.file, mime: f.mime || '' })) } : {}) })) })};
   var state = window.__hearthBuild = { ready: false, drawn: false, errors: [], started: Date.now() };
   var lab = document.getElementById('lab');
   var send = function (m) { m.target = 'three-sandbox'; lab.contentWindow.postMessage(m, '*'); };
   function refs() {
     return Promise.all(SCENE.refs.map(function (r) {
-      return fetch(r.file).then(function (res) { return res.arrayBuffer(); }).then(function (buffer) { return { key: r.key, kind: r.kind, mime: r.mime, buffer: buffer }; }).catch(function () { return null; });
+      return fetch(r.file).then(function (res) { return res.arrayBuffer(); }).then(function (buffer) {
+        var it = { key: r.key, kind: r.kind, mime: r.mime, buffer: buffer };
+        if (!r.files || !r.files.length) return it;
+        // a model of several files (its .bin, its pictures, its .mtl): each one with it, where the model's loaders find it
+        return Promise.all(r.files.map(function (f) { return fetch(f.file).then(function (res) { return res.ok ? res.arrayBuffer() : new ArrayBuffer(0); }).catch(function () { return new ArrayBuffer(0); }).then(function (b) { return { rel: f.rel, mime: f.mime, buffer: b }; }); }))
+          .then(function (files) { it.main = r.main; it.files = files; return it; });
+      }).catch(function () { return null; });
     })).then(function (list) { return list.filter(Boolean); });
   }
   addEventListener('message', function (e) {

@@ -2001,8 +2001,59 @@ const ThreeLab = (() => {
         .map((x) => ({ rel: String(x.path).slice(f.dir.length + 1).split(/[\\/]+/).join('/'), path: x.path, size: x.size || 0, sig: `${x.path}|${x.size || 0}|${Math.round(x.mtime || 0)}` }))
         .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0)).filter((x) => (total += x.size) <= FILES_MAX);
       const fl = { main: f.rel, list };
+      const was = refFiles.get(r.id);
       refFiles.set(r.id, fl);
+      // (round 100, modeltex100) the files followed on disk (filewatch.js) follow the listing
+      if (!was || was.list.map((x) => x.path).join('\n') !== list.map((x) => x.path).join('\n')) dispatchEvent(new Event('hearth:lab-refs'));
       return fl;
+    }
+    // (round 100, modeltex100) a model's other files for filewatch.js: Hearth's copy of each, and the original it was
+    // copied from when the layout says where (the reference's src: its main file's place in the original folder)
+    function refFilesOf(r) {
+      const fl = r ? refFiles.get(r.id) : null;
+      if (!fl?.list.length) return [];
+      let top = null; let sep = '/';
+      if (r.src) {
+        const sp = String(r.src).split(/[\\/]/); const mp = String(fl.main).split('/');
+        sep = /\\/.test(r.src) && !/\//.test(r.src) ? '\\' : '/';
+        if (sp.length > mp.length && sp.slice(-mp.length).join('/').toLowerCase() === mp.join('/').toLowerCase()) top = sp.slice(0, sp.length - mp.length).join(sep);
+      }
+      return fl.list.map((x) => ({ rel: x.rel, path: x.path, ...(top && !/^hearth-files\//.test(x.rel) ? { src: `${top}${sep}${x.rel.split('/').join(sep)}` } : {}) }));
+    }
+    // (round 100, modeltex100) one of a model's other files changed on disk (its picture saved again in Photoshop, its .bin
+    // exported again; from: its original, copied over Hearth's copy first): read again. A picture goes into the model's
+    // textures in place (three-sandbox.html rmodFileUpdate: decoded off the page's thread, in slices, the old picture shown
+    // until the new one is up); anything else runs the scene again (the model parsed again with it).
+    async function reloadRefFile(id, rel, { from = null } = {}) {
+      const r = Object.values(refsAll).flat().find((x) => x.id === id);
+      if (!r) return { ok: false, error: 'No such reference' };
+      const f = typeof LabModelsCore !== 'undefined' ? LabModelsCore.folderOf(r.path) : null;
+      rel = String(rel || '');
+      if (!f || !rel || rel.split(/[\\/]/).some((s) => s === '..' || s === '')) return { ok: false, error: 'Not one of this model\'s files' };
+      const sep = /\\/.test(f.dir) && !/\//.test(f.dir) ? '\\' : '/';
+      const p = `${f.dir}${sep}${rel.split('/').join(sep)}`;
+      if (from) { try { await window.hub.fs.copy(from, p); } catch (err) { return { ok: false, error: err.message }; } }
+      if (!refsOf().includes(r)) return { ok: true, later: true };
+      const old = refFiles.get(r.id)?.list.find((x) => x.rel === rel)?.sig || null;
+      const fl = await listRefFiles(r);
+      const x = fl?.list.find((y) => y.rel === rel);
+      if (!x) return { ok: false, missing: true };
+      if (x.sig === old) return { ok: true, same: true }; // (the copy over Hearth's copy, seen a second time)
+      let u8; try { u8 = await window.hub.fs.read(x.path, { encoding: 'buffer', maxBytes: FILES_MAX }); } catch (err) { return { ok: false, error: err.message, missing: true }; }
+      if (!refsOf().includes(r)) return { ok: true, later: true };
+      const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+      if (old) fileBytes.delete(old);
+      fileBytes.set(x.sig, buf);
+      // the model's sig covers its files
+      const ms = refSigs.get(r.id); const msig = ms ? withFiles(r, ms.replace(/\+\d+-[0-9a-z]+$/, '')) : null;
+      if (msig) refSigs.set(r.id, msig);
+      if (old && /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(rel)) {
+        refsSig = refsSigOf(refsOf().filter((y) => y === r || refReady(y)));
+        box.send({ type: 'ref-file-update', item: { key: r.key, rel, mime: MIMES[rel.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0), ...(assetCacheOn() ? { sig: x.sig, ...(msig ? { msig } : {}) } : {}) } });
+        return { ok: true, inPlace: true };
+      }
+      refsSig = null; sendRefs(); run({ sync: true });
+      return { ok: true, inPlace: false };
     }
     const withFiles = (r, sig) => { const fl = refFiles.get(r.id); return sig && fl?.list.length ? `${sig}+${fl.list.length}-${hashStr(fl.list.map((x) => x.sig).join('\n'))}` : sig; };
     async function addRef(src, { key, sketchId = null } = {}) {
@@ -5182,6 +5233,7 @@ ${code}
         return { looks: api2.list() };
       },
       refs: { list: () => refsOf(), all: () => refsAll, reload: (id, o) => reloadRef(id, o), add: (p, key) => addRef(p, { key }), rename: renameRef, remove: removeRef, use: refUse, size: fmtSize, url: fileUrl,
+        reloadFile: (id, rel, o) => reloadRefFile(id, rel, o), files: (r) => refFilesOf(r), // (round 100, modeltex100: a model's other files, followed on disk)
         palette: () => current?.palette || [], setPalette: (cols) => setPalette(cols), paletteFrom: async (name) => { const r = refsOf().find((x) => x.key === name || x.name === name); if (!r || r.kind !== 'image') throw new Error(`No picture reference "${name}"`); const cols = await paletteFrom(r.path); setPalette(cols); return cols; } },
       notes: {
         list: () => notesOf().map(({ id, t, text, done, image }) => ({ id, time: t, text, done, image })),

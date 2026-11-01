@@ -52,6 +52,11 @@ const FileWatch = (() => {
     for (const r of L.director.refs?.list?.() || []) {
       if (r.path) items.push({ path: r.path, tag: `lab-ref:${r.id}` });
       if (r.src && r.src !== r.path) items.push({ path: r.src, tag: `lab-src:${r.id}` });
+      // (round 100, modeltex100) a model copied whole: its other files (pictures, .bin, .mtl) too, Hearth's copy and the original
+      for (const f of L.director.refs?.files?.(r) || []) {
+        items.push({ path: f.path, tag: `lab-file:${r.id}:${f.rel}` });
+        if (f.src) items.push({ path: f.src, tag: `lab-fsrc:${r.id}:${f.rel}` });
+      }
     }
     if (Tpl()) { try { const dir = await Tpl().root(); if (dir) items.push({ path: dir, kind: 'folder', tag: 'lab-templates' }); } catch { /* none yet */ } }
     want('lab', items);
@@ -89,6 +94,7 @@ const FileWatch = (() => {
     for (const c of list) {
       for (const tag of c.tags || []) {
         try {
+          if (tag.startsWith('lab-file:') || tag.startsWith('lab-fsrc:')) { const w = await refFile(tag, c); if (w) shown.push(w); continue; } // (round 100, modeltex100)
           if (tag === 'lab-song') { const w = await song(c); if (w) shown.push(w); } else if (tag.startsWith('lab-ref:')) { const w = await ref(tag.slice(8), c, false); if (w) shown.push(w); } else if (tag.startsWith('lab-src:')) { const w = await ref(tag.slice(8), c, true); if (w) shown.push(w); } else if (tag === 'lab-templates') templates(); else if (tag === 'ai-file') ai(c); else if (tag.startsWith('ai-folder:')) folder(c); else if (tag.startsWith('attach:')) await attach(tag.slice(7), c);
         } catch (err) { console.warn('filewatch', tag, err); }
       }
@@ -144,6 +150,28 @@ const FileWatch = (() => {
       counts.missing += 1;
       Two()?.missingNote?.({ path: c.path, where: 'scene', retry: async (to) => { r.src = to; await d.reload(id, { from: to }); gatherLab(); } });
     }
+    return null;
+  }
+  // (round 100, modeltex100) one of a model's other files (lab-file: Hearth's copy, lab-fsrc: the original it came from):
+  // saved again → a picture swapped into the model in place, anything else the scene run again (tools/three.js
+  // reloadRefFile). Hearth's copy gone while the original is there: copied again. An original gone: nothing.
+  async function refFile(tag, c) {
+    const d = Lab()?.director?.refs;
+    if (!d?.reloadFile) return null;
+    const rest = tag.slice(9); const i = rest.indexOf(':');
+    if (i <= 0) return null;
+    const id = rest.slice(0, i); const rel = rest.slice(i + 1);
+    const r = Object.values(d.all?.() || {}).flat().find((x) => x.id === id);
+    if (!r) return null;
+    const original = tag.startsWith('lab-fsrc:');
+    let x = null;
+    if (changedKinds.has(c.kind)) x = await d.reloadFile(id, rel, original ? { from: c.path } : {});
+    else if (!original && c.kind === 'delete') {
+      const src = (d.files?.(r) || []).find((f) => f.rel === rel)?.src;
+      if (src && (await window.hub.fs.stat(src).catch(() => null))) await d.reloadFile(id, rel, { from: src });
+      return null;
+    }
+    if (x?.ok && !x.later && !x.same) { counts.refs += 1; counts.lab += 1; return base(rel); }
     return null;
   }
   function templates() { if (!Tpl()) return; counts.templates += 1; clearTimeout(templates.t); templates.t = setTimeout(() => Tpl()?.list(true).catch?.(() => {}), 400); }
