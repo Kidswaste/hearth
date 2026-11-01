@@ -8,8 +8,12 @@
 //   sim      a frame of dev/sync-sim.js (the simulator's fs wrappers, its case-insensitive disk) is on the stack
 //            ABOVE that app frame: the hold is the simulator's, the app has none of it
 //   gc / native / other
-// so a hold is told apart: the engine's (named by function and line) or the simulator's under it.
-//   node dev/syncstall103.js [--many 50000] [--keep 60] [--phases first,steady,join,rename] [--prof out.json]
+// so a hold is told apart: the engine's (named by function and line) or the simulator's under it. Also laid over each
+// hold: every sync fs call of 5 ms or more inside it (--sync-ms; a sync call on a busy disk sleeps where the profiler's
+// sampler can't see it), the garbage collector's pauses, and --marks: globalThis.__mk(label) calls of a temporary
+// instrumentation of the engine (which statement came just before the hold).
+//   node dev/syncstall103.js [--many 50000] [--keep 60] [--phases first,steady,join,rename | none] [--prof out.json]
+//                            [--sync-ms 5] [--marks] [--only-first]
 // Never touches real data: a temp folder (TMPDIR), removed at the end.
 'use strict';
 const path = require('path');
@@ -32,6 +36,11 @@ for (const k of Object.keys(fs)) {
     }
   };
 }
+// --marks: globalThis.__mk(label) calls (a temporary instrumentation of the engine) kept with their time, each hold then
+// says which marks were just before / inside it
+const MARKS = []; if (process.argv.includes('--marks')) globalThis.__mk = (l) => MARKS.push([l, Number(process.hrtime.bigint()) / 1e6]);
+// the garbage collector's pauses (perf_hooks 'gc' entries, on the same clock), laid over each hold
+const GCS = []; { const { PerformanceObserver, performance } = require('perf_hooks'); const o0 = performance.timeOrigin; const h0 = Number(process.hrtime.bigint()) / 1e6 - performance.now(); new PerformanceObserver((l) => { for (const e of l.getEntries()) GCS.push({ at: h0 + e.startTime, ms: e.duration, kind: e.detail?.kind ?? e.kind }); }).observe({ entryTypes: ['gc'] }); void o0; }
 const T = require('./sync72-test');
 const Sim = require('./sync-sim');
 const LW = require('./loadwait');
@@ -99,7 +108,7 @@ async function main() {
   const phase = async (name, fn) => {
     const prof = PHASES.includes(name);
     if (prof) await post('Profiler.start');
-    slowSync.length = 0;
+    slowSync.length = 0; MARKS.length = 0; GCS.length = 0;
     const sw = LW.stallWatch({ keep: KEEP }); const t0 = Date.now(); const r = await fn(); const s = sw.stop(); const ms = Date.now() - t0;
     let rep = s.kept;
     if (prof) { const { profile } = await post('Profiler.stop'); rep = analyse(profile, s.kept); if (PROF) fs.writeFileSync(PROF.replace(/(\.json)?$/, `-${name}.cpuprofile`), JSON.stringify(profile)); }
@@ -110,6 +119,8 @@ async function main() {
       for (const x of h.top || []) console.log(`      ${x}`);
       for (const x of h.leaf || []) console.log(`        leaf ${x}`);
       for (const x of h.lines || []) console.log(`        line ${x} (whole-phase ticks of that node)`);
+      if (MARKS.length) { const before = MARKS.filter(([, t]) => t < h.from).slice(-1); const inside = MARKS.filter(([, t]) => t >= h.from && t <= h.to); console.log(`      marks: before ${before.map(([l, t]) => `${l} (${(h.from - t).toFixed(0)} ms earlier)`).join('')} · inside ${inside.map(([l, t]) => `${l} @${(t - h.from).toFixed(0)}`).join(' ')}`); }
+      { const gi = GCS.filter((g) => g.at + g.ms >= h.from && g.at <= h.to); if (gi.length) console.log(`      gc inside: ${gi.map((g) => `${g.ms.toFixed(0)} ms (kind ${g.kind})`).join(', ')}`); }
       // the sync fs calls inside this hold: whose (the first app frame), and whether the simulator made it
       const inside = slowSync.filter((c) => c.at >= h.from - 1 && c.at <= h.to);
       const by = new Map();
@@ -129,6 +140,7 @@ async function main() {
   };
   const r1 = await phase('first', () => pc.e.pass());
   console.log(`  pushed ${r1.last.pushed} pending ${r1.pending}`);
+  if (argv.includes('--only-first')) { fs.rmSync(path.dirname(w.dir), { recursive: true, force: true }); process.exit(0); }
   await phase('steady', () => pc.e.pass());
   pc.view.tick(); mac.view.tick(); w.clock.advance(3000);
   const r3 = await phase('join', () => mac.e.pass());
