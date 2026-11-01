@@ -13,8 +13,9 @@
 // (round 95, labflake95) Between stretches it waits for a steady GPU (a quiet one never came: 3 min of the run), the
 // window's CPU budgets are judged on how fast the box ran right then (speedNow / slowBy: "can't tell" within that),
 // and the Lab's first reads are checked by name (no versions or pictures before its scenes are up).
-// (round 102, checks102) The probe judged is the one taken right before the press (its own task, warmed up), not 3–10 s
-// after the open; the pointer is brought over the Lab's button before the stretch (docs/upgrades/checks102.md).
+// (round 102, checks102) The probe judged is the one taken at the open, as its scenes are read (its own task, warmed
+// up), against the same probe at the other opens, not one 3–10 s after; the pointer is brought over the Lab's button
+// before the stretch (docs/upgrades/checks102.md).
 // Budgets (the verdict, `done` in the measuring part): loose on time (a software GPU on a shared machine), strict on
 // what round 48 fixed: a scene with references runs once, the preview keeps its size while a song comes in, the window's
 // own work until the scenes are read. window.LSF_BUDGET overrides them, window.LSF_REPORT = 1 only reports.
@@ -246,10 +247,11 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true, spe
   const s0 = performance.now();
   const seen = await settle();
   const settled = performance.now() - s0;
-  // (round 102, checks102) the probe right before the press, the last thing before the stretch's trace starts. The
-  // scenes are read ~0.2 s after the press; the probe after the stretch came 3–10 s later (first frame, 1.5 s quiet, the
-  // trace's stop), so a box slow during the open and not 5 s later (or the other way round) was judged at the wrong
-  // moment. The probe after is still taken and reported (speedMs), not judged.
+  // (round 102, checks102) a probe right before the press, the last thing before the stretch's trace starts (judged
+  // only when the stretch's trace has no probe at the open, see onReady below). The scenes are read ~0.2 s after the
+  // press; the probe after the stretch came 3–10 s later (first frame, 1.5 s quiet, the trace's stop), so a box slow
+  // during the open and not 5 s later (or the other way round) was judged at the wrong moment. The probe after is
+  // still taken and reported (speedMs), not judged.
   if (prep) await prep();
   await wait(300);
   const before = speed ? await speedNow() : null; const beforeParts = speed ? { parts: window.__lsfParts, runs: window.__lsfRuns, at: Math.round(performance.now()) } : null;
@@ -257,6 +259,11 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true, spe
   const m0 = await M();
   T0 = performance.now(); T1 = T0; performance.mark(`hz240:${name}`);
   const i0 = ev.length;
+  // (round 102, checks102) and the probe AT the open: the moment the scenes are read, three runs in one task of their
+  // own between two marks (at:pa, at:pb), their CPU read from this stretch's own trace. The window's CPU until then is
+  // already counted; what it adds after (≈ 35 ms) lands in the cold open's window CPU (budget 900, ≈ 400 used).
+  const onReady = () => { removeEventListener('hearth:lab-ready', onReady); const ch = new MessageChannel(); ch.port1.onmessage = () => { performance.mark('at:pa'); for (let k = 0; k < 3; k++) probeRun(); performance.mark('at:pb'); ch.port1.close(); }; ch.port2.postMessage(0); };
+  if (speed && trace) addEventListener('hearth:lab-ready', onReady);
   await go();
   let m1 = null; let correct = null; let readyAt = null; let lastRan = -1;
   const deadline = performance.now() + 30000;
@@ -271,14 +278,15 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true, spe
     if (correct != null && performance.now() - Math.max(correct, lr) > quiet) break;
     await wait(ready ? 60 : 20);
   }
+  removeEventListener('hearth:lab-ready', onReady);
   const mine = ev.slice(i0);
   const first = mine.find((x) => x.type === 'stack-drawn');
   let win = null;
-  if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, fgAtReady: s.at?.labready?.fgMs ?? null, msAtReady: s.at?.labready?.ms ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
+  if (trace) { const tr = await smoke({ trace: 'stop', detail: true, ...(localStorage.getItem('lsf.dump') ? { dump: `${localStorage.getItem('lsf.dump')}/${name}.json` } : {}) }); const s = tr.detail?.segments?.[name]; win = s ? { cpuAtReady: s.at?.labready?.cpuMs ?? null, fgAtReady: s.at?.labready?.fgMs ?? null, msAtReady: s.at?.labready?.ms ?? null, cpuAtCorrect: s.at?.correct?.cpuMs ?? null, cpuAtFirst: s.at?.drawn1?.cpuMs ?? null, probeAtReady: s.at?.pa && s.at?.pb ? Math.round(((s.at.pb.cpuMs - s.at.pa.cpuMs) / 3) * 10) / 10 : null, longestCpu: s.longestCpu, files: Object.entries(s.filesCpu || {}).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v}`) } : null; }
   const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: lateResizes(mine), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
   { const lr = mine.find((x) => x.type === 'labready'); if (lr) r.firstReads = mine.filter((x) => /^kv /.test(x.type) && x.t <= lr.t).map((x) => x.type.slice(3)); }
   T0 = 0;
-  if (speed) { r.speedBefore = before; const a0 = performance.now(); r.speedMs = await speedNow(); r.speedDiag = { before: { ...beforeParts, at: beforeParts.at - Math.round(T1) }, after: { parts: window.__lsfParts, runs: window.__lsfRuns, at: Math.round(a0 - T1) } }; }
+  if (speed) { r.speedBefore = before; r.speedReady = win?.probeAtReady ?? null; const a0 = performance.now(); r.speedMs = await speedNow(); r.speedDiag = { before: { ...beforeParts, at: beforeParts.at - Math.round(T1) }, after: { parts: window.__lsfParts, runs: window.__lsfRuns, at: Math.round(a0 - T1) } }; }
   r.settleMs = Math.round(settled); r.settleGpu = seen.slice(0, 64).join(' '); r.ms = Math.round(performance.now() - s0); // (round 95: where the check's own time goes)
   return r;
 }
@@ -362,23 +370,33 @@ if (step === '2') {
 // (speedNow, right after stretch k, the scene still drawing as during it) against the fastest of this run's three,
 // 1–2. Over budget but within budget × slowBy is "can't tell" (listed, not failed); over that, it fails. A run that is
 // slow throughout gets no allowance at all.
-// (round 102, checks102) the probe judged is now the one right before the press (see stretch), in a task of its own and
-// warmed up; the reference stays this run's fastest probe (before or after any open). Under a load spanning the whole
-// run (a 6-thread burn at an app's priority) the probe read 1.3–1.4× its calm value while the opens' window CPU stayed
-// in its calm range (104–129 ms), so a calm, fixed reference would have handed out allowances the open didn't need.
+// (round 102, checks102) the probe judged is the one taken AT the open (as its scenes were read, see stretch: at:pa /
+// at:pb), against the same probe at the other two opens of this run: a moment of the same kind (each open starts its
+// scene in the preview right then), so what that moment costs every probe cancels out and what is left is how much
+// slower the box ran at this open. Measured: at that moment the probe reads 12–23 ms where it reads 11–16 before the
+// press and after the stretch, the opens alike (cold 14.4–16.8, song 12.6–23.3, warm 12.4–22.7 in 3 runs); judged
+// against the probes before / after it would have handed out up to 2× for nothing. Neither of those is the open's
+// moment: before the press the preview isn't starting yet; after the stretch is 3–10 s later. Without three probes at
+// the open (no trace), the probe before the press against every probe of the run, as round 95 did.
+// A run slow throughout still gets no allowance, and a calm, fixed reference was tried and dropped: under a load for
+// the whole run (a 6-thread burn at an app's priority) the probe read 1.3–1.4× its calm value while the opens' window
+// CPU stayed in its calm range (104–129 ms).
 const cantTell = [];
-const probes = () => ['coldOpen', 'songOpen', 'warmOpen'].flatMap((k) => [res[k]?.speedMs, res[k]?.speedBefore]).filter(Number.isFinite);
-const probeOf = (k) => (Number.isFinite(res[k]?.speedBefore) ? res[k].speedBefore : null);
+const OPENS = ['coldOpen', 'songOpen', 'warmOpen'];
+const probes = () => OPENS.flatMap((k) => [res[k]?.speedMs, res[k]?.speedBefore, res[k]?.speedReady]).filter(Number.isFinite);
+const atOpen = () => OPENS.map((k) => res[k]?.speedReady).filter(Number.isFinite);
+const refOf = (k) => (atOpen().length === OPENS.length && Number.isFinite(res[k]?.speedReady) ? { v: res[k].speedReady, ref: Math.min(...atOpen()), kind: 'at the open' } : { v: res[k]?.speedBefore, ref: probes().length ? Math.min(...probes()) : null, kind: 'before the press' });
 const slowBy = (k) => {
-  const v = probeOf(k); const all = probes();
-  if (!Number.isFinite(v) || all.length < 2) return 1;
-  return Math.min(2, Math.max(1, Math.round((v / Math.min(...all)) * 100) / 100));
+  const { v, ref } = refOf(k);
+  if (!Number.isFinite(v) || !Number.isFinite(ref) || probes().length < 2) return 1;
+  return Math.min(2, Math.max(1, Math.round((v / ref) * 100) / 100));
 };
 const cpuOver = (fails, k, v, budget, what) => {
   if (!(v > budget)) return;
   const f = slowBy(k);
-  const why = `probe ${res[k]?.speedBefore} ms right before the press (${res[k]?.speedMs} ms after the stretch); fastest ${Math.min(...probes())}`;
-  if (v <= budget * f) cantTell.push(`${k}: ${what} ${v} ms (budget ${budget}), with the box ${f}× slower right then than at its fastest in this run (${why})`);
+  const R = refOf(k);
+  const why = `probe ${R.v} ms ${R.kind}, fastest ${R.kind} in this run ${R.ref} (${res[k]?.speedBefore} ms right before the press, ${res[k]?.speedMs} ms after the stretch)`;
+  if (v <= budget * f) cantTell.push(`${k}: ${what} ${v} ms (budget ${budget}), with the box ${f}× slower right then than at the other opens' same moment (${why})`);
   else fails.push(`${k}: ${what} ${v} ms (budget ${budget}${f > 1 ? `; ${Math.round(budget * f)} with the box ${f}× slower` : ''}; ${why})`);
 };
 const done = () => {
