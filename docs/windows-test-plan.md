@@ -119,6 +119,13 @@ Your job: check the things below on real Windows and report back plain results (
   the preview jolt when it appears, and do its textures look sharp a moment later? Then save one of its textures again
   in Photoshop. Does the new one show by itself, without a jolt? Last, press ▶ Play on that scene. Does the model show
   with its textures?
+- (round 101, modelcompile101) **On the Mac too: its GPU may lack background shader compiling, so the Mac's numbers
+  matter most here.** Run `node dev/run-checks.js --exact labcompile90` on the Mac (and the PC) and report, for
+  `layer:plain`, `layer:model` and `layer:heavy`: `visibleInFrameCompiles` (should be 0), `over2xApp`, `khr` (false
+  means no background compiling: this round's path runs), and from `wg`: `held`, `gaps`, `programs`, `late` (should
+  be 0) and `hold` (`ms`, `frames`: how long the new layer waited). By eye on the Mac: in a playing scene, add a 3D model
+  from the Library and ask the Director for "a layer of shiny glass and metal shapes": does the picture underneath stick
+  when they appear?
 
 ## 9. Projects on both computers, by hand (round 91, projaudit91)
 Only real machines with the real cloud drive can show these; the checks use a temp folder and a simulated provider.
