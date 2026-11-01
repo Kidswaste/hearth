@@ -298,7 +298,12 @@ async function build(spec, opts = {}) {
     const layers = (spec.layers || []).filter((L) => L && typeof L.code === 'string');
     if (!layers.length) throw new Error('This scene has no code to publish.');
     const version = String(spec.version || '0.186.1');
-    const v = await vendorThree(version, layers.map((L) => L.code), path.join(dir, 'three'), opts);
+    // (round 100, modeltex100) a 🧊 model layer's runtime (lab3d) imports its loaders on demand (GLTFLoader, OBJLoader,
+    // RoomEnvironment…), and the player reads an .obj's .mtl with MTLLoader: vendored too, as ▶ Play does (round 52),
+    // or the model never loads on the published page ("this .gltf points to .bin / texture files": its loader's import failed)
+    const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [fs.readFileSync(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
+    if ((spec.refs || []).some((r) => /\.obj$/i.test(r.path || ''))) libCodes.push("import 'three/addons/loaders/MTLLoader.js'; import 'three/addons/loaders/OBJLoader.js';");
+    const v = await vendorThree(version, [...layers.map((L) => L.code), ...libCodes], path.join(dir, 'three'), opts);
     if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
     fs.writeFileSync(path.join(dir, 'lab.html'), labPage());
     const refs = [];

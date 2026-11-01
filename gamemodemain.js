@@ -238,6 +238,7 @@ async function buildScene(spec) {
   // (round 52, gameready) a 🧊 model layer's runtime (lab3d) imports its loaders / decoders on demand (GLTFLoader,
   // meshopt, KTX2, Draco…): they're vendored with the page too, or the model never loads in the game window
   const libCodes = layers.some((L) => /\blab3d\.model\s*\(/.test(L.code)) ? [await P.readFile(path.join(__dirname, 'tools', 'sandbox-lab3d.js'), 'utf8')] : [];
+  if ((spec.refs || []).some((r) => /\.obj$/i.test(r.path || ''))) libCodes.push("import 'three/addons/loaders/MTLLoader.js'; import 'three/addons/loaders/OBJLoader.js';"); // (round 100, modeltex100: an .obj's .mtl, read by the player)
   // (round 53, gametex) compressed (KTX2) copies in use: three's KTX2Loader and its Basis transcoder go with the page
   const ktx = (spec.refs || []).some((r) => r.path && (ready()?.texFor?.(r.path) || ready()?.swapFor?.(r.path)));
   if (ktx) libCodes.push("import 'three/addons/loaders/KTX2Loader.js';");
