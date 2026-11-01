@@ -1220,7 +1220,9 @@ const Native = (() => {
     // (a list that has to be filled: a chat not kept, or whose replies changed; a kept one only shows again)
     const kept = chat && v.panes.get(chatId)?.list;
     const filling = chat && (!kept || kept.childElementCount < 8 || (w && w.misses > TAIL / 2));
-    const tailFirst = Boolean(filling && !keepScroll && v.jumpAfter == null && !fullChats.has(chat.id));
+    // (round 103, cw103) a giant chat whose earlier part is still being drawn under its end (drawLater) and followed: a
+    // redraw then (a reply ending) draws its end first again, not the whole part in one frame (≈ 600 elements, 75 ms)
+    const tailFirst = Boolean(filling && (!keepScroll || (v.laterOf?.chatId === chatId && follows(v) && cw(chat))) && v.jumpAfter == null && !fullChats.has(chat.id));
     const warm = w?.wait || null;
     if (warm && !tailFirst) await warm;
     if (stale()) return;
@@ -1388,7 +1390,8 @@ const Native = (() => {
   }
   async function drawLater(agentId, v, chat, chatId, later, warm, seq) {
     v.drawing += 1;
-    const stale = () => { if (v.drawSeq === seq && v.paneKey === chatId) return false; v.drawing = Math.max(0, v.drawing - 1); return true; };
+    const me = { chatId }; v.laterOf = me; const over = () => { if (v.laterOf === me) v.laterOf = null; }; // (round 103: under way)
+    const stale = () => { if (v.drawSeq === seq && v.paneKey === chatId) return false; v.drawing = Math.max(0, v.drawing - 1); over(); return true; };
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); // the end goes on screen first
     if (warm) await warm;
     if (stale()) return;
@@ -1412,14 +1415,14 @@ const Native = (() => {
       while (at > 0 && (at === end || n < 300)) { const x = made[--at]; n += made.length - at + after > 8 ? 3 : 1 + x.getElementsByTagName('*').length + (x.dataset?.raw?.length || 0) / 100; }
       const next = end === made.length ? later.before : made[end];
       if (next?.parentElement === list) next.before(...made.slice(at, end));
-      else { v.drawing = Math.max(0, v.drawing - 1); return render(agentId, { keepScroll: true }); } // (changed meanwhile: drawn again as it is now)
+      else { v.drawing = Math.max(0, v.drawing - 1); over(); return render(agentId, { keepScroll: true }); } // (changed meanwhile: drawn again as it is now)
       if (!at) break;
       // (each piece's replies in view folded in its own frame, before it's painted, and the chat kept at its end)
       await new Promise((r) => requestAnimationFrame(() => { if (v.list === list) { foldFresh(v, chat, FOLD_NOW); if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; } } setTimeout(r, 0); }));
       if (stale()) return;
     }
     requestAnimationFrame(() => {
-      v.drawing = Math.max(0, v.drawing - 1);
+      v.drawing = Math.max(0, v.drawing - 1); over();
       if (v.list !== list) return;
       foldFresh(v, chat, cw(chat) ? FOLD_NOW : 0); // (round 103, cw103: a giant chat's 5th–8th last are in this part: the ones in view folded now, as the end's were)
       if (follows(v)) { const top = list.scrollHeight - list.clientHeight; if (top - list.scrollTop >= 1) list.scrollTop = top; }

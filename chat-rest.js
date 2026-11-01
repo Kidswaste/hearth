@@ -146,11 +146,11 @@ const ChatRest = (() => {
   // (round 103, cw103) a woken block's nodes in pieces of about PIECE elements (100 characters of a message's text
   // counted as one), in order (a date line goes with the message under it)
   const PIECE = 260;
-  function pieces(items) {
+  function pieces(items, max = PIECE) {
     const out = []; let cur = []; let n = 0;
     for (const x of items) {
       const k = 1 + (x.getElementsByTagName?.('*').length || 0) + (x.dataset?.raw?.length || 0) / 100; // (a long reply's text: its layout)
-      if (n && n + k > PIECE && x.classList?.contains('msg') && !cur.at(-1)?.classList?.contains('day-sep')) { out.push(cur); cur = []; n = 0; }
+      if (n && n + k > max && x.classList?.contains('msg') && !cur.at(-1)?.classList?.contains('day-sep')) { out.push(cur); cur = []; n = 0; }
       cur.push(x); n += k;
     }
     if (cur.length) out.push(cur);
@@ -196,23 +196,30 @@ const ChatRest = (() => {
       for (const n of items) if (n.classList?.contains('msg')) n.style.contentVisibility = 'visible';
       const back = () => requestAnimationFrame(() => requestAnimationFrame(() => { for (const n of items) if (n.style?.contentVisibility) n.style.contentVisibility = ''; }));
       // (round 103, cw103) a block's first style and layout is ≈ 1,000 elements here (code, tables, tool folds): one task
-      // of 50–80 ms when it went in at once. It goes in a piece at a time, from its end up, one piece a frame: each piece
-      // right under the spacer, which gives up the height the piece took (what's below doesn't move), what's at the top
-      // of the view kept after each. The last piece takes the spacer's place exactly as the whole block did
-      const pcs = pieces(items);
-      for (let p = pcs.length - 1; p > 0; p--) {
-        sp.after(...pcs[p]);
-        const h = Math.max(0, sp.getBoundingClientRect().height - span(pcs[p]));
+      // of 50–80 ms when it went in at once. It goes in a piece a frame, from the side you see: from its end up when the
+      // view is under it (each piece right under the spacer), from its top down when the view is in its upper half or
+      // above it (each piece right over the spacer: at the very top, #1 shows with the first piece). The spacer gives up
+      // the height each piece took, so nothing on the far side moves; what's at the top of the view is kept after each
+      // piece put in from the end. The last piece takes the spacer's place exactly as the whole block did. A jump or a
+      // find waiting on it (hurry) takes pieces twice as big
+      const pcs = pieces(items, hurry ? 2 * PIECE : PIECE);
+      const down = frac != null ? frac < 0.5 : Boolean(a?.node && top(a.node) < top(sp));
+      const order = pcs.map((_, i) => (down ? i : pcs.length - 1 - i));
+      for (let j = 0; j < order.length - 1; j++) {
+        const pc = pcs[order[j]];
+        if (down) sp.before(...pc); else sp.after(...pc);
+        const h = Math.max(0, sp.getBoundingClientRect().height - span(pc));
         sp.restPx = h; sp.style.height = `${h}px`;
-        if (a) R.keepAnchor(list, a);
+        if (a && !down) R.keepAnchor(list, a);
         await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
         // (another draw placed the whole block meanwhile, or the chat went: the rest goes in at once, as before)
+        const rest = () => order.slice(j + 1).sort((x, y) => x - y).flatMap((i) => pcs[i]);
         if (!sp.isConnected) { back(); return true; }
-        if (gone()) { back(); sp.replaceWith(...pcs.slice(0, p).flat()); placeLine(list, agentId); return true; }
+        if (gone()) { back(); sp.replaceWith(...rest()); placeLine(list, agentId); return true; }
         a = anchor(list);
       }
       back();
-      if (pcs.length) sp.replaceWith(...pcs[0]); else sp.remove();
+      if (pcs.length) sp.replaceWith(...pcs[order.at(-1)]); else sp.remove();
       placeLine(list, agentId);
       if (frac != null && items.length) list.scrollTop += top(items[0]) + frac * span(items) - top(list);
       else if (a) R.keepAnchor(list, a);
