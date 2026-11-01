@@ -154,7 +154,9 @@
       const valueIds = new Set(idsOf(o.value));
       const lost = ids.filter((id) => !valueIds.has(id));
       if (lost.length || !Array.isArray(o.value)) {
-        if (disk === undefined && text == null) { try { text = readRetry(fs, o.file); disk = JSON.parse(text); } catch { disk = null; } }
+        // (round 104, emptyread104) the ids came from the cache: the file is read now to guard the scenes leaving it. One that
+        // can't be read is never "nothing to guard" (the guard was skipped and the scenes went): held, as above
+        if (disk === undefined && text == null) { try { text = readRetry(fs, o.file); } catch (err) { if (err.code !== 'ENOENT') { const e = new Error(`${name} is held by another program (${err.code})`); e.code = err.code; throw e; } } try { disk = text == null ? null : JSON.parse(text); } catch { disk = null; } }
         if (Array.isArray(disk)) {
           const g = guardScenes({ disk, sent: o.sent || null, value: o.value, removed: o.removed || [] });
           out.value = g.value; out.restored = g.restored;
@@ -178,10 +180,10 @@
       if (pst) {
         let pc = idsCached(env, prevFile, pst);
         let ptext = null;
-        if (!pc) { try { ptext = readRetry(fs, prevFile); pc = { size: pst.size, mtimeMs: pst.mtimeMs, ids: idsOf(JSON.parse(ptext)) }; env.cache.set(prevFile, pc); } catch { pc = null; } }
+        if (!pc) { try { ptext = readRetry(fs, prevFile); pc = { size: pst.size, mtimeMs: pst.mtimeMs, ids: idsOf(JSON.parse(ptext)) }; env.cache.set(prevFile, pc); } catch (err) { pc = null; if (ptext == null && err?.code !== 'ENOENT') out.keepPrev = false; } } // (round 104, emptyread104) a .prev that can't be read now isn't replaced this time (it may hold scenes the file doesn't)
         const have = new Set(ids || []);
         if (pc && pc.ids.some((id) => !have.has(id)) && env.cache.get(`kept:${prevFile}`) !== `${pst.size}:${pst.mtimeMs}`) {
-          if (ptext == null) { try { ptext = readRetry(fs, prevFile); } catch { ptext = null; } }
+          if (ptext == null) { try { ptext = readRetry(fs, prevFile); } catch (err) { ptext = null; if (err?.code !== 'ENOENT') out.keepPrev = false; } } // (round 104, emptyread104) its scenes not kept aside: the .prev isn't replaced this time
           if (ptext != null) { copy(ptext, pc.ids.length, 'prev'); env.cache.set(`kept:${prevFile}`, `${pst.size}:${pst.mtimeMs}`); }
         }
       }

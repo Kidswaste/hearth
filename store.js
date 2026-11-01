@@ -262,7 +262,7 @@ function outsideMerge(file, value) {
   if (!x) return value;
   if (Date.now() - x.at > OUTSIDE_MS) { outside.delete(file); return value; }
   let now;
-  if (pending.has(file)) now = pending.get(file).value; else { try { now = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return value; } }
+  if (pending.has(file)) now = pending.get(file).value; else { try { now = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { if (err?.code === 'ENOENT') return value; throw Object.assign(new Error(`${path.basename(file)} can't be read just now (${err?.code || 'garbled'}): not saved over`), { code: 'EHELD' }); } } // (round 104, emptyread104) held: the save waits (writeJson holds it), never written unmerged over what was brought back
   try { return require('./sync-merge').merge3(x.base, value, now).value ?? value; } catch { return value; }
 }
 const outsideFile = (n) => (n === 'memory.json' ? MEMORY_PATH : /[\\/]/.test(n) ? n : kvPath(n));
@@ -322,8 +322,13 @@ function writeJson(file, value, o) {
   // mergeKV), so it already holds what arrived from the other computer. Merged again by the guard (its base the version
   // before the arrival), a count arrived was counted twice on every save (feature usage grew by the other computer's
   // clicks each minute) and a thing taken out came back
-  if (beforeWrite && !o?.fresh) { try { value = beforeWrite(file, value) ?? value; } catch { /* save as given */ } }
-  if (outside.size && !o?.fresh && !o?.outside) value = outsideMerge(file, value); // (round 78, guardloss78)
+  // (round 104, emptyread104) a guard that can't read the file now (EHELD: held, half written) holds the save as it was
+  // given and tries again (the guards run again then); it was saved as given, over what had just arrived
+  const given = value;
+  try {
+    if (beforeWrite && !o?.fresh) { try { value = beforeWrite(file, value) ?? value; } catch (err) { if (isHeld(err)) throw err; /* save as given */ } }
+    if (outside.size && !o?.fresh && !o?.outside) value = outsideMerge(file, value); // (round 78, guardloss78)
+  } catch (err) { if (isHeld(err)) return hold(file, given, o || {}); throw err; }
   if (o?.off) return writeOff(file, value, { ...o, sent });
   try { return writeSync(file, value, o?.prev, { sent, removed: o?.removed, ...dsFlags(file) }); } catch (err) { if (isHeld(err)) return hold(file, value, o || {}); throw err; }
 }

@@ -119,6 +119,9 @@ function create(opts = {}) {
       try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { /* gone */ }
       if (age > 10000) return { ...ex('lock'), lockAge: age };
     }
+    // (round 104, emptyread104) the pending / journal notes there but unreadable: nothing is decided (read as "none", an
+    // update went ahead over a half-done one)
+    for (const n of ['pending', 'journal']) if (C.readStateStatus(DIR, n).state === 'unreadable') return { ok: false, reason: 'held', message: 'Hearth\'s notes about the last update can\'t be read just now (another program may be holding them). Nothing was changed; try again in a moment.', fix: null };
     if (C.readState(DIR, 'pending')) return { ok: false, reason: 'staged', message: 'An update is ready and goes in when Hearth restarts (Windows was holding some files open).', fix: { id: 'restart-swap', label: 'Restart and finish the update' } };
     const merging = ['MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD'].find((f) => fs.existsSync(path.join(gitDir, f)));
     const j = C.readState(DIR, 'journal');
@@ -466,7 +469,7 @@ function create(opts = {}) {
         }
         if ((await git(['checkout', 'HEAD', '--', f])).ok) settled.push(f);
       }
-      if (handed && settled.includes(CONFIG)) CS.writeState(stP, { ...(CS.readState(stP) || {}), handedBack: null, tookBack: Date.now() });
+      if (handed && settled.includes(CONFIG)) CS.patchState(stP, { handedBack: null, tookBack: Date.now() }); // (round 104, emptyread104) never over a note it couldn't read
       if (clean && print) { try { C.writeState(DIR, 'settled', { print, at: Date.now() }); } catch { /* asked again next start */ } }
       return { ok: true, settled, brought };
     } finally { busy = false; }
@@ -482,7 +485,7 @@ function create(opts = {}) {
     let v = null; try { v = CS.readEffective(DIR, p.dataDir); } catch { return false; } // unreadable: nothing decided
     CS.writeAtomic(fs, p.defConfig, `${JSON.stringify(v, null, 2)}\n`);
     try { if (fs.existsSync(p.theme)) CS.writeAtomic(fs, p.defTheme, readRetry(fs, p.theme)); } catch { /* the default CSS */ }
-    CS.writeState(p, { ...(CS.readState(p) || {}), handedBack: Date.now() });
+    CS.patchState(p, { handedBack: Date.now() }); // (round 104, emptyread104) never over a note it couldn't read
     return true;
   }
   // (round 55, chatsafe55) an agent one of Hearth's update stashes still holds (newest first, brought back or not): its
@@ -715,7 +718,11 @@ function create(opts = {}) {
   }
   // an update cut short: finish it, or go back to exactly how it was
   async function halfDone(id) {
-    const j = C.readState(DIR, 'journal') || {};
+    // (round 104, emptyread104) a journal there but unreadable is never "none": it was deleted as "Cleaned up", and the
+    // owner's edits it names (the stashes) were never put back
+    const js = C.readStateStatus(DIR, 'journal');
+    if (js.state === 'unreadable') return { ok: false, reason: 'held', message: 'Hearth\'s notes about the last update can\'t be read just now (another program may be holding them). Nothing was changed; try again in a moment.', fix: null };
+    const j = (js.state === 'ok' && js.value) || {};
     const gd = (await git(['rev-parse', '--absolute-git-dir'])).out || path.join(DIR, '.git');
     if (['MERGE_HEAD', 'CHERRY_PICK_HEAD'].some((f) => fs.existsSync(path.join(gd, f)))) await git(['merge', '--abort']);
     if (['rebase-merge', 'rebase-apply'].some((f) => fs.existsSync(path.join(gd, f)))) await git(['rebase', '--abort']);

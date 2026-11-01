@@ -294,7 +294,7 @@ async function firstRunShortcuts({ dataDir }) {
   if (process.platform !== 'win32' || process.env.HEARTH_TEST_SAVE_DIR) return { action: 'skip' };
   try { if (require('./package.json').name !== 'agent-hub') return { action: 'skip' }; } catch { return { action: 'skip' }; }
   const note = path.join(dataDir, 'shortcuts.json');
-  let marker = null; try { marker = JSON.parse(fs.readFileSync(note, 'utf8')); } catch { marker = null; }
+  let marker = null; try { marker = JSON.parse(fs.readFileSync(note, 'utf8')); } catch (err) { if (err?.code !== 'ENOENT') return { action: 'skip' }; marker = null; } // (round 104, emptyread104) a note held / half written is not "first run": asked again next start
   let existing = null;
   try { existing = shell.readShortcutLink(path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${APP_NAME}.lnk`)); } catch { existing = null; }
   const W = require('./winfresh-core');

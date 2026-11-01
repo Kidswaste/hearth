@@ -224,8 +224,9 @@ function* restoreSteps({ dir, stash, from = '', to = '' }) {
     const t = yield ['show', `${stash.sha}:theme.css`];
     const pristine = new Set([(yield ['show', 'HEAD:theme.css']).out, (yield ['show', `${stash.sha}^1:theme.css`]).out]);
     const file = ownTarget(dir, 'theme.css');
-    let mine = null; try { mine = fs.readFileSync(file, 'utf8'); } catch { mine = null; }
-    if (t.ok && (mine == null || pristine.has(String(mine).replace(/\s+$/, '')))) {
+    // (round 104, emptyread104) the owner's theme.css there but unreadable (held): never "none", never written over
+    let mine = null; let held = false; try { mine = fs.readFileSync(file, 'utf8'); } catch (err) { mine = null; held = err?.code !== 'ENOENT'; }
+    if (t.ok && !held && (mine == null || pristine.has(String(mine).replace(/\s+$/, '')))) {
       try { const tmp = `${file}.${process.pid}.update.tmp`; fs.writeFileSync(tmp, `${t.out}\n`); fs.renameSync(tmp, file); own.push('theme.css'); } catch (err) { console.warn('update: theme.css not written', err.code || err.message); }
     }
   } else if (clash.includes('theme.css')) {
@@ -267,7 +268,7 @@ function* intoData(dir, stash, names) {
     } else {
       const file = ownTarget(dir, f);
       const pristine = new Set([head.out, (yield ['show', `${stash.sha}^1:${f}`]).out]);
-      let mine = null; try { mine = fs.readFileSync(file, 'utf8'); } catch { mine = null; }
+      let mine = null; try { mine = fs.readFileSync(file, 'utf8'); } catch (err) { if (err?.code !== 'ENOENT') { left.push(f); continue; } } // (round 104, emptyread104) held: never "none" (it was written over); the tracked file waits for the next start's settle
       if (mine == null || pristine.has(String(mine).replace(/\s+$/, ''))) {
         try { const tmp = `${file}.${process.pid}.update.tmp`; fs.writeFileSync(tmp, text); fs.renameSync(tmp, file); own.push(f); } catch (err) { console.warn(`update: ${f} not written`, err.code || err.message); left.push(f); continue; }
       }
@@ -333,6 +334,16 @@ function readState(dir, name, fallback = null) {
   const d = stateDir(dir);
   if (!d) return fallback;
   try { return JSON.parse(fs.readFileSync(path.join(d, `${name}.json`), 'utf8')); } catch { return fallback; }
+}
+// (round 104, emptyread104) a note that says what happened: { state: 'ok', value } · { state: 'missing' } · { state:
+// 'unreadable', code } (held, half written). The update's journal and pending notes are read this way before anything
+// is decided on them (a held journal read as "none" was deleted as "Cleaned up", and the owner's edits it named were
+// never put back)
+function readStateStatus(dir, name) {
+  const d = stateDir(dir);
+  if (!d) return { state: 'missing' };
+  let t; try { t = fs.readFileSync(path.join(d, `${name}.json`), 'utf8'); } catch (err) { return err?.code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', code: err?.code || 'read' }; }
+  try { return { state: 'ok', value: JSON.parse(t) }; } catch { return { state: 'unreadable', code: 'garbled' }; }
 }
 function writeState(dir, name, value) {
   const d = stateDir(dir);
@@ -468,4 +479,4 @@ function swapSync({ dir, gitBin = 'git', pending, log = () => {} }) {
 // a file the main process loads (a restart, not a reload): same rule as updatermain's needsRestart without index.html
 const mainSide = (f) => /(^|\/)(main|preload|[\w-]*main|engines|store|appshell|winmac|storework|sync-engine|sync-merge|chromeguard|updatesafe-core)\.js$|^mcp\/|^package\.json$/.test(f);
 
-module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, signIn, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
+module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, signIn, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, readStateStatus, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };

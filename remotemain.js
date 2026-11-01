@@ -63,11 +63,12 @@ function register(ipcMain, getWin, { dataDir } = {}) {
     try {
       const ss = safe();
       devices = JSON.parse(fs.readFileSync(file, 'utf8')).map((d) => { if (d?.kx) { try { return { ...d, key: ss.decryptString(Buffer.from(d.kx, 'base64')), kx: undefined }; } catch { return null; } } return d; }).filter((d) => d && d.id && d.key);
-    } catch { devices = []; }
+    } catch (err) { if (err?.code !== 'ENOENT') return []; devices = []; } // (round 104, emptyread104) held / half written: not cached as "none" (read again next time)
     return devices;
   }
   function saveDevices() {
     try {
+      if (!devices) throw new Error('the paired phones can\'t be read just now'); // (round 104, emptyread104) never written over with only the new one
       const ss = safe();
       const rows = loadDevices().map(({ key, ...d }) => (ss ? { ...d, kx: ss.encryptString(key).toString('base64') } : { ...d, key }));
       fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(rows, null, 1), { mode: 0o600 });
@@ -258,7 +259,7 @@ function register(ipcMain, getWin, { dataDir } = {}) {
   function kick(dev, forget = false) {
     let n = 0;
     for (const [s, p] of peers) if (p.dev === dev || String(p.id) === dev) { if (forget) sendJson(s, { t: 'no', why: 'forgotten' }); close(s, forget ? 4003 : 4001, forget ? 'forgotten' : 'kicked'); peers.delete(s); n += 1; }
-    if (forget) { devices = loadDevices().filter((d) => d.id !== dev); saveDevices(); }
+    if (forget) { const all = loadDevices(); if (devices) { devices = all.filter((d) => d.id !== dev); saveDevices(); } } // (round 104, emptyread104) the list unreadable now: not saved as "none" (forgetting one phone forgot them all)
     send('remote:devices', status());
     return n;
   }

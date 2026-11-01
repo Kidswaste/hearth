@@ -512,7 +512,9 @@ function ready(ms = 1500) {
   return Promise.race([run({ why: 'startup' }), new Promise((r) => setTimeout(r, ms))]);
 }
 // config:save from the renderer: merged with a config that arrived meanwhile (see the engine's guardWrite)
-function guardConfig(config) { try { return engine ? engine.guardWrite(opts.configPath, config) : config; } catch { return config; } }
+// (round 104, emptyread104) EHELD (the settings file can't be read just now) is passed on: the save waits (main.js), it
+// was saved unmerged over settings that had just arrived
+function guardConfig(config) { try { return engine ? engine.guardWrite(opts.configPath, config) : config; } catch (err) { if (err?.code === 'EHELD') throw err; return config; } }
 function quit() { stop(); }
 
 // (round 19, reach) paths from the other computer: its folders (machine records), and whether a file is on its way
