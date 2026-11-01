@@ -14,6 +14,8 @@
 //   chat.sendSaved     (round 100, perf100) a message sent in that long chat (×5, the fake engine answers) → the chat's
 //                      file changed on disk; chat.saveIpc: that chat saved again whole, hub.saveChat → its answer (once
 //                      the store thread wrote it); chat.sendCpu: a send turn's main + window CPU
+//   chat.markSaved     (round 101, chatsave101) a bookmark toggled on an old message of that chat (Native.save) → its
+//                      file changed on disk (×10); chat.markCpu: main + window CPU per such save
 //   lab.toolCall       a Lab tool call that sends no picture, end to end through the fake engine's real MCP calls
 //                      (labcalls74: HubBridge's total), 9 tools × 2 rounds on a scene on screen
 //   lab.stillDraws     a still scene left alone: the preview's draws a second over 10 s (labdraw74 / labpace)
@@ -200,9 +202,25 @@ await section('chats', async () => {
     add('chat.sendSaved', performance.now() - t0);
     await until(() => !Native.isBusy(chatId), `send ${i}: the reply`, 1500, 50); await wait(400);
     add('chat.sendCpu', (await appCpu()) - a0);
-    const chat = await Native.load(chatId);
-    if (chat?.id === chatId && Array.isArray(chat.messages)) { const t1 = performance.now(); await window.hub.saveChat(chat); add('chat.saveIpc', performance.now() - t1); }
     await wait(600);
+  }
+  // (round 101, chatsave101) chat.markSaved: a mark on an old message (a bookmark toggled, Native.save: the window's own
+  // save path) → the file changed on disk (×10); chat.markCpu: main + window CPU of those 10 saves, per save. Then
+  // chat.saveIpc (×5) after them: a whole save without a version breaks the window's chain of changes, so it no longer
+  // runs between the sends (round 100 did: every send's first save was then whole again)
+  { const chat = await Native.load(chatId);
+    if (chat?.id === chatId && Array.isArray(chat.messages) && chat.messages.length > 20) {
+      await wait(400); const c0 = await appCpu();
+      for (let i = 0; i < 10; i++) {
+        const m = chat.messages[5 + i]; const s0 = await stat(); const t0 = performance.now();
+        if (m.bookmark) delete m.bookmark; else m.bookmark = true;
+        Native.save(chat);
+        await until(async () => (await stat()) !== s0, `mark ${i} saved`, 3000, 2);
+        add('chat.markSaved', performance.now() - t0);
+      }
+      add('chat.markCpu', ((await appCpu()) - c0) / 10);
+      for (let i = 0; i < 5; i++) { await wait(300); const t1 = performance.now(); await window.hub.saveChat(chat); add('chat.saveIpc', performance.now() - t1); }
+    } else R.problems.push('chats: no long chat to mark');
   }
 });
 

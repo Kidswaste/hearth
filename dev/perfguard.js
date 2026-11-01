@@ -108,6 +108,9 @@ const METRICS = {
   'chat.sendSaved': { part: 'app', label: 'Send in a long chat → on disk', unit: 'ms', floor: 15, section: 'chats', kind: 'wall', cpu: 'chat.sendCpu' },
   'chat.saveIpc': { part: 'app', label: 'A long chat saved whole: call → written', unit: 'ms', floor: 15, section: 'chats', kind: 'wall', cpu: 'chat.sendCpu' },
   'chat.sendCpu': { part: 'app', label: 'Send turn: CPU, main + window', unit: 'ms', floor: 30, section: 'chats', kind: 'cpu' },
+  // (round 101, chatsave101) one change to a long chat (a mark on an old message) → on disk, and its CPU
+  'chat.markSaved': { part: 'app', label: 'A mark in a long chat → on disk', unit: 'ms', floor: 8, section: 'chats', kind: 'wall', cpu: 'chat.markCpu' },
+  'chat.markCpu': { part: 'app', label: 'A mark in a long chat: CPU, main + window', unit: 'ms', floor: 5, section: 'chats', kind: 'cpu' },
   'lab.toolCall': { part: 'app', label: 'Lab tool call (no picture), end to end', unit: 'ms', floor: 8, section: 'lab', kind: 'wall', cpu: 'lab.toolCallCpu' },
   'lab.toolCallCpu': { part: 'app', label: 'Lab tool call: CPU, main + window', unit: 'ms', floor: 15, section: 'lab', kind: 'cpu' },
   'lab.stillDraws': { part: 'app', label: 'Still Lab scene: draws a second', unit: '/s', floor: 0.4, section: 'lab', kind: 'level' },
