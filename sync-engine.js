@@ -27,6 +27,7 @@ const Hard = require('./sync-hard'); // (round 74, synchard74) Windows names, lo
 const SState = require('./sync-state'); // (round 75, syncstate75) sync's own state kept in pieces (data/sync/state/)
 const Own = require('./sync-own'); // (round 99, kvrename99) Hearth's own files (found by their name): never renamed by sync
 const Aside = require('./sync-aside'); // (round 78, guardloss78) a conflict's losing side, kept in Deleted files with a note
+const Stall = require('./sync-stall'); // (round 103, syncstall103) the long loops over every file, in slices that give the event loop a turn
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
 
@@ -172,7 +173,7 @@ function createEngine(o) {
     stateQ = store.save(state); // in order, never throws; a pass ends only once it is on disk
   };
   const basePath = (rel) => path.join(stateDir, 'base', ...rel.split('/'));
-  function readBase(rel) { try { return S.parseJson(fs.readFileSync(basePath(rel), 'utf8')); } catch { return null; } }
+  async function readBase(rel) { try { return S.parseJson(await fsp.readFile(basePath(rel), 'utf8')); } catch { return null; } } // (round 103, syncstall103) async
   // (round 70, bigprofile70) each base folder is made once per run (a first pass over ~1,800 JSON files asked the disk
   // to make the same few folders ~1,800 times, on the main process); one that went away meanwhile is made again
   const baseDirs = new Set();
@@ -364,7 +365,7 @@ function createEngine(o) {
       try { const st = await fsp.stat(file); out.set(rel, { file, size: st.size, mtime: st.mtimeMs }); out.extras.add(rel); } catch { /* none */ }
     }
     // renders saved outside the data folder (Lab recordings and exports from before round 17), listed in kv/video-library
-    refreshExt();
+    await refreshExt(); // (round 103, syncstall103) await
     for (const [rel, abs] of Object.entries(state.ext)) {
       if (out.has(rel)) continue;
       out.extras.add(rel);
@@ -373,13 +374,13 @@ function createEngine(o) {
     return out;
   }
   let extSeen = '';
-  function refreshExt() {
+  async function refreshExt() { // (round 103, syncstall103) async: a stat each pass and the library's read on a change were sync calls
     const lib = path.join(dataDir, 'kv', 'video-library.json');
-    const st = statSync(lib);
+    const st = await fsp.stat(lib).catch(() => null); // (round 103, syncstall103)
     const key = st ? `${st.size}:${st.mtimeMs}` : '';
     if (key === extSeen) return;
     let data;
-    try { data = st ? S.parseJson(fs.readFileSync(lib, 'utf8')) : {}; } catch { return; } // unreadable now: keep the list
+    try { data = st ? S.parseJson(await fsp.readFile(lib, 'utf8')) : {}; } catch { return; } // unreadable now: keep the list · (round 103, syncstall103) async
     extSeen = key;
     const found = new Set();
     const visit = (v) => {
@@ -394,7 +395,7 @@ function createEngine(o) {
       if (!rel) {
         const name = nfc(path.basename(abs));
         rel = `renders/${name}`;
-        if (next[rel] || fs.existsSync(path.join(dataDir, 'renders', name))) rel = `renders/${sha(abs).slice(0, 6)}-${name}`;
+        if (next[rel] || await exists(path.join(dataDir, 'renders', name))) rel = `renders/${sha(abs).slice(0, 6)}-${name}`; // (round 103, syncstall103) exists: async
       }
       next[rel] = abs;
     }
@@ -463,12 +464,15 @@ function createEngine(o) {
       // (round 74, synchard74) only files new or changed since the last pass, in the cloud or here (sync may write over
       // its cloud copy), are asked about; one unchanged on both sides keeps its known hash whatever its download state.
       // 50,000 files were all asked each pass.
-      const entries = [...[...out].filter(([rel, e]) => !cachedThere(rel, e) || !local?.get(rel) || local.get(rel).unavailable || !cachedHere(rel, local.get(rel))).map(([, e]) => e), ...copies];
-      const probe = o.cloudAttributes || require('./cloud-files').attributes;
-      let attributes; try { attributes = await probe(entries.map(e => e.file)); } catch { attributes = new Map(); }
+      const { entries, files: probed } = await Stall.winProbeList(out, copies, local, { cachedThere, cachedHere, breathe }); // (round 103, syncstall103) the same list, with breaths (50,000 entries in one filter held the main process ≈ 80–170 ms)
+      const CF = require('./cloud-files'); // (round 103, syncstall103) once, not per entry
+      const probe = o.cloudAttributes || CF.attributes;
+      let attributes; try { attributes = await probe(probed); } catch { attributes = new Map(); } // (round 103, syncstall103) probed: the paths, made with breaths
+      let pi = 0; // (round 103, syncstall103)
       for (const e of entries) {
-        const a = attributes.get(e.file);
-        if (require('./cloud-files').pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
+        if ((++pi & 1023) === 0) await Stall.pause(breathe); // (round 103, syncstall103)
+        const a = attributes.get(probed[pi - 1]); // (round 103, syncstall103) its path made once
+        if (CF.pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
       }
     }
   }
@@ -824,8 +828,8 @@ function createEngine(o) {
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     if (x.stage) await fsp.mkdir(x.stage, { recursive: true });
     let start = 0;
-    const m = readJsonSync(meta);
-    const pst = statSync(part);
+    let m = null; try { m = S.parseJson(await fsp.readFile(meta, 'utf8')); } catch { /* none / held: started again, as before */ } // (round 103, syncstall103) async
+    const pst = await fsp.stat(part).catch(() => null); // (round 103, syncstall103) async
     if (m && pst && m.size === st0.size && m.mtime === st0.mtimeMs && (!x.stage || m.src === src) && pst.size <= st0.size) start = pst.size - (pst.size % CHUNK);
     else {
       // (round 74, synchard74) a full disk already here: neither half-written note nor empty part is left behind
@@ -1005,13 +1009,15 @@ function createEngine(o) {
   let pulledNow = [];
   const notePulled = (rel, kind, acc) => { pulledAt.set(rel, Date.now()); return (acc?.pulled || pulledNow).push({ rel, kind, from: nameOf(journalLatest.get(rel)?.m), ...(S.isJsonRel(rel) && !pulledPrev.has(rel) && !/-deleted$/.test(kind) ? { guard: false } : {}) }); }; // (round 73) acc: the big lane's own · (round 77, storeack77) pulledAt; guard: false = no base kept for the write guard (a store ≥ 16 MB): the window must not write its older copy first
   // a JSON value as this computer stores it (pretty unless the file was compact)
-  function localJsonText(rel, value, L) {
+  // (round 103, syncstall103) async: its reads (the file's first 2 bytes, the settings file) were sync calls on the main
+  // process for every store pulled, merged or relinked; the same answers, a failed read as before
+  async function localJsonText(rel, value, L) {
     if (rel === 'app/config.json') {
-      let cur = {}; try { cur = S.parseJson(fs.readFileSync(SPECIAL[rel], 'utf8')); } catch { /* none */ }
+      let cur = {}; try { cur = S.parseJson(await fsp.readFile(SPECIAL[rel], 'utf8')); } catch { /* none */ }
       return `${JSON.stringify(S.applyPortable(cur, value), null, 2)}\n`;
     }
     let pretty = true;
-    if (L?.file) { try { const fd = fs.openSync(L.file, 'r'); const b = Buffer.alloc(2); fs.readSync(fd, b, 0, 2, 0); fs.closeSync(fd); pretty = /^[[{]\s/.test(b.toString()) || b.length < 2; } catch { /* new */ } }
+    if (L?.file) { let fh = null; try { fh = await fsp.open(L.file, 'r'); const b = Buffer.alloc(2); const { bytesRead } = await fh.read(b, 0, 2, 0); pretty = /^[[{]\s/.test(b.subarray(0, bytesRead).toString()) || bytesRead < 2; } catch { /* new */ } finally { await fh?.close().catch(() => {}); } } // (round 103, syncstall103) async
     return localForm(value, pretty);
   }
   async function afterLocalWrite(rel, h) {
@@ -1075,9 +1081,9 @@ function createEngine(o) {
       if (sha(text) !== h) return false;
       const value = S.toCloud(S.parseJson(text), ctx); // (old paths of another computer written as-is are fixed too)
       const prev = L ? await localText(rel, L).catch(() => null) : null;
-      keepScenesAside(rel, L, value);
+      await keepScenesAside(rel, L, value); // (round 103, syncstall103) await
       await keepStateAside(rel, L);
-      ok = await casWrite(file, lent, localJsonText(rel, S.fromCloud(value, ctx), L), 'pull');
+      ok = await casWrite(file, lent, await localJsonText(rel, S.fromCloud(value, ctx), L), 'pull'); // (round 103, syncstall103) await
       if (ok) {
         setBase(rel, h, text);
         remember(rel, prev === null ? null : S.parseJson(prev), prev ? prev.length : 0);
@@ -1118,10 +1124,10 @@ function createEngine(o) {
   // (round 43, scenesafe) before what arrives replaces this computer's Lab scenes with a list missing some of them (a
   // delete on the other computer… or a list lost there), this computer's file is kept in data/kv/.history/three-sketches
   // (not synced: a hidden folder) so 🛟 Recover lost scenes finds them; the store's guard keeps them when the Lab saves
-  function keepScenesAside(rel, L, next) {
+  async function keepScenesAside(rel, L, next) { // (round 103, syncstall103) async: the Lab's scenes (megabytes) were read and written with sync calls on the main process
     if (rel !== 'kv/three-sketches.json' || !L?.file || L.unavailable || !Array.isArray(next)) return;
     try {
-      const text = fs.readFileSync(L.file, 'utf8');
+      const text = await fsp.readFile(L.file, 'utf8'); // (round 103, syncstall103)
       const mine = S.parseJson(text);
       if (!Array.isArray(mine)) return;
       const have = new Set(next.map((x) => x?.id));
@@ -1129,8 +1135,8 @@ function createEngine(o) {
       if (!gone.length) return;
       const SS = require('./scenesafe-core');
       const dir = path.join(dataDir, 'kv', '.history', 'three-sketches');
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, SS.copyName(now(), mine.length, 'sync')), text);
+      await fsp.mkdir(dir, { recursive: true }); // (round 103, syncstall103)
+      await fsp.writeFile(path.join(dir, SS.copyName(now(), mine.length, 'sync')), text); // (round 103, syncstall103)
       log('scenes kept aside before sync', gone.length);
     } catch (err) { log('scenes aside', err.message); }
   }
@@ -1154,17 +1160,17 @@ function createEngine(o) {
         const ours = S.parseJson(await localText(rel, L));
         const theirsText = await cloudText(rel, C);
         const theirs = S.toCloud(S.parseJson(theirsText), ctx);
-        const base = state.base[rel] ? readBase(rel) : null;
+        const base = state.base[rel] ? await readBase(rel) : null; // (round 103, syncstall103) await
         const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel) }); // (round 72, sync72)
         const text = canon(r.value);
-        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { keepScenesAside(rel, L, r.value); await keepStateAside(rel, L); } };
+        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L); } }; // (round 103, syncstall103) await
       }
       const { text, hm } = m;
       // this computer first, then the cloud: a cloud write that loses its race leaves the old base, so the next pass
       // merges again instead of pushing a version that misses the other computer's changes
       if (hm !== lh) {
         await m.aside();
-        const ok = await casWrite(L.file, lent, m.local(), 'merge-local');
+        const ok = await casWrite(L.file, lent, await m.local(), 'merge-local'); // (round 103, syncstall103) await
         if (!ok) return false;
         if (m.ours !== undefined) remember(rel, m.ours);
         await afterLocalWrite(rel, hm);
@@ -1247,7 +1253,7 @@ function createEngine(o) {
     const st = await fsp.stat(dst);
     state.cloud[to] = [st.size, st.mtimeMs, h, jkey(to)]; delete state.cloud[from];
     await baseIdle(from); // (round 72)
-    const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
+    const t = S.isJsonRel(from) ? await fsp.readFile(basePath(from), 'utf8').catch(() => undefined) : undefined; // (round 103, syncstall103) async
     setBase(to, h, t); dropBase(from); delete state.local[from];
     journalOut.push({ t: now(), op: 'move', from, rel: to, h, s: st.size });
     sum.renamed += 1;
@@ -1264,7 +1270,7 @@ function createEngine(o) {
     const st = await fsp.stat(dst);
     state.local[to] = [st.size, st.mtimeMs, h]; delete state.local[from];
     await baseIdle(from); // (round 72)
-    const t = S.isJsonRel(from) ? (() => { try { return fs.readFileSync(basePath(from), 'utf8'); } catch { return undefined; } })() : undefined;
+    const t = S.isJsonRel(from) ? await fsp.readFile(basePath(from), 'utf8').catch(() => undefined) : undefined; // (round 103, syncstall103) async
     setBase(to, h, t); dropBase(from); delete state.cloud[from];
     sum.renamed += 1;
     notePulled(from, `${kindOf(from)}-deleted`); notePulled(to, kindOf(to));
@@ -1297,9 +1303,9 @@ function createEngine(o) {
         const r = S.merge3(null, ours, theirs, { counters: S.isCounterRel(cp.orig), shared: true });
         const text = canon(r.value);
         if (sha(text) !== state.local[cp.orig]?.[2]) {
-          keepScenesAside(cp.orig, L, r.value);
+          await keepScenesAside(cp.orig, L, r.value); // (round 103, syncstall103) await
           await keepStateAside(cp.orig, L);
-          const ok = await casWrite(L.file, L, localJsonText(cp.orig, S.fromCloud(r.value, ctx), L), 'absorb');
+          const ok = await casWrite(L.file, L, await localJsonText(cp.orig, S.fromCloud(r.value, ctx), L), 'absorb'); // (round 103, syncstall103) await
           if (!ok) return;
           remember(cp.orig, ours);
           await afterLocalWrite(cp.orig, sha(text));
@@ -1500,7 +1506,7 @@ function createEngine(o) {
       const before = canon(v); const next = swap(v); const after = canon(next);
       if (after === before) continue;
       await keepStateAside(rel, L).catch(() => {});
-      if (!(await casWrite(L.file, L, localJsonText(rel, S.fromCloud(next, ctx), L), 'relink'))) continue;
+      if (!(await casWrite(L.file, L, await localJsonText(rel, S.fromCloud(next, ctx), L), 'relink'))) continue; // (round 103, syncstall103) await
       remember(rel, v);
       n += 1; notePulled(rel, kindOf(rel));
     }
@@ -1539,7 +1545,7 @@ function createEngine(o) {
       await fsp.mkdir(FILES, { recursive: true });
       await atomicWrite(path.join(cloudDir, 'README.txt'), 'This folder is Hearth\'s sync copy (chats, scenes, boards, notes, settings…).\nHearth keeps working from each computer\'s own folder and copies changes here and back.\nPlease don\'t edit files here. Deleted things wait in trash/ for 30 days.\n');
     }
-    if (opts.fresh) { await baseIdle(); state.base = {}; baseDirs.clear(); try { fs.rmSync(path.join(stateDir, 'base'), { recursive: true, force: true }); } catch { /* fine */ } }
+    if (opts.fresh) { await baseIdle(); state.base = {}; await fsp.rm(path.join(stateDir, 'base'), { recursive: true, force: true }).catch(() => {}); baseDirs.clear(); } // (round 103, syncstall103) async: thousands of base files removed with a sync call
     // (round 74, synchard74) the two computers on different versions: a newer Hearth that changed how it keeps things
     // in the cloud says so in .sync/format.json ({ min }); an older one then stops writing (it would damage them) and
     // says "update Hearth on this computer". This version only reads it (o.minFormat raises it, for a future break).
@@ -1717,24 +1723,24 @@ function createEngine(o) {
     for (const p of plan) if ((p.op === 'deleteThere' || p.op === 'deleteHere') && laneSizes.has((p.L || p.C)?.size)) { p.op = 'later'; pending += 1; why(p.rel, 'queued'); }
     { const b = breathe(); if (b) await b; } // (round 75) 50,000 files to copy: the lists below are long
     // renames: a delete and an add of the same content become one move (big files aren't copied again)
-    const live = plan.filter((p) => p.op !== 'wait' && p.op !== 'later');
+    const live = await Stall.filter(plan, (p) => p.op !== 'wait' && p.op !== 'later', breathe); // (round 103, syncstall103) with breaths
     // (round 74, synchard74) by hash, through a map: a folder of 50,000 files renamed was 50,000 x 50,000 comparisons
-    const adds = (op, noSide) => { const m = new Map(); for (const p of live) if (p.op === op && !p[noSide] && !state.base[p.rel]) { if (!m.has(p.h)) m.set(p.h, []); m.get(p.h).push(p); } return m; };
+    const adds = (op, noSide) => Stall.byHash(live, op, noSide, state.base, breathe); // (round 103, syncstall103) the same map, with breaths (it held the first pass ≈ 60–80 ms at 50,000 files)
     const firstFree = (m, h) => { const l = m.get(h); while (l?.length && l[0].used) l.shift(); return l?.[0] || null; };
-    const pushes = adds('push', 'C'); { const b = breathe(); if (b) await b; } const pulls = adds('pull', 'L'); { const b = breathe(); if (b) await b; } // (round 75)
-    for (const d of live.filter((p) => p.op === 'deleteThere' && !isStub(p.C))) {
+    const pushes = await adds('push', 'C'); { const b = breathe(); if (b) await b; } const pulls = await adds('pull', 'L'); { const b = breathe(); if (b) await b; } // (round 75) · (round 103, syncstall103) await
+    for (const d of await Stall.filter(live, (p) => p.op === 'deleteThere' && !isStub(p.C), breathe)) { // (round 103, syncstall103) with breaths
       const a = firstFree(pushes, d.h);
       if (a) { a.used = true; d.op = 'renameThere'; d.to = a.rel; }
     }
-    for (const d of live.filter((p) => p.op === 'deleteHere')) {
+    for (const d of await Stall.filter(live, (p) => p.op === 'deleteHere', breathe)) { // (round 103, syncstall103) with breaths
       const a = firstFree(pulls, d.h);
       if (a && !Own.followMove(d.rel, a.rel, { ci: platform !== 'linux' })) { d.op = 'push'; d.C = null; dropBase(d.rel); continue; } // (round 99, kvrename99) a Hearth-named file renamed there (an older Hearth's Rename for Windows): kept here under its name and put back; the new name arrives too
       if (a) { a.used = true; d.op = 'renameHere'; d.to = a.rel; }
     }
     { const b = breathe(); if (b) await b; } // (round 75)
-    const ops = live.filter((p) => !p.used);
+    const ops = await Stall.filter(live, (p) => !p.used, breathe); // (round 103, syncstall103) with breaths
     // many deletions at once (a folder emptied, the wrong drive): wait for a yes
-    const dels = ops.filter((p) => (p.op === 'deleteHere' || p.op === 'deleteThere') && !/^trash\//.test(p.rel));
+    const dels = await Stall.filter(ops, (p) => (p.op === 'deleteHere' || p.op === 'deleteThere') && !/^trash\//.test(p.rel), breathe); // (round 103, syncstall103) with breaths
     const known = keysOf(state.base).length;
     if (dels.length > 25 && dels.length > known * 0.3 && opts.mass !== 'apply') {
       if (opts.mass === 'keep') {
@@ -2038,7 +2044,7 @@ function createEngine(o) {
   const entNow = (f) => { const st = statSync(f); return st ? { size: st.size, mtime: st.mtimeMs } : null; };
   async function choiceWrite(rel, file, ent, base, v) {
     for (let i = 0; ; i++) {
-      if (await casWrite(file, ent, localJsonText(rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null), 'choice')) return true;
+      if (await casWrite(file, ent, await localJsonText(rel, S.fromCloud(v, ctx), statSync(file) ? { file } : null), 'choice')) return true; // (round 103, syncstall103) await
       const e2 = entNow(file);
       if (i >= 3 || !e2) return false;
       let cur; try { const x = S.parseJson(fs.readFileSync(file, 'utf8')); cur = S.toCloud(rel === 'app/config.json' ? S.portableConfig(x) : x, ctx); } catch { return false; }

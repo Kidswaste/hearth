@@ -295,7 +295,7 @@ scenario('many', async () => {
   // (round 102, checks102) and, stall by stall, how much of the longest hold was the code's own: the main thread's wait
   // for a CPU inside it taken out (dev/loadwait.js stallWatch). The wall figure stays the one reported (perfguard reads it).
   const LW = require('./loadwait');
-  const lag = []; const phase = async (name, fn) => { const h = monitorEventLoopDelay({ resolution: 5 }); const sw = LW.stallWatch(); h.enable(); const t0 = Date.now(); const r = await fn(); h.disable(); const s = sw.stop(); lag.push({ name, ms: Date.now() - t0, maxLag: Math.round(h.max / 1e6), maxOwn: s.maxOwn, worst: s.worst, longest: s.longest }); return r; };
+  const lag = []; const phase = async (name, fn) => { const h = monitorEventLoopDelay({ resolution: 5 }); const sw = LW.stallWatch(); h.enable(); const t0 = Date.now(); const r = await fn(); h.disable(); const s = sw.stop(); lag.push({ name, ms: Date.now() - t0, maxLag: Math.round(h.max / 1e6), maxOwn: s.maxOwn, worst: s.worst, longest: s.longest, watchMax: s.watchMax }); return r; };
   let t = Date.now();
   const dirs = new Set();
   for (let i = 0; i < N; i++) { const d = path.join(pc.data, 'workspace', `proj${i % 50}`, `d${Math.floor(i / 1000)}`); if (!dirs.has(d)) { raw.mkdirSync(d, { recursive: true }); dirs.add(d); } raw.writeFileSync(path.join(d, `f${i}.txt`), `small file ${i}\n`); }
@@ -330,6 +330,16 @@ scenario('many', async () => {
   const stalls = lag.map((x) => `${x.name} ${x.maxLag} ms${x.longest ? ` (longest ${g(x.longest)}${x.worst && x.worst !== x.longest ? `; most own ${g(x.worst)}` : ''})` : ''}`).join(' · ');
   if (worst >= LB && ownWorst < LB) { cantTell += 1; console.log(`CAN'T TELL many: the event loop held ${worst} ms (budget ${LB} ms), but its longest hold of its own was ${ownWorst} ms: ${stalls}`); }
   else ok(worst < LB, `many: the event loop is never held long (worst ${worst} ms, longest own hold ${ownWorst} ms; budget ${LB} ms)`, stalls);
+  // (round 103, syncstall103) and phase by phase, the code's own work (wall − the wait for a CPU inside the hold; a sync
+  // read on the loop counts as own, whatever the disk) under OWN_B at any size, up to 50,000 files: the first pass and
+  // the join held 287–604 ms (the simulator's sync name lookups under every async call), a folder rename 307–362 ms
+  // (Windows' cloud-file check: one filter over every entry). A wall hold over it with its own part under is the box's.
+  const OWN_B = 150;
+  for (const x of lag) {
+    const own = x.maxOwn ?? x.maxLag;
+    if (own >= OWN_B) ok(false, `many: ${x.name}: a hold of the code's own over ${OWN_B} ms`, x.worst ? g(x.worst) : `${x.maxLag} ms`);
+    else { passes += 1; console.log(`  many: ${x.name}: longest own hold ${own} ms (budget ${OWN_B} ms; the watcher's own reads, not counted: ≤ ${x.watchMax ?? '?'} ms)${x.maxLag >= OWN_B ? `; the wall hold of ${x.maxLag} ms is the box's (${g(x.longest)})` : ''}`); }
+  }
   ok(ren < Math.max(5000, first), `many: the renamed folders take no longer than the first pass (${ren} ms vs ${first} ms)`);
 });
 
