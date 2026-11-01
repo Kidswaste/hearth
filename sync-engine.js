@@ -1013,7 +1013,10 @@ function createEngine(o) {
   // process for every store pulled, merged or relinked; the same answers, a failed read as before
   async function localJsonText(rel, value, L) {
     if (rel === 'app/config.json') {
-      let cur = {}; try { cur = S.parseJson(await fsp.readFile(SPECIAL[rel], 'utf8')); } catch { /* none */ }
+      // (round 103, syncstall103) only a settings file that isn't there is "none"; one that can't be read or parsed now
+      // (held a moment on Windows, half written) throws: the pull waits and is tried again next pass (it wrote the
+      // portable settings over {}, and this computer's own ones (engine paths, hotkey…) were lost)
+      let cur = {}; try { cur = S.parseJson(await fsp.readFile(SPECIAL[rel], 'utf8')); } catch (err) { if (err?.code !== 'ENOENT') throw err; }
       return `${JSON.stringify(S.applyPortable(cur, value), null, 2)}\n`;
     }
     let pretty = true;
@@ -1305,7 +1308,8 @@ function createEngine(o) {
         if (sha(text) !== state.local[cp.orig]?.[2]) {
           await keepScenesAside(cp.orig, L, r.value); // (round 103, syncstall103) await
           await keepStateAside(cp.orig, L);
-          const ok = await casWrite(L.file, L, await localJsonText(cp.orig, S.fromCloud(r.value, ctx), L), 'absorb'); // (round 103, syncstall103) await
+          let lt; try { lt = await localJsonText(cp.orig, S.fromCloud(r.value, ctx), L); } catch (err) { log('absorb', cp.orig, err.message); return; } // (round 103, syncstall103) the settings file unreadable now: the copy waits (absorbCopy's caller has no catch)
+          const ok = await casWrite(L.file, L, lt, 'absorb'); // (round 103, syncstall103) await
           if (!ok) return;
           remember(cp.orig, ours);
           await afterLocalWrite(cp.orig, sha(text));

@@ -148,10 +148,19 @@ Left as sync, on purpose (not on a pass, or sync by design): the machine file at
 `listTrash`, `choiceWrite`'s own checks, `restore`, `asideDo` (clicks in the panel); `guardWrite` (the store's write
 guard, called synchronously by the store); `hearthIn`.
 
-One thing seen, not changed (it is behaviour): `localJsonText` for `app/config.json` reads the settings file and, on
-any read error, writes the portable settings over `{}`. A settings file held for a moment (Windows) would then lose
-this computer's own settings (engine paths, hotkey). That is a read failure taken as "empty". Throwing on anything but
-ENOENT would make the pull wait and retry.
+11. `localJsonText` for `app/config.json` (asked for after the merge): only a settings file that isn't there (ENOENT)
+    counts as `{}`. Any other read error, or a file that doesn't parse, now throws. Before, it wrote the shared settings
+    over `{}`: a settings file held for a moment (Windows: EBUSY / EPERM) lost this computer's own settings (engine
+    paths, hotkey). That was a read failure taken as "empty". The pull now fails like any other held file: "in use"
+    (blocked, by name), nothing written, and tried again next pass.
+12. `absorbCopy`: its `localJsonText` call is caught (the copy waits as "arriving"), because `absorbCopy`'s caller in
+    `passOnce` has no catch, and a throw there would end the whole pass.
+
+`dev/syncstall103-test.js` (`unit:syncstall103-test`): the Mac changes shared settings while the PC's settings file is
+held (EBUSY, then EPERM; every read of it fails, its stat works). The pull is tried and waits ("in use", by name),
+nothing is written over the file, and once it reads again the change arrives with the PC's hotkey and engine path
+kept. With the old line both cases fail: the PC's settings file is left with the shared settings only. A third case,
+a half-written settings file, passes either way (an older guard, `localHash`'s "unreadable", stops it first).
 
 ## Final runs (this branch, under the lock)
 `HEARTH_THREE_DIR=… flock /tmp/hearth-run.lock node dev/run-checks.js --exact …`, five at a time (the `syncstall103`
