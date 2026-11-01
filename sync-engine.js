@@ -27,6 +27,7 @@ const Hard = require('./sync-hard'); // (round 74, synchard74) Windows names, lo
 const SState = require('./sync-state'); // (round 75, syncstate75) sync's own state kept in pieces (data/sync/state/)
 const Own = require('./sync-own'); // (round 99, kvrename99) Hearth's own files (found by their name): never renamed by sync
 const Aside = require('./sync-aside'); // (round 78, guardloss78) a conflict's losing side, kept in Deleted files with a note
+const Stall = require('./sync-stall'); // (round 103, syncstall103) the long loops over every file, in slices that give the event loop a turn
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
 
@@ -463,12 +464,15 @@ function createEngine(o) {
       // (round 74, synchard74) only files new or changed since the last pass, in the cloud or here (sync may write over
       // its cloud copy), are asked about; one unchanged on both sides keeps its known hash whatever its download state.
       // 50,000 files were all asked each pass.
-      const entries = [...[...out].filter(([rel, e]) => !cachedThere(rel, e) || !local?.get(rel) || local.get(rel).unavailable || !cachedHere(rel, local.get(rel))).map(([, e]) => e), ...copies];
-      const probe = o.cloudAttributes || require('./cloud-files').attributes;
-      let attributes; try { attributes = await probe(entries.map(e => e.file)); } catch { attributes = new Map(); }
+      const { entries, files: probed } = await Stall.winProbeList(out, copies, local, { cachedThere, cachedHere, breathe }); // (round 103, syncstall103) the same list, with breaths (50,000 entries in one filter held the main process ≈ 80–170 ms)
+      const CF = require('./cloud-files'); // (round 103, syncstall103) once, not per entry
+      const probe = o.cloudAttributes || CF.attributes;
+      let attributes; try { attributes = await probe(probed); } catch { attributes = new Map(); } // (round 103, syncstall103) probed: the paths, made with breaths
+      let pi = 0; // (round 103, syncstall103)
       for (const e of entries) {
-        const a = attributes.get(e.file);
-        if (require('./cloud-files').pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
+        if ((++pi & 1023) === 0) await Stall.pause(breathe); // (round 103, syncstall103)
+        const a = attributes.get(probed[pi - 1]); // (round 103, syncstall103) its path made once
+        if (CF.pending(a)) { e.placeholder = true; e.downloading = true; e.cloudUnknown = !Number.isInteger(a); }
       }
     }
   }
@@ -1717,24 +1721,24 @@ function createEngine(o) {
     for (const p of plan) if ((p.op === 'deleteThere' || p.op === 'deleteHere') && laneSizes.has((p.L || p.C)?.size)) { p.op = 'later'; pending += 1; why(p.rel, 'queued'); }
     { const b = breathe(); if (b) await b; } // (round 75) 50,000 files to copy: the lists below are long
     // renames: a delete and an add of the same content become one move (big files aren't copied again)
-    const live = plan.filter((p) => p.op !== 'wait' && p.op !== 'later');
+    const live = await Stall.filter(plan, (p) => p.op !== 'wait' && p.op !== 'later', breathe); // (round 103, syncstall103) with breaths
     // (round 74, synchard74) by hash, through a map: a folder of 50,000 files renamed was 50,000 x 50,000 comparisons
-    const adds = (op, noSide) => { const m = new Map(); for (const p of live) if (p.op === op && !p[noSide] && !state.base[p.rel]) { if (!m.has(p.h)) m.set(p.h, []); m.get(p.h).push(p); } return m; };
+    const adds = (op, noSide) => Stall.byHash(live, op, noSide, state.base, breathe); // (round 103, syncstall103) the same map, with breaths (it held the first pass ≈ 60–80 ms at 50,000 files)
     const firstFree = (m, h) => { const l = m.get(h); while (l?.length && l[0].used) l.shift(); return l?.[0] || null; };
-    const pushes = adds('push', 'C'); { const b = breathe(); if (b) await b; } const pulls = adds('pull', 'L'); { const b = breathe(); if (b) await b; } // (round 75)
-    for (const d of live.filter((p) => p.op === 'deleteThere' && !isStub(p.C))) {
+    const pushes = await adds('push', 'C'); { const b = breathe(); if (b) await b; } const pulls = await adds('pull', 'L'); { const b = breathe(); if (b) await b; } // (round 75) · (round 103, syncstall103) await
+    for (const d of await Stall.filter(live, (p) => p.op === 'deleteThere' && !isStub(p.C), breathe)) { // (round 103, syncstall103) with breaths
       const a = firstFree(pushes, d.h);
       if (a) { a.used = true; d.op = 'renameThere'; d.to = a.rel; }
     }
-    for (const d of live.filter((p) => p.op === 'deleteHere')) {
+    for (const d of await Stall.filter(live, (p) => p.op === 'deleteHere', breathe)) { // (round 103, syncstall103) with breaths
       const a = firstFree(pulls, d.h);
       if (a && !Own.followMove(d.rel, a.rel, { ci: platform !== 'linux' })) { d.op = 'push'; d.C = null; dropBase(d.rel); continue; } // (round 99, kvrename99) a Hearth-named file renamed there (an older Hearth's Rename for Windows): kept here under its name and put back; the new name arrives too
       if (a) { a.used = true; d.op = 'renameHere'; d.to = a.rel; }
     }
     { const b = breathe(); if (b) await b; } // (round 75)
-    const ops = live.filter((p) => !p.used);
+    const ops = await Stall.filter(live, (p) => !p.used, breathe); // (round 103, syncstall103) with breaths
     // many deletions at once (a folder emptied, the wrong drive): wait for a yes
-    const dels = ops.filter((p) => (p.op === 'deleteHere' || p.op === 'deleteThere') && !/^trash\//.test(p.rel));
+    const dels = await Stall.filter(ops, (p) => (p.op === 'deleteHere' || p.op === 'deleteThere') && !/^trash\//.test(p.rel), breathe); // (round 103, syncstall103) with breaths
     const known = keysOf(state.base).length;
     if (dels.length > 25 && dels.length > known * 0.3 && opts.mass !== 'apply') {
       if (opts.mass === 'keep') {

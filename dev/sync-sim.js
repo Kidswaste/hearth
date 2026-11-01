@@ -65,6 +65,39 @@ function ci(p) {
   }
   return cur;
 }
+// (round 103, syncstall103) the same lookup for the async fs calls, on the disk's thread pool: the sync one ran a
+// readdirSync of a 1,000-file folder on the event loop under every async call that names a file not there yet (each
+// temp file of a write), 140–560 ms on a busy disk: holds of the simulator's that the app (no lookup: the OS does it)
+// never has. One stat of the whole path first: a path that is there as spelled is that file on a case-insensitive disk.
+const rawExists = async (p) => { try { await rawP.lstat(p); return true; } catch { return false; } };
+async function ciP(p) {
+  if (typeof p !== 'string') return p;
+  const abs = path.resolve(p);
+  const root = ciRootOf(abs);
+  if (!root || await rawExists(abs)) return root ? abs : p;
+  const parts = path.relative(root, abs).split(path.sep).filter(Boolean);
+  let cur = root;
+  for (let i = 0; i < parts.length; i++) {
+    const exact = path.join(cur, parts[i]);
+    if (await rawExists(exact)) { cur = exact; continue; }
+    let ents; try { ents = await rawP.readdir(cur); } catch { return path.join(cur, ...parts.slice(i)); }
+    const hit = ents.find((e) => fold(e) === fold(parts[i]));
+    if (!hit) return path.join(cur, ...parts.slice(i));
+    cur = path.join(cur, hit);
+  }
+  return cur;
+}
+async function ciRenameArgsP(from, to) {
+  const f = await ciP(from);
+  const absTo = path.resolve(to);
+  if (!ciRootOf(absTo)) return [f, to];
+  const dir = await ciP(path.dirname(absTo));
+  const name = path.basename(absTo);
+  let ents = []; try { ents = await rawP.readdir(dir); } catch { /* none yet */ }
+  const hit = ents.find((e) => fold(e) === fold(name) && e !== name);
+  if (hit) { const hp = path.join(dir, hit); if (ino(hp) !== ino(f)) raw.rmSync(hp, { recursive: true, force: true }); }
+  return [f, path.join(dir, name)];
+}
 const ino = (p) => { try { const st = raw.statSync(p); return `${st.dev}:${st.ino}`; } catch { return null; } };
 // rename on a case-insensitive disk: an existing entry of the same name in another spelling is that entry (a rename to
 // another case of the same file just changes its spelling; another file there is replaced)
@@ -163,26 +196,28 @@ function install() {
   fs.truncateSync = (p, ...a) => raw.truncateSync(ci(p), ...a);
   fs.copyFileSync = (a, b, ...r) => { const q = ci(a); hydrate(q); return raw.copyFileSync(q, ci(b), ...r); };
   // (round 73, syncmedia73) a placeholder has no blocks on the disk (what the engine looks at on a Mac)
-  fsp.stat = async (p, ...a) => { const st = await rawP.stat(ci(p), ...a); if (dataless.size && st && dlOf(st)) st.blocks = 0; return st; };
-  fsp.lstat = (p, ...a) => rawP.lstat(ci(p), ...a);
+  // (round 103, syncstall103) their names looked up on the disk's thread pool (ciP), as the OS does it: no sync call on
+  // the event loop under an async one
+  fsp.stat = async (p, ...a) => { const st = await rawP.stat(await ciP(p), ...a); if (dataless.size && st && dlOf(st)) st.blocks = 0; return st; };
+  fsp.lstat = async (p, ...a) => rawP.lstat(await ciP(p), ...a);
   // (round 74, synchard74) each call checks the simulated locks / read-only marks / quotas first (check, spend)
-  fsp.readFile = async (p, ...a) => { check('open', p); const q = ci(p); hydrate(q); return rawP.readFile(q, ...a); };
+  fsp.readFile = async (p, ...a) => { check('open', p); const q = await ciP(p); hydrate(q); return rawP.readFile(q, ...a); };
   fsp.writeFile = async (p, d, ...a) => {
     check('open', p, null, [p]);
     const n = lenOf(d); const ok = spend(p, n);
-    if (ok < n) { await rawP.writeFile(ci(p), typeof d === 'string' ? Buffer.from(d).subarray(0, ok) : d.subarray(0, ok)); throw err('ENOSPC', 'write', p); }
-    return rawP.writeFile(ci(p), d, ...a);
+    if (ok < n) { await rawP.writeFile(await ciP(p), typeof d === 'string' ? Buffer.from(d).subarray(0, ok) : d.subarray(0, ok)); throw err('ENOSPC', 'write', p); }
+    return rawP.writeFile(await ciP(p), d, ...a);
   };
-  fsp.open = async (p, fl, ...a) => { check('open', p, null, readish(fl) ? null : [p]); const q = ci(p); if (readish(fl)) hydrate(q); return wrapHandle(await rawP.open(q, fl, ...a), p); };
-  fsp.rename = async (a, b) => { check('rename', a, b, [b]); return rawP.rename(...ciRenameArgs(a, b)); };
-  fsp.rm = async (p, ...a) => { check('unlink', p, null, [p]); return rawP.rm(ci(p), ...a); };
-  fsp.unlink = async (p) => { check('unlink', p, null, [p]); return rawP.unlink(ci(p)); };
-  fsp.mkdir = (p, ...a) => rawP.mkdir(ci(p), ...a);
-  fsp.readdir = async (p, ...a) => { check('scandir', p); return rawP.readdir(ci(p), ...a); };
-  fsp.chmod = (p, ...a) => rawP.chmod(ci(p), ...a);
-  fsp.copyFile = async (a, b, ...r) => { check('copyfile', a, b, [b]); const q = ci(a); hydrate(q); const st = raw.statSync(q); if (spend(b, st.size) < st.size) throw err('ENOSPC', 'copyfile', b); return rawP.copyFile(q, ci(b), ...r); };
-  fsp.utimes = (p, ...a) => rawP.utimes(ci(p), ...a);
-  fsp.truncate = (p, ...a) => rawP.truncate(ci(p), ...a);
+  fsp.open = async (p, fl, ...a) => { check('open', p, null, readish(fl) ? null : [p]); const q = await ciP(p); if (readish(fl)) hydrate(q); return wrapHandle(await rawP.open(q, fl, ...a), p); };
+  fsp.rename = async (a, b) => { check('rename', a, b, [b]); return rawP.rename(...(await ciRenameArgsP(a, b))); };
+  fsp.rm = async (p, ...a) => { check('unlink', p, null, [p]); return rawP.rm(await ciP(p), ...a); };
+  fsp.unlink = async (p) => { check('unlink', p, null, [p]); return rawP.unlink(await ciP(p)); };
+  fsp.mkdir = async (p, ...a) => rawP.mkdir(await ciP(p), ...a);
+  fsp.readdir = async (p, ...a) => { check('scandir', p); return rawP.readdir(await ciP(p), ...a); };
+  fsp.chmod = async (p, ...a) => rawP.chmod(await ciP(p), ...a);
+  fsp.copyFile = async (a, b, ...r) => { check('copyfile', a, b, [b]); const q = await ciP(a); hydrate(q); const st = await rawP.stat(q); if (spend(b, st.size) < st.size) throw err('ENOSPC', 'copyfile', b); return rawP.copyFile(q, await ciP(b), ...r); };
+  fsp.utimes = async (p, ...a) => rawP.utimes(await ciP(p), ...a);
+  fsp.truncate = async (p, ...a) => rawP.truncate(await ciP(p), ...a);
 }
 function ciVolume(dir) { install(); raw.mkdirSync(dir, { recursive: true }); ciRoots.add(path.resolve(dir)); }
 
@@ -222,7 +257,15 @@ function cloud(o = {}) {
     if (opt.ci !== false) ciVolume(v.dir);
     v.tick = () => tick(v);
     v.request = (file) => { const real = path.join(path.dirname(file), path.basename(file).replace(/^\.(.+)\.icloud$/, '$1')); v.requested.add(fold(path.relative(v.dir, real).split(path.sep).join('/'))); };
-    v.attributes = async (paths) => new Map(paths.map((p) => [p, isDataless(p) ? 0x400000 : 0]));
+    // (round 103, syncstall103) no placeholder anywhere: nothing to look up (it ran the sync name lookup for each of
+    // 5,000 paths in one go: ≈ 170 ms of the simulator's on the event loop); else each name looked up asynchronously, as
+    // PowerShell answers the app (another process)
+    v.attributes = async (paths) => {
+      if (!dataless.size) return new Map(paths.map((p) => [p, 0]));
+      const out = new Map();
+      for (let i = 0; i < paths.length; i += 64) await Promise.all(paths.slice(i, i + 64).map(async (p) => { out.set(p, dlOf(await rawP.stat(await ciP(p)).catch(() => null)) ? 0x400000 : 0); }));
+      return new Map(paths.map((p) => [p, out.get(p)]));
+    };
     // (round 73, syncmedia73) "make online-only" as the provider does it (Windows attrib +U, macOS evict): refused while
     // the file isn't uploaded as it is (still going up, changed since, never seen by the server); the file keeps its
     // modified time; it becomes a placeholder (dataless: no blocks / "pending" attributes; or an iCloud stub)

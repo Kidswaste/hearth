@@ -55,7 +55,9 @@ function judge(ms, budget, w) {
 //   cpu    of which the thread ran on a CPU (the rest of own: blocked, a sync read, a lock, waiting on a GC helper)
 // stop() → { maxMs, maxOwn, worst (the gap with the largest own), longest (the gap with the largest ms) }.
 // judgeStall(s, budget) → 'ok' | 'load' (the wall hold over, its own part not) | 'over'. Off Linux: own = ms (wall time).
-function stallWatch({ every = 5 } = {}) {
+// (round 103, syncstall103) keep: gaps of at least that many ms are also kept with their start / end (hrtime ms, the
+// clock a CPU profile's samples use) in stop().kept, for a profile to say what held the loop
+function stallWatch({ every = 5, keep = 0 } = {}) {
   const now = () => Number(process.hrtime.bigint()) / 1e6;
   const rd = () => { if (!LINUX) return [null, null]; try { const f = fs.readFileSync('/proc/thread-self/schedstat', 'utf8').split(' '); return [Number(f[0]) / 1e6, Number(f[1]) / 1e6]; } catch { return [null, null]; } };
   // the process's other threads (libuv's pool: fs calls; V8's GC helpers): the loop can be held waiting on one of them
@@ -68,7 +70,7 @@ function stallWatch({ every = 5 } = {}) {
   };
   const at = () => { const [c, d] = rd(); return { t: now(), c, d, o: others() }; };
   let prev = at();
-  const gaps = [];
+  const gaps = []; const kept = [];
   let longest = null; let worst = null;
   const tick = () => {
     const cur = at();
@@ -81,12 +83,13 @@ function stallWatch({ every = 5 } = {}) {
       if (!longest || g.ms > longest.ms) longest = g;
       if (!worst || g.own > worst.own) worst = g;
       gaps.push(g);
+      if (keep && g.ms >= keep) kept.push({ ...g, from: prev.t, to: cur.t });
     }
     prev = cur;
   };
   const timer = setInterval(tick, every);
   return {
-    stop() { clearInterval(timer); tick(); return { maxMs: longest ? longest.ms : 0, maxOwn: worst ? worst.own : 0, worst, longest, n: gaps.length }; },
+    stop() { clearInterval(timer); tick(); return { maxMs: longest ? longest.ms : 0, maxOwn: worst ? worst.own : 0, worst, longest, n: gaps.length, kept }; },
   };
 }
 const judgeStall = (s, budget) => (!(s.maxMs >= budget) ? 'ok' : s.maxOwn >= budget ? 'over' : 'load');
