@@ -202,6 +202,16 @@ let findText = null; // (round 92, findmem92) its giant chats' messages read bac
 // are in the file. A change from any of those versions applies; after it, only the version it made does.
 const bigs = new Map();
 const bigSig = (st) => (st ? `${st.size}:${st.mtimeMs}` : '');
+// (round 101, chatsave101) long chats under 8 MB save by change too (native.js DELTA_MSGS): the most recently saved 64 of
+// them are kept here (only their own fields and offsets); an older one is let go, and its next save is whole once
+const BIGS_SMALL = 64;
+function bigsTouch(file) {
+  const e = bigs.get(file); if (!e) return;
+  bigs.delete(file); bigs.set(file, e);
+  const small = (x) => !x.meta && parseInt(x.sig, 10) < BIG;
+  let n = 0; for (const x of bigs.values()) if (small(x)) n += 1;
+  for (const [f, x] of bigs) { if (n <= BIGS_SMALL) break; if (f !== file && small(x)) { bigs.delete(f); n -= 1; } }
+}
 // (round 86, chatwindow86) find in a windowed chat: its lowered bytes (bigchat-core searchIndex) while you search (two
 // chats at most, let go 10 minutes after the last find)
 const winFind = new Map(); let winFindT = null;
@@ -376,7 +386,7 @@ const OPS = {
     }
     let text = JSON.stringify(value, null, 2);
     let h = sha(text);
-    if (sameOnDisk(file, h)) { if (chatDir && chatVer && Array.isArray(value?.messages)) { const st = stat(file); const had = bigs.get(file); if (st && had?.sig === bigSig(st)) had.vers.add(chatVer); else if (st) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); } return { skipped: true }; }
+    if (sameOnDisk(file, h)) { if (chatDir && chatVer && Array.isArray(value?.messages)) { const st = stat(file); const had = bigs.get(file); if (st && had?.sig === bigSig(st)) had.vers.add(chatVer); else if (st) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); bigsTouch(file); } return { skipped: true }; }
     // (round 43, scenesafe) the Lab's scenes / History: scenes nobody deleted are kept, rotating copies, a damaged file
     // kept aside (scenesafe-core.js); a file held by another program throws here: the save waits for the next one
     let restored = null; let keepPrev = true;
@@ -403,7 +413,7 @@ const OPS = {
     // (round 82, bigchat82) a giant one isn't tokenized for recall here (seconds of this thread on every save): its next
     // recall reads it in slices (recall below). chatVer: the window holds this version now (its next saves: by change)
     if (chatDir && st && value && typeof value === 'object') { drop(file); index.set(file, entryOf(value, st)); rows.dirty = true; rowsSave(path.dirname(file)); if (recallIdx && text.length < BIG) { recallIdx.add(file, value, recallSrc(index.get(file))); recallKeep.changed += 1; } }
-    if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); else bigs.delete(file); }
+    if (chatDir) { if (chatVer && st && Array.isArray(value?.messages)) { bigs.set(file, { vers: new Set([chatVer]), sig: bigSig(st), head: { ...value, messages: [] }, els: null }); bigsTouch(file); } else bigs.delete(file); } // (round 101: bigsTouch)
     return { bytes: text.length };
   },
   // (round 82, bigchat82) a giant chat for the window: its bytes in parts of `part` bytes (each its own memory), handed
@@ -456,6 +466,7 @@ const OPS = {
       const cs = calcs.get(file);
       if (cs) { if (cs.sig === was) { try { CC().apply(cs, d, r.head, r.els); cs.sig = e.sig; } catch { calcs.delete(file); } } else calcs.delete(file); }
       written.set(file, { h: '', size: st.size, mtimeMs: st.mtimeMs }); // (no hash: a whole save of the same chat writes again)
+      bigsTouch(file); // (round 101, chatsave101)
       merged.delete(file);
       if (findIdx) findIdx.stale(file);
       drop(file); index.set(file, { size: st.size, mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs, sum: BC().sumOf(r.head), texts: null, n: 0 }); rows.dirty = true; rowsSave(path.dirname(file));
