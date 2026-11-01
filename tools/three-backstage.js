@@ -408,7 +408,7 @@ function makeBackstage(opts = {}) {
       async updateLayer(ref, patch = {}, wait = 1.5) {
         const L = must(ref);
         for (const [k, v] of Object.entries(patch)) if (PROP_KEYS.includes(k)) L[k] = v;
-        if (patch.code != null) L.code = String(patch.code);
+        if (patch.code != null && L.code !== String(patch.code)) { ThreeLab.keepVersion(sketchId, L.id, L.code); L.code = String(patch.code); } // (round 102) the code before: in its scene's History
         if (patch.order != null) {
           const Ls = layersOf(s());
           const rest = Ls.filter((x) => x !== L);

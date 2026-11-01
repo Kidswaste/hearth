@@ -464,6 +464,10 @@ const ThreeDirector = (() => {
     // (round 74, labcalls74) backstage the page's clock is set at once and the picture is its next frame: no fixed wait
     // (on screen a seek can queue behind one still being answered: its 450 ms stay)
     if (at != null && d.media.loaded) { d.media.seek(at); if (!d.backstage) await sleep(450); }
+    // (round 102, labchat102) a picture the AI asked for waits (≤ 3 s) for pictures still going up to the graphics card: a
+    // model's full textures behind their 64-px stand-ins (modeltex100), a big picture's slices, a new layer held for its
+    // shaders (modelcompile101). Right after an Apply or a model added, it showed the stand-ins.
+    const settle = await picsSettled(d);
     const n = Math.max(0, Math.min(8, Math.round(Number(args.frames) || 0)));
     if (n >= 2) {
       const gap = Math.max(0.1, Math.min(5, Number(args.gap) || 0.5));
@@ -502,7 +506,26 @@ const ThreeDirector = (() => {
     const asIs = out === c && !args.region && /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
     const data = asIs ? url.split(',')[1] : await jpeg(out, SHOT_Q);
     const f = onlyNew({ frame: frameLine(d.report().frame) }, d, B).frame;
+    if (settle?.busy) note += ' Some textures were still loading (blurry stand-ins may show): look again in a moment.';
     return { ok: true, images: [{ data, mime: 'image/jpeg' }], value: `Screenshot (${out.width}×${out.height}${f ? `, frame ${f}` : ''}${args.region ? ', cropped' : ''}).${note}` };
+  }
+  const settleStat = { asked: 0, waited: 0, ms: 0, capped: 0 };
+  async function picsSettled(d) {
+    if (!d.evalInSketch) return null;
+    settleStat.asked += 1;
+    try {
+      // (2.5 s: under the page's own 4 s limit for an eval)
+      // a page too busy to answer in 3.5 s (a model being parsed, shaders compiled on a slow card): the picture goes now,
+      // said as still loading
+      const t0 = performance.now();
+      const r = await Promise.race([d.evalInSketch('return window.__labPicsSettle ? JSON.stringify(await window.__labPicsSettle.wait(2500)) : null'), sleep(3500).then(() => ({ ok: false, error: 'busy' }))]);
+      let v = r?.ok && typeof r.value === 'string' ? JSON.parse(r.value) : null;
+      if (!v && r?.error === 'busy') v = { ms: Math.round(performance.now() - t0), busy: true };
+      settleStat.last = v || { failed: r?.error || String(r?.value ?? 'none') };
+      if (v?.ms) { settleStat.waited += 1; settleStat.ms += v.ms; }
+      if (v?.busy) settleStat.capped += 1;
+      return v;
+    } catch { return null; }
   }
 
   // ---------- reading / searching code ----------
@@ -1025,6 +1048,7 @@ const ThreeDirector = (() => {
     forget(sketchId, from, to) { let n = 0; for (let i = history.length - 1; i >= 0; i -= 1) { const h = history[i]; if (h.sketchId === sketchId && h.at >= from && h.at <= to) { history.splice(i, 1); n += 1; } } if (n) changed(); return n; },
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     newTurn, seen, saved: () => JSON.parse(JSON.stringify(savedNotes)),
+    settled: () => ({ ...settleStat }), // (round 102, labchat102) screenshots that waited for textures
     // (round 28, lookmatch) the small-picture path, for pictures made outside a tool call (a reference for the director)
     pictures: { frameCanvas, tile, jpeg, loadImg },
     // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)

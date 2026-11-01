@@ -12,7 +12,7 @@ const LabChatLink = (() => {
   const C = () => window.LabChatCore;
   const ownerToken = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`; // the owner's own apply (three-director.js handGuard)
   const pending = new Map(); // agentId → { sceneId, at }: the next new chat sent from there links to that scene
-  const stats = { applied: 0, added: 0, undone: 0, told: 0, linked: 0, asked: 0 };
+  const stats = { applied: 0, added: 0, undone: 0, told: 0, linked: 0, asked: 0, waitedDraw: 0 };
   const S = () => (typeof ThreeLab !== 'undefined' ? ThreeLab.scenes : null);
   const CS = () => (typeof ChatScenes !== 'undefined' ? ChatScenes : null);
   const fail = (err) => toast(typeof calmError === 'function' ? calmError(err) : String(err?.message || err), { type: 'error' });
@@ -119,6 +119,14 @@ const LabChatLink = (() => {
       : await HubBridge.call('three_update_layer', { layer: L.id, code, wait: 2.5, report: 'full', _owner: ownerToken }, ctx);
     if (said(r)) throw new Error(said(r));
     if (add) { L = layersOf(sceneId).at(-1); stats.added += 1; } else stats.applied += 1;
+    // (round 102, labchat102) on screen, a new layer can be held while its shaders are made between frames
+    // (modelcompile101: up to 6 s): what the chat says waits for its first real frame (or its error), then reads the Lab again
+    const d = ThreeLab.director;
+    if (S().currentId() === sceneId && d?.building?.() && d.built) {
+      stats.waitedDraw += 1;
+      await d.built(6500);
+      try { const rep = d.report(); r.value = { ...(r.value && typeof r.value === 'object' ? r.value : {}), errors: rep.errors, console: rep.console }; } catch { /* the call's own report */ }
+    }
     // the whole report (report: 'full'): every error and console line of the layer, not only what this chat's AI
     // hasn't seen; an error a few frames in (the scene's health) gets up to 1.2 s to arrive
     const health = () => (window.LabHealth?.state(sceneId) || []).filter((x) => (!x.layer || x.layer === L?.id) && (x.last || 0) >= t0 - 50);
@@ -160,7 +168,9 @@ const LabChatLink = (() => {
   async function tell(job, undone) {
     const text = C().tellText({ how: job.how, layer: job.layer, scene: job.scene, out: job.out, undone });
     stats.told += 1;
-    document.querySelector(`.msg.note[data-note-id="lab-apply"]`)?.remove();
+    // (round 102) gone for good: a note only taken off the page came back at the chat's next redraw (Native.note keeps
+    // notes until dismissed), so the next Apply's note was read as this one's
+    for (const n of Native.view?.(job.agentId)?.list.querySelectorAll('.msg.note[data-note-id="lab-apply"]') || []) { n.dataset.gone = '1'; n.remove(); }
     await Native.send(job.agentId, text);
   }
   async function openIt(sceneId) {
