@@ -14120,7 +14120,14 @@ async function runLayer(spec, hot = false) {
     if (!inPc) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
     // a layer that draws without a WebGLRenderer (2D canvas, DOM) or is hidden right now: done after a moment
-    realSetTimeout(() => { if (L.gen === g && layers.get(L.id) === L) layerDrew(L); }, 700);
+    // (round 102, labchat102) …but not while its renderer is held for its shaders (modelcompile101's gaps, round 21's
+    // background compile): it hasn't drawn, and the window (an Apply's result, an AI's picture) would read it as drawn
+    const drewLater = (n) => realSetTimeout(() => {
+      if (L.gen !== g || layers.get(L.id) !== L) return;
+      if (n < 40 && L.drawnGen !== L.gen && [...(L.renderers || [])].some((r) => !r.__stale && (r.__wg || r.__warm === 'pending'))) { drewLater(n + 1); return; }
+      layerDrew(L);
+    }, n ? 200 : 700);
+    drewLater(0);
   } catch (err) {
     // (round 48, memory48) the browser keeps a failed module's error for the page's life, and an error whose stack was
     // never read keeps every object of its frames (a stopped run's WebGLRenderer, its canvas): reading it lets them go
@@ -15949,6 +15956,33 @@ function obsShot(msg) {
     }, 'image/webp', Math.max(0.3, Math.min(1, msg.q ?? 0.85)));
   });
 }
+// (round 102, labchat102) pictures still on their way to the graphics card for what's drawn: a model's full picture behind
+// its stand-in (a job whose texture is up), slices or queued uploads, a renderer held for its shaders
+const PICS = { waits: 0, ms: 0, capped: 0 };
+function picsBusy() {
+  if (UPS.active > 0 || UPQ.q.length > 0) return true;
+  for (const r of renderers) if (!r.__stale && (r.__wg || r.__warm === 'pending')) return true;
+  for (const job of MTX.jobs) {
+    if (job.busy) return true;
+    if (job.cur || !job.bmp) continue;
+    for (const w of job.texs) { const t = w.deref(); if (t && mtxOn(t)) return true; }
+  }
+  return false;
+}
+function picsSettle(cap, fn) {
+  const t0 = realNow(); PICS.waits += 1;
+  const tick = () => {
+    const busy = picsBusy();
+    if (busy && realNow() - t0 < cap) { realSetTimeout(tick, 50); return; }
+    if (busy) PICS.capped += 1;
+    PICS.ms += realNow() - t0;
+    fn();
+  };
+  tick();
+}
+// (the window's three_screenshot: eval 'return window.__labPicsSettle.wait(ms)' before its picture → { ms, busy })
+window.__labPicsSettle = { busy: () => picsBusy(), state: () => ({ ...PICS, ms: Math.round(PICS.ms) }),
+  wait: (cap = 3000) => { if (!picsBusy()) return Promise.resolve({ ms: 0, busy: false }); const t0 = realNow(); return new Promise((res) => picsSettle(Math.min(3500, cap), () => res({ ms: Math.round(realNow() - t0), busy: picsBusy() }))); } };
 function smallShot(max, tag) {
   frameSoon(() => {
     let c;

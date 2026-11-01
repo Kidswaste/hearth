@@ -1325,7 +1325,9 @@ const ThreeLab = (() => {
     // editor, and an AI's whole-layer rewrite that hasn't seen them is refused (tools/three-director.js)
     const hand = { at: new Map(), last: 0 };
     const noteHand = () => { if (!current || !selId) return; hand.last = Date.now(); hand.at.set(`${current.id}:${selId}`, hand.last); if (hand.at.size > 400) hand.at.delete(hand.at.keys().next().value); };
-    const typingNow = () => document.activeElement === editor.area && Date.now() - hand.last < 5000;
+    // (round 102, labchat102) the owner's caret in the editor is enough: an AI edit to another layer used to take the editor
+    // when their last key was over 5 s ago (reading, thinking), and the next key they typed landed in the AI's layer
+    const typingNow = () => document.activeElement === editor.area;
     const editor = new LabEditor(editorHost, { lang: 'js', onRun: () => runChanged(), onChange: () => { persist(); noteHand(); if (autoRun) autoRunSoon(); } });
     // (round 92) an AI's change to the layer in the editor: the owner's cursor (and scroll) stay where they were
     function setCodeKeeping(code) {
@@ -2248,6 +2250,17 @@ const ThreeLab = (() => {
     api.refAdded = () => refAdded; // (round 99, labmodels99)
     api.addRefs = (paths) => addRefs(paths);
     api.refsFor = (id) => (refsAll[id] || []).slice(); // (round 72) a scene's references, on screen or not
+    // (round 102, labchat102) a layer changed backstage (a chat's scene not on screen: an AI's edit, ▶ Apply, its ↶ Undo):
+    // the code it had goes into that scene's History, as on screen (it had none: History per scene missed those versions)
+    api.keepVersion = (sid, layerId, code) => {
+      if (!sid || !String(code || '').trim()) return false;
+      const list = (history[!layerId || layerId === 'main' ? sid : `${sid}:${layerId}`] ||= []);
+      if (list[0]?.code === code) return false;
+      list.unshift({ at: Date.now(), code: String(code) });
+      list.length = Math.min(list.length, 40);
+      saveHistory(sid);
+      return true;
+    };
     // (round 73, labtools73) one taken out of a scene, on screen or not (a backstage chat's references remove, a tool call
     // undone as a whole): the file goes to the Trash like the References dialog's remove
     api.removeRef = (refId, { sketchId = null } = {}) => {
@@ -5856,6 +5869,7 @@ ${frag}\`,
     addReferences: (paths) => (api.addRefs ? api.addRefs(paths) : Promise.reject(new Error('Open the Three.js Lab first'))), // (round 99, labmodels99) a folder, or a model with its files
     refAdded: () => api.refAdded?.() || null, // (round 99, labmodels99) the last reference added: its files, what it came without
     refsOf: (id) => api.refsFor?.(id) || [],
+    keepVersion: (sid, layerId, code) => api.keepVersion?.(sid, layerId, code) || false, // (round 102) tools/three-backstage.js
     removeReference: (refId, o = {}) => (api.removeRef ? api.removeRef(refId, o) : false), // (round 73)
     isReference: (name) => /\.(png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|m4v|mkv|glb|gltf|obj|fbx|stl|ply|mp3|wav|ogg|m4a|flac|aac|ttf|otf|woff2?|hdr|exr)$/i.test(name),
     openShader(code) { ensureOpen('shader'); setTimeout(() => api.openShader?.(code), 60); },
