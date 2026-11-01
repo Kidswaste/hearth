@@ -13,6 +13,8 @@
 // (round 95, labflake95) Between stretches it waits for a steady GPU (a quiet one never came: 3 min of the run), the
 // window's CPU budgets are judged on how fast the box ran right then (speedNow / slowBy: "can't tell" within that),
 // and the Lab's first reads are checked by name (no versions or pictures before its scenes are up).
+// (round 102, checks102) The probe judged is the one taken right before the press (its own task, warmed up), not 3–10 s
+// after the open; the pointer is brought over the Lab's button before the stretch (docs/upgrades/checks102.md).
 // Budgets (the verdict, `done` in the measuring part): loose on time (a software GPU on a shared machine), strict on
 // what round 48 fixed: a scene with references runs once, the preview keeps its size while a song comes in, the window's
 // own work until the scenes are read. window.LSF_BUDGET overrides them, window.LSF_REPORT = 1 only reports.
