@@ -1220,9 +1220,11 @@ const Native = (() => {
     // (a list that has to be filled: a chat not kept, or whose replies changed; a kept one only shows again)
     const kept = chat && v.panes.get(chatId)?.list;
     const filling = chat && (!kept || kept.childElementCount < 8 || (w && w.misses > TAIL / 2));
-    // (round 103, cw103) a giant chat whose earlier part is still being drawn under its end (drawLater) and followed: a
-    // redraw then (a reply ending) draws its end first again, not the whole part in one frame (≈ 600 elements, 75 ms)
-    const tailFirst = Boolean(filling && (!keepScroll || (v.laterOf?.chatId === chatId && follows(v) && cw(chat))) && v.jumpAfter == null && !fullChats.has(chat.id));
+    // (round 103, cw103) a giant chat followed at its end, redrawn in place with its messages to make (sync brought a new
+    // version) or while its earlier part is still going in under its end (drawLater; a reply ending): its end first
+    // again, the rest in pieces (all of it in one frame was ≈ 550–600 elements, 50–80 ms)
+    const atEnd = keepScroll && cw(chat) && follows(v) && v.jump.hidden && (filling || v.laterOf?.chatId === chatId);
+    const tailFirst = Boolean(((filling && !keepScroll) || atEnd) && v.jumpAfter == null && !fullChats.has(chat.id));
     const warm = w?.wait || null;
     if (warm && !tailFirst) await warm;
     if (stale()) return;
