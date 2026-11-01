@@ -1011,7 +1011,11 @@ const Native = (() => {
     // layout of every reply, even the ones content-visibility lets the browser skip.
     const fresh = [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
       .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
-    const soon = now ? fresh.splice(-now) : [];
+    let soon = now ? fresh.splice(-now) : [];
+    // (round 103, cw103) one out of view whose contents the browser skips (content-visibility) isn't laid out here just to
+    // be measured (each was a layout of its own in the frame): it's watched like the older ones, folded when near
+    const lr = soon.length && v.list.getBoundingClientRect(); const away = (n) => { const r = n.getBoundingClientRect(); return r.bottom < lr.top || r.top > lr.bottom; };
+    if (lr?.height) { const off = soon.filter((n) => getComputedStyle(n).contentVisibility === 'auto' && away(n)); if (off.length) { soon = soon.filter((n) => !off.includes(n)); fresh.push(...off); } }
     foldIfLong(soon, soon.map((node) => node.querySelector('.body').scrollHeight));
     for (const node of fresh) foldWhenNear(v, node);
     // nodes that left the list stop being watched (measured again if they come back)
@@ -1136,7 +1140,7 @@ const Native = (() => {
     list.restFrom = from;
     for (const b of awake) if (b >= nb || (cw(chat) && !W.x.has(chat, b * BLOCK, (b + 1) * BLOCK))) awake.delete(b); // (round 86: a windowed chat's block not loaded rests)
     let lastRest = nb - 1; while (lastRest >= 0 && awake.has(lastRest)) lastRest -= 1;
-    let day = '';
+    let day = ''; let dayK = -1;
     const busy = pending.has(chat.id);
     const onlyOpinionsAfter = chat.messages.slice(lastReplyIdx + 1).every((x) => x.role === 'opinion');
     const plan = []; const spans = new Map(); const sepOf = new Map(); // block → [start, end) in plan · a line → its block
@@ -1146,11 +1150,12 @@ const Native = (() => {
         const hi = Math.min(from, (b + 1) * BLOCK);
         plan.push(restBit(list, used, chat, b, hi));
         if (b === lastRest) plan.push(bitOf(list, used, 'restline', () => restLine(agentId))); // "Earlier messages are resting · Show all"
-        const at = chat.messages[hi - 1]?.at; if (at) day = dayLabel(at);
+        dayK = hi - 1; // (round 103, cw103) its date read only when a drawn message follows: no stub per resting block
         i = hi - 1; continue;
       }
       if (b >= 0 && i % BLOCK === 0) spans.set(b, [plan.length]);
       const m = chat.messages[i];
+      if (dayK >= 0) { const at = chat.messages[dayK]?.at; if (at) day = dayLabel(at); dayK = -1; }
       if (!m.compactReq) { // the "please compact" request is shown as part of the divider
         const n0 = plan.length;
         // a quiet date line where the day changes (Today / Yesterday / the date)
@@ -1481,13 +1486,19 @@ const Native = (() => {
   }
 
   // ---------- day lines, unread replies, pinned messages ----------
+  // (round 103, cw103) kept per day while today is the same day (a draw of a long chat formatted one per message)
+  const dayMemo = new Map();
   function dayLabel(ms) {
     const d = new Date(ms); const today = new Date();
     const start = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const diff = Math.round((start(today) - start(d)) / 864e5);
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Yesterday';
-    return fmtLocal(ms, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }, 'date');
+    const s = start(d); const t = start(today);
+    if (dayMemo.get('t') !== t || dayMemo.size > 4000) { dayMemo.clear(); dayMemo.set('t', t); }
+    let x = dayMemo.get(s);
+    if (x !== undefined) return x;
+    const diff = Math.round((t - s) / 864e5);
+    x = diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : fmtLocal(ms, { weekday: diff < 7 ? 'long' : undefined, day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }, 'date');
+    dayMemo.set(s, x);
+    return x;
   }
   // Replies that arrived while you looked elsewhere: chat id -> index of the first one you haven't seen.
   const unreadFrom = new Map();
@@ -2223,7 +2234,7 @@ const Native = (() => {
       el('div', { class: 'body', html: renderMarkdown(m.text) }));
   }
   function paintContext(v, chat) {
-    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    const last = chat?.messages.findLast((m) => m.usage); // (round 103, cw103: from the end, no copy: a giant chat's 6,000 stubs were made for this)
     // (round 34) continued lighter and nothing sent since: what the next message will send (≈), hover: what it was
     const lt = chat?.compact?.lighter && chat.messages.lastIndexOf(last) < chat.compact.index ? chat.compact.lighter : null;
     const n = lt ? lt.after : last?.usage.contextInput ?? last?.usage.input ?? 0;
@@ -2291,7 +2302,7 @@ const Native = (() => {
     });
   }
   function longChatBanner(agent, chat) {
-    const last = [...(chat?.messages || [])].reverse().find((m) => m.usage);
+    const last = chat?.messages.findLast((m) => m.usage); // (round 103, cw103: no copy)
     if (!last || (last.usage.contextInput ?? last.usage.input) < LONG_CHAT_TOKENS || chat.longDismissed || pending.has(chat.id)) return null;
     if (window.Autocompact?.handles(agent)) return null; // (round 34) one calm line under the reply instead (autocompact.js)
     return el('div', { class: 'long-chat' },

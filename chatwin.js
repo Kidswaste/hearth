@@ -25,7 +25,7 @@ const ChatWin = (() => {
   const S = new WeakMap(); // chat → its window: { id, a (chatwin-core makeArray), meta, cpl, … }
   const TAIL = 300; // the last messages always held
   const PART = 400; // messages per range when the whole chat is read
-  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0, refused: [], calcs: [], reguessed: 0 };
+  const stat = { opened: 0, fetched: 0, ranges: 0, released: 0, wholes: [], misses: [], poisoned: 0, rewindowed: 0, refused: [], calcs: [], reguessed: 0, warmed: 0 };
   const live = (chat) => { const st = chat && S.get(chat); return st && chat.messages === st.px ? st : null; };
   const is = (chat) => Boolean(live(chat));
   const text = (b) => new TextDecoder().decode(b);
@@ -70,7 +70,26 @@ const ChatWin = (() => {
     sh.msgs.length = w.n; for (const k of st.a.keys()) sh.msgs[k] = SV.shapeOf(st.a.t[k]);
     SV.shapes.set(chat, sh);
     stat.opened += 1;
+    warm(chat, st);
     return chat;
+  }
+  // (round 103, cw103) the older messages' records read in idle moments, ≤ 4 ms at a time, right after the chat opens
+  // (or goes back to its window): the first walk over the whole chat by role (a reply's hooks: chat-cost's count,
+  // offline's continue line, …) read 5,700 records in one task, 25–45 ms. The same stubs and the same fields, only
+  // made sooner; nothing is fetched and nothing loads
+  function warm(chat, st) {
+    let k = 0;
+    const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 50));
+    const step = () => {
+      if (live(chat) !== st) return;
+      const t0 = performance.now(); const n = st.a.t.length;
+      for (; k < n && (k & 63 || performance.now() - t0 < 4); k++) {
+        if (st.a.loaded(k)) continue;
+        try { const m = st.px[k]; if (m !== null && typeof m === 'object') void ('role' in m); } catch { /* (a record that can't be read: as before, when something asks) */ } // (`in`: its record parsed, never a miss)
+      }
+      if (k < n) idle(step); else stat.warmed += 1;
+    };
+    idle(step);
   }
 
   // ---------- what isn't loaded ----------
@@ -205,7 +224,7 @@ const ChatWin = (() => {
     Object.assign(st, { h, u, r }); st.a = a; st.px = a.px; st.full = 0; st.find = null;
     chat.messages = a.px;
     for (let k = 0; k < n; k++) if (!a.loaded(k)) delete s.msgs[k];
-    stat.rewindowed += 1; stat.lastRewindow = { kept: loaded.length, of: n };
+    stat.rewindowed += 1; warm(chat, st); stat.lastRewindow = { kept: loaded.length, of: n };
     return true;
   }
   // a block far away back to rest: its messages let go (not the last ones, a pinned one, or one changed and not saved yet)
