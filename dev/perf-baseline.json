@@ -1,6 +1,6 @@
 {
  "about": "dev/perfguard.js baseline (round 77, perfguard77; calibration + CPU times from round 82, perfguard82): medians of per-launch values; spread = their median absolute deviation; calib = the calibration benchmark per part when it was recorded. Rebaseline: docs/upgrades/perfguard77.md",
- "when": "2026-10-29T06:20:53.001Z",
+ "when": "2026-11-01T15:44:40.862Z",
  "machine": {
   "cpus": 4,
   "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
@@ -9,21 +9,24 @@
   "node": "v22.22.0",
   "electron": "44.5.1",
   "gl": "SwiftShader (software) under Xvfb",
-  "commit": "6d38298",
-  "dirty": true,
+  "commit": "b7d6d89",
+  "dirty": false,
   "loadStart": [
-   1.76,
-   2.66,
-   2.56
+   2.28,
+   4.28,
+   4.95
   ],
   "loadEnd": [
-   1.94,
-   2.72,
-   2.76
+   1.58,
+   1.69,
+   1.64
   ],
-  "minutes": 11.5
+  "minutes": 46.1
  },
  "settings": {
+  "labcold": 4,
+  "many": 2,
+  "fresh": 3,
   "runs": 3,
   "starts": 5,
   "sync": 3,
@@ -31,60 +34,114 @@
   "parts": [
    "startup",
    "app",
-   "sync"
+   "sync",
+   "fresh",
+   "labcold",
+   "many"
   ],
   "fixture": "/tmp/hearth-bigprofile72",
   "syncFixture": "/tmp/hearth-sync72-bigprofile"
  },
  "parts": {
   "startup": {
-   "when": "2026-10-29T06:20:53.001Z",
-   "commit": "6d38298",
-   "dirty": true,
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
    "load": [
     [
-     1.76,
-     2.66,
-     2.56
+     2.28,
+     4.28,
+     4.95
     ],
     [
-     1.94,
-     2.72,
-     2.76
+     1.58,
+     1.69,
+     1.64
     ]
    ]
   },
   "sync": {
-   "when": "2026-10-29T06:20:53.001Z",
-   "commit": "6d38298",
-   "dirty": true,
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
    "load": [
     [
-     1.76,
-     2.66,
-     2.56
+     2.28,
+     4.28,
+     4.95
     ],
     [
-     1.94,
-     2.72,
-     2.76
+     1.58,
+     1.69,
+     1.64
     ]
    ]
   },
   "app": {
-   "when": "2026-10-29T06:20:53.001Z",
-   "commit": "6d38298",
-   "dirty": true,
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
    "load": [
     [
-     1.76,
-     2.66,
-     2.56
+     2.28,
+     4.28,
+     4.95
     ],
     [
-     1.94,
-     2.72,
-     2.76
+     1.58,
+     1.69,
+     1.64
+    ]
+   ]
+  },
+  "fresh": {
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
+   "load": [
+    [
+     2.28,
+     4.28,
+     4.95
+    ],
+    [
+     1.58,
+     1.69,
+     1.64
+    ]
+   ]
+  },
+  "labcold": {
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
+   "load": [
+    [
+     2.28,
+     4.28,
+     4.95
+    ],
+    [
+     1.58,
+     1.69,
+     1.64
+    ]
+   ]
+  },
+  "many": {
+   "when": "2026-11-01T15:44:40.862Z",
+   "commit": "b7d6d89",
+   "dirty": false,
+   "load": [
+    [
+     2.28,
+     4.28,
+     4.95
+    ],
+    [
+     1.58,
+     1.69,
+     1.64
     ]
    ]
   }
@@ -92,306 +149,480 @@
  "calib": {
   "startup": {
    "n": 2,
-   "single": 54.69,
-   "par": 72.36,
+   "single": 64.59,
+   "par": 66.43,
    "win": null,
-   "wait": 0.98,
-   "load": 0.65,
+   "wait": 0.97,
+   "load": 0.57,
    "loadavg": [
-    1.76,
-    2.58
+    2.28,
+    2.12
    ],
-   "unstable": 1.05
+   "unstable": 1.31
   },
   "app": {
    "n": 6,
-   "single": 52.33,
-   "par": 66.34,
-   "win": 32.7,
-   "wait": 0.97,
-   "load": 0.66,
+   "single": 58.83,
+   "par": 75.94,
+   "win": 38.75,
+   "wait": 0.98,
+   "load": 0.55,
    "loadavg": [
-    2.58,
-    2.45,
-    2.33,
-    2.44,
-    2.44,
-    2.64
+    2.19,
+    2.21,
+    2.11,
+    1.74,
+    1.74,
+    1.4
    ],
-   "unstable": 1.61
+   "unstable": 1.22
   },
   "sync": {
    "n": 6,
-   "single": 54.99,
-   "par": 69.63,
+   "single": 54.88,
+   "par": 63.85,
    "win": null,
-   "wait": 0.99,
-   "load": 0.66,
+   "wait": 0.98,
+   "load": 0.46,
    "loadavg": [
-    2.64,
-    2.19,
-    2.19,
-    1.86,
-    1.86,
-    1.94
+    0.34,
+    1.2,
+    1.2,
+    1.65,
+    1.65,
+    1.85
    ],
-   "unstable": 1.25
+   "unstable": 1.38
+  },
+  "fresh": {
+   "n": 6,
+   "single": 55.72,
+   "par": 70.72,
+   "win": null,
+   "wait": 0.96,
+   "load": 0.4,
+   "loadavg": [
+    1.37,
+    1,
+    1,
+    1.58,
+    1.58,
+    0.34
+   ],
+   "unstable": 1.5
+  },
+  "labcold": {
+   "n": 8,
+   "single": 57.36,
+   "par": 67.63,
+   "win": null,
+   "wait": 0.98,
+   "load": 0.68,
+   "loadavg": [
+    1.85,
+    1.92,
+    1.92,
+    2.72,
+    2.72,
+    2.36,
+    2.36,
+    2.22
+   ],
+   "unstable": 1.27
+  },
+  "many": {
+   "n": 4,
+   "single": 56.3,
+   "par": 73.42,
+   "win": null,
+   "wait": 0.95,
+   "load": 0.56,
+   "loadavg": [
+    2.22,
+    1.51,
+    1.47,
+    1.58
+   ],
+   "unstable": 1.32
   }
  },
  "metrics": {
   "start.ready": {
    "label": "Start → first usable chat",
    "unit": "ms",
-   "median": 1072,
-   "spread": 63,
-   "spreadPct": 5.88,
+   "median": 1079,
+   "spread": 11,
+   "spreadPct": 1.02,
    "n": 5,
    "values": [
-    1009,
-    1095,
-    1001,
-    1072,
-    1272
+    1074,
+    1079,
+    1228,
+    1326,
+    1068
    ]
   },
   "start.settled": {
    "label": "Start → settled (last long task)",
    "unit": "ms",
-   "median": 2967,
-   "spread": 108,
-   "spreadPct": 3.64,
+   "median": 2071,
+   "spread": 156,
+   "spreadPct": 7.53,
    "n": 5,
    "values": [
-    1531,
-    3075,
-    2967,
-    2973,
-    1963
+    1765,
+    3004,
+    2092,
+    2071,
+    1915
    ]
   },
   "start.cpuReady": {
    "label": "Start → first screen: CPU, main + window",
    "unit": "ms",
-   "median": 5240,
-   "spread": 70,
-   "spreadPct": 1.34,
+   "median": 4860,
+   "spread": 180,
+   "spreadPct": 3.7,
    "n": 5,
    "values": [
-    5170,
-    5240,
-    5240,
-    4960,
-    5320
+    4510,
+    4640,
+    4870,
+    5040,
+    4860
    ]
   },
   "start.cpuSettled": {
    "label": "Start → settled: CPU, main + window",
    "unit": "ms",
-   "median": 5330,
-   "spread": 60,
-   "spreadPct": 1.13,
+   "median": 4950,
+   "spread": 200,
+   "spreadPct": 4.04,
    "n": 5,
    "values": [
-    5270,
-    5330,
-    5340,
-    5050,
-    5430
+    4620,
+    4750,
+    4980,
+    5150,
+    4950
+   ]
+  },
+  "start.firstPicture": {
+   "label": "Start → first picture (splash on screen)",
+   "unit": "ms",
+   "median": 1778,
+   "spread": 87,
+   "spreadPct": 4.89,
+   "n": 5,
+   "values": [
+    1758,
+    1778,
+    1865,
+    2064,
+    734
+   ]
+  },
+  "start.usable": {
+   "label": "Start → usable (every early feature in)",
+   "unit": "ms",
+   "median": 8175,
+   "spread": 650,
+   "spreadPct": 7.95,
+   "n": 5,
+   "values": [
+    8175,
+    7253,
+    7465,
+    8289,
+    8825
+   ]
+  },
+  "start.cpu30": {
+   "label": "First 30 s: CPU, main + window",
+   "unit": "ms",
+   "median": 5090,
+   "spread": 200,
+   "spreadPct": 3.93,
+   "n": 5,
+   "values": [
+    4760,
+    4890,
+    5120,
+    5290,
+    5090
    ]
   },
   "project.coldOpen": {
    "label": "Project cold open (Hearth's part)",
    "unit": "ms",
-   "median": 358,
-   "spread": 11,
-   "spreadPct": 3.07,
+   "median": 340,
+   "spread": 37,
+   "spreadPct": 10.88,
    "n": 3,
    "values": [
-    358,
-    319,
-    369
+    303,
+    378,
+    340
    ]
   },
   "project.warmOpen": {
    "label": "Project warm open (Hearth's part)",
    "unit": "ms",
-   "median": 1682,
-   "spread": 68,
-   "spreadPct": 4.04,
+   "median": 1513,
+   "spread": 54,
+   "spreadPct": 3.57,
    "n": 3,
    "values": [
-    1750,
-    1682,
-    1603
+    1513,
+    1116,
+    1567
    ]
   },
   "project.switch": {
    "label": "Project switch (Hearth's part)",
    "unit": "ms",
-   "median": 870,
-   "spread": 54,
-   "spreadPct": 6.21,
+   "median": 1112,
+   "spread": 33,
+   "spreadPct": 2.97,
    "n": 3,
    "values": [
-    870,
-    561,
-    924
+    1145,
+    1112,
+    522
    ]
   },
   "project.coldOpenCpu": {
    "label": "Project cold open: window CPU",
    "unit": "ms",
-   "median": 578,
-   "spread": 71,
-   "spreadPct": 12.28,
+   "median": 562,
+   "spread": 14,
+   "spreadPct": 2.49,
    "n": 3,
    "values": [
-    437,
-    578,
-    649
+    562,
+    548,
+    600
    ]
   },
   "project.warmOpenCpu": {
    "label": "Project warm open: window CPU",
    "unit": "ms",
-   "median": 1037,
-   "spread": 64,
-   "spreadPct": 6.17,
+   "median": 1302,
+   "spread": 86,
+   "spreadPct": 6.61,
    "n": 3,
    "values": [
-    1230,
-    973,
-    1037
+    1391,
+    1302,
+    1216
    ]
   },
   "project.switchCpu": {
    "label": "Project switch: window CPU",
    "unit": "ms",
-   "median": 735,
-   "spread": 27,
-   "spreadPct": 3.67,
+   "median": 976,
+   "spread": 41,
+   "spreadPct": 4.2,
    "n": 3,
    "values": [
-    831,
-    735,
-    708
+    976,
+    1017,
+    861
    ]
   },
   "chat.switch": {
    "label": "Long chat opened from its list row",
    "unit": "ms",
-   "median": 202,
-   "spread": 2,
-   "spreadPct": 0.99,
+   "median": 261,
+   "spread": 13,
+   "spreadPct": 4.98,
    "n": 3,
    "values": [
-    200,
-    202,
-    224
+    274,
+    234,
+    261
    ]
   },
   "chat.switchCpu": {
    "label": "Long chat opened: window CPU",
    "unit": "ms",
-   "median": 102,
-   "spread": 1,
-   "spreadPct": 0.98,
+   "median": 140,
+   "spread": 5,
+   "spreadPct": 3.57,
    "n": 3,
    "values": [
-    101,
-    102,
-    115
+    148,
+    135,
+    140
    ]
   },
   "chat.clickHandler": {
    "label": "Chat list click: window handlers",
    "unit": "ms",
-   "median": 11.6,
-   "spread": 0.05,
-   "spreadPct": 0.43,
+   "median": 14.6,
+   "spread": 0.55,
+   "spreadPct": 3.77,
    "n": 3,
    "values": [
-    14.25,
-    11.55,
-    11.6
+    14.6,
+    15.25,
+    14.05
    ]
   },
   "chat.clickCpu": {
    "label": "Chat list click: window busy in 600 ms",
    "unit": "ms",
-   "median": 71.4,
-   "spread": 2.5,
-   "spreadPct": 3.5,
+   "median": 80.9,
+   "spread": 1.75,
+   "spreadPct": 2.16,
    "n": 3,
    "values": [
-    71.4,
-    67.9,
-    73.9
+    79.15,
+    80.9,
+    97.5
    ]
   },
   "chat.clickThreadCpu": {
    "label": "Chat list click: window CPU in 700 ms",
    "unit": "ms",
-   "median": 166,
-   "spread": 2,
-   "spreadPct": 1.2,
+   "median": 194,
+   "spread": 3,
+   "spreadPct": 1.55,
    "n": 3,
    "values": [
-    166,
-    164,
-    171
+    194,
+    197,
+    191
    ]
   },
   "chat.keyHandler": {
    "label": "Typing: window handlers per key",
    "unit": "ms",
-   "median": 0.4,
-   "spread": 0,
-   "spreadPct": 0,
+   "median": 0.7,
+   "spread": 0.1,
+   "spreadPct": 14.29,
    "n": 3,
    "values": [
-    0.4,
-    0.4,
-    0.4
+    0.8,
+    0.6,
+    0.7
+   ]
+  },
+  "chat.keyPaint": {
+   "label": "Typing: key → paint",
+   "unit": "ms",
+   "median": 13.5,
+   "spread": 1.8,
+   "spreadPct": 13.33,
+   "n": 3,
+   "values": [
+    11.7,
+    17.2,
+    13.5
    ]
   },
   "chat.keyCpu": {
    "label": "Typing: window CPU per key",
    "unit": "ms",
-   "median": 6.7,
-   "spread": 0.1,
-   "spreadPct": 1.49,
+   "median": 8.8,
+   "spread": 0.2,
+   "spreadPct": 2.27,
    "n": 3,
    "values": [
-    6.7,
-    6.9,
-    6.6
+    8.8,
+    9,
+    8.6
+   ]
+  },
+  "chat.sendSaved": {
+   "label": "Send in a long chat → on disk",
+   "unit": "ms",
+   "median": 60.7,
+   "spread": 1.1,
+   "spreadPct": 1.81,
+   "n": 3,
+   "values": [
+    60.7,
+    61.8,
+    41.9
+   ]
+  },
+  "chat.saveIpc": {
+   "label": "A long chat saved whole: call → written",
+   "unit": "ms",
+   "median": 28,
+   "spread": 2.9,
+   "spreadPct": 10.36,
+   "n": 3,
+   "values": [
+    28,
+    35,
+    25.1
+   ]
+  },
+  "chat.sendCpu": {
+   "label": "Send turn: CPU, main + window",
+   "unit": "ms",
+   "median": 440,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    440,
+    440,
+    390
+   ]
+  },
+  "chat.markSaved": {
+   "label": "A mark in a long chat → on disk",
+   "unit": "ms",
+   "median": 8.3,
+   "spread": 0.8,
+   "spreadPct": 9.64,
+   "n": 3,
+   "values": [
+    10.65,
+    8.3,
+    7.5
+   ]
+  },
+  "chat.markCpu": {
+   "label": "A mark in a long chat: CPU, main + window",
+   "unit": "ms",
+   "median": 31,
+   "spread": 9,
+   "spreadPct": 29.03,
+   "n": 3,
+   "values": [
+    31,
+    40,
+    17
    ]
   },
   "lab.toolCall": {
    "label": "Lab tool call (no picture), end to end",
    "unit": "ms",
-   "median": 23,
-   "spread": 1,
-   "spreadPct": 4.35,
+   "median": 26,
+   "spread": 3,
+   "spreadPct": 11.54,
    "n": 3,
    "values": [
-    24,
+    26,
     23,
-    19
+    31
    ]
   },
   "lab.toolCallCpu": {
    "label": "Lab tool call: CPU, main + window",
    "unit": "ms",
-   "median": 280,
-   "spread": 45,
-   "spreadPct": 16.07,
+   "median": 326,
+   "spread": 21,
+   "spreadPct": 6.44,
    "n": 3,
    "values": [
-    460,
-    280,
-    235
+    305,
+    326,
+    374
    ]
   },
   "lab.stillDraws": {
@@ -403,621 +634,1243 @@
    "n": 3,
    "values": [
     0.2,
-    0.7,
+    0.2,
     0.2
    ]
   },
   "idle.windowCpu": {
    "label": "Idle on a chat: the window",
    "unit": "% CPU",
-   "median": 0.1,
-   "spread": 0,
-   "spreadPct": 0,
+   "median": 0.3,
+   "spread": 0.1,
+   "spreadPct": 33.33,
    "n": 3,
    "values": [
-    1.2,
-    0.1,
-    0.1
+    0.4,
+    0.3,
+    0.2
    ]
   },
   "idle.allCpu": {
    "label": "Idle on a chat: every process",
    "unit": "% CPU",
-   "median": 4.3,
-   "spread": 0.6,
-   "spreadPct": 13.95,
+   "median": 12.3,
+   "spread": 0.5,
+   "spreadPct": 4.07,
    "n": 3,
    "values": [
-    23.6,
-    4.3,
-    3.7
+    11.7,
+    12.8,
+    12.3
    ]
   },
   "mem.windowHeap": {
    "label": "Window JS heap after GC (end of run)",
    "unit": "MB",
-   "median": 31.2,
+   "median": 32.6,
    "spread": 0,
    "spreadPct": 0,
    "n": 3,
    "values": [
-    31.2,
-    31.2,
-    31
+    32.6,
+    32.5,
+    32.6
+   ]
+  },
+  "fresh.memWindow": {
+   "label": "After start (30 s): window JS heap",
+   "unit": "MB",
+   "median": 13.5,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    13.5,
+    13.5,
+    13.5
+   ]
+  },
+  "fresh.memMain": {
+   "label": "After start: main process JS heap",
+   "unit": "MB",
+   "median": 11.4,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    11.4,
+    11.4,
+    11.4
+   ]
+  },
+  "fresh.memStore": {
+   "label": "After start: store thread JS heap",
+   "unit": "MB",
+   "median": 5,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    5,
+    5,
+    5
+   ]
+  },
+  "fresh.idle1All": {
+   "label": "Idle at 1 min: every process",
+   "unit": "% CPU",
+   "median": 15.1,
+   "spread": 0.4,
+   "spreadPct": 2.65,
+   "n": 3,
+   "values": [
+    14.3,
+    15.1,
+    15.5
+   ]
+  },
+  "fresh.idle1Main": {
+   "label": "Idle at 1 min: main process",
+   "unit": "% CPU",
+   "median": 14.3,
+   "spread": 0.5,
+   "spreadPct": 3.5,
+   "n": 3,
+   "values": [
+    13.7,
+    14.3,
+    14.8
+   ]
+  },
+  "fresh.idle1Window": {
+   "label": "Idle at 1 min: the window",
+   "unit": "% CPU",
+   "median": 0.6,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.5,
+    0.6,
+    0.6
+   ]
+  },
+  "fresh.idle5All": {
+   "label": "Idle at 5 min: every process",
+   "unit": "% CPU",
+   "median": 0.6,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.7,
+    0.6,
+    0.6
+   ]
+  },
+  "fresh.idle5Main": {
+   "label": "Idle at 5 min: main process",
+   "unit": "% CPU",
+   "median": 0.5,
+   "spread": 0,
+   "spreadPct": 0,
+   "n": 3,
+   "values": [
+    0.5,
+    0.6,
+    0.5
+   ]
+  },
+  "fresh.idle5Window": {
+   "label": "Idle at 5 min: the window",
+   "unit": "% CPU",
+   "median": 0.1,
+   "spread": 0.1,
+   "spreadPct": 100,
+   "n": 3,
+   "values": [
+    0.2,
+    0,
+    0.1
+   ]
+  },
+  "fresh.settings": {
+   "label": "Settings: first open",
+   "unit": "ms",
+   "median": 183,
+   "spread": 54,
+   "spreadPct": 29.51,
+   "n": 3,
+   "values": [
+    237,
+    183,
+    97.7
+   ]
+  },
+  "fresh.settingsCpu": {
+   "label": "Settings first open: window CPU",
+   "unit": "ms",
+   "median": 81.3,
+   "spread": 0.6,
+   "spreadPct": 0.74,
+   "n": 3,
+   "values": [
+    81.3,
+    79.3,
+    81.9
+   ]
+  },
+  "fresh.settingsAgain": {
+   "label": "Settings: opened again",
+   "unit": "ms",
+   "median": 50.7,
+   "spread": 1.7,
+   "spreadPct": 3.35,
+   "n": 3,
+   "values": [
+    52.4,
+    48.9,
+    50.7
+   ]
+  },
+  "fresh.settingsAgainCpu": {
+   "label": "Settings again: window CPU",
+   "unit": "ms",
+   "median": 52.9,
+   "spread": 1.5,
+   "spreadPct": 2.84,
+   "n": 3,
+   "values": [
+    54.4,
+    50.6,
+    52.9
+   ]
+  },
+  "fresh.labFirst": {
+   "label": "Lab first start: press → first frame",
+   "unit": "ms",
+   "median": 2843,
+   "spread": 115,
+   "spreadPct": 4.05,
+   "n": 3,
+   "values": [
+    3758,
+    2843,
+    2728
+   ]
+  },
+  "fresh.labShown": {
+   "label": "Lab first start: press → preview on screen",
+   "unit": "ms",
+   "median": 284,
+   "spread": 4,
+   "spreadPct": 1.41,
+   "n": 3,
+   "values": [
+    697,
+    284,
+    280
+   ]
+  },
+  "fresh.labFirstCpu": {
+   "label": "Lab first start: window CPU",
+   "unit": "ms",
+   "median": 572,
+   "spread": 83,
+   "spreadPct": 14.51,
+   "n": 3,
+   "values": [
+    688,
+    572,
+    489
+   ]
+  },
+  "fresh.bigChat": {
+   "label": "Giant chat (6,000 messages) opened",
+   "unit": "ms",
+   "median": 939,
+   "spread": 116,
+   "spreadPct": 12.35,
+   "n": 3,
+   "values": [
+    939,
+    1055,
+    735
+   ]
+  },
+  "fresh.bigChatCpu": {
+   "label": "Giant chat opened: window CPU",
+   "unit": "ms",
+   "median": 240,
+   "spread": 4,
+   "spreadPct": 1.67,
+   "n": 3,
+   "values": [
+    236,
+    240,
+    245
+   ]
+  },
+  "fresh.keyPaint": {
+   "label": "Typing in the giant chat: key → paint",
+   "unit": "ms",
+   "median": 5.5,
+   "spread": 0.2,
+   "spreadPct": 3.64,
+   "n": 3,
+   "values": [
+    5.9,
+    5.3,
+    5.5
+   ]
+  },
+  "fresh.keyCpu": {
+   "label": "Typing in the giant chat: window CPU per key",
+   "unit": "ms",
+   "median": 9.4,
+   "spread": 0.2,
+   "spreadPct": 2.13,
+   "n": 3,
+   "values": [
+    9.6,
+    9.4,
+    9.1
+   ]
+  },
+  "fresh.bigSendSaved": {
+   "label": "Send in the giant chat → on disk",
+   "unit": "ms",
+   "median": 479,
+   "spread": 151,
+   "spreadPct": 31.52,
+   "n": 3,
+   "values": [
+    184,
+    479,
+    630
+   ]
+  },
+  "labcold.first": {
+   "label": "Lab cold start: press → first frame",
+   "unit": "ms",
+   "median": 5895,
+   "spread": 236,
+   "spreadPct": 4,
+   "n": 4,
+   "values": [
+    6011,
+    6249,
+    5778,
+    4132
+   ]
+  },
+  "labcold.shown": {
+   "label": "Lab cold start: press → preview on screen",
+   "unit": "ms",
+   "median": 251,
+   "spread": 30,
+   "spreadPct": 11.95,
+   "n": 4,
+   "values": [
+    306,
+    256,
+    246,
+    96
+   ]
+  },
+  "labcold.cpu": {
+   "label": "Lab cold start: window CPU",
+   "unit": "ms",
+   "median": 583,
+   "spread": 24,
+   "spreadPct": 4.12,
+   "n": 4,
+   "values": [
+    580,
+    628,
+    586,
+    450
+   ]
+  },
+  "many.steady": {
+   "label": "Sync, 50,000 files, nothing changed: pass",
+   "unit": "ms",
+   "median": 12459,
+   "spread": 113,
+   "spreadPct": 0.91,
+   "n": 2,
+   "values": [
+    12572,
+    12346
+   ]
+  },
+  "many.steadyStall": {
+   "label": "Sync, 50,000 files, nothing changed: longest stall",
+   "unit": "ms",
+   "median": 95.5,
+   "spread": 27.5,
+   "spreadPct": 28.8,
+   "n": 2,
+   "values": [
+    123,
+    68
+   ]
+  },
+  "many.first": {
+   "label": "Sync, 50,000 files: first pass (all up)",
+   "unit": "ms",
+   "median": 99150,
+   "spread": 8843,
+   "spreadPct": 8.92,
+   "n": 2,
+   "values": [
+    90307,
+    107992
    ]
   },
   "sync.steadyStall": {
    "label": "Sync steady pass: main-process stall",
    "unit": "ms",
-   "median": 20.49,
-   "spread": 0.47,
-   "spreadPct": 2.29,
+   "median": 19.79,
+   "spread": 1,
+   "spreadPct": 5.05,
    "n": 3,
    "values": [
-    16.69,
-    20.96,
-    20.49
+    19.79,
+    18.79,
+    23.61
    ]
   },
   "sync.changeStall": {
    "label": "Sync small-change pass: main-process stall",
    "unit": "ms",
-   "median": 22.28,
-   "spread": 0.04,
-   "spreadPct": 0.18,
+   "median": 19.51,
+   "spread": 0.49,
+   "spreadPct": 2.51,
    "n": 3,
    "values": [
-    22.32,
-    22.28,
-    19.35
+    19.51,
+    22.8,
+    19.02
    ]
   },
   "sync.steadyWall": {
    "label": "Sync steady pass: wall time",
    "unit": "ms",
-   "median": 541,
-   "spread": 1,
-   "spreadPct": 0.18,
+   "median": 604,
+   "spread": 4,
+   "spreadPct": 0.66,
    "n": 3,
    "values": [
-    541,
-    534,
-    542
+    604,
+    634,
+    600
    ]
   },
   "sync.steadyCpu": {
    "label": "Sync steady pass: CPU",
    "unit": "ms",
-   "median": 798,
-   "spread": 10,
-   "spreadPct": 1.25,
+   "median": 811,
+   "spread": 5,
+   "spreadPct": 0.62,
    "n": 3,
    "values": [
-    816,
-    788,
-    798
+    806,
+    853,
+    811
    ]
   },
   "sync.changeCpu": {
    "label": "Sync small-change pass: CPU",
    "unit": "ms",
-   "median": 779,
-   "spread": 12,
-   "spreadPct": 1.54,
+   "median": 829,
+   "spread": 19,
+   "spreadPct": 2.29,
    "n": 3,
    "values": [
-    779,
-    759,
-    791
+    1007,
+    829,
+    810
    ]
   }
  },
  "raw": {
   "start.ready": [
    [
-    1009
+    1074
    ],
    [
-    1095
+    1079
    ],
    [
-    1001
+    1228
    ],
    [
-    1072
+    1326
    ],
    [
-    1272
+    1068
    ]
   ],
   "start.settled": [
    [
-    1531
+    1765
    ],
    [
-    3075
+    3004
    ],
    [
-    2967
+    2092
    ],
    [
-    2973
+    2071
    ],
    [
-    1963
+    1915
    ]
   ],
   "start.cpuReady": [
    [
-    5170
+    4510
    ],
    [
-    5240
+    4640
    ],
    [
-    5240
+    4870
    ],
    [
-    4960
+    5040
    ],
    [
-    5320
+    4860
    ]
   ],
   "start.cpuSettled": [
    [
-    5270
+    4620
    ],
    [
-    5330
+    4750
    ],
    [
-    5340
+    4980
    ],
    [
-    5050
+    5150
    ],
    [
-    5430
+    4950
+   ]
+  ],
+  "start.firstPicture": [
+   [
+    1758
+   ],
+   [
+    1778
+   ],
+   [
+    1865
+   ],
+   [
+    2064
+   ],
+   [
+    734
+   ]
+  ],
+  "start.usable": [
+   [
+    8175
+   ],
+   [
+    7253
+   ],
+   [
+    7465
+   ],
+   [
+    8289
+   ],
+   [
+    8825
+   ]
+  ],
+  "start.cpu30": [
+   [
+    4760
+   ],
+   [
+    4890
+   ],
+   [
+    5120
+   ],
+   [
+    5290
+   ],
+   [
+    5090
    ]
   ],
   "project.coldOpen": [
    [
-    358
+    303
    ],
    [
-    319
+    378
    ],
    [
-    369
+    340
    ]
   ],
   "project.coldOpenCpu": [
    [
-    437
+    562
    ],
    [
-    578
+    548
    ],
    [
-    649
+    600
    ]
   ],
   "project.warmOpen": [
    [
-    2736,
-    763
+    1336,
+    1690
    ],
    [
-    1094,
-    2270
+    1553,
+    679
    ],
    [
-    2081,
-    1124
+    1072,
+    2061
    ]
   ],
   "project.warmOpenCpu": [
    [
-    1000,
-    1460
+    1426,
+    1356
    ],
    [
-    1085,
-    861
+    1430,
+    1174
    ],
    [
-    1039,
-    1035
+    1301,
+    1131
    ]
   ],
   "project.switch": [
    [
-    802,
-    1137,
-    386,
-    938,
-    573,
-    1242
+    1703,
+    1404,
+    1099,
+    852,
+    762,
+    1191
    ],
    [
-    838,
-    557,
-    1193,
-    497,
-    504,
-    565
+    3259,
+    525,
+    1178,
+    1332,
+    537,
+    1046
    ],
    [
-    1367,
-    444,
-    297,
-    1308,
-    539,
-    1656
+    1493,
+    1045,
+    440,
+    603,
+    414,
+    431
    ]
   ],
   "project.switchCpu": [
    [
-    1053,
-    694,
-    797,
-    915,
-    654,
-    865
+    1140,
+    942,
+    1010,
+    1064,
+    707,
+    836
    ],
    [
-    808,
-    640,
-    803,
-    667,
-    587,
-    926
+    1249,
+    821,
+    1157,
+    1205,
+    720,
+    877
    ],
    [
-    808,
-    693,
-    583,
-    722,
-    527,
-    822
+    1071,
+    779,
+    741,
+    943,
+    737,
+    999
    ]
   ],
   "chat.switch": [
    [
-    306,
-    177,
-    204,
-    195,
-    179,
-    240,
-    244,
-    180
+    275,
+    272,
+    371,
+    200,
+    314,
+    234,
+    317,
+    249
    ],
    [
-    230,
-    152,
-    184,
-    198,
-    252,
-    278,
-    195,
-    205
-   ],
-   [
-    224,
-    211,
-    233,
-    179,
-    223,
-    315,
+    246,
     218,
-    233
+    370,
+    353,
+    208,
+    221,
+    326,
+    208
+   ],
+   [
+    270,
+    160,
+    299,
+    246,
+    251,
+    306,
+    250,
+    300
    ]
   ],
   "chat.clickHandler": [
    [
-    15.8,
-    14.8,
-    14.1,
-    14.4,
-    11.9,
-    14.9,
-    14.1,
-    7.8
-   ],
-   [
-    10.8,
-    9.9,
-    16.6,
-    15.4,
-    8.5,
-    9.7,
-    21.2,
-    12.3
-   ],
-   [
-    12.8,
-    13.1,
-    16.1,
-    10,
+    13.7,
     14.3,
-    10.4,
-    8.6,
-    10.3
+    22.3,
+    17.2,
+    9.8,
+    14.9,
+    26.6,
+    11.9
+   ],
+   [
+    19.5,
+    14.2,
+    18.8,
+    14.7,
+    9.2,
+    15.9,
+    14.9,
+    15.6
+   ],
+   [
+    11.2,
+    15.8,
+    20.7,
+    10.9,
+    12.3,
+    11.5,
+    26.6,
+    21.8
    ]
   ],
   "chat.switchCpu": [
    [
-    156,
-    91.4,
-    94.1,
-    105,
-    98.6,
-    104,
+    161,
+    152,
+    176,
     115,
-    92
+    144,
+    118,
+    189,
+    136
    ],
    [
-    105,
-    89.4,
-    91.7,
-    99.8,
-    99.4,
-    105,
-    120,
-    113
+    136,
+    133,
+    156,
+    159,
+    128,
+    109,
+    154,
+    124
    ],
    [
-    104,
-    108,
-    135,
-    97.1,
-    145,
-    117,
-    114,
-    116
+    121,
+    103,
+    130,
+    129,
+    149,
+    160,
+    150,
+    150
    ]
   ],
   "chat.clickThreadCpu": [
    [
-    179,
-    174,
-    152,
-    175,
-    163,
-    149,
+    186,
+    196,
+    213,
+    188,
+    184,
+    192,
+    237,
+    197
+   ],
+   [
     169,
-    151
-   ],
-   [
-    130,
-    164,
-    148,
-    164,
-    151,
-    172,
-    182,
-    182
-   ],
-   [
-    149,
-    165,
-    185,
-    162,
+    208,
+    229,
     202,
-    151,
-    298,
-    177
+    191,
+    178,
+    210,
+    189
+   ],
+   [
+    145,
+    180,
+    170,
+    179,
+    211,
+    283,
+    218,
+    202
    ]
   ],
   "chat.clickCpu": [
    [
-    24.7,
-    57.9,
-    81.3,
-    80.2,
-    78.9,
-    58,
-    84.5,
-    63.9
-   ],
-   [
-    17.7,
-    57,
-    68.3,
-    67.5,
-    76.5,
-    59,
-    93.7,
-    78.9
-   ],
-   [
-    21.6,
-    74.3,
-    82.4,
-    66.2,
+    24.3,
+    72.8,
+    136,
+    75.6,
     82.7,
-    53.8,
-    73.5,
-    87
+    67.3,
+    131,
+    83.6
+   ],
+   [
+    30,
+    80.3,
+    165,
+    97.4,
+    73.3,
+    66.6,
+    88.9,
+    81.5
+   ],
+   [
+    19.9,
+    69.8,
+    90.5,
+    91,
+    107,
+    172,
+    104,
+    145
    ]
   ],
   "chat.keyHandler": [
    [
-    3.9,
-    0.4,
-    0.5,
-    0.3,
-    0.7,
-    0.5,
-    0.8,
-    0.4,
+    3.3,
+    0.6,
     0.9,
-    0.3,
-    0.4,
-    0.5,
-    0.5,
-    0.4,
-    0.4,
-    0.4,
-    0.4,
-    0.2,
-    0.3,
-    0.3,
-    0.4,
-    0.3,
-    0.3,
-    0.3,
     0.6,
+    1.3,
     0.6,
-    0.5,
     0.4,
-    0.3,
+    5.2,
+    1.5,
+    1.5,
+    0.7,
+    0.6,
     0.4,
-    0.7
+    2,
+    0.6,
+    2.5,
+    5.2,
+    0.8,
+    0.6,
+    0.8,
+    0.6,
+    0.7,
+    0.6,
+    1.1,
+    1.6,
+    0.9,
+    0.7,
+    0.8,
+    0.8,
+    0.8,
+    0.6
    ],
    [
-    2.8,
+    3.8,
     0.5,
-    0.5,
-    0.4,
-    0.4,
-    0.4,
-    0.3,
-    4.8,
-    0.9,
+    2,
+    0.7,
     1.1,
-    0.2,
-    0.5,
-    0.3,
-    0.3,
-    0.5,
-    0.4,
-    0.4,
-    0.4,
-    0.5,
-    0.3,
-    0.2,
-    0.6,
     1,
     0.9,
     0.4,
-    0.5,
     0.4,
-    0.3,
-    0.4,
-    0.4,
-    0.5
-   ],
-   [
-    3.1,
-    0.3,
-    0.4,
-    0.4,
-    0.3,
-    0.5,
-    0.3,
+    1.5,
+    0.6,
     0.9,
     0.6,
     0.5,
-    0.3,
-    0.3,
-    0.4,
-    0.3,
-    0.3,
-    0.4,
+    0.7,
+    5.1,
+    0.6,
+    0.8,
+    0.7,
+    0.6,
+    0.6,
     0.5,
     0.4,
     0.6,
     0.5,
-    1.5,
-    0.5,
-    0.2,
-    0.3,
-    0.5,
-    0.2,
+    0.6,
     0.4,
-    0.2,
     0.5,
-    0.2,
-    0.5
+    0.4,
+    0.4,
+    0.2
+   ],
+   [
+    4.5,
+    0.8,
+    0.6,
+    0.7,
+    0.8,
+    0.7,
+    1.1,
+    0.8,
+    0.8,
+    0.7,
+    0.4,
+    0.7,
+    0.4,
+    0.5,
+    0.5,
+    0.7,
+    0.6,
+    0.9,
+    0.5,
+    0.7,
+    0.6,
+    0.5,
+    0.6,
+    0.3,
+    0.4,
+    0.5,
+    0.8,
+    0.6,
+    0.4,
+    0.7,
+    0.7
+   ]
+  ],
+  "chat.keyPaint": [
+   [
+    10.6,
+    7.3,
+    7.3,
+    7.8,
+    9.4,
+    11.7,
+    13.1,
+    42.9,
+    8.8,
+    10.6,
+    7.5,
+    6.6,
+    9.6,
+    8.4,
+    7.1,
+    42,
+    14.9,
+    6.3,
+    8.2,
+    13.4,
+    6.3,
+    17.4,
+    29.2,
+    30.3,
+    19.7,
+    28.5,
+    22.2,
+    20.8,
+    27.1,
+    26.9,
+    24.6
+   ],
+   [
+    12.3,
+    6.4,
+    10.5,
+    5.6,
+    8,
+    12.3,
+    6.4,
+    8.2,
+    12.8,
+    19.6,
+    17.2,
+    58.4,
+    12,
+    7.2,
+    8.5,
+    13.4,
+    15.4,
+    10.1,
+    17.3,
+    29.7,
+    47.3,
+    26.7,
+    23.6,
+    32.5,
+    32.2,
+    23.6,
+    30.3,
+    22.6,
+    28.8,
+    20.8,
+    17.8
+   ],
+   [
+    13.5,
+    7,
+    6.7,
+    11.2,
+    7.2,
+    8.4,
+    28.5,
+    6.4,
+    8.6,
+    7.3,
+    21,
+    6.3,
+    7.3,
+    11,
+    8.7,
+    7.6,
+    25.8,
+    7.1,
+    13.7,
+    14.3,
+    7.8,
+    22,
+    25.4,
+    24.4,
+    18.4,
+    37.3,
+    20,
+    19,
+    21.4,
+    24.7,
+    25.9
    ]
   ],
   "chat.keyCpu": [
    [
-    6.7
+    8.8
    ],
    [
-    6.9
+    9
    ],
    [
-    6.6
+    8.6
+   ]
+  ],
+  "chat.sendSaved": [
+   [
+    132,
+    60.7,
+    54.2,
+    124,
+    41.6
+   ],
+   [
+    125,
+    61.8,
+    42,
+    78.4,
+    28.6
+   ],
+   [
+    107,
+    110,
+    39.6,
+    38.8,
+    41.9
+   ]
+  ],
+  "chat.sendCpu": [
+   [
+    810,
+    420,
+    440,
+    470,
+    410
+   ],
+   [
+    870,
+    440,
+    430,
+    450,
+    430
+   ],
+   [
+    670,
+    710,
+    390,
+    350,
+    360
+   ]
+  ],
+  "chat.markSaved": [
+   [
+    10.3,
+    12.2,
+    11.5,
+    7.8,
+    9.1,
+    7.1,
+    10.6,
+    64.2,
+    10.7,
+    27.7
+   ],
+   [
+    18.9,
+    7.8,
+    7.8,
+    29.4,
+    19.6,
+    10.4,
+    8.8,
+    7.7,
+    7,
+    7.2
+   ],
+   [
+    8.3,
+    7.4,
+    5.2,
+    7.1,
+    7.2,
+    31.8,
+    8.2,
+    8.8,
+    6,
+    7.6
+   ]
+  ],
+  "chat.markCpu": [
+   [
+    31
+   ],
+   [
+    40
+   ],
+   [
+    17
+   ]
+  ],
+  "chat.saveIpc": [
+   [
+    94.3,
+    30.3,
+    28,
+    27.3,
+    25.6
+   ],
+   [
+    85.4,
+    32.7,
+    42.5,
+    26.7,
+    35
+   ],
+   [
+    62.4,
+    24.1,
+    22.2,
+    25.1,
+    28.5
    ]
   ],
   "lab.toolCallCpu": [
    [
-    327,
-    593
+    277,
+    332
    ],
    [
-    296,
-    263
+    273,
+    378
    ],
    [
-    232,
-    238
+    346,
+    401
    ]
   ],
   "lab.toolCall": [
    [
-    39,
-    18,
-    17,
-    24,
-    49,
-    21,
-    75,
-    47,
+    44,
     13,
-    12,
-    13,
-    7527,
     24,
+    22,
+    46,
+    25,
+    27,
+    29,
+    19,
+    14,
     28,
-    22
+    1546,
+    1553,
+    16,
+    28,
+    25
    ],
    [
-    44,
-    22,
-    28,
+    36,
+    10,
     16,
-    43,
-    16,
-    29,
+    19,
+    53,
+    15,
     23,
     27,
-    20,
-    33,
-    1943,
-    17,
-    10,
-    9
+    7,
+    8,
+    18,
+    1536,
+    26,
+    38,
+    40
    ],
    [
-    37,
-    12,
-    14,
-    27,
-    42,
-    27,
-    35,
-    20,
-    7,
-    10,
-    11,
-    1521,
-    16,
+    57,
+    24,
+    23,
+    17,
+    39,
+    18,
+    41,
+    39,
+    38,
+    31,
+    46,
+    3052,
+    19,
     19,
     13
    ]
@@ -1027,7 +1880,7 @@
     0.2
    ],
    [
-    0.7
+    0.2
    ],
    [
     0.2
@@ -1035,307 +1888,692 @@
   ],
   "idle.windowCpu": [
    [
-    1.2
+    0.4
    ],
    [
-    0.1
+    0.3
    ],
    [
-    0.1
+    0.2
    ]
   ],
   "idle.allCpu": [
    [
-    23.6
+    11.7
    ],
    [
-    4.3
+    12.8
    ],
    [
-    3.7
+    12.3
    ]
   ],
   "mem.windowHeap": [
    [
-    31.2
+    32.6
    ],
    [
-    31.2
+    32.5
    ],
    [
-    31
+    32.6
+   ]
+  ],
+  "fresh.memWindow": [
+   [
+    13.5
+   ],
+   [
+    13.5
+   ],
+   [
+    13.5
+   ]
+  ],
+  "fresh.memMain": [
+   [
+    11.4
+   ],
+   [
+    11.4
+   ],
+   [
+    11.4
+   ]
+  ],
+  "fresh.memStore": [
+   [
+    5
+   ],
+   [
+    5
+   ],
+   [
+    5
+   ]
+  ],
+  "fresh.idle1All": [
+   [
+    14.3
+   ],
+   [
+    15.1
+   ],
+   [
+    15.5
+   ]
+  ],
+  "fresh.idle1Main": [
+   [
+    13.7
+   ],
+   [
+    14.3
+   ],
+   [
+    14.8
+   ]
+  ],
+  "fresh.idle1Window": [
+   [
+    0.5
+   ],
+   [
+    0.6
+   ],
+   [
+    0.6
+   ]
+  ],
+  "fresh.idle5All": [
+   [
+    0.7
+   ],
+   [
+    0.6
+   ],
+   [
+    0.6
+   ]
+  ],
+  "fresh.idle5Main": [
+   [
+    0.5
+   ],
+   [
+    0.6
+   ],
+   [
+    0.5
+   ]
+  ],
+  "fresh.idle5Window": [
+   [
+    0.2
+   ],
+   [
+    0
+   ],
+   [
+    0.1
+   ]
+  ],
+  "fresh.settings": [
+   [
+    237
+   ],
+   [
+    183
+   ],
+   [
+    97.7
+   ]
+  ],
+  "fresh.settingsCpu": [
+   [
+    81.3
+   ],
+   [
+    79.3
+   ],
+   [
+    81.9
+   ]
+  ],
+  "fresh.settingsAgain": [
+   [
+    52.4
+   ],
+   [
+    48.9
+   ],
+   [
+    50.7
+   ]
+  ],
+  "fresh.settingsAgainCpu": [
+   [
+    54.4
+   ],
+   [
+    50.6
+   ],
+   [
+    52.9
+   ]
+  ],
+  "fresh.labFirst": [
+   [
+    3758
+   ],
+   [
+    2843
+   ],
+   [
+    2728
+   ]
+  ],
+  "fresh.labShown": [
+   [
+    697
+   ],
+   [
+    284
+   ],
+   [
+    280
+   ]
+  ],
+  "fresh.labFirstCpu": [
+   [
+    688
+   ],
+   [
+    572
+   ],
+   [
+    489
+   ]
+  ],
+  "fresh.bigChat": [
+   [
+    939
+   ],
+   [
+    1055
+   ],
+   [
+    735
+   ]
+  ],
+  "fresh.bigChatCpu": [
+   [
+    236
+   ],
+   [
+    240
+   ],
+   [
+    245
+   ]
+  ],
+  "fresh.keyPaint": [
+   [
+    57.1,
+    7.5,
+    98.8,
+    18.6,
+    35,
+    7.3,
+    9.9,
+    5.6,
+    5.1,
+    5.8,
+    5.7,
+    6.5,
+    5.9,
+    4.7,
+    4.4,
+    5.9,
+    4.5,
+    5.7,
+    6,
+    5.7,
+    4.7,
+    5.2,
+    4,
+    6.2,
+    5.9,
+    6.2,
+    6.1,
+    6,
+    6.3,
+    4.6,
+    6.4
+   ],
+   [
+    64.4,
+    8.8,
+    118,
+    22.1,
+    32.1,
+    4.4,
+    6.2,
+    5.9,
+    5.2,
+    5,
+    4.7,
+    4.3,
+    5.9,
+    4.4,
+    4.2,
+    5.7,
+    5.7,
+    5.4,
+    5.3,
+    4.5,
+    5.9,
+    4.3,
+    4.9,
+    6.5,
+    4.5,
+    5.7,
+    4.3,
+    5.2,
+    4.5,
+    5.9,
+    4.3
+   ],
+   [
+    54.1,
+    6.2,
+    90.5,
+    10.9,
+    18.6,
+    5.3,
+    5.2,
+    4.8,
+    4.9,
+    5.3,
+    4.8,
+    5.5,
+    4.4,
+    4.3,
+    5.9,
+    4.2,
+    5.7,
+    10,
+    5.7,
+    5.7,
+    6.3,
+    4.4,
+    7.1,
+    8,
+    5.8,
+    5.4,
+    5.3,
+    6.4,
+    5,
+    4.3,
+    4.7
+   ]
+  ],
+  "fresh.keyCpu": [
+   [
+    9.6
+   ],
+   [
+    9.4
+   ],
+   [
+    9.1
+   ]
+  ],
+  "fresh.bigSendSaved": [
+   [
+    524,
+    136,
+    184
+   ],
+   [
+    502,
+    479,
+    325
+   ],
+   [
+    874,
+    161,
+    630
    ]
   ],
   "sync.steadyStall": [
    [
-    21.02,
-    29.66,
-    13.62,
-    14.88,
-    15.26,
-    18.12
+    21.5,
+    19.86,
+    21.15,
+    19.71,
+    19.37,
+    18.53
    ],
    [
-    19.58,
-    27.28,
-    18.24,
-    17.1,
-    24.61,
-    22.33
+    18.61,
+    27.38,
+    18.96,
+    16.36,
+    22.05,
+    15.71
    ],
    [
-    32,
-    20.4,
-    17.06,
-    22.12,
-    17.29,
-    20.59
+    23.87,
+    28.33,
+    19.71,
+    23.35,
+    18.12,
+    24.94
    ]
   ],
   "sync.changeStall": [
    [
-    14.39,
-    21.38,
-    17.83,
-    23.27,
-    23.25,
-    25.48
+    17.02,
+    16.06,
+    24.41,
+    21.99,
+    16.16,
+    23.13
    ],
    [
-    18.6,
-    77.59,
-    26.53,
-    23.87,
-    14.61,
-    20.69
+    24,
+    22.48,
+    22.09,
+    23.12,
+    24.54,
+    19.04
    ],
    [
-    24.02,
-    18.97,
-    14.63,
-    16.34,
-    19.74,
-    23.58
+    17.96,
+    20.07,
+    21.84,
+    17.68,
+    21.14,
+    17.68
    ]
   ],
   "sync.steadyWall": [
    [
-    617,
-    667,
-    548,
-    481,
-    534,
-    484
+    514,
+    508,
+    609,
+    612,
+    625,
+    598
    ],
    [
-    677,
-    641,
-    529,
-    518,
-    538,
-    484
+    682,
+    633,
+    564,
+    682,
+    635,
+    582
    ],
    [
-    675,
-    526,
-    476,
-    557,
-    519,
-    621
+    639,
+    654,
+    569,
+    508,
+    630,
+    564
    ]
   ],
   "sync.steadyCpu": [
    [
-    782,
-    882,
-    849,
-    638,
-    896,
-    635
+    702,
+    677,
+    905,
+    880,
+    945,
+    732
    ],
    [
-    893,
-    815,
-    838,
-    760,
-    737,
-    616
+    879,
+    826,
+    821,
+    901,
+    986,
+    742
    ],
    [
-    881,
+    846,
+    871,
+    776,
     696,
-    822,
-    808,
-    788,
-    764
+    957,
+    744
    ]
   ],
   "sync.changeCpu": [
    [
-    739,
-    723,
-    880,
-    725,
-    1082,
-    819
+    688,
+    916,
+    1044,
+    970,
+    1245,
+    1062
    ],
    [
-    676,
-    676,
-    773,
-    796,
-    1137,
-    745
+    663,
+    839,
+    907,
+    818,
+    1172,
+    809
    ],
    [
-    744,
-    798,
-    783,
-    730,
-    1016,
-    847
+    672,
+    801,
+    819,
+    722,
+    1076,
+    973
+   ]
+  ],
+  "labcold.first": [
+   [
+    6011
+   ],
+   [
+    6249
+   ],
+   [
+    5778
+   ],
+   [
+    4132
+   ]
+  ],
+  "labcold.shown": [
+   [
+    306
+   ],
+   [
+    256
+   ],
+   [
+    246
+   ],
+   [
+    96
+   ]
+  ],
+  "labcold.cpu": [
+   [
+    580
+   ],
+   [
+    628
+   ],
+   [
+    586
+   ],
+   [
+    450
+   ]
+  ],
+  "many.first": [
+   [
+    90307
+   ],
+   [
+    107992
+   ]
+  ],
+  "many.steady": [
+   [
+    12572
+   ],
+   [
+    12346
+   ]
+  ],
+  "many.steadyStall": [
+   [
+    123
+   ],
+   [
+    68
    ]
   ]
  },
  "tops": {
   "startup": {
-   "CPU to the first screen: GPU process": 12670,
-   "CPU to the first screen: browser process": 2630,
-   "CPU to the first screen: renderer process": 2580,
-   "window: append": 141,
-   "start phase: start → shell": 131,
-   "ipc answered: kv:get ×21": 111,
-   "start phase: shell → chats": 102,
-   "ipc answered: chats:list ×1": 88.74,
-   "ipc answered: fs:list ×2": 74.15,
-   "main: (anon) validators:165": 71,
-   "window: (garbage collector)": 69,
-   "main: wrapSafe loader:1826": 65,
-   "main: (anon) browser_init:1": 55,
-   "CPU to the first screen: network.mojom.NetworkService process": 50,
-   "window: suggest projects-core.js:196": 38,
-   "start phase: chats → ready": 37.1,
-   "main: createWindow main.js:187": 28,
-   "window: el ui.js:81": 28,
-   "main: (garbage collector)": 23,
-   "main: spawn": 23,
-   "window: before": 23,
-   "window: dispatchEvent": 22,
-   "window: (anon) native.js:1298": 21,
-   "main: (anon) showsync-venues.js:1": 14,
-   "ipc answered: kv:pick ×1": 13.61,
-   "main: readdir": 13,
-   "window: (anon) native.js:2": 13,
+   "CPU to the first screen: browser process": 2580,
+   "CPU to the first screen: renderer process": 2220,
+   "window: append": 168,
+   "main: (anon) browser_init:1": 164,
+   "ipc answered: kv:get ×18": 96.94,
+   "start phase: shell → chats": 95,
+   "start phase: start → shell": 88.5,
+   "window: (garbage collector)": 87,
+   "ipc answered: fs:list ×2": 84.16,
+   "ipc answered: chats:list ×1": 83.38,
+   "main: wrapSafe loader:1826": 69,
+   "window: dispatchEvent": 66,
+   "start phase: chats → ready": 41.4,
+   "window: before": 40,
+   "main: (garbage collector)": 38,
+   "window: (anon)": 36,
+   "window: (anon) native.js:1312": 32,
+   "main: createWindow main.js:187": 31,
+   "window: (anon) lazy.js:337": 26,
+   "main: (anon) showsync-venues.js:1": 24,
+   "window: querySelector": 21,
+   "main: spawn": 19,
+   "window: suggest projects-core.js:210": 19,
+   "main: readFileSync node:fs:473": 18,
+   "window: (anon) native.js:2": 15,
+   "ipc answered: kv:pick ×1": 13.28,
    "main: get defaultSession browser_init:1": 12,
-   "start phase: ready → gone": 10.6,
-   "window: filtered ui.js:67": 9
+   "window: el ui.js:81": 11,
+   "start phase: ready → gone": 9.6,
+   "main: emit node:events:489": 9
   },
   "projects": {
-   "remove :0": 339,
-   "(garbage collector) :0": 311,
-   "showModal :0": 291,
-   "get scrollTop :0": 289,
-   "get clientWidth :0": 208,
-   "labShown chat-scenes.js:596": 150,
-   "el ui.js:81": 138,
-   "querySelector :0": 128,
-   "invoke sandbox_bundle:2": 125,
-   "checkVisibility :0": 124,
-   "paintProject projects-home.js:191": 116,
-   "(anon) :0": 98.13,
-   "get scrollHeight :0": 89.07,
-   "querySelectorAll :0": 60.27,
-   "decorate usage.js:131": 56.04,
-   "invoke :0": 31.2,
-   "thumbShot three.js:3890": 21.4
+   "checkVisibility :0": 711,
+   "(garbage collector) :0": 602,
+   "showModal :0": 309,
+   "remove :0": 273,
+   "el ui.js:81": 195,
+   "invoke sandbox_bundle:2": 183,
+   "querySelector :0": 167,
+   "(anon) :0": 162,
+   "invoke :0": 144,
+   "querySelectorAll :0": 120,
+   "get scrollHeight :0": 115,
+   "decorate usage.js:131": 97.27,
+   "state project-workspace.js:296": 94.93,
+   "call projfind.js:30": 71.1,
+   "thumbShot three.js:4146": 69.47,
+   "structuredClone :0": 24.47,
+   "append :0": 22.23,
+   "nameOne a11y.js:40": 21.6
   },
   "chats": {
-   "(garbage collector) :0": 84.07,
-   "get clientWidth :0": 50.4,
-   "querySelectorAll :0": 48.54,
-   "focus :0": 39.23,
-   "messageEl native.js:688": 31.96,
-   "querySelector :0": 30.66,
-   "(anon) :0": 27.34,
-   "el ui.js:81": 25.53,
-   "decorate usage.js:131": 25.5,
-   "full meter.js:57": 20.81,
-   "nameOf usage.js:125": 12.43,
-   "fmtLocal ui.js:253": 11.37,
-   "ownerOf chat-scenes.js:141": 7.84,
-   "(anon) project-workspace.js:10": 6.97,
-   "checkVisibility :0": 6,
-   "createElement :0": 4.67,
-   "closest :0": 3.83,
-   "append :0": 3.77,
-   "decorate cmdbar.js:446": 3.5,
-   "toggle :0": 3.17
+   "(garbage collector) :0": 65.37,
+   "checkVisibility :0": 56.27,
+   "querySelectorAll :0": 52.21,
+   "get clientWidth :0": 51,
+   "focus :0": 45.46,
+   "messageEl native.js:692": 39.5,
+   "decorate usage.js:131": 38.54,
+   "el ui.js:81": 34.74,
+   "querySelector :0": 34.3,
+   "full meter.js:57": 31.63,
+   "(anon) :0": 26.01,
+   "toggle :0": 15.33,
+   "closest :0": 9.53,
+   "(anon) project-workspace.js:13": 8.27,
+   "nameOf usage.js:125": 5.63,
+   "highlight panel.js:716": 5.5,
+   "(anon) :1": 5.17,
+   "remove :0": 4.4,
+   "fmtLocal ui.js:253": 3.63
   },
   "lab": {
-   "(garbage collector) :0": 116,
-   "querySelector :0": 115,
-   "checkVisibility :0": 94.6,
-   "get scrollHeight :0": 92.23,
-   "ownerOf chat-scenes.js:141": 78.53,
-   "focus :0": 74.4,
-   "querySelectorAll :0": 71.76,
-   "get clientWidth :0": 60.73,
-   "(anon) chat-scenes.js:56": 49.17,
-   "getBoundingClientRect :0": 42.3,
-   "paintPicker chat-scenes.js:540": 40.27,
-   "identity chat-scenes.js:35": 36.87,
-   "invoke sandbox_bundle:2": 27.13,
-   "invoke :0": 22.36,
-   "decorate usage.js:131": 20.1,
-   "summary projects.js:60": 19.83,
-   "toggle :0": 12.7,
-   "(anon) :0": 10.5,
-   "el ui.js:81": 7.9
+   "ownerOf chat-scenes.js:141": 106,
+   "checkVisibility :0": 101,
+   "focus :0": 99.97,
+   "get scrollHeight :0": 99.63,
+   "(garbage collector) :0": 84,
+   "querySelector :0": 77.33,
+   "(anon) chat-scenes.js:56": 68.79,
+   "get clientWidth :0": 68.67,
+   "querySelectorAll :0": 52.86,
+   "paintPicker chat-scenes.js:540": 52.41,
+   "invoke sandbox_bundle:2": 49.8,
+   "invoke :0": 37.73,
+   "identity chat-scenes.js:35": 36.9,
+   "toBlob :0": 27.13,
+   "(anon) native.js:1312": 18.7,
+   "el ui.js:81": 17.53,
+   "getBoundingClientRect :0": 12.53,
+   "(anon) :0": 10.87,
+   "(anon) meter.js:116": 8.97
   },
   "idle": {
-   "(anon) :0": 6.03,
-   "(garbage collector) :0": 5.03,
-   "analyse costcoach-core.js:132": 3.93,
-   "(anon) costcoach.js:63": 2.33,
-   "querySelector :0": 0.57,
-   "(anon) three-media.js:1783": 0.4,
-   "(anon) costcoach-core.js:138": 0.37,
-   "usesOf tokenaudit-core.js:66": 0.27,
-   "lighterSaves costcoach-core.js:105": 0.23,
-   "(anon) costcoach-core.js:211": 0.23,
-   "(anon) costcoach-core.js:219": 0.23,
-   "fixedOf costcoach-core.js:139": 0.2,
-   "checkVisibility :0": 0.17,
-   "tick costcoach.js:214": 0.17,
-   "today apps-discover.js:15": 0.13,
-   "clean tokenaudit.js:58": 0.13,
-   "setTimeout :0": 0.13,
-   "(anon) :211": 0.13,
-   "profStart :35": 0.13,
-   "idleCheck three.js:3733": 0.1
+   "(anon) bridge.js:74": 0.39,
+   "profStart :35": 0.27,
+   "fire powerwise.js:190": 0.26,
+   "(anon) :254": 0.23,
+   "requestIdleCallback :0": 0.17,
+   "(anon) :0": 0.13,
+   "idleCheck three.js:3964": 0.13,
+   "setTimeout :0": 0.13
   },
   "sync": {
-   "(anon) sync-engine.js:402": 567,
-   "(anon) sync-engine.js:338": 377,
-   "(anon) sync-engine.js:328": 57.66,
-   "passOnce sync-engine.js:1495": 38.33,
-   "localOnly sync-merge.js:35": 38.01,
-   "(anon) sync-merge.js:22": 36.67,
-   "flush sync-engine.js:328": 34,
-   "(garbage collector)": 29.67,
-   "(anon) sync-engine.js:411": 7.66,
-   "walk sync-engine.js:316": 7.66,
-   "(anon) sync-hard.js:114": 4.34,
-   "getStatsFromBinding utils:552": 2,
-   "cloudHash sync-engine.js:934": 2,
-   "cachedHere sync-engine.js:1308": 1.33,
-   "secretName sync-hard.js:110": 1.33,
-   "breathe sync-engine.js:279": 1.33,
-   "nfc sync-engine.js:40": 1,
-   "(anon) sync-engine.js:341": 0.67,
-   "stat promises:1028": 0.33,
-   "localExtras sync-engine.js:350": 0.33
+   "(anon) sync-engine.js:347": 411,
+   "(anon) sync-engine.js:411": 409,
+   "(anon) sync-engine.js:337": 63.67,
+   "passOnce sync-engine.js:1522": 54.34,
+   "(anon) sync-merge.js:22": 45,
+   "localOnly sync-merge.js:35": 38,
+   "(garbage collector)": 29,
+   "flush sync-engine.js:337": 25.67,
+   "(anon) sync-engine.js:420": 7.34,
+   "walk sync-engine.js:325": 6.67,
+   "(anon) sync-hard.js:114": 4,
+   "getStatsFromBinding utils:552": 2.66,
+   "cachedHere sync-engine.js:1334": 2.66,
+   "localHash sync-engine.js:895": 1.67,
+   "cloudHash sync-engine.js:953": 1.67,
+   "(anon) sync72-perf.js:39": 1,
+   "sizesAsync sync-kinds.js:53": 0.67,
+   "stat promises:1028": 0.66,
+   "secretName sync-hard.js:110": 0.33,
+   "transientWorkspace sync-merge.js:28": 0.33,
+   "(anon) sync-engine.js:350": 0.33
   }
  },
- "problems": []
+ "problems": [
+  "many run 1: FAIL many: the event loop is never held long (worst 609 ms, longest own hold 604 ms; budget 150 ms) — first 50 ms (longest 45 ms = 45 own (1 on a CPU) + 0 waiting for a CPU; most own 40 ms = 47 own (47 on a CPU) + 0 waiting for a CPU) · steady 123 ms (longest 118 ms = 117 own (4 on a CPU) + 1 waiting for a CPU) · join 609 ms (longest 604 ms = 604 own (4 on a CPU) + 0 waiting for a CPU) · rename 31",
+  "many run 2: FAIL many: the event loop is never held long (worst 375 ms, longest own hold 370 ms; budget 150 ms) — first 292 ms (longest 287 ms = 287 own (3 on a CPU) + 0 waiting for a CPU) · steady 68 ms (longest 63 ms = 66 own (66 on a CPU) + 0 waiting for a CPU) · join 375 ms (longest 370 ms = 370 own (3 on a CPU) + 0 waiting for a CPU) · rename 365 ms (longest 360 ms = 362 own (362 on a CPU) + 4 waiting fo"
+ ]
 }
