@@ -1012,9 +1012,9 @@ const Native = (() => {
     const fresh = [...v.list.querySelectorAll('.msg.assistant:not(.streaming)')]
       .filter((node) => !measured.has(node) && (measured.add(node), node !== lastReply && !unfolded.has(`${chat?.id}:${node.dataset.index}`)));
     let soon = now ? fresh.splice(-now) : [];
-    // (round 103, cw103) one out of view whose contents the browser skips (content-visibility) isn't laid out here just to
-    // be measured (each was a layout of its own in the frame): it's watched like the older ones, folded when near
-    const lr = soon.length && v.list.getBoundingClientRect(); const away = (n) => { const r = n.getBoundingClientRect(); return r.bottom < lr.top || r.top > lr.bottom; };
+    // (round 103, cw103) a giant chat's reply out of view whose contents the browser skips (content-visibility) isn't laid
+    // out here just to be measured (each was a layout of its own in the frame): watched like the older ones, folded near
+    const lr = soon.length && cw(chat) && v.list.getBoundingClientRect(); const away = (n) => { const r = n.getBoundingClientRect(); return r.bottom < lr.top || r.top > lr.bottom; };
     if (lr?.height) { const off = soon.filter((n) => getComputedStyle(n).contentVisibility === 'auto' && away(n)); if (off.length) { soon = soon.filter((n) => !off.includes(n)); fresh.push(...off); } }
     foldIfLong(soon, soon.map((node) => node.querySelector('.body').scrollHeight));
     for (const node of fresh) foldWhenNear(v, node);
