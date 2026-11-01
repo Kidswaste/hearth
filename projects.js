@@ -57,7 +57,15 @@ const Projects = (() => {
     return idx.get(C.itemId(type, ref)) || [];
   }
   const projectOfChat = (chatId) => (chatId ? ofItem('chat', chatId)[0] || null : null);
-  const summary = (chatId) => (H.chats || []).find((c) => c.id === chatId) || null;
+  // (round 100, perf100) by id, kept while H.chats is the same list (it is only ever replaced, never changed in place):
+  // the chats list asked for every project chat of every group by a scan of all chats (≈ half of a list redraw with
+  // 2,000 chats). The first of an id, as find() gave
+  let sumOf = null; let sumIx = null;
+  const summary = (chatId) => {
+    const list = H.chats || [];
+    if (list !== sumOf) { sumOf = list; sumIx = new Map(); for (const c of list) if (c && !sumIx.has(c.id)) sumIx.set(c.id, c); }
+    return sumIx.get(chatId) || null;
+  };
   const avoid = () => live().slice(0, 7).map((p) => [p.ident.ci, p.ident.gi]);
 
   // ---------- what's in front of you ----------
