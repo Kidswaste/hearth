@@ -31,7 +31,7 @@ const S = require('../sync-merge');
 const argv = process.argv.slice(2);
 const ONLY = (() => { const i = argv.indexOf('--only'); return i >= 0 ? argv[i + 1].split(',') : null; })();
 const MANY = (() => { const i = argv.indexOf('--many'); return i >= 0 ? Number(argv[i + 1]) : 5000; })(); // 50,000: --many 50000 (≈ 5 min here)
-let passes = 0; let failures = 0;
+let passes = 0; let failures = 0; let cantTell = 0; // (round 102: cantTell, a load-aware step that couldn't judge)
 const ok = (c, what, detail) => { if (c) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 500)}` : ''}`); } };
 const raw = Sim.raw;
 const MB = 1024 * 1024;
@@ -292,14 +292,17 @@ scenario('many', async () => {
   const N = MANY;
   // the longest the event loop was held during each phase (in the app: the main process, where the engine runs)
   const { monitorEventLoopDelay } = require('perf_hooks');
-  const lag = []; const phase = async (name, fn) => { const h = monitorEventLoopDelay({ resolution: 5 }); h.enable(); const t0 = Date.now(); const r = await fn(); h.disable(); lag.push({ name, ms: Date.now() - t0, maxLag: Math.round(h.max / 1e6) }); return r; };
+  // (round 102, checks102) and, stall by stall, how much of the longest hold was the code's own: the main thread's wait
+  // for a CPU inside it taken out (dev/loadwait.js stallWatch). The wall figure stays the one reported (perfguard reads it).
+  const LW = require('./loadwait');
+  const lag = []; const phase = async (name, fn) => { const h = monitorEventLoopDelay({ resolution: 5 }); const sw = LW.stallWatch(); h.enable(); const t0 = Date.now(); const r = await fn(); h.disable(); const s = sw.stop(); lag.push({ name, ms: Date.now() - t0, maxLag: Math.round(h.max / 1e6), maxOwn: s.maxOwn, worst: s.worst, longest: s.longest }); return r; };
   let t = Date.now();
   const dirs = new Set();
   for (let i = 0; i < N; i++) { const d = path.join(pc.data, 'workspace', `proj${i % 50}`, `d${Math.floor(i / 1000)}`); if (!dirs.has(d)) { raw.mkdirSync(d, { recursive: true }); dirs.add(d); } raw.writeFileSync(path.join(d, `f${i}.txt`), `small file ${i}\n`); }
   const made = Date.now() - t;
   t = Date.now(); const r1 = await phase('first', () => pc.e.pass()); const first = Date.now() - t;
   ok(r1.last.pushed >= N && !r1.pending, `many: the PC's first pass sends ${N} files (${(first / 1000).toFixed(1)} s)`, { pushed: r1.last.pushed, pending: r1.pending });
-  t = Date.now(); const r2 = await phase('steady', () => pc.e.pass()); const steady = Date.now() - t;
+  const L2 = LW.snap(); t = Date.now(); const r2 = await phase('steady', () => pc.e.pass()); const steady = Date.now() - t; const W2 = LW.waited(L2, LW.snap());
   ok(!r2.pending && r2.last.pushed === 0, `many: a pass with nothing changed (${(steady / 1000).toFixed(1)} s)`);
   pc.view.tick(); mac.view.tick(); w.clock.advance(3000);
   t = Date.now(); const r3 = await phase('join', () => mac.e.pass()); const join = Date.now() - t;
@@ -312,9 +315,21 @@ scenario('many', async () => {
   const perK = (ms) => ms / (N / 1000);
   console.log(`  many: ${N} files · made ${made} ms · first pass ${first} ms · steady ${steady} ms · Mac join ${join} ms · rename of ${moved} ${ren} ms (per 1,000 files: first ${perK(first).toFixed(0)} ms, steady ${perK(steady).toFixed(0)} ms)`);
   console.log(`  many: longest event-loop stall per phase: ${lag.map((x) => `${x.name} ${x.maxLag} ms`).join(' · ')}`);
-  ok(perK(steady) < 600, `many: steady pass under 600 ms per 1,000 files in the simulator (${perK(steady).toFixed(0)} ms)`);
+  // (round 102, checks102) a wall time too: over it only by what the process waited for a CPU / the disk meanwhile
+  // (dev/loadwait.js judge, as synclatency77's) is "can't tell"; over by more fails
+  const SB = 600 * (N / 1000);
+  if (LW.judge(steady, SB, W2) === 'load') { cantTell += 1; console.log(`CAN'T TELL many: the steady pass took ${steady} ms (${perK(steady).toFixed(0)} ms per 1,000 files; budget 600), but the process waited ${W2.cpuWait} ms for a CPU and ${W2.ioFull} ms on a saturated disk meanwhile (CPU spent: ${W2.cpuMs} ms)`); }
+  else ok(perK(steady) < 600, `many: steady pass under 600 ms per 1,000 files in the simulator (${perK(steady).toFixed(0)} ms${W2 ? `; waited ${W2.cpuWait} ms for a CPU, ${W2.ioFull} ms on the disk` : ''})`);
   const worst = Math.max(...lag.map((x) => x.maxLag));
-  ok(worst < Math.max(150, N / 500), `many: the event loop is never held long (worst ${worst} ms; budget ${Math.max(150, N / 500)} ms)`, lag);
+  // (round 102, checks102) load-aware, as checkfix88's checks: over the budget on the wall clock but not once the main
+  // thread's wait for a CPU inside that stall is taken out → "can't tell" (the box), neither a pass nor a failure; a
+  // stall whose own part is over the budget fails, whatever the load. (Off Linux: own = wall, judged as before.)
+  const LB = Math.max(150, N / 500);
+  const ownWorst = Math.max(...lag.map((x) => x.maxOwn ?? x.maxLag));
+  const g = (s) => `${s.ms} ms = ${s.own} own (${s.cpu ?? '?'} on a CPU) + ${s.wait} waiting for a CPU`;
+  const stalls = lag.map((x) => `${x.name} ${x.maxLag} ms${x.longest ? ` (longest ${g(x.longest)}${x.worst && x.worst !== x.longest ? `; most own ${g(x.worst)}` : ''})` : ''}`).join(' · ');
+  if (worst >= LB && ownWorst < LB) { cantTell += 1; console.log(`CAN'T TELL many: the event loop held ${worst} ms (budget ${LB} ms), but its longest hold of its own was ${ownWorst} ms: ${stalls}`); }
+  else ok(worst < LB, `many: the event loop is never held long (worst ${worst} ms, longest own hold ${ownWorst} ms; budget ${LB} ms)`, stalls);
   ok(ren < Math.max(5000, first), `many: the renamed folders take no longer than the first pass (${ren} ms vs ${first} ms)`);
 });
 
@@ -450,7 +465,7 @@ async function main() {
     Sim.unlock(); Sim.T.hook = null; Sim.T.winReadOnly = false; Sim.T.quotas.clear();
     console.log(`${failures > before ? 'FAIL' : 'ok  '} ${s.name} (${Date.now() - t} ms)`);
   }
-  console.log(`\nsynchard74: ${passes} passed, ${failures} failed (${Date.now() - t0} ms)`);
+  console.log(`\nsynchard74: ${passes} passed, ${failures} failed${cantTell ? `, ${cantTell} can't tell (load)` : ''} (${Date.now() - t0} ms)`);
   const w = T.world('h-end'); if (!argv.includes('--keep')) fs.rmSync(path.dirname(w.dir), { recursive: true, force: true });
   process.exit(failures ? 1 : 0);
 }

@@ -42,4 +42,53 @@ function judge(ms, budget, w) {
   return ms - (w.cpuWait + w.ioFull) <= budget ? 'load' : 'over';
 }
 
-module.exports = { snap, waited, judge };
+// (round 102, checks102) the event loop's longest hold, load-aware, stall by stall. perf_hooks' monitorEventLoopDelay
+// gives a wall time only: a stall of 120 ms on a busy box may be 30 ms of work and 90 ms waiting for a CPU. Here a
+// timer ticks every `every` ms; each tick reads the main thread's own run delay (schedstat), so each gap between two
+// ticks (= how long the loop was held) is split into
+//   ms     the gap's wall time beyond the tick period (what monitorEventLoopDelay's max reports)
+//   wait   the main thread's wait for a CPU inside it (runnable, not running: the box), + the longest such wait of
+//          one of the process's other threads (as waited() counts it: the loop held on a pool thread or a GC helper
+//          that was itself waiting for a CPU)
+//   own    ms − wait, and never less than its own CPU time: the hold that is the code's own (script, GC, and any sync read: the disk's time is NOT taken
+//          out here, unlike judge(): a sync read on the loop is the code's, however busy the disk)
+//   cpu    of which the thread ran on a CPU (the rest of own: blocked, a sync read, a lock, waiting on a GC helper)
+// stop() → { maxMs, maxOwn, worst (the gap with the largest own), longest (the gap with the largest ms) }.
+// judgeStall(s, budget) → 'ok' | 'load' (the wall hold over, its own part not) | 'over'. Off Linux: own = ms (wall time).
+function stallWatch({ every = 5 } = {}) {
+  const now = () => Number(process.hrtime.bigint()) / 1e6;
+  const rd = () => { if (!LINUX) return [null, null]; try { const f = fs.readFileSync('/proc/thread-self/schedstat', 'utf8').split(' '); return [Number(f[0]) / 1e6, Number(f[1]) / 1e6]; } catch { return [null, null]; } };
+  // the process's other threads (libuv's pool: fs calls; V8's GC helpers): the loop can be held waiting on one of them
+  // while it waits for a CPU (a stall measured at 333 ms with 1 ms on a CPU and 0 ms of the main thread's own wait)
+  let tids = []; let listed = 0;
+  const others = () => {
+    if (!LINUX) return null;
+    if (Date.now() - listed > 1000) { listed = Date.now(); try { tids = fs.readdirSync('/proc/self/task').filter((t) => Number(t) !== process.pid); } catch { tids = []; } }
+    const o = {}; for (const t of tids) { const d = delayOf(`/proc/self/task/${t}/schedstat`); if (d != null) o[t] = d; } return o;
+  };
+  const at = () => { const [c, d] = rd(); return { t: now(), c, d, o: others() }; };
+  let prev = at();
+  const gaps = [];
+  let longest = null; let worst = null;
+  const tick = () => {
+    const cur = at();
+    const ms = cur.t - prev.t - every;
+    if (ms > 1) {
+      let other = 0; if (cur.o && prev.o) for (const [t, d] of Object.entries(cur.o)) if (prev.o[t] != null) other = Math.max(other, d - prev.o[t]);
+      const wait = (cur.d != null && prev.d != null ? cur.d - prev.d : 0) + other;
+      const cpu = cur.c != null && prev.c != null ? cur.c - prev.c : 0;
+      const g = { ms: Math.round(ms), wait: Math.round(Math.min(ms, wait)), own: Math.round(Math.max(cpu, ms - wait)), cpu: cur.c != null && prev.c != null ? Math.round(cpu) : null }; // (own: never below what it ran on a CPU)
+      if (!longest || g.ms > longest.ms) longest = g;
+      if (!worst || g.own > worst.own) worst = g;
+      gaps.push(g);
+    }
+    prev = cur;
+  };
+  const timer = setInterval(tick, every);
+  return {
+    stop() { clearInterval(timer); tick(); return { maxMs: longest ? longest.ms : 0, maxOwn: worst ? worst.own : 0, worst, longest, n: gaps.length }; },
+  };
+}
+const judgeStall = (s, budget) => (!(s.maxMs >= budget) ? 'ok' : s.maxOwn >= budget ? 'over' : 'load');
+
+module.exports = { snap, waited, judge, stallWatch, judgeStall };
