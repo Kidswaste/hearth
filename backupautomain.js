@@ -108,7 +108,7 @@ async function names(zip) { return Zip.names(zip); }
 // ---------- walking the data folder ----------
 async function walk(root, relBase, out) {
   let ents = [];
-  try { ents = await fsp.readdir(root, { withFileTypes: true }); } catch (err) { if (relBase === 'data') throw err; return out; }
+  try { ents = await fsp.readdir(root, { withFileTypes: true }); } catch (err) { if (relBase === 'data' || err?.code !== 'ENOENT') throw err; return out; } // (round 104, emptyread104) a folder that can't be listed (held, EPERM) is not "empty": the backup waits (it was made without it, and the older full backups rotated out)
   for (const e of ents) {
     if (SKIP_NAME.test(e.name)) continue;
     const abs = path.join(root, e.name);
