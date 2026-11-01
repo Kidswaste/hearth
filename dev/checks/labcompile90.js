@@ -21,8 +21,11 @@
 // (round 91, labshadow91) more stretches, same rules: light:off / light:on / light:remove / light:readd, shadow:light /
 // shadow:caster (a scene with shadow maps), scene2 (a second scene for the same renderer), inrender (materials made
 // in three's render), reload (a 4K picture changed on disk while shown: in slices, the new picture read back).
+// (round 101, modelcompile101) layer:plain / layer:model / layer:heavy: a new layer added to a scene on screen (a small
+// lit scene, a 🧊 model layer, a shader-heavy layer): 0 compiles inside frames on screen, its programs made in the gaps
+// after frames (window.__labWarmGap); LC90_WG = 'off' runs them with round 89's rule (the "before").
 // window.LC90_REPORT = 1 only reports (for a base without this round); LC90_ONLY = 'runtime,glass,texture,light,
-// inrender,scene2,shadow,reload' (reload needs texture).
+// inrender,scene2,shadow,reload,layer' (reload needs texture).
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --script dev/checks/labcompile90.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000, every = 120) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(every); } return false; };
@@ -151,6 +154,93 @@ if (want('glass')) await safe('glass', async () => {
   await D.newSketch('labcompile90 glass', SCENE.replace('__GLASS__', 'false'), 1);
   await ready(); await wait(2500);
   await record('glass:shown', async () => ({ at: await sbx('return window.__lc90.show()') }), { ms: 2500 });
+});
+
+// ---------- (round 101, modelcompile101) a new layer's first frame, added to a scene on screen ----------
+// layer:plain   a small lit scene added as a layer on top of the running one
+// layer:model   a 🧊 model layer (ThreeModels.add of a small .gltf: its lights, shadow ground, then the model)
+// layer:heavy   a shader-heavy layer: 12 kinds of material, glass, shadow maps (more programs than one gap holds)
+// Without background compiling, round 89 compiled each one's first scene inside its first frame, while the scene under
+// it was moving. Now the layer is held and its programs are made in the gaps after frames (window.__labWarmGap).
+// Per stretch: compiles inside frames on screen (0), the frames / ms the layer waited, the gaps it took, and that it
+// drew. window.LC90_WG = 'off' runs them with the old rule (the "before").
+const LAYER_PLAIN = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ alpha: true }); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 0, 6);
+scene.add(new THREE.HemisphereLight('#fff', '#334', 1.5)); const d = new THREE.DirectionalLight('#fff', 2); d.position.set(2, 3, 4); scene.add(d);
+const a = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: '#f84', roughness: 0.5 })); a.position.set(-1.5, 1, 0); scene.add(a);
+const b = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 16), new THREE.MeshPhongMaterial({ color: '#4cf' })); b.position.set(1.5, 1, 0); scene.add(b);
+renderer.setAnimationLoop((t) => { a.rotation.y = t / 900; renderer.render(scene, camera); });`;
+const LAYER_HEAVY = `import * as THREE from 'three';
+const renderer = new THREE.WebGLRenderer({ alpha: true }); renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); document.body.append(renderer.domElement);
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); camera.position.set(0, 1.5, 7); camera.lookAt(0, 0, 0);
+scene.add(new THREE.HemisphereLight('#cdf', '#321', 1)); const sp = new THREE.SpotLight('#fff', 40, 30, 0.7, 0.3); sp.position.set(2, 6, 4); sp.castShadow = true; sp.shadow.mapSize.set(512, 512); scene.add(sp);
+const pl = new THREE.PointLight('#f80', 5, 20); pl.position.set(-3, 2, 2); scene.add(pl);
+const frag = (c) => 'uniform float t; varying vec2 vUv; void main() { gl_FragColor = vec4(' + c + ', 1.0); }';
+const vert = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const mats = [new THREE.MeshStandardMaterial({ color: '#7ad', roughness: 0.4 }), new THREE.MeshPhysicalMaterial({ color: '#e5a', clearcoat: 1, sheen: 1 }), new THREE.MeshPhysicalMaterial({ color: '#8cf', iridescence: 1, metalness: 0.6 }),
+  new THREE.MeshToonMaterial({ color: '#5e8' }), new THREE.MeshLambertMaterial({ color: '#fd4', emissive: '#210' }), new THREE.MeshPhongMaterial({ color: '#ad6', flatShading: true }), new THREE.MeshMatcapMaterial({ color: '#fc8' }), new THREE.MeshNormalMaterial(),
+  new THREE.ShaderMaterial({ uniforms: { t: { value: 0 } }, vertexShader: vert, fragmentShader: frag('vUv, 0.5') }), new THREE.ShaderMaterial({ uniforms: { t: { value: 0 } }, vertexShader: vert, fragmentShader: frag('0.5 + 0.5 * sin(vUv.x * 40.0 + t), vUv.y, 0.3') }),
+  new THREE.ShaderMaterial({ uniforms: { t: { value: 0 } }, vertexShader: vert, fragmentShader: frag('fract(vUv * 8.0), 0.8') }), new THREE.MeshStandardMaterial({ color: '#c96', metalness: 0.8, roughness: 0.2, wireframe: true })];
+const g = new THREE.Group(); scene.add(g);
+mats.forEach((m, i) => { const o = new THREE.Mesh(new THREE.IcosahedronGeometry(0.35, 2), m); o.position.set(-2.75 + (i % 6) * 1.1, i < 6 ? 0.6 : -0.5, 0); o.castShadow = true; g.add(o); });
+const glass = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 16), new THREE.MeshPhysicalMaterial({ transmission: 1, roughness: 0.05, thickness: 0.5 })); glass.position.set(0, 1.6, 1); scene.add(glass);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ color: '#334', roughness: 0.9 })); floor.rotation.x = -Math.PI / 2; floor.position.y = -1.3; floor.receiveShadow = true; scene.add(floor);
+renderer.setAnimationLoop((t) => { g.rotation.y = t / 4000; for (const m of mats) if (m.uniforms) m.uniforms.t.value = t / 1000; renderer.render(scene, camera); });`;
+// a small .gltf (a cube, its buffer inside as a data: URI, no pictures)
+const gltfCube = () => {
+  const P = []; const N = []; const I = [];
+  for (const [ax, s] of [[0, 1], [0, -1], [1, 1], [1, -1], [2, 1], [2, -1]]) {
+    const b = P.length / 3; const u = (ax + 1) % 3; const v = (ax + 2) % 3;
+    for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = [0, 0, 0]; p[ax] = 0.5 * s; p[u] = 0.5 * a * s; p[v] = 0.5 * c; P.push(...p); const n = [0, 0, 0]; n[ax] = s; N.push(...n); }
+    I.push(b, b + 1, b + 2, b, b + 2, b + 3);
+  }
+  const p = new Float32Array(P); const n = new Float32Array(N); const i = new Uint16Array(I);
+  const bin = new Uint8Array(p.byteLength + n.byteLength + i.byteLength); bin.set(new Uint8Array(p.buffer), 0); bin.set(new Uint8Array(n.buffer), p.byteLength); bin.set(new Uint8Array(i.buffer), p.byteLength + n.byteLength);
+  let s = ''; for (const x of bin) s += String.fromCharCode(x);
+  return JSON.stringify({ asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2, material: 0 }] }],
+    materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.9, 0.5, 0.2, 1], metallicFactor: 0.2, roughnessFactor: 0.5 } }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 24, type: 'VEC3', min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] }, { bufferView: 1, componentType: 5126, count: 24, type: 'VEC3' }, { bufferView: 2, componentType: 5123, count: 36, type: 'SCALAR' }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: p.byteLength }, { buffer: 0, byteOffset: p.byteLength, byteLength: n.byteLength }, { buffer: 0, byteOffset: p.byteLength + n.byteLength, byteLength: i.byteLength }],
+    buffers: [{ byteLength: bin.length, uri: `data:application/octet-stream;base64,${btoa(s)}` }] });
+};
+const wgState = () => sbx('return window.__labWarmGap ? window.__labWarmGap.state() : null');
+// the layer drew (its renderer's frame count) and its renderer no longer held
+const drewOf = (name) => `const e = window.__scenes[${JSON.stringify(name)}]; const r = e && e.renderer; return r ? JSON.stringify({ frames: r.info.render.frame, warm: r.__warm === true, programs: r.info.programs.length }) : null;`;
+if (want('layer')) await safe('layer', async () => {
+  const wgMode = await sbx(`return window.__labWarmGap ? window.__labWarmGap.mode(${JSON.stringify(String(window.LC90_WG || 'auto'))}) : 'none'`);
+  await D.newSketch('modelcompile101 layers', SCENE.replace('__GLASS__', 'false').replace('glass.visible = false; scene.add(glass);', ''), 1);
+  await ready(); await wait(2500);
+  await sbx(`return window.__labWarmGap ? window.__labWarmGap.mode(${JSON.stringify(String(window.LC90_WG || 'auto'))}) : 'none'`);
+  const one = async (key, add, nameOf, ms) => {
+    const w0 = await wgState(); let name = null; let drew = null;
+    await record(key, async () => {
+      name = await add();
+      drew = await until(async () => { const v = await sbx(drewOf(name)); const j = typeof v === 'string' ? JSON.parse(v) : null; return j && j.frames > 0 && j.warm ? j : null; }, 20000, 100);
+      return { layer: name };
+    }, { ms });
+    const w1 = await wgState();
+    out.stretches[key].wg = w1 && { mode: wgMode, held: w1.held - (w0?.held || 0), oldRule: w1.oldRule - (w0?.oldRule || 0), gaps: w1.gaps - (w0?.gaps || 0), programs: w1.programs - (w0?.programs || 0), again: w1.again - (w0?.again || 0), late: w1.late - (w0?.late || 0), hold: w1.last, glass: w1.glass - (w0?.glass || 0), shadows: w1.shadows - (w0?.shadows || 0) };
+    out.stretches[key].drew = drew || null;
+    await wait(500);
+    await D.removeLayer(nameOf(name)).catch(() => {});
+    await wait(800);
+  };
+  await one('layer:plain', async () => { await D.addLayer({ name: 'Plain layer', code: LAYER_PLAIN }, 0); return 'Plain layer'; }, (n) => n, 3000);
+  await one('layer:heavy', async () => { await D.addLayer({ name: 'Heavy layer', code: LAYER_HEAVY }, 0); return 'Heavy layer'; }, (n) => n, 6000);
+  if (typeof ThreeModels !== 'undefined' || await until(() => typeof ThreeModels !== 'undefined', 20000)) {
+    await window.hub.fs.write(`${DIR}/cube101/cube.gltf`, gltfCube());
+    let layerId = null;
+    await one('layer:model', async () => {
+      const res = await ThreeModels.add(`${DIR}/cube101/cube.gltf`, { name: 'cube101' });
+      layerId = res.layer;
+      await until(async () => { const l = await sbx('return JSON.stringify((globalThis.lab3d?.list() || []).find((x) => x.name === \'cube101\') || null)'); const v = typeof l === 'string' ? JSON.parse(l) : null; return v && (v.loaded || v.error); }, 30000, 200);
+      return res.layer;
+    }, (n) => n, 4000);
+    const r = D.refs.list().find((y) => y.key === 'cube101' || /cube101/.test(y.path || '')); if (r) D.refs.remove(r);
+    void layerId;
+  } else step('layer:model', false, 'no ThreeModels');
 });
 
 // ---------- two 4096² pictures arriving in a running scene ----------
@@ -284,9 +374,13 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); r.resetState
 
 // ---------- verdicts ----------
 const S = out.stretches;
-for (const [k, s] of Object.entries(S).filter(([n]) => /^(runtime|glass|light|shadow):|^(scene2|inrender)$/.test(n))) {
+for (const [k, s] of Object.entries(S).filter(([n]) => /^(runtime|glass|light|shadow|layer):|^(scene2|inrender)$/.test(n))) {
   step(`${k}: no shader compile inside a frame on screen (made in the gap after a frame${s.khr ? ', compiled in the background' : ''})`, s.visibleInFrameCompiles === 0, { inFrames: s.visibleInFrameCompiles, frames: s.visibleCompileFrames, all: s.compiles, waitInFramesMs: s.waitInFramesMs, lc: s.lcDelta });
   if (s.lcDelta && /^(runtime|light|shadow):|^(scene2|inrender)$/.test(k)) step(`${k}: the new thing waited ≤ ${HOLD} frames before it showed`, (s.lc?.maxWait ?? 0) <= HOLD && (s.lcDelta.pending ?? 0) >= 0, { maxWait: s.lc?.maxWait, lc: s.lcDelta });
+}
+// (round 101) a new layer: drawn, from its programs made in gaps (not its first frame), within the stretch
+for (const [k, s] of Object.entries(S).filter(([n]) => /^layer:/.test(n))) {
+  step(`${k}: the new layer drew (its programs made before, in the gaps after frames)`, s.drew?.frames > 0 && (s.wg?.mode === 'off' || (s.wg?.held >= 1 && s.wg.late === 0)), { drew: s.drew, wg: s.wg });
 }
 if (S.texture) {
   const sl = S.texture.slices;

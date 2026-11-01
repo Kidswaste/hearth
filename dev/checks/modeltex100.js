@@ -160,7 +160,7 @@ async function record(name, during, { after = 1200 } = {}) {
     compilesInFrames: visC, compiles: sum(f.compiles),
     modelInAt: m ? m[0] : null, layerStartCompiles: startC,
     over2x: hitches.length, over2xApp: hitches.filter((h) => h.judged !== 'load' && h.i >= from).length, over2xAppStart: hitches.filter((h) => h.judged !== 'load' && h.i < from).length, over2xLoad: load.length,
-    slices: f.slices, khr: f.khr, lcTex: f.lc?.tex ?? null,
+    slices: f.slices, khr: f.khr, lcTex: f.lc?.tex ?? null, wg: await sbx('return window.__labWarmGap ? window.__labWarmGap.state().last : null'),
     hitches: hitches.slice().sort((a, b) => b.ms - a.ms).slice(0, 4).map((h) => ({ at: h.at, ms: r1(h.ms), cpuMs: h.cpuMs, judged: h.judged, why: h.why })),
     ...(info && typeof info === 'object' ? { info } : {}),
   };
@@ -171,6 +171,9 @@ async function record(name, during, { after = 1200 } = {}) {
 const judge = (name, s) => {
   step(`${name}: no picture uploaded inside a frame on screen, from the model's arrival on`, s.uploadsInFrames === 0, { uploadsInFrames: s.uploadsInFrames, MP: s.uploadMPinFrames, which: s.inFrameUploads, modelInAt: s.modelInAt });
   step(`${name}: none of the model's shaders compiled inside a frame on screen`, s.compilesInFrames === 0, { compilesInFrames: s.compilesInFrames, compiles: s.compiles, layerStart: s.layerStartCompiles, modelInAt: s.modelInAt });
+  // (round 101, modelcompile101) and the new layer's own start (its lights, ground, first scene): made in the gaps after
+  // frames while the scene under it kept drawing, not inside its first frame
+  step(`${name}: the new layer's first scene compiled nothing inside a frame on screen`, s.layerStartCompiles === 0, { layerStart: s.layerStartCompiles, wg: s.wg });
   step(`${name}: the big picture went up in slices (biggest single upload ≤ 4.2 MP)`, s.biggestUploadMP != null && s.biggestUploadMP <= 4.2, { biggest: s.biggestUploadMP, slices: s.slices });
   step(`${name}: late frames the app's CPU explains ≤ ${HITCH}`, s.over2xApp <= HITCH, { over2x: s.over2x, app: s.over2xApp, load: s.over2xLoad, hitches: s.hitches });
 };
