@@ -169,7 +169,7 @@ await until(() => !window.Lazy || Lazy.state().every((g) => g.tier === 'use' || 
 if (step !== '2') await until(() => window.LabBoot?.state().drawn || /off|not used|no /.test(window.LabBoot?.state().skipped || ''), 25000);
 await wait(1500);
 // the preview's messages and the Lab's runs, with times
-const ev = []; let T0 = 0;
+const ev = []; let T0 = 0; let T1 = 0;
 addEventListener('message', (e) => { const d = e.data; if (d?.source !== 'three-sandbox') return; ev.push({ t: performance.now(), type: d.type }); if (d.type === 'stack-drawn' && T0) performance.mark(`at:drawn${ev.filter((x) => x.type === 'stack-drawn' && x.t >= T0).length}`); });
 addEventListener('hearth:lab-ran', (e) => { ev.push({ t: performance.now(), type: 'labran', partial: e.detail?.partial }); });
 addEventListener('hearth:lab-ready', () => { ev.push({ t: performance.now(), type: 'labready' }); if (T0) performance.mark('at:labready'); });
@@ -208,32 +208,52 @@ const settle = async () => {
 // from a light trace (smoke tasks: tdur). The window's CPU budgets are judged against it (see slowBy). Taken right
 // after an open, the scene drawing as it was during the open (taken before the press it read 13–15 ms against 10–13
 // after: the page still busy from its reload). The median of the three, ms; null without a trace.
+// (round 102: also before the press, after the settle; the smaller of the two is the one judged)
 const probeBox = (() => { let box = null; return () => { if (!box?.isConnected) { box = document.createElement('div'); box.style.cssText = 'position:absolute;left:-5000px;top:0;width:400px;font:14px sans-serif;contain:layout'; box.textContent = 'lorem ipsum dolor sit amet '.repeat(150); box.append(document.createElement('span')); document.body.append(box); } return box; }; })();
 const probeRun = () => {
+  const t0 = performance.now();
   let h = 0x811c9dc5 | 0; for (let i = 0; i < 3000000; i++) { h ^= i & 0xff; h = Math.imul(h, 16777619); h ^= h >>> 15; }
+  const t1 = performance.now();
   const keep = []; let s = 0; for (let i = 0; i < 80000; i++) { const o = { i, a: [i, i * 2], t: `k${i & 4095}` }; s += o.a.length; if ((i & 255) === 0) keep.push(o); }
+  const t2 = performance.now();
   const box = probeBox(); for (let k = 0; k < 8; k++) { box.style.width = `${400 + (k % 4) * 60}px`; s += box.lastChild.offsetTop; }
+  const t3 = performance.now();
   const mem = (window.__lsfMem ||= new Int32Array(1 << 22)); let j = 7; for (let i = 0; i < 120000; i++) { j = (j * 1103515245 + 12345) & 0x3fffff; s += mem[j]; } // (16 MB read at random: memory, as layout is)
   window.__lsfH = h ^ s ^ keep.length;
+  return [t1 - t0, t2 - t1, t3 - t2, performance.now() - t3]; // (wall ms of its parts: int, objects, layout, memory)
 };
+// (round 102, checks102) each run in a task of its own (a message to itself), so the task's CPU is the probe's alone:
+// a timer's continuation shares its task with whatever else that task's microtasks ran
+const probeTask = () => new Promise((res) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { performance.mark('lsfspeed'); const p = probeRun(); ch.port1.close(); res(p); }; ch.port2.postMessage(0); });
 const speedNow = async () => {
   try {
-    probeRun(); // (a run first, not counted: its code compiled, its 16 MB and its box made)
+    // (runs first, not counted: its code compiled and optimized, its 16 MB and its box made. One was not enough: in a
+    // page just reloaded the probe before the press read 16–39 ms against 11–15 after, its integer loop twice as slow
+    // (11 vs 5.8 ms) while its memory reads were the same 0.9 ms: the code not yet optimized, not a slower box)
+    for (let k = 0; k < 5; k++) probeRun();
     await smoke({ trace: 'start', tasks: true });
-    for (let k = 0; k < 3; k++) { await wait(30); performance.mark('lsfspeed'); probeRun(); }
+    const parts = []; for (let k = 0; k < 3; k++) { await wait(30); parts.push(await probeTask()); }
     const r = await smoke({ trace: 'stop', tasks: { min: 1e9, mark: 'lsfspeed', marked: 'lsfspeed' } });
     const c = (r?.marked || []).map((x) => x?.cpuMs).filter(Number.isFinite).sort((a, b) => a - b);
+    const med = (k) => Math.round(parts.map((p) => p[k]).sort((a, b) => a - b)[1] * 10) / 10;
+    window.__lsfParts = [0, 1, 2, 3].map(med); window.__lsfRuns = (r?.marked || []).map((x) => x && `${x.cpuMs}/${x.ms}`);
     return c.length === 3 ? c[1] : null;
   } catch { return null; }
 };
-async function stretch(name, go, { ready = null, quiet = 1500, trace = true, speed = false } = {}) {
+async function stretch(name, go, { ready = null, quiet = 1500, trace = true, speed = false, prep = null } = {}) {
   const s0 = performance.now();
   const seen = await settle();
   const settled = performance.now() - s0;
+  // (round 102, checks102) the probe right before the press, the last thing before the stretch's trace starts. The
+  // scenes are read ~0.2 s after the press; the probe after the stretch came 3–10 s later (first frame, 1.5 s quiet, the
+  // trace's stop), so a box slow during the open and not 5 s later (or the other way round) was judged at the wrong
+  // moment. The probe after is still taken and reported (speedMs), not judged.
+  if (prep) await prep();
   await wait(300);
+  const before = speed ? await speedNow() : null; const beforeParts = speed ? { parts: window.__lsfParts, runs: window.__lsfRuns, at: Math.round(performance.now()) } : null;
   if (trace) await smoke({ trace: 'start', detail: true });
   const m0 = await M();
-  T0 = performance.now(); performance.mark(`hz240:${name}`);
+  T0 = performance.now(); T1 = T0; performance.mark(`hz240:${name}`);
   const i0 = ev.length;
   await go();
   let m1 = null; let correct = null; let readyAt = null; let lastRan = -1;
@@ -256,7 +276,7 @@ async function stretch(name, go, { ready = null, quiet = 1500, trace = true, spe
   const r = { first: first ? Math.round(first.t - T0) : null, correct: correct != null ? Math.round(correct - T0) : null, runs: mine.filter((x) => x.type === 'labran').length, resizes: lateResizes(mine), layerRuns: mine.filter((x) => x.type === 'ran').length, errors: mine.filter((x) => x.type === 'error').length, drawn: mine.filter((x) => x.type === 'stack-drawn').length, cpu: m1 ? cpuOf(m0, m1) : null, win, ...(localStorage.getItem('lsf.log') === '1' ? { log: mine.filter((x) => !/^(stats|tweak-reads|console|fps)$/.test(x.type)).slice(0, 40).map((x) => `${Math.round(x.t - T0)} ${x.type}`).join(', ') } : {}) };
   { const lr = mine.find((x) => x.type === 'labready'); if (lr) r.firstReads = mine.filter((x) => /^kv /.test(x.type) && x.t <= lr.t).map((x) => x.type.slice(3)); }
   T0 = 0;
-  if (speed) r.speedMs = await speedNow();
+  if (speed) { r.speedBefore = before; const a0 = performance.now(); r.speedMs = await speedNow(); r.speedDiag = { before: { ...beforeParts, at: beforeParts.at - Math.round(T1) }, after: { parts: window.__lsfParts, runs: window.__lsfRuns, at: Math.round(a0 - T1) } }; }
   r.settleMs = Math.round(settled); r.settleGpu = seen.slice(0, 64).join(' '); r.ms = Math.round(performance.now() - s0); // (round 95: where the check's own time goes)
   return r;
 }
@@ -279,6 +299,18 @@ const pressLab = async () => {
   // (the preview frame's size changes while the Lab opens: each one resizes every canvas of the scene)
   until(() => { const f = document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame'); if (!f || f.__lsfRo) return Boolean(f); f.__lsfRo = new ResizeObserver(() => ev.push({ t: performance.now(), type: `size ${f.clientWidth}x${f.clientHeight}${localStorage.getItem('lsf.log') === '1' ? ` [${[...document.querySelectorAll('.surface[data-id="tool:three"] .tabpane > *, .surface[data-id="tool:three"] .three-right > *')].filter((x) => x.offsetHeight).map((x) => `${String(x.className).split(' ')[0]}:${x.offsetHeight}`).join(' ')}] [${[...document.querySelectorAll('.surface[data-id="tool:three"] .media-bar > *, .surface[data-id="tool:three"] .media-bar > * > *')].filter((x) => x.offsetHeight).map((x) => `${String(x.className).split(' ').slice(0, 2).join('.')}:${x.offsetHeight}`).join(' ')}]` : ''}` })); f.__lsfRo.observe(f); return true; }, 10000);
 };
+// (round 102, checks102) the pointer brought over the Lab's button first, outside the measured stretch, as a hand does
+// before it presses. A CDP press with no move before it brings the pointer over and presses at once: the rail's hover
+// restyle (pointerover / enter on the rail, and the rail just redrawn by RAIL.button when it adds the Lab's shortcut
+// after a reload) then ran inside the measured window, on the press's timestamp: 17.2 ms of style recalc (337
+// elements) in a failing cold open (184.7 ms against 150), 4 ms in others. That is the rail's work, not the Lab's.
+const frames = (n = 2) => new Promise((res) => { const t = setTimeout(res, 500); const f = (k) => requestAnimationFrame(() => (k > 1 ? f(k - 1) : (clearTimeout(t), res()))); f(n); });
+const hoverLab = async () => {
+  const btn = RAIL.button('tool:three'); await frames(2);
+  const r = btn.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
+  await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x, y } });
+  await frames(2);
+};
 const heavyReady = async () => { const v = await sbx('return JSON.stringify({ m: (globalThis.lab3d?.list?.() || []).map((x) => x.loaded), t: Boolean(window.__labType?.info?.()?.length) })'); if (!v) return false; const o = JSON.parse(v); return o.m.length > 0 && o.m.every(Boolean) && o.t; };
 const save = () => localStorage.setItem('lsf.res', JSON.stringify(res));
 const pool = async () => { const v = await sbx('return JSON.stringify({ ...window.__labHealth?.(), early: window.__labGpu?.info?.().note?.early })'); try { const h = JSON.parse(v); return { hit: h.poolHit, pooled: h.pooled, contexts: h.contexts, early: h.early }; } catch { return null; } };
@@ -286,7 +318,7 @@ const pool = async () => { const v = await sbx('return JSON.stringify({ ...windo
 if (step === '2') {
   // ---------- cold start: no warm page ----------
   res.boot2 = window.LabBoot?.state().skipped || null;
-  res.coldOpen = await stretch('coldOpen', pressLab, { speed: true });
+  res.coldOpen = await stretch('coldOpen', pressLab, { speed: true, prep: hoverLab });
   res.coldOpen.pool = await pool();
   await wait(1500);
   const open = (id) => () => { ThreeLab.scenes.open(id); };
@@ -328,18 +360,24 @@ if (step === '2') {
 // (speedNow, right after stretch k, the scene still drawing as during it) against the fastest of this run's three,
 // 1–2. Over budget but within budget × slowBy is "can't tell" (listed, not failed); over that, it fails. A run that is
 // slow throughout gets no allowance at all.
+// (round 102, checks102) the probe judged is now the one right before the press (see stretch), in a task of its own and
+// warmed up; the reference stays this run's fastest probe (before or after any open). Under a load spanning the whole
+// run (a 6-thread burn at an app's priority) the probe read 1.3–1.4× its calm value while the opens' window CPU stayed
+// in its calm range (104–129 ms), so a calm, fixed reference would have handed out allowances the open didn't need.
 const cantTell = [];
-const probes = () => ['coldOpen', 'songOpen', 'warmOpen'].map((k) => res[k]?.speedMs).filter(Number.isFinite);
+const probes = () => ['coldOpen', 'songOpen', 'warmOpen'].flatMap((k) => [res[k]?.speedMs, res[k]?.speedBefore]).filter(Number.isFinite);
+const probeOf = (k) => (Number.isFinite(res[k]?.speedBefore) ? res[k].speedBefore : null);
 const slowBy = (k) => {
-  const v = res[k]?.speedMs; const all = probes();
+  const v = probeOf(k); const all = probes();
   if (!Number.isFinite(v) || all.length < 2) return 1;
   return Math.min(2, Math.max(1, Math.round((v / Math.min(...all)) * 100) / 100));
 };
 const cpuOver = (fails, k, v, budget, what) => {
   if (!(v > budget)) return;
   const f = slowBy(k);
-  if (v <= budget * f) cantTell.push(`${k}: ${what} ${v} ms (budget ${budget}), with the box ${f}× slower than at its fastest in this run (probe ${res[k]?.speedMs} ms, fastest ${Math.min(...probes())})`);
-  else fails.push(`${k}: ${what} ${v} ms (budget ${budget}${f > 1 ? `; ${Math.round(budget * f)} with the box ${f}× slower` : ''})`);
+  const why = `probe ${res[k]?.speedBefore} ms right before the press (${res[k]?.speedMs} ms after the stretch); fastest ${Math.min(...probes())}`;
+  if (v <= budget * f) cantTell.push(`${k}: ${what} ${v} ms (budget ${budget}), with the box ${f}× slower right then than at its fastest in this run (${why})`);
+  else fails.push(`${k}: ${what} ${v} ms (budget ${budget}${f > 1 ? `; ${Math.round(budget * f)} with the box ${f}× slower` : ''}; ${why})`);
 };
 const done = () => {
   const B = window.LSF_BUDGET || JSON.parse(localStorage.getItem('lsf.budget') || 'null') || { coldOpenCpu: 6000, coldWindowCpu: 900, warmShown: 1500, warmFirst: 5000, songFirst: 6000, readyCpu: 150, heavyRuns: 1, lateResizes: 0, returnShown: 600, switchSimpleCpu: 2500 };
@@ -353,7 +391,7 @@ const done = () => {
   if (res.warmOpen?.first > B.warmFirst) fails.push(`warm open: the Lab's own run drew after ${res.warmOpen.first} ms (budget ${B.warmFirst})`);
   if (res.songOpen?.first > B.songFirst) fails.push(`open with a song: first frame after ${res.songOpen.first} ms (budget ${B.songFirst})`);
   for (const k of ['coldOpen', 'warmOpen', 'songOpen']) { const early = (res[k]?.firstReads || []).filter((x) => x === 'three-history' || x === 'three-thumbs'); if (early.length) fails.push(`${k}: the Lab read ${early.join(' and ')} before its scenes were up (round 48: after the first frame)`); }
-  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) cpuOver(fails, k, res[k]?.win?.cpuAtReady, B.readyCpu, "the window's CPU until the Lab's scenes were read:");
+  for (const k of ['coldOpen', 'warmOpen', 'songOpen']) { if (res[k]) res[k].slowBy = slowBy(k); cpuOver(fails, k, res[k]?.win?.cpuAtReady, B.readyCpu, "the window's CPU until the Lab's scenes were read:"); }
   for (const k of ['switchHeavy', 'switchHeavy2', 'switchHeavyAgain']) if (res[k] && res[k].runs > B.heavyRuns) fails.push(`${k} ran the scene ${res[k].runs}× (budget ${B.heavyRuns}: its references come first)`);
   for (const k of ['songOpen', 'warmOpen']) if (res[k] && res[k].resizes > B.lateResizes) fails.push(`${k}: the preview changed size ${res[k].resizes}× after it was laid out (each resizes every canvas)`);
   for (const k of ['switchSimple', 'switchSimpleAgain', 'switchHeavy', 'switchHeavy2', 'switchHeavyAgain', 'switchHeavyToSimple', 'songOpen']) if (res[k] && res[k].correct == null) fails.push(`${k} never reached its correct frame`);
@@ -368,7 +406,7 @@ if (step === '3') {
   res.boot3 = window.LabBoot?.state ? (({ warmed, skipped, drawn }) => ({ warmed, skipped, drawn }))(window.LabBoot.state()) : null;
   let songAt = null;
   const t0 = performance.now();
-  res.songOpen = await stretch('songOpen', async () => { await pressLab(); (async () => { await until(() => ThreeLab.director && ThreeLab.cmd, 10000); const c = await ThreeLab.cmd(); await until(() => c.player.loaded, 15000); songAt = performance.now() - t0; })(); }, { speed: true });
+  res.songOpen = await stretch('songOpen', async () => { await pressLab(); (async () => { await until(() => ThreeLab.director && ThreeLab.cmd, 10000); const c = await ThreeLab.cmd(); await until(() => c.player.loaded, 15000); songAt = performance.now() - t0; })(); }, { speed: true, prep: hoverLab });
   await until(() => songAt != null, 15000);
   res.songOpen.song = songAt != null ? Math.round(songAt) : null;
   activate(H.agents()[0].id);
@@ -381,7 +419,7 @@ if (step === '3') {
   if (step === '4') {
     res.boot4 = window.LabBoot?.state ? (({ warmed, skipped, drawn }) => ({ warmed, skipped, drawn }))(window.LabBoot.state()) : null;
     let shownAt = null; let tw = 0;
-  res.warmOpen = await stretch('warmOpen', async () => { tw = performance.now(); await pressLab(); until(() => { const f = document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame'); if (f?.checkVisibility?.({ visibilityProperty: true })) { shownAt = performance.now() - tw; return true; } return false; }, 10000); }, { speed: true });
+  res.warmOpen = await stretch('warmOpen', async () => { tw = performance.now(); await pressLab(); until(() => { const f = document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame'); if (f?.checkVisibility?.({ visibilityProperty: true })) { shownAt = performance.now() - tw; return true; } return false; }, 10000); }, { speed: true, prep: hoverLab });
   res.warmOpen.pool = await pool();
   res.warmOpen.shown = window.LabBoot?.state().taken && shownAt != null ? Math.round(shownAt) : res.warmOpen.first;
     localStorage.removeItem('lsf.step'); localStorage.removeItem('lsf.res');
