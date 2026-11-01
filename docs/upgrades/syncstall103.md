@@ -154,7 +154,19 @@ this computer's own settings (engine paths, hotkey). That is a read failure take
 ENOENT would make the pull wait and retry.
 
 ## Final runs (this branch, under the lock)
-(filled in below)
+`HEARTH_THREE_DIR=… flock /tmp/hearth-run.lock node dev/run-checks.js --exact …`, five at a time (the `syncstall103`
+group):
+- `unit:synchard74-test sync72 syncpanel92 keptaside94 guardloss78`: ✓ 5/5 (synchard74 170 passed; `many` at 5,000
+  files: 16–24 ms own per phase);
+- `sync lazy unit:sync72-test unit:syncsweep97-test unit:syncrace98-test`: ✓ 5/5;
+- `unit:kvrename99-test unit:sync-test unit:packs89-test unit:aside95-test unit:devices90-test`: ✓ 5/5;
+- `unit:twocomputers-test unit:syncstate75-test unit:datasafe-scan unit:winmac-test unit:errorcalm-scan`: ✓ 5/5;
+- `unit:storeack-scan unit:chatsafe-scan unit:boot-test unit:lazymanifest-test`: ✓ 4/4 (boot-test: 3,110 checks; first
+  screen 64 scripts, 1,686 / 1,696 KB, unchanged: `sync-stall.js` loads only with the engine).
+
+Plain node: `node dev/sync72-test.js --thread` 209 ✓; mixed with the previous release, on the final tree: sync72 (Mac
+old) 209 ✓, sync72 `--thread` (PC old) 209 ✓, synchard74 (Mac old) 170 ✓, synchard74 (PC old) 170 ✓.
+`synchard74 --only many --many 50000` (final): ✓ 11 passed; the table's last column.
 
 ## For the patch notes
 - **Faster feel with big sync folders**: with tens of thousands of files, sync no longer freezes Hearth for up to half
