@@ -1920,14 +1920,12 @@ const Native = (() => {
   }
 
   // (round 82, bigchat82) GIANT chats (thousands of messages, tens of MB): sending the whole chat on every save held the
-  // window ≈ 70 ms and the main process ≈ 200 ms. A chat opened as bytes (hub.openChat, parsed here) or past BIG_MSGS (round 101: DELTA_MSGS)
+  // window ≈ 70 ms and the main process ≈ 200 ms. A chat opened as bytes (hub.openChat, parsed here) or past BIG_MSGS
   // keeps its SHAPE (each value's place: strings and numbers by reference, so nothing is copied); a save compares the
   // chat with it (a few ms for 6,000 messages) and sends only the fields and messages that changed. The store thread
   // copies the rest from the file (byte for byte what a whole save writes). If the thread doesn't hold that version
   // (sync brought a change, another save wrote it whole), the chat is saved whole once and the chain starts again.
-  // (round 101, chatsave101) was BIG_MSGS = 800: a long chat (from DELTA_MSGS messages) saves by change too: sending a 600 KB chat whole was
-  // ≈ 55 ms of copying per save (window → main → thread), 2–3 saves a send. Its first save is whole (its shape taken)
-  const DELTA_MSGS = 100;
+  const BIG_MSGS = 800;
   // (round 86, chatwindow86) a giant chat opened WINDOWED (chatwin.js, lazy group chatwin): its older messages stay on disk
   // until you scroll up to them; W.x is ChatWin once its group is in
   const W = { x: null }; const cw = (c) => Boolean(c && W.x?.is(c));
@@ -1949,7 +1947,7 @@ const Native = (() => {
     if (cw(chat)) return W.x.save(chat);
     if (W.x?.replaced(chat)) return Promise.reject(new Error('This long chat opens again from disk: this change wasn\'t saved.'));
     const s = shapes.get(chat);
-    if (!s || !Array.isArray(chat.messages)) return chat.messages?.length >= DELTA_MSGS ? saveWhole(chat) : window.hub.saveChat(chat);
+    if (!s || !Array.isArray(chat.messages)) return chat.messages?.length >= BIG_MSGS ? saveWhole(chat) : window.hub.saveChat(chat);
     const keys = Object.keys(chat); const set = {}; let n = keys.length !== s.keys.length || keys.some((k, i) => k !== s.keys[i]) ? 1 : 0;
     for (const k of keys) if (k !== 'messages' && (!s.head.has(k) || !sameShape(s.head.get(k), chat[k]))) { set[k] = chat[k]; s.head.set(k, shapeOf(chat[k])); n += 1; }
     for (const k of s.head.keys()) if (!keys.includes(k)) { s.head.delete(k); n += 1; }

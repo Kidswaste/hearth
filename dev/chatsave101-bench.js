@@ -9,7 +9,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const v8 = require('v8');
-const vm = require('vm');
 const crypto = require('crypto');
 const { Worker } = require('worker_threads');
 
@@ -34,7 +33,9 @@ function pick() {
 const NATIVE = fs.readFileSync(path.join(ROOT, 'native.js'), 'utf8');
 const piece = (start) => { const i = NATIVE.indexOf(start); if (i < 0) throw new Error(`native.js: ${start}`); let d = 0; for (let j = NATIVE.indexOf('{', i); j < NATIVE.length; j++) { if (NATIVE[j] === '{') d++; else if (NATIVE[j] === '}' && --d === 0) return NATIVE.slice(i, j + 1); } throw new Error(start); };
 const line = (start) => { const i = NATIVE.indexOf(start); return NATIVE.slice(i, NATIVE.indexOf('\n', i)); };
-const W = vm.runInNewContext(`${line('const shapeOf = (v) =>')}\n${piece('function sameShape(sh, v)')}\n({ shapeOf, sameShape });`, {});
+// (in this realm: run in a vm context, every object crossing realms made the compare ≈ 25× slower than in the window)
+// eslint-disable-next-line no-new-func
+const W = new Function(`${line('const shapeOf = (v) =>')}\n${piece('function sameShape(sh, v)')}\nreturn { shapeOf, sameShape };`)();
 const med = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 const time = (fn) => { const t = performance.now(); fn(); return performance.now() - t; };
 const runs = (fn) => { const out = []; for (let i = 0; i < N; i++) out.push(time(fn)); return med(out); };
@@ -62,8 +63,8 @@ const runs = (fn) => { const out = []; for (let i = 0; i < N; i++) out.push(time
   const d = { id: chat.id, from: 'a', to: 'b', keys: Object.keys(chat), set: { updatedAt: Date.now() }, n: chat.messages.length + 1, msgs: [[chat.messages.length, msg]], trunc: false };
   r['window → main → thread: the change (×2 clone)'] = runs(() => { v8.deserialize(v8.serialize(v8.deserialize(v8.serialize(d)))); });
   // memory the shapes hold
-  global.gc?.(); const h0 = process.memoryUsage().heapUsed; const keep = chat.messages.map(W.shapeOf); global.gc?.(); const h1 = process.memoryUsage().heapUsed;
-  r['window: shapes held (KB)'] = (h1 - h0) / 1024; keep.length = 0;
+  sh = null; global.gc?.(); global.gc?.(); const h0 = process.memoryUsage().heapUsed; const keep = Array.from({ length: 20 }, () => chat.messages.map(W.shapeOf)); global.gc?.(); global.gc?.(); const h1 = process.memoryUsage().heapUsed;
+  r['window: shapes held (KB, per chat; the strings are shared)'] = (h1 - h0) / 1024 / keep.length; keep.length = 0; sh = chat.messages.map(W.shapeOf);
   // ---- by change: the store thread's side (real storework.js) ----
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs101b-'));
   const file = path.join(dir, 'c.json');

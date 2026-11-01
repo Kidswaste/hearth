@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// (round 101, chatsave101) Long chats under 8 MB (from native.js DELTA_MSGS = 100 messages) are saved by what changed,
-// as giant chats were from round 82. This test runs the window's real save code (native.js saveChat / saveWhole /
+// (round 101, chatsave101) A long chat under 8 MB that reaches native.js BIG_MSGS (800 messages) is saved by what
+// changed (round 82's chatDelta). This round measured lowering that line (--line 100 reruns that experiment: the win was
+// not measurable in the app, so the line stays). This test runs the window's real save code (native.js saveChat / saveWhole /
 // takeShape / shapeOf / sameShape, read from its source) against the real store (store.js, its store thread
 // storework.js), and the old way (every save whole: hub.saveChat) against a second copy of the store, through the same
 // steps. After every step both files must be byte for byte the same.
@@ -8,10 +9,9 @@
 //   · a random walk (saves fired without waiting, as the window does);
 //   · whatever makes the thread refuse a change (another writer, a file changed or gone, sync's guard wanting the
 //     chat, sync writing it now (store.settle), a held version let go): the window saves whole, through the guards;
-//   · a short chat (< DELTA_MSGS) is still saved whole; a long one goes by change after its first save;
-//   · the thread keeps the 64 latest small chats; an older one's next save is whole once.
+//   · a chat under the line is still saved whole; one over it goes by change after its first save.
 // The stores are copies in a temp folder (store.js keeps its data in <its folder>/data): never the real data.
-//   node dev/chatsave101-test.js [--seed N] [--walk N]
+//   node dev/chatsave101-test.js [--seed N] [--walk N] [--line N (the window's line instead of BIG_MSGS)]
 'use strict';
 process.env.HEARTH_STORE_THREAD = '1'; // store.js saves through its thread in Node too (as in Electron)
 const fs = require('fs');
@@ -54,9 +54,12 @@ const chatOf = (id, n) => ({ id, agentId: 'claude', title: `A "long" chat — é
 const NATIVE = fs.readFileSync(path.join(ROOT, 'native.js'), 'utf8');
 const piece = (start) => { const i = NATIVE.indexOf(start); if (i < 0) throw new Error(`native.js: ${start}`); let d = 0; for (let j = NATIVE.indexOf('{', i); j < NATIVE.length; j++) { if (NATIVE[j] === '{') d++; else if (NATIVE[j] === '}' && --d === 0) return NATIVE.slice(i, j + 1); } throw new Error(start); };
 const line = (start) => { const i = NATIVE.indexOf(start); if (i < 0) throw new Error(`native.js: ${start}`); return NATIVE.slice(i, NATIVE.indexOf('\n', i)); };
+const LINE = Number(opt('--line', 0)) || Number(/const BIG_MSGS = (\d+);/.exec(NATIVE)?.[1]);
+const LINE_SRC = `const BIG_MSGS = ${LINE};`;
+if (!(LINE > 0)) throw new Error('native.js: no BIG_MSGS');
 function windowOf(hub) {
   return vm.runInNewContext(`
-${line('const DELTA_MSGS =')}
+${LINE_SRC}
 ${line('const W = { x: null };')}
 ${line('const shapes = new WeakMap();')}
 ${line('const shapeOf = (v) =>')}
@@ -66,7 +69,7 @@ ${line('const preShapes = new WeakMap();')}
 ${piece('function takeShape(chat, ver)')}
 ${piece('function saveWhole(chat)')}
 ${piece('function saveChat(chat)')}
-({ saveChat, shapes, DELTA_MSGS });`, { window: { hub }, Promise, Error });
+({ saveChat, shapes, BIG_MSGS });`, { window: { hub }, Promise, Error });
 }
 
 // ---------- two copies of the store: A (the window's code: by change), B (the old way: every save whole) ----------
@@ -114,16 +117,16 @@ const snap = () => ({ ...stats, why: { ...stats.why } });
 
 (async () => {
   try {
-    ok(win.DELTA_MSGS === 100, 'native.js: DELTA_MSGS is 100');
+    ok(win.BIG_MSGS === LINE && (opt('--line') || LINE === 800), `the window's line: ${LINE} messages`);
     // ---------- a short chat: whole, every time ----------
     const short = chatOf('short', 20);
     let s0 = snap();
     await both(short); short.messages.push(message('user')); await both(short);
     await same('short', 'a short chat');
-    ok(stats.delta === s0.delta && stats.refused === s0.refused && !win.shapes.get(short), 'a short chat (< DELTA_MSGS) is saved whole, no shape kept');
+    ok(stats.delta === s0.delta && stats.refused === s0.refused && !win.shapes.get(short), 'a chat under the line is saved whole, no shape kept');
 
     // ---------- a long chat: every edit kind ----------
-    const chat = chatOf('long', 260);
+    const chat = chatOf('long', LINE + 160);
     await both(chat); await same('long', 'first save (whole, its shape taken)');
     ok(Boolean(win.shapes.get(chat)), 'a long chat keeps its shape after its first save');
     // a chat never read here yet is saved "blind" (datasafe: merged with the disk), so no version is kept for it: its
@@ -168,7 +171,7 @@ const snap = () => ({ ...stats, why: { ...stats.why } });
     chat.messages.length = 2; await both(chat); await same('long', 'cut to 2 messages (trunc)');
     for (let i = 0; i < 5; i++) chat.messages.push(message()); await both(chat); await same('long', 'grown again');
     chat.messages = []; await both(chat); await same('long', 'emptied');
-    for (let i = 0; i < 130; i++) chat.messages.push(message()); await both(chat); await same('long', 'filled again');
+    for (let i = 0; i < LINE + 30; i++) chat.messages.push(message()); await both(chat); await same('long', 'filled again');
 
     // ---------- the thread refuses: the window saves whole, through the guards ----------
     const refusal = async (label, before, why) => {
@@ -232,7 +235,7 @@ const snap = () => ({ ...stats, why: { ...stats.why } });
 
     // ---------- the random walk ----------
     const WALK = Number(opt('--walk', 300));
-    const walk = chatOf('walk', 140);
+    const walk = chatOf('walk', LINE + 40);
     await both(walk);
     let good = 0; const s1 = snap();
     const moves = [
@@ -255,7 +258,7 @@ const snap = () => ({ ...stats, why: { ...stats.why } });
       for (let b = 0; b < burst; b++) {
         let r = rnd() * total; const mv = moves.find(([w]) => (r -= w) < 0)[1];
         mv(walk);
-        if (walk.messages.length < 100 && rnd() < 0.8) for (let k = 0; k < 40; k++) walk.messages.push(message()); // (stays mostly long)
+        if (walk.messages.length < LINE && rnd() < 0.8) for (let k = 0; k < 40; k++) walk.messages.push(message()); // (stays mostly long)
         ps2.push(win.saveChat(walk)); // (fired without waiting, as the window does)
       }
       // now and then someone else touches the file (another writer / program): the window's next save is whole
@@ -268,18 +271,6 @@ const snap = () => ({ ...stats, why: { ...stats.why } });
     ok(good === WALK, `random walk: ${good} / ${WALK} steps byte for byte the whole-save file`);
     ok(fs.readFileSync(A.file('walk'), 'utf8') === JSON.stringify(walk, null, 2), 'random walk: the file = the window\'s chat as JSON');
     ok(stats.delta - s1.delta > WALK, `random walk: ${stats.delta - s1.delta} changes saved by change, ${stats.whole - s1.whole} whole (refused: ${JSON.stringify(stats.why)})`);
-
-    // ---------- many chats: the thread keeps the 64 latest small ones ----------
-    const many = Array.from({ length: 70 }, (_, i) => chatOf(`many${i}`, 100 + i));
-    for (const c of many) await both(c);
-    for (const c of many) { c.messages.push(message()); await both(c); }
-    s0 = snap();
-    many[0].messages.push(message()); await both(many[0]); await same('many0', 'the oldest of 70 chats, let go by the thread');
-    ok(stats.why.version > (s0.why.version || 0) && stats.whole > s0.whole, 'the oldest of 70 chats: its change refused (let go), saved whole once');
-    s0 = snap(); many[69].messages.push(message()); await both(many[69]); await same('many69', 'the newest of 70 chats');
-    ok(stats.delta > s0.delta && stats.whole === s0.whole, 'the newest of 70 chats: by change');
-    let all = 0; for (const c of many) { await idle(); if (fs.readFileSync(A.file(c.id)).equals(fs.readFileSync(B.file(c.id)))) all += 1; }
-    ok(all === many.length, `70 chats: ${all} / 70 files byte for byte the whole-save files`);
 
     // ---------- the list and the search see a chat saved by change ----------
     const listA = await A.store.listChats(); const listB = await B.store.listChats();
