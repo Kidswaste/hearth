@@ -103,8 +103,8 @@ async function main() {
     const sw = LW.stallWatch({ keep: KEEP }); const t0 = Date.now(); const r = await fn(); const s = sw.stop(); const ms = Date.now() - t0;
     let rep = s.kept;
     if (prof) { const { profile } = await post('Profiler.stop'); rep = analyse(profile, s.kept); if (PROF) fs.writeFileSync(PROF.replace(/(\.json)?$/, `-${name}.cpuprofile`), JSON.stringify(profile)); }
-    out.push({ name, ms, maxMs: s.maxMs, maxOwn: s.maxOwn });
-    console.log(`\n== ${name}: ${ms} ms · longest hold ${s.maxMs} ms · most own ${s.maxOwn} ms (${s.worst ? `${s.worst.ms} = ${s.worst.own} own (${s.worst.cpu} on a CPU) + ${s.worst.wait} wait` : '-'}) · ${s.kept.length} holds ≥ ${KEEP} ms`);
+    out.push({ name, ms, maxMs: s.maxMs, maxOwn: s.maxOwn, cpu: s.worst?.cpu });
+    console.log(`\n== ${name}: ${ms} ms · longest hold ${s.maxMs} ms · most own ${s.maxOwn} ms (${s.worst ? `${s.worst.ms} = ${s.worst.own} own (${s.worst.cpu} on a CPU) + ${s.worst.wait} wait` : '-'}) · ${s.kept.length} holds ≥ ${KEEP} ms · the watcher's own reads ≤ ${s.watchMax} ms (not counted)`);
     for (const h of rep.sort((a, b) => b.own - a.own).slice(0, 8)) {
       console.log(`  ${h.ms} ms = ${h.own} own (${h.cpu} cpu) + ${h.wait} wait${h.by ? ` · samples ${h.samples}: engine ${h.by.engine} sim ${h.by.sim} gc ${h.by.gc} idle ${h.by.idle} other ${h.by.other}` : ''}`);
       for (const x of h.top || []) console.log(`      ${x}`);
@@ -136,7 +136,7 @@ async function main() {
   for (let k = 0; k < 5; k++) raw.renameSync(path.join(pc.data, 'workspace', `proj${k}`), path.join(pc.data, 'workspace', `proj${k}-renamed`));
   const r4 = await phase('rename', () => pc.e.pass());
   console.log(`  renamed ${r4.last.renamed} pushed ${r4.last.pushed} deletedThere ${r4.last.deletedThere}`);
-  console.log(`\nsummary: ${out.map((x) => `${x.name} ${x.ms} ms, hold ${x.maxMs} / own ${x.maxOwn}`).join(' · ')}`);
+  console.log(`\nsummary: ${out.map((x) => `${x.name} ${x.ms} ms, hold ${x.maxMs} / own ${x.maxOwn} (${x.cpu ?? '?'} on a CPU)`).join(' · ')}`);
   if (!argv.includes('--keep-files')) fs.rmSync(path.dirname(w.dir), { recursive: true, force: true });
   process.exit(0);
 }

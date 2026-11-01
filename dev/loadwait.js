@@ -68,13 +68,18 @@ function stallWatch({ every = 5, keep = 0 } = {}) {
     if (Date.now() - listed > 1000) { listed = Date.now(); try { tids = fs.readdirSync('/proc/self/task').filter((t) => Number(t) !== process.pid); } catch { tids = []; } }
     const o = {}; for (const t of tids) { const d = delayOf(`/proc/self/task/${t}/schedstat`); if (d != null) o[t] = d; } return o;
   };
-  const at = () => { const [c, d] = rd(); return { t: now(), c, d, o: others() }; };
+  // (round 103, syncstall103) t0 / t: before / after this look's own reads (/proc, a file per thread, sync). On a box with
+  // its disk saturated those reads took up to 27 ms each, and they were counted in the next hold as the code's own (a
+  // first sync of 50,000 files "held" 129 ms with 3 ms on a CPU: the watcher's reads). A hold now runs from the end of
+  // one look to the start of the next; the reads' time is reported apart (watchMax: the longest one).
+  let watchMax = 0;
+  const at = () => { const t0 = now(); const [c, d] = rd(); const o = others(); const t = now(); watchMax = Math.max(watchMax, t - t0); return { t0, t, c, d, o }; };
   let prev = at();
   const gaps = []; const kept = [];
   let longest = null; let worst = null;
   const tick = () => {
     const cur = at();
-    const ms = cur.t - prev.t - every;
+    const ms = cur.t0 - prev.t - every; // (round 103, syncstall103) from the end of the last look to the start of this one
     if (ms > 1) {
       let other = 0; if (cur.o && prev.o) for (const [t, d] of Object.entries(cur.o)) if (prev.o[t] != null) other = Math.max(other, d - prev.o[t]);
       const wait = (cur.d != null && prev.d != null ? cur.d - prev.d : 0) + other;
@@ -83,13 +88,13 @@ function stallWatch({ every = 5, keep = 0 } = {}) {
       if (!longest || g.ms > longest.ms) longest = g;
       if (!worst || g.own > worst.own) worst = g;
       gaps.push(g);
-      if (keep && g.ms >= keep) kept.push({ ...g, from: prev.t, to: cur.t });
+      if (keep && g.ms >= keep) kept.push({ ...g, from: prev.t, to: cur.t0 });
     }
     prev = cur;
   };
   const timer = setInterval(tick, every);
   return {
-    stop() { clearInterval(timer); tick(); return { maxMs: longest ? longest.ms : 0, maxOwn: worst ? worst.own : 0, worst, longest, n: gaps.length, kept }; },
+    stop() { clearInterval(timer); tick(); return { maxMs: longest ? longest.ms : 0, maxOwn: worst ? worst.own : 0, worst, longest, n: gaps.length, kept, watchMax: Math.round(watchMax) }; },
   };
 }
 const judgeStall = (s, budget) => (!(s.maxMs >= budget) ? 'ok' : s.maxOwn >= budget ? 'over' : 'load');
