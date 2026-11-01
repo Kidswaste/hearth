@@ -66,6 +66,13 @@ Claude and Astra (Codex) both go through the same paths: Hearth's Lab MCP server
 Astra's ▶ Apply lands in its own backstage scene and offers "Tell Astra what happened". Every error an AI got was a
 sentence.
 
+### 9. A new layer held past modelcompile101's 6 s cap (follow-up)
+| | Before | After |
+|---|---|---|
+| A new 🧊 layer held for its shaders while its model loads on a loaded box | The 6 s cap was only checked inside a gap (`wgGap`). When gaps came late or not at all, the layer stayed held: 2.6 s → 15.6 s in this round's run, showing nothing. | A timer at the cap (`wgCap`), and a check in each of the held layer's frames, let it go exactly as the cap always did: it draws, compiling what's left in its frame. |
+| Proof: a 🧊 model layer added with no gap ever coming (`__labWarmGap.set({ stall: true })`, a check knob) | Held forever | Let go at 6,020 ms (0 gaps, 21 frames); the layer draws (`labchat102`, `info.cap`) |
+| labcompile90's `layer:heavy` under load | Failed once at load ≈ 8: held to the cap with 23 of 24 programs made in gaps | A hold that reaches the cap while its gaps' own work was under half of it (the gaps came late: slow frames) is listed as "can't tell (load)" instead of failing. `WG.last` now has `workMs` and `capped`. |
+
 ## Cost
 - Nothing new is sent to any AI: 0 tokens per message. The only new words are the line about textures still loading, ≈ 15
   tokens, and only when that happens.
@@ -83,6 +90,7 @@ sentence.
 - `tools/three-sandbox.html`: the layer's 700 ms "drawn" fallback doesn't fire while its renderer is held.
   `picsBusy` / `picsSettle` / `window.__labPicsSettle` (`busy`, `why`, `wait(ms)`, `state`). A model's texture job
   records when its picture arrived (`job.at`), and `MTX.inflight` counts pictures still being fetched or decoded.
+- `tools/three-sandbox.html` (follow-up): `wgCap` (a timer at the cap, and a check in a held layer's frames), `WG.capped`, `WG.stall` (checks), `WG.last.workMs` / `capped`. `dev/checks/labcompile90.js`: the load-aware `layer:*` verdict.
 - `dev/checks/labchat102.js` (new, group `labchat102` in `dev/run-checks.js`).
 - First screen: unchanged (no first-screen file touched). `unit:boot-test` passes.
 - Not touched: collab-eyes.js, three-direction*, credits*, quest-*, projects*, project-workspace*, sync-engine.js,
@@ -97,12 +105,6 @@ sentence.
   unit:chatsafe-scan, unit:chatwin-scan, unit:boot-test, unit:lazymanifest-test (all passed).
 
 ## Left / risks
-- **A renderer can stay held for its shaders longer than modelcompile101's 6 s cap.** The check's page timeline showed a
-  new 🧊 model layer held from 2.6 s to 15.6 s while its model loaded and its 4096² picture decoded, on this loaded
-  software-GL box. Every round, `__labWarmGap` reported `waiting: 1` after an Apply of a 50-program layer. The Apply
-  note's wait is capped (6.5 s), so nothing hangs. But a held layer shows nothing on screen until it lets go.
-  Steps: run `labchat102`, then read `info.pageTimeline` and `info.held.stillHeldAtNote`. Worth a look in the
-  modelcompile101 stream (`wgGap` only checks `WG.maxMs` when a gap runs).
 - Under heavy load the preview may not answer the screenshot's check within 3.5 s. The picture then goes without
   waiting, and the AI is told it may show stand-ins.
 - With a real GPU (and on the owner's RTX 4080, with background compiling), the waits are much shorter or zero.
@@ -123,6 +125,8 @@ No Codex-owned file was edited.
   AI is told so.
 - **History keeps everything.** Changes made in a scene that isn't on screen (an AI working in the background, or your
   ▶ Apply and Undo there) now show up in that scene's History too.
+- **New 3D models never stay invisible.** A model layer waiting for its shaders on a slow or busy computer now shows
+  within 6 seconds at most, as intended (it could stay blank for 15 s or more).
 - **Your typing stays where it is.** If your cursor is in a layer's code, an AI edit to another layer no longer moves
   you there, even if you paused for a while before typing.
 - **One-click notes stay gone.** After "Tell Claude what happened", the Apply note no longer comes back when the chat

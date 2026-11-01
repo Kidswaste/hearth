@@ -1100,7 +1100,7 @@ function lcSceneDone(r, P) {
 // When nothing is on screen yet (the Lab's first scene, its first layer; a switch under the old scene's still picture),
 // the old rule stays: a compile in that frame stops no moving picture, and holding it would only show it later.
 // window.__labWarmGap: state() / mode('auto' | 'on' | 'off') / set({ budget, maxMs }) (checks).
-const WG = { mode: 'auto', budget: 8, maxMs: 6000, held: 0, oldRule: 0, gaps: 0, maxGaps: 0, programs: 0, done: 0, late: 0, again: 0, maxHoldMs: 0, maxHoldFrames: 0, last: null, glass: 0, shadows: 0, tex: 0, pending: 0 };
+const WG = { mode: 'auto', budget: 8, maxMs: 6000, capped: 0, stall: false, held: 0, oldRule: 0, gaps: 0, maxGaps: 0, programs: 0, done: 0, late: 0, again: 0, maxHoldMs: 0, maxHoldFrames: 0, last: null, glass: 0, shadows: 0, tex: 0, pending: 0 };
 // whether a layer other than this one shows a picture (drawn, not under a switch's still picture)
 function wgOthers(EL) {
   if (SWAP.cover?.isConnected && !SWAP.cover.__fading) return false;
@@ -1123,16 +1123,30 @@ function wgStart(r, scene, camera) {
   const J = { r, scene, camera, t: realNow(), tick: frameTick, list: null, i: 0, phase: 0, gaps: 0, ver: LC.ver, rounds: 0 };
   r.__wg = J; WG.held += 1; WG.pending += 1;
   realSetTimeout(() => wgGap(J), 0); // (from inside the frame: the task right after it)
+  // (round 102, labchat102) the cap holds even when no gap comes (no frame for a while, a page too busy for its RAFs, one
+  // compile of seconds): it was only looked at inside a gap, and a 🧊 layer stayed held 13 s while its model loaded.
+  // Released then exactly as a gap past the cap does (it draws, compiling what's left in its frame); a frame of a held
+  // layer past the cap does the same (wgCap, in render)
+  J.capT = realSetTimeout(() => wgCap(J), WG.maxMs + 20);
+}
+function wgCap(J) {
+  if (J.r.__wg !== J || realNow() - J.t < WG.maxMs) return false;
+  WG.late += 1; WG.capped += 1; wgDone(J, true);
+  return true;
 }
 // one gap's work: programs one at a time (each linked here), then glass, shadows, textures; at least one step a gap
 function wgGap(J) {
   const r = J.r;
   if (r.__wg !== J) return;
+  if (WG.stall) { realSetTimeout(() => wgGap(J), 250); return; } // (round 102, checks: no gap ever comes)
   let gone = r.__stale; try { gone = gone || r.getContext().isContextLost(); } catch { gone = true; }
   if (gone || r.__warm !== 'pending') { wgDone(J, false); return; }
   if (realNow() - J.t > WG.maxMs) { WG.late += 1; wgDone(J, true); return; }
   J.gaps += 1; WG.gaps += 1;
   const t0 = realNow(); const props = r.properties;
+  try { return wgGapWork(J, r, t0, props); } finally { J.work = (J.work || 0) + (realNow() - t0); } // (round 102: its own time, for checks)
+}
+function wgGapWork(J, r, t0, props) {
   const rt0 = r.getRenderTarget?.() || null;
   const ps = r.info?.programs || [];
   const link = (n0) => { for (let i = n0; i < ps.length; i++) { try { ps[i].getUniforms(); } catch { /* its frame reports it */ } } WG.programs += Math.max(0, ps.length - n0); };
@@ -1176,11 +1190,11 @@ function wgGap(J) {
 function wgDone(J, draw) {
   const r = J.r;
   if (r.__wg !== J) return;
-  r.__wg = null; WG.pending = Math.max(0, WG.pending - 1); WG.done += 1;
+  r.__wg = null; WG.pending = Math.max(0, WG.pending - 1); WG.done += 1; realClearTimeout(J.capT);
   if (J.gaps > WG.maxGaps) WG.maxGaps = J.gaps;
   const ms = realNow() - J.t; if (ms > WG.maxHoldMs) WG.maxHoldMs = Math.round(ms);
   const fr = frameTick - J.tick; if (fr > WG.maxHoldFrames) WG.maxHoldFrames = fr;
-  WG.last = { ms: Math.round(ms), frames: fr, gaps: J.gaps, rounds: J.rounds };
+  WG.last = { ms: Math.round(ms), frames: fr, gaps: J.gaps, rounds: J.rounds, workMs: Math.round(J.work || 0), capped: realNow() - J.t >= WG.maxMs };
   if (r.__warm !== 'pending') return;
   r.__warm = true; perfNote.precompiled = (perfNote.precompiled || 0) + 1;
   if (!draw || r.__stale) return;
@@ -1192,7 +1206,7 @@ function wgDone(J, draw) {
 window.__labWarmGap = {
   state: () => ({ ...WG, waiting: [...renderers].filter((r) => r.__wg).length }),
   mode: (m) => { if (m === 'auto' || m === 'on' || m === 'off') WG.mode = m; return WG.mode; },
-  set: (o = {}) => { if (o.budget > 0) WG.budget = Number(o.budget); if (o.maxMs > 0) WG.maxMs = Number(o.maxMs); return { budget: WG.budget, maxMs: WG.maxMs }; },
+  set: (o = {}) => { if (o.budget > 0) WG.budget = Number(o.budget); if (o.maxMs > 0) WG.maxMs = Number(o.maxMs); if ('stall' in o) WG.stall = Boolean(o.stall); return { budget: WG.budget, maxMs: WG.maxMs, stall: WG.stall }; },
 };
 window.__labCompile = { state: () => ({ ...LC, waiting: [...renderers].filter((r) => r.__lcP || r.__lcN).length }) };
 function instrument(renderFn) {
@@ -1215,6 +1229,7 @@ function instrument(renderFn) {
     // are compiled with the rest (compile() goes through the hidden ones too), so showing them costs no compile.
     // Without background compiles (a software GPU), the scene is compiled in one go before its first draw, hidden
     // things included: the compile a hidden object cost when it first showed (mid-show) is paid here, at the start.
+    if (this.__warm === 'pending' && this.__wg) wgCap(this.__wg); // (round 102) a held layer's frame past the cap: it draws now
     if (this.__warm !== true) {
       if (this.__warm === 'pending') { this.__lastSkip = [scene, camera]; return; }
       this.__warm = true;
