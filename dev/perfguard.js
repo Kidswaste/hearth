@@ -27,6 +27,11 @@
 // (dev/perfguard-fresh.js, --only …,fresh / --fresh N launches, ≈ 6 min each) starts Hearth on the heavy profile + one
 // giant chat and leaves it alone: memory at 30 s (window, main, store thread), idle at 1 and 5 min, then Settings'
 // first open, the Lab's first start, the giant chat opened and typing in it. docs/upgrades/perf93.md.
+// (round 100, perf100) send-and-save: the app part sends 5 messages in a long chat (chat.sendSaved / saveIpc / sendCpu)
+// and `fresh` 3 in the giant chat (saved by what changed); two more opt-in parts: `labcold` (dev/perfguard-labcold.js,
+// --labcold N launches, ≈ 40 s each: the Lab pressed 3 s after the first screen) and `many` (each side's own
+// dev/synchard74-test.js --only many --many 50000, --many N runs, ≈ 5 min each: sync's pass over 50,000 files with
+// nothing changed). docs/upgrades/perf100.md.
 // Compare mode (the default, against dev/perf-baseline.json): a metric REGRESSES when it is worse than the baseline by
 // more than max(15 %, 3 × its recorded spread, its floor) — a wall time after dividing by the calibration factor; a wall
 // time over the line whose own CPU time is fine, on a box slower than at the baseline, is "load?" (inconclusive), not a
@@ -65,7 +70,7 @@ const FIXTURE = opt('--fixture', '/tmp/hearth-bigprofile72'); // (run-checks mak
 const SYNC_FIXTURE = opt('--sync-fixture', path.join(os.tmpdir(), 'hearth-sync72-bigprofile'));
 const AB = opt('--ab');
 const FRESH_FIXTURE = opt('--fresh-fixture', '/tmp/hearth-perf93-fresh'); // (round 93: the heavy profile + one giant chat)
-const N = { fresh: Number(opt('--fresh', 3)), runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
+const N = { labcold: Number(opt('--labcold', 4)), many: Number(opt('--many', 2)), fresh: Number(opt('--fresh', 3)), runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
 const PARTS = (opt('--only', 'startup,app,sync')).split(',').map((s) => s.trim()).filter(Boolean);
 const LOCK = has('--lock');
 const CALIB = path.join(DEV, 'perfguard-calib.js');
@@ -99,6 +104,10 @@ const METRICS = {
   'chat.keyHandler': { part: 'app', label: 'Typing: window handlers per key', unit: 'ms', floor: 1, section: 'chats', kind: 'wall', cpu: 'chat.keyCpu' },
   'chat.keyPaint': { part: 'app', label: 'Typing: key → paint', unit: 'ms', floor: 8, section: 'chats', kind: 'wall', cpu: 'chat.keyCpu' },
   'chat.keyCpu': { part: 'app', label: 'Typing: window CPU per key', unit: 'ms', floor: 1, section: 'chats', kind: 'cpu' },
+  // (round 100, perf100) send-and-save: a message sent in a long chat → the save holding it answered (on disk)
+  'chat.sendSaved': { part: 'app', label: 'Send in a long chat → on disk', unit: 'ms', floor: 15, section: 'chats', kind: 'wall', cpu: 'chat.sendCpu' },
+  'chat.saveIpc': { part: 'app', label: 'A long chat saved whole: call → written', unit: 'ms', floor: 15, section: 'chats', kind: 'wall', cpu: 'chat.sendCpu' },
+  'chat.sendCpu': { part: 'app', label: 'Send turn: CPU, main + window', unit: 'ms', floor: 30, section: 'chats', kind: 'cpu' },
   'lab.toolCall': { part: 'app', label: 'Lab tool call (no picture), end to end', unit: 'ms', floor: 8, section: 'lab', kind: 'wall', cpu: 'lab.toolCallCpu' },
   'lab.toolCallCpu': { part: 'app', label: 'Lab tool call: CPU, main + window', unit: 'ms', floor: 15, section: 'lab', kind: 'cpu' },
   'lab.stillDraws': { part: 'app', label: 'Still Lab scene: draws a second', unit: '/s', floor: 0.4, section: 'lab', kind: 'level' },
@@ -126,6 +135,15 @@ const METRICS = {
   'fresh.bigChatCpu': { part: 'fresh', label: 'Giant chat opened: window CPU', unit: 'ms', floor: 30, section: 'fresh', kind: 'cpu' },
   'fresh.keyPaint': { part: 'fresh', label: 'Typing in the giant chat: key → paint', unit: 'ms', floor: 8, section: 'fresh', kind: 'wall', cpu: 'fresh.keyCpu' },
   'fresh.keyCpu': { part: 'fresh', label: 'Typing in the giant chat: window CPU per key', unit: 'ms', floor: 1, section: 'fresh', kind: 'cpu' },
+  'fresh.bigSendSaved': { part: 'fresh', label: 'Send in the giant chat → on disk', unit: 'ms', floor: 20, section: 'fresh', kind: 'wall' },
+  // (round 100, perf100) part `labcold`: the Lab pressed 3 s after the first screen (the start still busy)
+  'labcold.first': { part: 'labcold', label: 'Lab cold start: press → first frame', unit: 'ms', floor: 150, section: 'labcold', kind: 'wall', cpu: 'labcold.cpu' },
+  'labcold.shown': { part: 'labcold', label: 'Lab cold start: press → preview on screen', unit: 'ms', floor: 80, section: 'labcold', kind: 'wall', cpu: 'labcold.cpu' },
+  'labcold.cpu': { part: 'labcold', label: 'Lab cold start: window CPU', unit: 'ms', floor: 40, section: 'labcold', kind: 'cpu' },
+  // (round 100, perf100) part `many`: synchard74's 50,000 small files, a pass with nothing changed (and the first one)
+  'many.steady': { part: 'many', label: 'Sync, 50,000 files, nothing changed: pass', unit: 'ms', floor: 300, section: 'many', kind: 'wall' },
+  'many.steadyStall': { part: 'many', label: 'Sync, 50,000 files, nothing changed: longest stall', unit: 'ms', floor: 20, section: 'many', kind: 'wall' },
+  'many.first': { part: 'many', label: 'Sync, 50,000 files: first pass (all up)', unit: 'ms', floor: 1000, section: 'many', kind: 'wall' },
   'sync.steadyStall': { part: 'sync', label: 'Sync steady pass: main-process stall', unit: 'ms', floor: 10, section: 'sync', kind: 'wall', cpu: 'sync.steadyCpu' },
   'sync.changeStall': { part: 'sync', label: 'Sync small-change pass: main-process stall', unit: 'ms', floor: 10, section: 'sync', kind: 'wall', cpu: 'sync.changeCpu' },
   'sync.steadyWall': { part: 'sync', label: 'Sync steady pass: wall time', unit: 'ms', floor: 40, section: 'sync', kind: 'wall', cpu: 'sync.steadyCpu' },
@@ -255,6 +273,31 @@ function freshLaunch(m, tag, i, side = THIS) {
 }
 function freshPart(m, tag) { for (let i = 1; i <= N.fresh; i++) freshLaunch(m, tag, i); }
 
+// (round 100, perf100) one cold Lab launch (dev/perfguard-labcold.js against side.root's app) on the heavy profile
+function labcoldLaunch(m, tag, i, side = THIS) {
+  const dir = path.join(OUT, `labcold${tag}-${i}`); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+  log(`labcold${side === THIS ? '' : ` [${side.name}]`}: launch ${i} (dev/perfguard-labcold.js: the Lab pressed 3 s after the first screen)…`);
+  const r = sh([path.join(DEV, 'smoke.js'), '--app', side.root, '--fake-engines', '--no-lazy-wait', '--data', FIXTURE, '--wait', '100', '--check-timeout', '300000', '--tmp', path.join(dir, 'tmp'), '--script', path.join(DEV, 'perfguard-labcold.js')], path.join(dir, 'calib.json'));
+  fs.writeFileSync(path.join(dir, 'smoke.log'), `${r.stdout || ''}${r.stderr || ''}`);
+  readCalib(m, 'labcold', side.name, path.join(dir, 'calib.json'));
+  let p = null; try { p = JSON.parse(fs.readFileSync(path.join(dir, 'tmp', 'perfguard-labcold.json'), 'utf8')); } catch { m.problems.push(`labcold launch ${tag}${i}: no measurements (exit ${r.status}; ${path.join(dir, 'smoke.log')})`); return; }
+  for (const pr of p.problems || []) m.problems.push(`labcold launch ${tag}${i}: ${pr}`);
+  for (const [k, xs] of Object.entries(p.samples || {})) if (METRICS[k]) push(m, k, xs);
+  (m.notes.labcold ||= []).push({ launch: `${tag}${i}`, side: side.name, ...p.notes });
+}
+// (round 100, perf100) one run of side.root's own synchard74 `many` with 50,000 files (Node only, a temp folder)
+function manyRun(m, tag, i, side = THIS) {
+  log(`many${side === THIS ? '' : ` [${side.name}]`}: run ${i} (dev/synchard74-test.js --only many --many 50000, ≈ 5 min)…`);
+  const cf = path.join(OUT, `many${tag}-${i}-calib.json`);
+  const r = sh([path.join(side.root, 'dev', 'synchard74-test.js'), '--only', 'many', '--many', '50000'], cf, { lock: false, maxBuffer: 64 << 20, timeout: 1800000, cwd: side.root });
+  const out = `${r.stdout || ''}${r.stderr || ''}`; fs.writeFileSync(path.join(OUT, `many${tag}-${i}.log`), out);
+  readCalib(m, 'many', side.name, cf);
+  const x = out.match(/first pass (\d+) ms · steady (\d+) ms/); const st = out.match(/longest event-loop stall per phase: .*?steady (\d+) ms/);
+  if (!x) { m.problems.push(`many run ${tag}${i}: no measurements (exit ${r.status})`); return; }
+  if (/^FAIL /m.test(out)) m.problems.push(`many run ${tag}${i}: ${out.split('\n').filter((l) => /^FAIL /.test(l)).join(' | ').slice(0, 400)}`);
+  push(m, 'many.first', [Number(x[1])]); push(m, 'many.steady', [Number(x[2])]); if (st) push(m, 'many.steadyStall', [Number(st[1])]);
+}
+
 function syncRun(m, tag, i, side = THIS, div = N.sync) {
   log(`sync${side === THIS ? '' : ` [${side.name}]`}: run ${i} (dev/sync72-perf.js: the engine on the heavy profile, a Windows-slow disk, ≈ 35 s)…`);
   const cf = path.join(OUT, `sync${tag}-${i}-calib.json`);
@@ -285,6 +328,8 @@ function measure(parts, tag = '') {
   if (parts.includes('app')) app(m, tag);
   if (parts.includes('fresh')) { ensureFreshFixture(); freshPart(m, tag); }
   if (parts.includes('sync')) sync(m, tag);
+  if (parts.includes('labcold')) { ensureFixture(); for (let i = 1; i <= N.labcold; i++) labcoldLaunch(m, tag, i); }
+  if (parts.includes('many')) for (let i = 1; i <= N.many; i++) manyRun(m, tag, i);
   return m;
 }
 function summarize(m) {
@@ -457,6 +502,8 @@ function measureAB(base) {
   if (PARTS.includes('app')) for (let i = 0; i < N.runs; i++) for (const [s, m] of order(i)) appLaunch(m, `-${s.name}`, i + 1, s, N.runs);
   if (PARTS.includes('fresh')) { ensureFreshFixture(); for (let i = 0; i < N.fresh; i++) for (const [s, m] of order(i)) freshLaunch(m, `-${s.name}`, i + 1, s); }
   if (PARTS.includes('sync')) for (let i = 0; i < N.sync; i++) for (const [s, m] of order(i)) syncRun(m, `-${s.name}`, i + 1, s, N.sync);
+  if (PARTS.includes('labcold')) { ensureFixture(); for (let i = 0; i < N.labcold; i++) for (const [s, m] of order(i)) labcoldLaunch(m, `-${s.name}`, i + 1, s); }
+  if (PARTS.includes('many')) for (let i = 0; i < N.many; i++) for (const [s, m] of order(i)) manyRun(m, `-${s.name}`, i + 1, s);
   return { mb, mn };
 }
 

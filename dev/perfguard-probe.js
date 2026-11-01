@@ -11,6 +11,9 @@
 //   chat.clickCpu      the window's CPU in the 600 ms after each row click (profiler samples, not idle)
 //   chat.keyHandler    handlers per key while typing 30 keys in the long chat's box (chatsteady73)
 //   chat.keyPaint      (round 93, perf93) those keys' event → the next frame presented after it (key to paint)
+//   chat.sendSaved     (round 100, perf100) a message sent in that long chat (×5, the fake engine answers) → the chat's
+//                      file changed on disk; chat.saveIpc: that chat saved again whole, hub.saveChat → its answer (once
+//                      the store thread wrote it); chat.sendCpu: a send turn's main + window CPU
 //   lab.toolCall       a Lab tool call that sends no picture, end to end through the fake engine's real MCP calls
 //                      (labcalls74: HubBridge's total), 9 tools × 2 rounds on a scene on screen
 //   lab.stillDraws     a still scene left alone: the preview's draws a second over 10 s (labdraw74 / labpace)
@@ -182,6 +185,25 @@ await section('chats', async () => {
   }
   add('chat.keyCpu', ((await thr()) - k0) / text.length);
   box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true }));
+  await wait(500);
+  // (round 100, perf100) send-and-save: a message sent in the long chat (the fake engine answers) → the chat's file
+  // changed on disk (its save written by the store thread, past sync's gates; polled with fs:stat, window.hub being
+  // frozen); chat.saveIpc: the same chat saved again whole (hub.saveChat → its answer, once written); chat.sendCpu: a
+  // send turn's main + window CPU
+  const chatId = H.activeChat[claude.id];
+  const file = `${(await window.hub.attachmentsDir()).replace(/[\\/]attachments[\\/]?$/, '')}/chats/${chatId}.json`;
+  const stat = async () => { const st = await window.hub.fs.stat(file); return st ? `${st.size}:${st.mtime}` : 'none'; };
+  for (let i = 0; i < 5; i++) {
+    await frame(); const s0 = await stat(); const a0 = await appCpu(); const t0 = performance.now();
+    Native.send(claude.id, `perfguard-save-${i} the fog in the intro, bass drop`).catch((err) => R.problems.push(`chats: send ${i}: ${err.message}`));
+    await until(async () => (await stat()) !== s0, `send ${i} saved`, 6000, 2);
+    add('chat.sendSaved', performance.now() - t0);
+    await until(() => !Native.isBusy(chatId), `send ${i}: the reply`, 1500, 50); await wait(400);
+    add('chat.sendCpu', (await appCpu()) - a0);
+    const chat = await Native.load(chatId);
+    if (chat?.id === chatId && Array.isArray(chat.messages)) { const t1 = performance.now(); await window.hub.saveChat(chat); add('chat.saveIpc', performance.now() - t1); }
+    await wait(600);
+  }
 });
 
 // ---------- the Lab: tool calls through the fake engine's real MCP calls, then a still scene left alone ----------

@@ -120,6 +120,18 @@ await section('bigchat', async () => {
   add('fresh.keyCpu', ((await thr()) - k0) / text.length);
   R.notes.typed = box.value.length;
   box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true }));
+  await wait(500);
+  // (round 100, perf100) send-and-save in the giant chat: its saves go by what changed (saveChatDelta, chatsave.js);
+  // a message sent (×3, the fake engine answers) → the chat's file changed on disk (fs:stat polled: window.hub is frozen)
+  const file = `${(await window.hub.attachmentsDir()).replace(/[\\/]attachments[\\/]?$/, '')}/chats/${ID}.json`;
+  const stat = async () => { const st = await window.hub.fs.stat(file); return st ? `${st.size}:${st.mtime}` : 'none'; };
+  for (let i = 0; i < 3; i++) {
+    await frame(); const s0 = await stat(); const t0 = performance.now();
+    Native.send(claude.id, `perfguard-save-${i} the fog in the intro, bass drop`).catch((err) => R.problems.push(`bigchat: send ${i}: ${err.message}`));
+    await until(async () => (await stat()) !== s0, `send ${i} saved`, 30000, 2);
+    add('fresh.bigSendSaved', performance.now() - t0);
+    await until(() => !Native.isBusy(ID), `send ${i}: the reply`, 90000, 50); await wait(1500);
+  }
 });
 R.medians = Object.fromEntries(Object.entries(R.samples).map(([k, v]) => [k, med(v)]));
 await window.hub.fs.write(`${window.SMOKE_TMP}/perfguard-fresh.json`, JSON.stringify(R, null, 1));
