@@ -189,6 +189,16 @@ function longTasks(events, opts = {}) {
     tasks = opts.observed.filter((o) => o.ms >= min).sort((a, b) => b.ms - a.ms).map((o) => {
       const a = t0 + (o.at - 1) * 1000; const b = t0 + (o.at + o.ms + 1) * 1000;
       const inside = top.filter((t) => t.ts >= a && t.ts + t.dur <= b);
+      // (round 102, checks102) none inside the ±1 ms window (the observer's span is rounded to whole ms and read on
+      // another clock than the trace's): the task came back "unknown", and chatwindow86 then judged its WALL time, the
+      // one path where it still did. Now the outermost events overlapping the span, each with ALL its CPU (never less
+      // than the task's own), when they cover most of the span; else it stays unknown, judged on wall time as before
+      if (!inside.length && hasCpu) {
+        const lo = t0 + o.at * 1000; const hi = lo + o.ms * 1000;
+        const ov = top.map((t) => ({ t, x: Math.max(0, Math.min(hi, t.ts + t.dur) - Math.max(lo, t.ts)) })).filter((v) => v.x > 0);
+        const covered = ov.reduce((s, v) => s + v.x, 0);
+        if (ov.length && covered >= 0.8 * o.ms * 1000) return { at: r1(o.at), ms: r1(o.ms), cpuMs: r1(ov.reduce((s, v) => s + (v.t.tdur || 0), 0) / 1000), traced: r1(covered / 1000), matched: 'overlap' };
+      }
       return { at: r1(o.at), ms: r1(o.ms), cpuMs: inside.length && hasCpu ? r1(inside.reduce((x, t) => x + (t.tdur || 0), 0) / 1000) : null, traced: inside.length ? r1(inside.reduce((x, t) => x + t.dur, 0) / 1000) : 0 };
     });
   } else {
