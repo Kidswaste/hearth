@@ -1086,6 +1086,114 @@ function lcSceneDone(r, P) {
   PACE.poke += 1;
   if (DOZE.on) dozeWake('shown');
 }
+// ---------- a new layer's first frame without background compiling (round 101, modelcompile101) ----------
+// Round 89 compiles a new layer's first scene just before its first frame where the graphics card can't compile in the
+// background (no KHR_parallel_shader_compile: a software GPU, many Macs): every program of the layer (a 🧊 model layer's
+// 3, a heavy scene's dozen) is made and linked inside that frame, and the layers already on screen stick with it.
+// Now, when another layer is already on screen (a layer added to a shown scene, the second layer of a scene to draw), the
+// new layer is held (draws nothing: its canvas is empty, the others keep drawing) and its programs are made in the gaps
+// after frames, as round 90 does for things a running scene adds: renderer.compile on its things one at a time, each new
+// program's link status read there (the wait for the driver happens in the gap), until about WG.budget ms of a gap is
+// used; the rest after the next frame. Then glass variants (lcGlass), three's shadow-pass materials (lcShadows) and its
+// textures (rdyTextures), and it draws on the next frame. Anything added to its scene meanwhile goes through the same
+// gaps before it shows. Never more than WG.maxMs: after that it draws, compiling what's left in its frame, as before.
+// When nothing is on screen yet (the Lab's first scene, its first layer; a switch under the old scene's still picture),
+// the old rule stays: a compile in that frame stops no moving picture, and holding it would only show it later.
+// window.__labWarmGap: state() / mode('auto' | 'on' | 'off') / set({ budget, maxMs }) (checks).
+const WG = { mode: 'auto', budget: 8, maxMs: 6000, held: 0, oldRule: 0, gaps: 0, maxGaps: 0, programs: 0, done: 0, late: 0, again: 0, maxHoldMs: 0, maxHoldFrames: 0, last: null, glass: 0, shadows: 0, tex: 0, pending: 0 };
+// whether a layer other than this one shows a picture (drawn, not under a switch's still picture)
+function wgOthers(EL) {
+  if (SWAP.cover?.isConnected && !SWAP.cover.__fading) return false;
+  if (SWAP.live.size) return true;
+  for (const L of layers.values()) if (L !== EL && L.drawnGen === L.gen && !L.props?.pcOf) return true;
+  return false;
+}
+function wgUse(EL) { return WG.mode === 'on' || (WG.mode === 'auto' && wgOthers(EL)); }
+// the drawables of a scene (in order), or the scene itself when one holds a light (compile() on it would count it twice)
+function wgList(scene) {
+  const list = []; let whole = Boolean(scene.overrideMaterial);
+  scene.traverse((o) => {
+    if (whole || !o.material || !(o.isMesh || o.isPoints || o.isLine || o.isSprite)) return;
+    list.push(o);
+    if (o.children.length && o.getObjectsByProperty('isLight', true).length) whole = true;
+  });
+  return whole ? [scene] : list;
+}
+function wgStart(r, scene, camera) {
+  const J = { r, scene, camera, t: realNow(), tick: frameTick, list: null, i: 0, phase: 0, gaps: 0, ver: LC.ver, rounds: 0 };
+  r.__wg = J; WG.held += 1; WG.pending += 1;
+  realSetTimeout(() => wgGap(J), 0); // (from inside the frame: the task right after it)
+}
+// one gap's work: programs one at a time (each linked here), then glass, shadows, textures; at least one step a gap
+function wgGap(J) {
+  const r = J.r;
+  if (r.__wg !== J) return;
+  let gone = r.__stale; try { gone = gone || r.getContext().isContextLost(); } catch { gone = true; }
+  if (gone || r.__warm !== 'pending') { wgDone(J, false); return; }
+  if (realNow() - J.t > WG.maxMs) { WG.late += 1; wgDone(J, true); return; }
+  J.gaps += 1; WG.gaps += 1;
+  const t0 = realNow(); const props = r.properties;
+  const rt0 = r.getRenderTarget?.() || null;
+  const ps = r.info?.programs || [];
+  const link = (n0) => { for (let i = n0; i < ps.length; i++) { try { ps[i].getUniforms(); } catch { /* its frame reports it */ } } WG.programs += Math.max(0, ps.length - n0); };
+  let stepped = false;
+  LC.inR += 1; // (three's own needsUpdate toggles while compiling aren't changes)
+  try {
+    if (rt0) r.setRenderTarget(null);
+    while (J.phase < 4 && !(stepped && realNow() - t0 > WG.budget)) {
+      if (J.phase === 0) {
+        if (!J.list) { J.list = wgList(J.scene); J.i = 0; }
+        if (J.i >= J.list.length) { J.phase = 1; continue; }
+        const o = J.list[J.i++];
+        if (o !== J.scene && typeof props?.has === 'function' && lcHas(props, o.material)) continue;
+        const n0 = ps.length;
+        try { r.compile(o, J.camera, J.scene); } catch { /* its frame compiles it */ }
+        link(n0); stepped = true;
+      } else if (J.phase === 1) {
+        J.phase = 2; const n0 = ps.length;
+        if (lcGlass(r, J.scene, J.camera, null, null)) { WG.glass += 1; link(n0); stepped = true; }
+      } else if (J.phase === 2) {
+        J.phase = 3; const n0 = ps.length;
+        if (lcShadows(r, J.scene, J.camera)) { WG.shadows += 1; link(n0); stepped = true; }
+      } else {
+        J.phase = 4;
+        try { WG.tex += rdyTextures(r, J.scene); } catch { /* drawn with its first frame */ }
+      }
+    }
+  } finally {
+    try { if ((r.getRenderTarget?.() || null) !== rt0) r.setRenderTarget(rt0); } catch { /* gone */ }
+    LC.inR -= 1;
+  }
+  if (J.phase < 4) { realRAF(() => realSetTimeout(() => wgGap(J), 0)); return; } // (the rest in the gap after the next frame)
+  // something added to its scene while it waited (a model arriving): through the same gaps first
+  if (J.ver !== LC.ver && J.rounds < 4) {
+    J.ver = LC.ver; J.rounds += 1;
+    let need = false; J.scene.traverse((o) => { if (!need && o.material && (o.isMesh || o.isPoints || o.isLine || o.isSprite) && !lcHas(props, o.material)) need = true; });
+    if (need) { WG.again += 1; J.list = null; J.phase = 0; realRAF(() => realSetTimeout(() => wgGap(J), 0)); return; }
+  }
+  wgDone(J, true);
+}
+function wgDone(J, draw) {
+  const r = J.r;
+  if (r.__wg !== J) return;
+  r.__wg = null; WG.pending = Math.max(0, WG.pending - 1); WG.done += 1;
+  if (J.gaps > WG.maxGaps) WG.maxGaps = J.gaps;
+  const ms = realNow() - J.t; if (ms > WG.maxHoldMs) WG.maxHoldMs = Math.round(ms);
+  const fr = frameTick - J.tick; if (fr > WG.maxHoldFrames) WG.maxHoldFrames = fr;
+  WG.last = { ms: Math.round(ms), frames: fr, gaps: J.gaps, rounds: J.rounds };
+  if (r.__warm !== 'pending') return;
+  r.__warm = true; perfNote.precompiled = (perfNote.precompiled || 0) + 1;
+  if (!draw || r.__stale) return;
+  PACE.poke += 1; if (DOZE.on) dozeWake('shown');
+  // (a sketch that draws once, with no frame loop, gets that frame drawn now; one with a loop draws its next frame)
+  const n = r.__renders;
+  realRAF(() => realRAF(() => { const sk = r.__lastSkip; r.__lastSkip = null; if (sk && r.__renders === n && !r.__stale) { try { r.render(sk[0], sk[1]); } catch { /* gone */ } } }));
+}
+window.__labWarmGap = {
+  state: () => ({ ...WG, waiting: [...renderers].filter((r) => r.__wg).length }),
+  mode: (m) => { if (m === 'auto' || m === 'on' || m === 'off') WG.mode = m; return WG.mode; },
+  set: (o = {}) => { if (o.budget > 0) WG.budget = Number(o.budget); if (o.maxMs > 0) WG.maxMs = Number(o.maxMs); return { budget: WG.budget, maxMs: WG.maxMs }; },
+};
 window.__labCompile = { state: () => ({ ...LC, waiting: [...renderers].filter((r) => r.__lcP || r.__lcN).length }) };
 function instrument(renderFn) {
   return function render(scene, camera) {
@@ -1132,6 +1240,10 @@ function instrument(renderFn) {
         perfNote.warm += 1;
         if (this.__warm === 'pending') return;
       } else if (warmOk && !this.getRenderTarget?.() && typeof this.compile === 'function' && !this.__helper) {
+        // (round 101, modelcompile101) another layer already on screen: held, its programs made in the gaps after
+        // frames, then drawn (see "a new layer's first frame without background compiling")
+        if (wgUse(EL) && Array.isArray(this.info?.programs)) { this.__warm = 'pending'; this.__lastSkip = [scene, camera]; wgStart(this, scene, camera); return; }
+        WG.oldRule += 1;
         try { this.compile(scene, camera); lcGlass(this, scene, camera, null, null); rdyTextures(this, scene); perfNote.precompiled = (perfNote.precompiled || 0) + 1; } catch { /* its frame compiles what it draws */ }
       }
     }
