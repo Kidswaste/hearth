@@ -270,6 +270,19 @@ try {
   ok(ref?.files === 4 && !(ref.missing || []).length, `Claude: the .gltf copied with every file (${ref?.files} files)`);
   const told = /Some textures were still lo/.test(t1.lines.join(" ")); // (the fake engine clips each line)
   ok(after.asked > before.asked && (busy?.busy === false || told), `Claude: its screenshot waited for the model's pictures, or says they were still loading (${JSON.stringify(R.info.claudeModel.settle)}; still going up after: ${busy?.busy}; said: ${told})`);
+  // (round 102 follow-up) the 6 s cap holds when no gap ever comes: a 🧊 model layer added with the gaps stalled
+  // (__labWarmGap.set({ stall: true }), a check knob) is released at the cap by its timer, and draws
+  await sbx('window.__labWarmGap.set({ stall: true }); return 1');
+  const c0 = await sbx('return JSON.stringify(window.__labWarmGap.state())');
+  const tc = Date.now();
+  await HubBridge.call('three_model', { op: 'add', file: `${DIR}/chair/chair.obj` }, { chatId: t1.chatId });
+  const c1 = await until(async () => { const v = await sbx('return JSON.stringify(window.__labWarmGap.state())'); return v && v.done > c0.done && v.waiting === 0 ? v : null; }, 20000, 200);
+  await sbx('window.__labWarmGap.set({ stall: false }); return 1');
+  const drawn = await until(() => !ThreeLab.director.building(), 8000);
+  R.info.cap = { ms: Date.now() - tc, held: c1 ? c1.held - c0.held : null, capped: c1 ? c1.capped - c0.capped : null, gaps: c1 ? c1.gaps - c0.gaps : null, last: c1?.last || null };
+  ok(c1 && c1.held > c0.held && c1.capped > c0.capped && c1.gaps === c0.gaps, `a held 🧊 layer with no gap at all is let go by the cap (${JSON.stringify(R.info.cap)})`);
+  ok(c1?.last?.ms <= 6000 + 1500, `…within the cap (held ${c1?.last?.ms} ms, cap 6000)`);
+  ok(drawn, '…and it draws (no layer still building)');
   // Astra (Codex path): an .obj + .mtl into scene B, backstage, then its screenshot; and its ▶ Apply backstage
   await Commands.tryRun('/astra-tools on', AS.id, null, { say: () => {}, note: () => {} });
   ok(await until(() => H.agent('astra').threeTools, 5000), 'Astra has the Lab tools');

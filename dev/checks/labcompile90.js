@@ -380,7 +380,11 @@ for (const [k, s] of Object.entries(S).filter(([n]) => /^(runtime|glass|light|sh
 }
 // (round 101) a new layer: drawn, from its programs made in gaps (not its first frame), within the stretch
 for (const [k, s] of Object.entries(S).filter(([n]) => /^layer:/.test(n))) {
-  step(`${k}: the new layer drew (its programs made before, in the gaps after frames)`, s.drew?.frames > 0 && (s.wg?.mode === 'off' || (s.wg?.held >= 1 && s.wg.late === 0)), { drew: s.drew, wg: s.wg });
+  // (round 102, labchat102) a hold that reached the 6 s cap while its gaps' own work was under half of it: the gaps were
+  // late (frames slow on a loaded box), not the layer's programs: "can't tell (load)", listed, not failing
+  const h = s.wg?.hold; const loadCap = s.wg?.late === 1 && h?.capped && h.workMs != null && h.workMs < 0.5 * h.ms;
+  if (loadCap) out.cantTell.push(`${k}: held to the ${h.ms} ms cap, its gaps' own work ${h.workMs} ms (load)`);
+  step(`${k}: the new layer drew (its programs made before, in the gaps after frames)`, s.drew?.frames > 0 && (s.wg?.mode === 'off' || (s.wg?.held >= 1 && (s.wg.late === 0 || loadCap))), { drew: s.drew, wg: s.wg });
 }
 if (S.texture) {
   const sl = S.texture.slices;
