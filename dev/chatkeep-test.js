@@ -16,7 +16,7 @@ const ROOT = path.join(__dirname, '..');
 const DS = require(path.join(ROOT, 'datasafe-core.js'));
 let n = 0;
 const ok = (c, m) => { assert.ok(c, m); n += 1; };
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chatkeep-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-chatkeep-');
 
 (async () => {
   // ---------- an engine's own record ----------

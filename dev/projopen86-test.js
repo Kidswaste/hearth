@@ -24,7 +24,7 @@ const PC = require(path.join(ROOT, 'projbundle-core.js'));
 let passes = 0; let failures = 0;
 const ok = (cond, what) => { if (cond) passes += 1; else { failures += 1; console.log(`FAIL ${what}`); } };
 const W = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); };
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-projopen86-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-projopen86-');
 const data = path.join(tmp, 'Hearth', 'data');
 const home = path.join(tmp, 'home');
 const matched = path.join(tmp, 'matched');

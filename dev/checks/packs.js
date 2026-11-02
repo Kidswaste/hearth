@@ -12,7 +12,7 @@ const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(i
 const { wait, until } = SQL;
 const lazyState = () => Lazy.state().find((g) => g.name === 'packs')?.state;
 const SONG = '/tmp/hearth-test-song.wav';
-const DIR = '/tmp/hearth-packs-check';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-packs-check`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const PNG = (() => { const c = document.createElement('canvas'); c.width = 8; c.height = 8; const g = c.getContext('2d'); g.fillStyle = '#c84'; g.fillRect(0, 0, 8, 8); return c.toDataURL('image/png').split(',')[1]; })();
 const clickRow = async (label) => { const b = await until(() => [...document.querySelectorAll('.mb-menu .menu-item')].find((x) => x.querySelector('b')?.textContent === label), 4000); if (b) [...document.querySelectorAll('.mb-menu .menu-item')].find((x) => x.querySelector('b')?.textContent === label).click(); return b; };
 const cardOpen = () => document.querySelector('dialog.pk-card[open]');

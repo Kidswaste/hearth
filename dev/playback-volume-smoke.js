@@ -1,5 +1,5 @@
 const fs = require('fs'), os = require('os'), path = require('path'), { pathToFileURL } = require('url');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-volume-'));
+const dir = require('./tmp-own').mkdtemp('hearth-volume-');
 const frame = path.join(dir, 'frame.html'), script = path.join(dir, 'check.js');
 const bootstrap = fs.readFileSync(path.join(__dirname, '../tools/three-sandbox.html'), 'utf8').match(/<script data-hearth-playback>[\s\S]*?<\/script>/)[0];
 fs.writeFileSync(frame, `${bootstrap}<script>addEventListener("message",()=>parent.postMessage({volumeTest:true,level:window.__hearthVolume?.get()},"*"))</script>`);

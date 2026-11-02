@@ -6,7 +6,7 @@
 //   node dev/smoke.js --check-timeout 240000 --lib dev/checks/journey-lib.js --script dev/checks/versions75.js
 const { step, wait, until, click } = J;
 const claude = H.claudeAgent();
-const CLOUD = `/tmp/hearth-versions75-${Date.now()}`;
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-versions75-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const dlg = () => [...document.querySelectorAll('dialog.vs-dialog')].filter((d) => d.open).at(-1) || null;
 const btnIn = (root, re) => [...(root?.querySelectorAll('button') || [])].find((b) => re.test(b.textContent.trim()) && J.visible(b));
 const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()) && J.visible(b));

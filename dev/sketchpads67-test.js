@@ -77,7 +77,7 @@ ok(K.loopName('/x/creative-sketches/Sunday session/Sketch 2026-10-26 14.05.33.wa
 ok(K.label(K.plan({ start: 2, end: 10, bpm: 120, dur: 30 })) === '4 bars · 0:02.0 – 0:10.0', 'the line under the waveform: "4 bars · 0:02.0 – 0:10.0"');
 
 // ---- 4. the main side
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'sketchpads67-')), dir = path.join(data, 'creative-sketches', 'Sunday session');
+const data = require('./tmp-own').mkdtemp('sketchpads67-'), dir = path.join(data, 'creative-sketches', 'Sunday session');
 fs.mkdirSync(dir, { recursive: true });
 const sketch = path.join(dir, 'Sketch 2026-10-26 14.05.33.wav'), sketchBytes = P.encodeWav(track(120, { secs: 30 }));
 fs.writeFileSync(sketch, sketchBytes); const hash = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex'), h0 = hash(sketch), m0 = fs.statSync(sketch).mtimeMs;

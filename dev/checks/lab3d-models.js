@@ -4,7 +4,7 @@
 // camera sliders + a 🎥 cue), turntable / explode through three_do, the gizmo on the model, replace in place (sliders and
 // keys kept, no renderer left behind), a bad file (a clear error, nothing breaks), the library panel and the preview menu.
 //   node dev/smoke.js --check-timeout 240000 --script dev/checks/lab3d-models.js --shot /tmp/lab3d-models.png
-const DIR = '/tmp/hearth-lab3d';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-lab3d`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return false; };
 const fail = []; const out = {};

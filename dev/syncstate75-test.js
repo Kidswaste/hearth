@@ -30,7 +30,7 @@ const ONLY = (() => { const i = argv.indexOf('--only'); return i >= 0 ? argv[i +
 let passes = 0; let failures = 0;
 const ok = (c, what, detail) => { if (c) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 500)}` : ''}`); } };
 const raw = Sim.raw;
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-syncstate75-'));
+const ROOT = require('./tmp-own').mkdtemp('hearth-syncstate75-');
 Sim.install();
 const scenarios = [];
 const scenario = (name, fn) => scenarios.push({ name, fn });

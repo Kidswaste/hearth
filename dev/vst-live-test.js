@@ -3,7 +3,7 @@ const fs = require('fs'), os = require('os'), path = require('path'), assert = r
 const { create } = require('../creative-vstmain');
 (async () => {
   if (!process.env.HEARTH_VST_PYTHON) throw Error('Set HEARTH_VST_PYTHON to the scoped test runtime.');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-live-audio-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-live-audio-');
   const host = create({ dataDir: dir, python: process.env.HEARTH_VST_PYTHON });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   try {

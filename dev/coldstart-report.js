@@ -44,7 +44,7 @@ const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a -
 const r1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
 
 function copyApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cold-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-cold-');
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(APP)) if (!skip.has(n)) fs.cpSync(path.join(APP, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -252,7 +252,7 @@ function summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) {
 
 (async () => {
   const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cold-profile-'));
+  const userData = require('./tmp-own').mkdtemp('hearth-cold-profile-');
   const runs = [];
   try {
     for (let i = 0; i <= RUNS; i++) {

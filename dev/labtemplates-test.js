@@ -131,7 +131,7 @@ ok('the picker: newest first, search by name, field names and layer names', () =
 
 // the .hearthpack round trip (main side, plain Node)
 ok('a template travels in a .hearthpack: kind "template", its fields kept, its media packed, then unpacked here', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-tpl-'));
+  const tmp = require('./tmp-own').mkdtemp('hearth-tpl-');
   const data = path.join(tmp, 'data'); fs.mkdirSync(data);
   const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
   const logo = path.join(tmp, 'logo.png'); fs.writeFileSync(logo, PNG);

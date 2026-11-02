@@ -210,7 +210,7 @@ function walk({ secs = 30, hz = 240, period = 6, hitchAt = [], oneOff = [], seed
   });
 
   await t('the store: a spike\'s picture, the map built and saved per game, listed and read back, 20 at most, the tag only when armed', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hitchmap-test-'));
+    const tmp = require('./tmp-own').mkdtemp('hitchmap-test-');
     process.env.HEARTH_TEST_SAVE_DIR = tmp;
     const M = require('../hitchmapmain');
     M.init({ dataDir: tmp });

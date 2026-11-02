@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 const assert = require('assert');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-adobe-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-adobe-');
 const home = path.join(tmp, 'home');
 const bin = path.join(tmp, 'bin');
 const log = path.join(tmp, 'log');

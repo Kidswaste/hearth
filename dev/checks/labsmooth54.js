@@ -25,7 +25,7 @@ const out = { numbers: {}, problems: [] };
 const fail = (m) => out.problems.push(m);
 const only = String(window.L54_ONLY || '').split(',').filter(Boolean);
 const want = (k) => !only.length || only.includes(k);
-const DIR = '/tmp/hearth-labsmooth54';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labsmooth54`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const cdp = (method, params) => Promise.race([smoke({ cdp: method, params }), wait(8000)]);
 const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1, ...extra });
 const click = async (x, y) => { await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y); };

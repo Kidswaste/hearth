@@ -23,7 +23,7 @@ let pass = 0; let fail = 0;
 const ok = (cond, what) => { if (cond) pass += 1; else { fail += 1; console.log(`FAIL ${what}`); } };
 // the sandbox's own proxy must not carry these local test remotes; a private global git config (safe.directory, sslBackend)
 for (const k of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-updatesafe-'));
+const T = require('./tmp-own').mkdtemp('hearth-updatesafe-');
 process.env.GIT_CONFIG_GLOBAL = path.join(T, 'global.gitconfig');
 fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, '');
 process.env.GIT_CONFIG_NOSYSTEM = '1';

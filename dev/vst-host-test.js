@@ -1,7 +1,7 @@
 const fs = require('fs'), os = require('os'), path = require('path'), assert = require('assert/strict');
 const { create, discover } = require('../creative-vstmain');
 (async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-vst-unit-'));
+  const temp = require('./tmp-own').mkdtemp('hearth-vst-unit-');
   let host;
   try {
     const root = path.join(temp, 'plugins'); fs.mkdirSync(root);

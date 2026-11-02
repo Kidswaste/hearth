@@ -136,7 +136,7 @@ check(C.words([{ path: '/x/logo.png', kind: 'change' }]) === 'logo.png updated f
 // ---------- the service on real folders ----------
 (async () => {
   const FW = require('../filewatchmain');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-fw-'));
+  const root = require('./tmp-own').mkdtemp('hearth-fw-');
   const D = (...p) => path.join(root, ...p);
   for (const d of ['lab', 'ai', 'ai/sub', 'sync', 'gone', 'poll']) fs.mkdirSync(D(d), { recursive: true });
   const write = (p, s) => fs.writeFileSync(p, s);

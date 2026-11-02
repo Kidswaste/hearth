@@ -84,7 +84,7 @@ module.exports = async function sync({ ok, chatOf, message, int, rnd, B, ROOT })
     ok(B.mergeChat({ baseBuf: null, localBuf: Buffer.from(localText(mine)), cloudBuf: Buffer.from(cloudText(base)), ctx, S, lh: '', ch: '' }) === null, 'no base: the whole-file merge (two-way)');
   }
   // ---------- the store thread's ops on files (the files thread in the app) ----------
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-sync-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat82-sync-');
   const w = new Worker(path.join(ROOT, 'storework.js'), { env: { ...process.env, HEARTH_SYNCCHAT_MIN: '1000' } });
   let seq = 0; const jobs = new Map();
   w.on('message', ({ id, res, err }) => { const j = jobs.get(id); jobs.delete(id); if (err) j.reject(new Error(err)); else j.resolve(res); });

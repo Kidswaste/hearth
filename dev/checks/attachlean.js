@@ -8,7 +8,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return null; };
 const problems = []; const ok = (c, what) => { if (!c) problems.push(what); return Boolean(c); };
 const out = {};
-const DIR = '/tmp/hearth-attachlean-check';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-attachlean-check`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const C = H.claudeAgent();
 const v = () => Native.view(C.id);
 const chips = () => [...v().chips.querySelectorAll('.attach-chip')].map((c) => c.textContent);

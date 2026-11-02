@@ -17,7 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ROOT = path.join(__dirname, '..');
-const base = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-diskcalm-'));
+const base = require('./tmp-own').mkdtemp('hearth-diskcalm-');
 process.env.HEARTH_TEST_SAVE_DIR = base; // the Trash is <base>/diskcalm-trash, the temp folder <base>/tmp, home <base>/home
 const C = require(path.join(ROOT, 'diskcalm-core.js'));
 const M = require(path.join(ROOT, 'diskcalmmain.js'));

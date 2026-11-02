@@ -163,7 +163,7 @@ if (process.argv[2] === '--store') {
 
   // ---------- store.js on throwaway copies, thread off and on ----------
   for (const thread of ['0', '1']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-scenesafe-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-scenesafe-');
     for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'scenesafe-core.js', 'datasafe-core.js', 'recall-core.js'] /* (round 75) + sync-hard.js (sync-merge.js needs it since round 74), kvops.js */) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
     fs.copyFileSync(__filename, path.join(dir, 't.js'));
     const run = spawnSync(process.execPath, [path.join(dir, 't.js'), '--store'], { cwd: dir, env: (({ HEARTH_STORE_THREAD: _t, ...e }) => (thread === '1' ? { ...e, HEARTH_STORE_THREAD: '1' } : e))(process.env), encoding: 'utf8', timeout: 60000 });
@@ -174,7 +174,7 @@ if (process.argv[2] === '--store') {
   }
 
   // ---------- the recovery scan ----------
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-scenesafe-scan-'));
+  const data = require('./tmp-own').mkdtemp('hearth-scenesafe-scan-');
   const kv = path.join(data, 'kv');
   const TM = require('../tools/three-history-core.js');
   W(path.join(kv, 'three-sketches.json'), [sc('s1', 'Basic scene'), sc('live', 'Still here')]);
@@ -228,7 +228,7 @@ if (process.argv[2] === '--store') {
   // ---------- sync: a short list arriving from the other computer never takes the only copy ----------
   {
     const { createEngine } = require('../sync-engine.js');
-    const w = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-scenesafe-sync-'));
+    const w = require('./tmp-own').mkdtemp('hearth-scenesafe-sync-');
     const cloud = path.join(w, 'cloud'); fs.mkdirSync(cloud, { recursive: true });
     const mk = (name) => {
       const m = { data: path.join(w, name, 'data'), config: path.join(w, name, 'app', 'config.json'), theme: path.join(w, name, 'app', 'theme.css'), home: path.join(w, name, 'home') };

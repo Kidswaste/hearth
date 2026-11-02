@@ -30,7 +30,7 @@ const M = require('../questguidemain');
   s = C.manual(s, 'shape', 'Removed the kick for the second half', now);
   assert.equal(s.done.at(-1).kind, 'manual');
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-guide-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-guide-');
   let running = false;
   const api = M.create({ dataDir: dir, localDir: dir, documentsDir: dir, now: () => now, pollRunning: async () => running });
   try {

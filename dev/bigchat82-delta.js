@@ -20,7 +20,7 @@ function diff(prev, chat) {
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
 module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-delta-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat82-delta-');
   const file = path.join(dir, 'giant.json');
   const w = new Worker(path.join(ROOT, 'storework.js'), { workerData: { deltaSab: new SharedArrayBuffer(4) } });
   let seq = 0; const jobs = new Map();
@@ -117,7 +117,7 @@ module.exports = async function delta({ ok, chatOf, message, rnd, int, ROOT }) {
   } finally { await w.terminate(); }
 
   // ---------- through store.js (the thread on, as in the app) ----------
-  const sdir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-store-'));
+  const sdir = require('./tmp-own').mkdtemp('bigchat82-store-');
   for (const f of ['store.js', 'scenesafe-core.js', 'datasafe-core.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'bigchat-core.js', 'recall-core.js', 'projfind-core.js']) fs.copyFileSync(path.join(ROOT, f), path.join(sdir, f));
   const inside = path.join(sdir, 't.js');
   fs.writeFileSync(inside, `

@@ -11,7 +11,7 @@ const m = new Module('importer-test');
 m.paths = module.paths;
 m._compile(src, 'importer-test.js');
 const { importFile, _test } = m.exports;
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'imp-test-'));
+const dir = require('./tmp-own').mkdtemp('imp-test-');
 const write = (name, data) => { const p = path.join(dir, name); fs.writeFileSync(p, JSON.stringify(data)); return p; };
 
 const claude = [

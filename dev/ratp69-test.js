@@ -227,7 +227,7 @@ test('the fetch (dev/fake-ratp.js): no key → the community API; a key → PRIM
 });
 
 test('the main side: the check rides the ONE timer ~30 min before; warns once; Leave earlier; offline never holds the reminder', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ratp69-'));
+  const dir = require('./tmp-own').mkdtemp('ratp69-');
   let clock = at(2026, 10, 27, 12); const timers = []; const events = []; let answer = { state: 'ok', known: R.METRO, lines: {}, at: clock }; let asked = 0;
   const fake = { now: () => clock, emit: (ch, ev) => events.push([ch, ev]), setTimer: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; }, clearTimer: (t) => { t.live = false; }, ratp: { status: async () => { asked++; return answer; }, hasKey: () => false } };
   const live = () => timers.filter((t) => t.live);

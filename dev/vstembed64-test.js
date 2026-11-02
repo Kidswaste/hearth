@@ -35,7 +35,7 @@ let j = M.jobOf({ action: 'editor', plugin: 'x', embed: { x: 10.4, y: 20, clip: 
 ok(j.embed.x === 10 && j.embed.parent === undefined && j.embed.clip.join() === '1,2,3,4', 'whitelist: the page gives a position, never a window handle');
 ok(M.jobOf({ action: 'snapshot', stateOnly: 'yes' }).stateOnly === undefined && M.jobOf({ action: 'snapshot', stateOnly: true }).stateOnly === true, 'whitelist: stateOnly is a strict flag');
 ok(M.windowOf({ isDestroyed: () => false, getNativeWindowHandle: () => { const b = Buffer.alloc(8); b.writeBigUInt64LE(0x2a0b16n); return b; } }).parent === String(0x2a0b16), 'Hearth’s window handle read from Electron’s 8-byte buffer');
-const temp0 = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-vstembed-'));
+const temp0 = require('./tmp-own').mkdtemp('hearth-vstembed-');
 try {
   const root = path.join(temp0, 'VST3'), cache = path.join(temp0, 'scan-cache.json'); fs.mkdirSync(path.join(root, 'Xfer', 'Serum2.vst3'), { recursive: true }); fs.mkdirSync(path.join(root, 'Big', 'Deep', 'Other.vst3'), { recursive: true });
   let a = M.discoverCached([root], cache); ok(!a.cached && a.plugins.map(p => p.name).join() === 'Serum 2', 'VST folders: first scan walks them');
@@ -96,7 +96,7 @@ ok(E2.none.mode === 'floating' && /this system can not/.test(E2.none.note), 'no 
 
 // ---- 3. the real host
 (async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-vstembed-host-'));
+  const temp = require('./tmp-own').mkdtemp('hearth-vstembed-host-');
   const root = path.join(temp, 'plugins'); fs.mkdirSync(path.join(root, 'Vital.vst3', 'Contents', 'x86_64-linux'), { recursive: true }); fs.writeFileSync(path.join(root, 'Vital.vst3', 'Contents', 'x86_64-linux', 'Vital.so'), 'v1'); fs.mkdirSync(path.join(root, 'Serum2.vst3'));
   Object.assign(process.env, { PYTHONPATH: FIX, FAKE_PB_PARAMS: '400', FAKE_PB_WRAP_MS: '2', FAKE_PB_NAME_US: '0.5', FAKE_EDITOR_S: 'hold', HEARTH_VST_FAKE_WIN32: '1', FAKE_MIDI_NOTE: '0', PYTHONDONTWRITEBYTECODE: '1' });
   delete process.env.HEARTH_VST_ASIO;

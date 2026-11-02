@@ -18,7 +18,7 @@ assert.equal(normalize({ rateLimits: { primary: { usedPercent: 123 } } }).bucket
 assert.equal(normalize({ rateLimitsByLimitId: {}, rateLimits: { primary: { usedPercent: 4 } } }).buckets[0].windows[0].remaining, 96);
 assert.equal(normalize({ ordinaryUsageAllowed: false }).ordinaryUsageAllowed, false);
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-usage-test-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-usage-test-');
   const service = new AccountUsage({ spawn, kill: p => p.kill(), bin: process.execPath,
     args: [path.join(__dirname, 'fake-codex-server.js')], cwd: dir, env: { ...process.env, HEARTH_SERVER_TEST_DIR: dir } });
   try {

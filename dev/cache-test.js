@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-test-'));
+const dir = require('./tmp-own').mkdtemp('cache-test-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
@@ -28,7 +28,7 @@ const BC = require(path.join(ROOT, 'budget-core.js'));
 const fails = [];
 const check = (ok, what, info) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (!ok) { fails.push(what); if (info !== undefined) console.log('   ', typeof info === 'string' ? info : JSON.stringify(info).slice(0, 600)); } };
 
-const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-proj-'));
+const proj = require('./tmp-own').mkdtemp('cache-proj-');
 const CLAUDE = { id: 'claude', name: 'Claude', engine: 'claude', mode: 'native', effort: 'high', instructions: [{ text: 'Answer in short paragraphs' }] };
 const ASTRA = { id: 'astra', name: 'Astra', engine: 'codex', mode: 'native', effort: 'high', instructions: [{ text: 'Answer in short paragraphs' }] };
 const DIRECTOR = { id: 'threedirector', name: 'Three Director', engine: 'claude', mode: 'native', dock: 'three', threeTools: true, hubChatId: 'c1' };

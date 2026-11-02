@@ -30,7 +30,7 @@ v8.setFlagsFromString('--expose_gc');
 const gc = vm.runInNewContext('gc');
 let fails = 0; let n = 0;
 const ok = (name, cond, info) => { n += 1; if (!cond) { fails += 1; console.log(`✗ ${name}`, info === undefined ? '' : JSON.stringify(info).slice(0, 900)); } else console.log(`✓ ${name}`); };
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fm92-'));
+const root = require('./tmp-own').mkdtemp('fm92-');
 const dirs = { chats: path.join(root, 'chats'), kv: path.join(root, 'kv') };
 fs.mkdirSync(dirs.chats, { recursive: true }); fs.mkdirSync(dirs.kv, { recursive: true });
 const chatFile = (id) => path.join(dirs.chats, `${id}.json`);

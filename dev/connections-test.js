@@ -14,7 +14,7 @@ const assert = require('assert');
 const ROOT = path.join(__dirname, '..');
 let passed = 0;
 const ok = (name) => { passed += 1; console.log(`✓ ${name}`); };
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'connections-engine-'));
+const dir = require('./tmp-own').mkdtemp('connections-engine-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const C = require(path.join(dir, 'connectionsmain.js'));

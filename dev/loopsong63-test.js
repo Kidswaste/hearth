@@ -105,7 +105,7 @@ const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e;
   C.submit(st, first.id, C.checkProof({ type: 'file', title: names.mix, path: '/tmp/x.wav', kind: 'audio/wav', bytes: 10, fingerprint: 'b'.repeat(64), images: [], ...text }), 'song'); ok(camp.quests.length === 3 && st.submissions[first.id].length === 1 && !C.done(st, first.id), 'startPersonal("track") adds it to the journal; the song is saved as proof, no XP before a review');
 
   // ---- 6. main side: every park sketch's takes, the MP3
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'loopsong63-'));
+  const temp = require('./tmp-own').mkdtemp('loopsong63-');
   try {
     const wav = P.encodeWav({ rate: 48000, channels: [sine.subarray(0, 48000), sine.subarray(0, 48000)] });
     for (const [sk, place] of [['Park sketch · Belleville · 18 Oct', 'Belleville'], ['Park sketch · Buttes-Chaumont · 12 Oct', 'Buttes-Chaumont']]) {

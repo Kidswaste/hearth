@@ -125,7 +125,7 @@ test('report for Claude: header, both parts, every entry with its details, nothi
   assert.ok(!leaks(r), r);
 });
 test('bugmain: the same problem counts up, a saved report keeps the last 3, a run that ended badly becomes a redacted report', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bugcard-test-'));
+  const tmp = require('./tmp-own').mkdtemp('bugcard-test-');
   try {
     const M = require('../bugmain');
     M._test.setDir(tmp);

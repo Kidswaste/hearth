@@ -16,7 +16,7 @@ const out = { steps: [] };
 let bad = 0;
 const step = (name, ok, info) => { if (!ok) bad += 1; out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : ` · ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); };
 const { wait, until } = SQL;
-const DIR = `/tmp/hearth-filewatch-${Date.now().toString(36)}`;
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-filewatch-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const fw = window.hub.fw;
 const outside = (ops) => fw.test({ outside: ops });
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };

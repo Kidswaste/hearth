@@ -127,7 +127,7 @@ const eng = (report, problems = []) => ({ report: { label: 'Claude Code', semver
   });
 
   // ---- main side ----
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-firstrun-'));
+  const tmp = require('./tmp-own').mkdtemp('hearth-firstrun-');
   const data = path.join(tmp, 'data');
   fs.mkdirSync(path.join(data, 'chats'), { recursive: true });
   fs.mkdirSync(path.join(tmp, 'Work', 'game'), { recursive: true });

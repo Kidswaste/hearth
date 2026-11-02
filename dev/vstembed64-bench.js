@@ -14,7 +14,7 @@ const py = spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)
 if (py.status !== 0) { console.log(JSON.stringify({ skipped: 'python3 with numpy not found' })); process.exit(0); }
 const PY = py.stdout.trim();
 Object.assign(process.env, { PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), FAKE_PB_PARAMS: PARAMS, FAKE_PB_WRAP_MS: WRAP, FAKE_PB_NAME_US: NAME, FAKE_MIDI_NOTE: '0', PYTHONDONTWRITEBYTECODE: '1' });
-const work = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-vstbench-'));
+const work = require('./tmp-own').mkdtemp('hearth-vstbench-');
 let before = null;
 try {
   const dir = path.join(work, 'before'); fs.mkdirSync(dir);

@@ -14,7 +14,7 @@ const PF = require('../projfind-core.js');
 let fails = 0; let n = 0;
 const ok = (name, cond, info) => { n += 1; if (!cond) { fails += 1; console.log(`✗ ${name}`, info === undefined ? '' : JSON.stringify(info).slice(0, 600)); } else console.log(`✓ ${name}`); };
 const NOW = Date.now(); const DAY = 864e5;
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'projsearch81-'));
+const root = require('./tmp-own').mkdtemp('projsearch81-');
 const dirs = { chats: path.join(root, 'chats'), kv: path.join(root, 'kv') };
 fs.mkdirSync(dirs.chats, { recursive: true }); fs.mkdirSync(dirs.kv, { recursive: true });
 const W = (file, v) => fs.writeFileSync(file, JSON.stringify(v));

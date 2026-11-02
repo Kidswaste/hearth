@@ -35,7 +35,7 @@ const CASES = [
 ];
 
 function measure(root = ROOT) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptdiet-'));
+  const dir = require('./tmp-own').mkdtemp('promptdiet-');
   try {
     for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'macpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'toolwake.js']) { try { fs.copyFileSync(path.join(root, f), path.join(dir, f)); } catch { /* optional */ } }
     fs.cpSync(path.join(root, 'mcp'), path.join(dir, 'mcp'), { recursive: true });

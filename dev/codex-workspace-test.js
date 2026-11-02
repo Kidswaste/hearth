@@ -1,6 +1,6 @@
 const assert = require('assert/strict'); const fs = require('fs'); const os = require('os'); const path = require('path'); const { spawn } = require('child_process');
 const { Pool } = require('../codex-server'); const { manage, skillInputs, record } = require('../codex-workspace');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-workspace-test-'));
+const dir = require('./tmp-own').mkdtemp('hearth-workspace-test-');
 const pool = new Pool({ spawn, kill: c => c.kill(), requestMs: 1500, idleMs: 1000 });
 const o = { chatId: 'a', bin: process.execPath, args: [path.join(__dirname, 'fake-codex-server.js')], cwd: dir, env: { ...process.env, HEARTH_SERVER_TEST_DIR: dir }, session: { id: 'saved' }, thread: { sandbox: 'read-only', approvalPolicy: 'never' }, servers: [] };
 const trace = () => fs.readFileSync(path.join(dir, 'trace.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);

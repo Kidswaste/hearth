@@ -168,7 +168,7 @@ const screen = { getDisplayMatching: () => ({ displayFrequency: 239.76 }), getPr
 const fresh = () => { delete require.cache[require.resolve('../gpu52main.js')]; return require('../gpu52main.js'); };
 
 (async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gpu52-'));
+  const tmp = require('./tmp-own').mkdtemp('gpu52-');
   try {
     for (const plat of ['win32', 'darwin']) {
       setPlatform(plat);

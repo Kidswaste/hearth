@@ -158,7 +158,7 @@ async function t(name, fn) { try { await fn(); passed += 1; console.log(`ok   ${
   });
   await t('activePort: the port Chrome writes in its profile', () => {
     const fs = require('fs'); const os = require('os');
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chrome-'));
+    const d = require('./tmp-own').mkdtemp('hearth-chrome-');
     assert.strictEqual(C.activePort(d), null);
     fs.writeFileSync(path.join(d, 'DevToolsActivePort'), '45123\n/devtools/browser/abc');
     assert.strictEqual(C.activePort(d), 45123);
@@ -169,7 +169,7 @@ async function t(name, fn) { try { await fn(); passed += 1; console.log(`ok   ${
   await t('idle: no page left for a while → it quits; a page open → it stays', async () => {
     const fs = require('fs'); const os = require('os');
     const g = await fake.start();
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-chrome-idle-'));
+    const d = require('./tmp-own').mkdtemp('hearth-chrome-idle-');
     fs.writeFileSync(path.join(d, 'DevToolsActivePort'), `${g.port}\n/devtools/browser/x`);
     Object.assign(process.env, { HEARTH_CHROME_PROFILE: d, HEARTH_CHROME_IDLE_MS: '600' });
     const M = require(path.join(__dirname, '..', 'chromemain.js'));

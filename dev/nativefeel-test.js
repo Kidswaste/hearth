@@ -99,7 +99,7 @@ for (let i = 0; i < 6; i += 1) big = C.remember(big, `linux:m${i}`, 'k', { bound
 eq(Object.keys(big.machines).length, 4, 'at most 4 computers');
 
 // ---------- main side with an injected platform and screens ----------
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nativefeel-'));
+const tmp = require('./tmp-own').mkdtemp('nativefeel-');
 const fakeScreen = (displays, primary) => {
   const L = {};
   return { getAllDisplays: () => displays, getPrimaryDisplay: () => displays.find((d) => d.id === primary) || displays[0],

@@ -13,7 +13,7 @@ const P = require(path.join(__dirname, '..', 'packs-core.js'));
 const M = require(path.join(__dirname, '..', 'packsmain.js'));
 let n = 0; let failed = 0;
 const ok = async (name, fn) => { n += 1; try { await fn(); console.log(`ok ${n} ${name}`); } catch (err) { failed += 1; console.log(`FAIL ${n} ${name}\n  ${err.stack.split('\n').slice(0, 3).join('\n  ')}`); } };
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-packs-test-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-packs-test-');
 const data = path.join(tmp, 'data'); fs.mkdirSync(data);
 M._set({ dataDir: data });
 const src = path.join(tmp, 'src'); fs.mkdirSync(src);

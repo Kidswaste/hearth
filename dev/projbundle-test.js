@@ -22,7 +22,7 @@ const zipkit = require(path.join(__dirname, '..', 'zipkit.js'));
 let n = 0; let failed = 0; let fileN = 0;
 const tests = [];
 const ok = (name, fn) => tests.push([name, fn]);
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'projbundle-test-'));
+const TMP = require('./tmp-own').mkdtemp('projbundle-test-');
 const SRC = path.join(TMP, 'owner'); // the owner's own files (read only)
 const DATA = path.join(TMP, 'data'); // Hearth's data folder
 fs.mkdirSync(SRC, { recursive: true }); fs.mkdirSync(DATA, { recursive: true });

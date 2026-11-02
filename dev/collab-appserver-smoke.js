@@ -2,7 +2,7 @@
 // (dev/checks/collab-appserver.js), in a test copy like every smoke.
 const fs = require('fs'); const os = require('os'); const path = require('path'); const { spawnSync } = require('child_process');
 const fwd = (p) => p.split(path.sep).join('/');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-collab-appserver-'));
+const dir = require('./tmp-own').mkdtemp('hearth-collab-appserver-');
 const script = path.join(dir, 'check.js');
 fs.writeFileSync(script, fs.readFileSync(path.join(__dirname, 'checks/collab-appserver.js'), 'utf8')
   .replaceAll('__FAKE_CODEX_SERVER__', fwd(path.join(__dirname, 'fake-codex-server.js')))

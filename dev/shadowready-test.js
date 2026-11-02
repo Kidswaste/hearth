@@ -145,7 +145,7 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
 
   // ---------- the memory per game ----------
   await t('remembered per game: the chosen size kept with the game\'s record, read back, forgotten alone', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-shadowready-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-shadowready-');
     PB.init({ dataDir: dir });
     const clink = { kind: 'lab', id: 's1clink', title: 'Clink' };
     assert.strictEqual(PB.note(clink, { off: [], shadow: { size: 1024, to: 2048, hz: 120, by: 'ready' } }), true);

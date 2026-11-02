@@ -20,7 +20,7 @@ const ROOT = path.join(__dirname, '..');
 let pass = 0; let fail = 0;
 const ok = (c, name, info) => { if (c) { pass += 1; console.log(`✓ ${name}`); } else { fail += 1; console.log(`✖ ${name}${info === undefined ? '' : ` ${JSON.stringify(info).slice(0, 300)}`}`); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'winperf78-'));
+const tmp = require('./tmp-own').mkdtemp('winperf78-');
 
 // a fake long-lived PowerShell: answers each JSON line (after some noise) unless told otherwise
 function fakePs({ silent = false, dieOn = -1, noise = true } = {}) {

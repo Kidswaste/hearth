@@ -86,7 +86,7 @@ try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); ff = 'ffmpeg'; 
 if (!ff || !fs.existsSync(path.join(dir, 'neon_tunnel_v1.mp4'))) {
   console.log(`(render tests skipped: ${ff ? `no test videos in ${dir}` : 'no ffmpeg'})`);
 } else {
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'cut-test-'));
+  const out = require('./tmp-own').mkdtemp('cut-test-');
   const A = path.join(dir, 'neon_tunnel_v1.mp4'); const B = path.join(dir, 'neon_tunnel_v2.mp4'); const Q = path.join(dir, 'square_loop.mp4');
   const probe = (f) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', f]).toString());
   const dur = (f, kind) => { const j = probe(f); const s = j.streams.find((x) => x.codec_type === kind); return Number(s?.duration || j.format.duration); };

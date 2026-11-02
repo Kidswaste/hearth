@@ -61,7 +61,7 @@ t('the Lab scene page: the Lab player, three.js next to it, the host feeding the
   if (!fs.existsSync(path.join(THREE, 'build', 'three.module.js'))) { console.log('  (skipped: no local three.js)'); return; }
   process.env.HEARTH_THREE_DIR = THREE;
   const M = require('../gamemodemain');
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gm-test-'));
+  const dataDir = require('./tmp-own').mkdtemp('gm-test-');
   const dep = require('../deploymain'); dep._test.setDataDir(dataDir);
   M._test.setCtx({ dataDir, getWin: () => null });
   const scene = require('./fixtures/game-lab-scene.js');

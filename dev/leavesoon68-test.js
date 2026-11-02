@@ -174,7 +174,7 @@ test('notify-core: a reminder carries Show on map (the click) Â· Snooze 10 min Â
 });
 
 test('the main side: ONE timer to the next reminder, rings once with the words, re-arms; none when nothing is on', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'leavesoon-'));
+  const dir = require('./tmp-own').mkdtemp('leavesoon-');
   let clock = at(2026, 10, 30, 12); const timers = []; const events = [];
   const fake = { now: () => clock, emit: (ch, ev) => events.push([ch, ev]), setTimer: (fn, ms) => { const t = { fn, ms, live: true }; timers.push(t); return t; }, clearTimer: (t) => { t.live = false; } };
   const live = () => timers.filter((t) => t.live);
@@ -208,7 +208,7 @@ test('the main side: ONE timer to the next reminder, rings once with the words, 
 });
 
 test('the main side: a file that can\'t be read rings nothing and is never saved over', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'leavesoon-'));
+  const dir = require('./tmp-own').mkdtemp('leavesoon-');
   fs.mkdirSync(path.join(dir, 'leavesoon')); const f = path.join(dir, 'leavesoon', 'reminders.json');
   fs.writeFileSync(f, '{"v":1,"items":[ broken');
   const timers = []; const api = M.create({ dataDir: dir, now: () => at(2026, 10, 30, 12), setTimer: (fn, ms) => { timers.push(ms); return {}; }, clearTimer: () => {} });

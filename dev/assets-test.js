@@ -99,7 +99,7 @@ t('LUTs: parsed and applied', () => {
   assert.ok(r === 1 && b < 0.85, 'the warm LUT');
   assert.strictEqual(C.parseCube('LUT_3D_SIZE 2\n0 0 0\n'), null, 'a short file is not a LUT');
 });
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-assets-test-'));
+const dir = require('./tmp-own').mkdtemp('hearth-assets-test-');
 FA.fixtures(dir);
 t('a folder walked and hashed (worker job): kinds, the duplicate, skipped text', () => {
   const r = W.run({ type: 'scan', roots: [dir], known: {} });

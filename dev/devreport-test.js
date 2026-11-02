@@ -13,7 +13,7 @@ const assert = require('assert');
 const ROOT = path.join(__dirname, '..');
 const C = require(path.join(ROOT, 'devreport-core.js'));
 const M = require(path.join(ROOT, 'devreportmain.js'));
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'devreport-'));
+const tmp = require('./tmp-own').mkdtemp('devreport-');
 let n = 0;
 const ok = (c, what) => { assert.ok(c, what); n += 1; };
 

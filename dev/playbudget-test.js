@@ -128,7 +128,7 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
 
   // ---------- the memory per game ----------
   await t('remembered per game: kept, read back, forgotten (datasafe read, atomic write)', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-playbudget-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-playbudget-');
     PB.init({ dataDir: dir });
     const clink = { kind: 'lab', id: 's1clink', title: 'Clink' }; const html = { kind: 'html', path: path.join(dir, 'game', 'index.html'), title: 'game' };
     assert.deepStrictEqual(PB.forGame(clink), { off: [] });

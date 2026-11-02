@@ -83,7 +83,7 @@ const STORE_FILES = (() => {
   }
   return [...seen];
 })();
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cs101-'));
+const TMP = require('./tmp-own').mkdtemp('cs101-');
 function storeCopy(name) {
   const dir = path.join(TMP, name);
   fs.mkdirSync(path.join(dir, 'data', 'chats'), { recursive: true });

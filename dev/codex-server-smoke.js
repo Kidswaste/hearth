@@ -8,7 +8,7 @@ const path = require('path');
 const assert = require('assert');
 const { Pool } = require('../codex-server');
 const root = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-server-smoke-'));
+const dir = require('./tmp-own').mkdtemp('hearth-server-smoke-');
 for (const f of ['engines.js', 'codex-server.js', 'codex-usage.js', 'codex-capabilities.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(root, f), path.join(dir, f));
 fs.cpSync(path.join(root, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));

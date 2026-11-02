@@ -329,7 +329,7 @@ scenario('race-restore', async () => {
 scenario('combine', async () => {
   const { spawnSync } = require('child_process');
   const ROOT = path.join(__dirname, '..');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ss97-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-ss97-');
   for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'scenesafe-core.js', 'datasafe-core.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js', 'storeack-core.js', 'projects-core.js', 'keptaside-core.js', 'keptaside.js', 'chatwin-core.js', 'bigchat-core.js', 'chatcalc-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* not every file is there */ } }
   fs.mkdirSync(path.join(dir, 'data', 'kv'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'data', 'kv', 'notes.json'), JSON.stringify([{ id: 'n1', title: 'Plan', text: 'one\ntwo\nthree', updatedAt: 1 }]));

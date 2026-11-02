@@ -67,7 +67,7 @@ try {
   await idle();
 
   // ---------- a file lands in a watched folder (main process) ----------
-  const dir = `/tmp/hearth-hooks-check-${Date.now().toString(36)}`;
+  const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-hooks-check-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   await window.hub.fs.write(`${dir}/.keep`, '').catch(() => {}); // (a hidden file: never counts)
   const made = await window.hub.fs.stat(dir).catch(() => null);
   A = A0 && H.agent(A0.id); // (a config save hands out fresh agent objects)

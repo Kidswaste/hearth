@@ -122,7 +122,7 @@ function frame(sqX, sqY, { size = 14, color = [240, 240, 240], noise = 6 } = {})
 // ---------- motionmain.js: status, download from a local "CDN", cancel ----------
 (async () => {
   const MM = require(path.join(__dirname, '..', 'motionmain.js'));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-motion-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-motion-');
   const bodies = {}; for (const f of MM.FILES) bodies[f.name] = Buffer.alloc(1000 + f.name.length, f.name.length);
   const sv = http.createServer((q, r) => { const name = decodeURIComponent(q.url.split('/').pop()); const b = bodies[name]; if (!b) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'content-length': b.length }); if (name === 'slow.bin') return; r.end(b); });
   await new Promise((res) => sv.listen(0, '127.0.0.1', res));

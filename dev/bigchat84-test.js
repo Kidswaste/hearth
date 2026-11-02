@@ -131,7 +131,7 @@ function thread() {
 
 async function storeTests() {
   const T = thread();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat84-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat84-');
   try {
     const W = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); };
     const big = chatOf(300, { id: 'giant' }); const small = chatOf(3, { id: 'small' });
@@ -257,7 +257,7 @@ async function bench() {
   for (const d of posts) { const a = P.now(); structuredClone(d); worst = Math.max(worst, P.now() - a); }
   out.openCopy = { whole: t(() => structuredClone(chat))[0], longestSlice: Math.round(worst) };
   // restore: the main-process way (what it held there) vs the thread's (the main process only waits)
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat84-bench-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat84-bench-');
   const T = thread();
   try {
     for (const way of ['main', 'thread']) {

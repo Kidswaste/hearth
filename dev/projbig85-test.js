@@ -109,7 +109,7 @@ function projectBody(src, chats) {
 const idsFor = (tag = 'new') => { let n = 0; return { project: () => 'pjNEW', scene: () => `sNEW${n++}`, board: () => `bNEW${n++}`, chat: (_o, a) => `${a}-${tag}${n++}`, ref: () => `rNEW${n++}`, note: () => `nNEW${n++}`, seqKey: (nm) => `seq:${nm}` }; };
 
 async function main() {
-  const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'projbig85-'));
+  const TMP = require('./tmp-own').mkdtemp('projbig85-');
   const T = thread();
   try {
     const dataDir = path.join(TMP, 'data'); const src = path.join(TMP, 'src'); const OUT = path.join(TMP, 'out'); fs.mkdirSync(OUT, { recursive: true });
@@ -241,7 +241,7 @@ async function held(fn) {
 async function bench() {
   const fix = '/tmp/hearth-bigchat84';
   if (!fs.existsSync(path.join(fix, '.versions'))) require('./bigchat84-fixture').make(fix);
-  const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'projbig85-bench-'));
+  const TMP = require('./tmp-own').mkdtemp('projbig85-bench-');
   try {
     const dataDir = path.join(TMP, 'data'); fs.mkdirSync(path.join(dataDir, 'chats'), { recursive: true });
     fs.copyFileSync(path.join(fix, 'chats', 'claude-giant0.json'), path.join(dataDir, 'chats', 'claude-giant0.json'));

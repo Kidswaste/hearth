@@ -16,7 +16,7 @@ const check = (ok, label, extra) => { if (!ok) { fails += 1; console.log(`✖ ${
 
 (async () => {
   // ---------- the session marker ----------
-  const data = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-safetynet-'));
+  const data = require('./tmp-own').mkdtemp('hearth-safetynet-');
   const sdir = path.join(data, 'safetynet');
   let r = M.openSession(data, 1000);
   check(!r.unclean, 'a first start is not an unexpected exit');

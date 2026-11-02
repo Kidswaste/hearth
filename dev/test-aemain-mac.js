@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const assert = require('assert');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-aemac-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-aemac-');
 const home = path.join(tmp, 'home');
 const appDir = path.join(home, 'Applications', 'Adobe After Effects 2026');
 fs.mkdirSync(path.join(appDir, 'Adobe After Effects 2026.app', 'Contents'), { recursive: true });

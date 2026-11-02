@@ -11,7 +11,7 @@ const { Worker } = require('worker_threads');
 
 module.exports = async function index({ ok, chatOf, message, int, rnd, B, ROOT }) {
   const PF = require(path.join(ROOT, 'projfind-core.js'));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-index-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat82-index-');
   const chats = path.join(dir, 'chats'); const kv = path.join(dir, 'kv');
   fs.mkdirSync(chats); fs.mkdirSync(kv);
   const giant = chatOf(700, { id: 'giant' }); giant.id = 'giant';

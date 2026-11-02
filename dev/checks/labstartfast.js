@@ -25,7 +25,7 @@
 //   node dev/smoke.js --check-timeout 600000 --script dev/checks/labstartfast.js
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(25); } return false; };
-const DIR = '/tmp/hearth-labstartfast';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labstartfast`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const shaderScene = (i, hue) => `import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));

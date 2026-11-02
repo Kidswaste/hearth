@@ -154,7 +154,7 @@ test('one file per show: the best-named (then the newest) wins', () => {
 });
 
 // ---------- the main side on a throwaway data folder ----------
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tickets68-'));
+const tmp = require('./tmp-own').mkdtemp('tickets68-');
 process.env.HEARTH_TEST_SAVE_DIR = path.join(tmp, 'saves');
 const M = require('../ticketsmain');
 const data = path.join(tmp, 'data'), dl = path.join(tmp, 'Downloads'), own = path.join(tmp, 'owner');

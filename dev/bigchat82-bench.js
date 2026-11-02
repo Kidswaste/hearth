@@ -14,7 +14,7 @@ const { Worker } = require('worker_threads');
 const a = process.argv.slice(2);
 const arg = (n, d) => { const i = a.indexOf(n); return i >= 0 ? a[i + 1] : d; };
 const ROOT = path.resolve(arg('--root', path.join(__dirname, '..'))); // (--root: another checkout, e.g. the code before this round)
-const DIR = arg('--dir', path.join(os.tmpdir(), 'hearth-bigchat82'));
+const DIR = arg('--dir', '/tmp/hearth-bigchat82'); // (tmpclean106) run-checks' shared fixture, whatever TMPDIR says
 const ONLY = arg('--only', '') ? new Set(arg('--only').split(',')) : null;
 const want = (k) => !ONLY || ONLY.has(k);
 const r1 = (x) => Math.round(x * 10) / 10;
@@ -133,7 +133,7 @@ const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Ma
   // ---------- sync ----------
   if (want('sync')) {
     const S = require(path.join(ROOT, 'sync-merge.js'));
-    const cloudRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-cloud-'));
+    const cloudRoot = require('./tmp-own').mkdtemp('bigchat82-cloud-');
     const ctx = { dataDir: DIR, cloudRoot, home: os.homedir(), win: false };
     const base = giant;
     const ours = { ...giant, updatedAt: giant.updatedAt + 1, messages: [...giant.messages, { role: 'user', text: 'from this computer', at: giant.updatedAt + 1000 }] };
@@ -165,7 +165,7 @@ const pct = (xs, q) => { const s = [...xs].sort((x, y) => x - y); return r1(s[Ma
   if (want('versions')) {
     const V = require(path.join(ROOT, 'versionsmain.js'));
     const S = require(path.join(ROOT, 'sync-merge.js'));
-    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-state-'));
+    const stateDir = require('./tmp-own').mkdtemp('bigchat82-state-');
     const ctx = { dataDir: DIR, cloudRoot: stateDir, home: os.homedir(), win: false };
     const bdir = path.join(stateDir, 'base', 'chats'); fs.mkdirSync(bdir, { recursive: true });
     fs.writeFileSync(path.join(bdir, 'claude-giant0.json'), JSON.stringify(S.toCloud({ ...giant, messages: giant.messages.slice(0, -10) }, ctx)));

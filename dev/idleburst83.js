@@ -38,7 +38,7 @@ const median = (xs) => { const s = xs.filter(Number.isFinite).sort((a, b) => a -
 const r1 = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
 
 function copyApp(app = APP, keep = opt('--keep')) {
-  const dir = keep ? path.resolve(keep) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-'));
+  const dir = keep ? path.resolve(keep) : require('./tmp-own').mkdtemp('hearth-ib83-');
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(app)) if (!skip.has(n)) fs.cpSync(path.join(app, n), path.join(dir, n), { recursive: true });
@@ -111,7 +111,7 @@ async function launch(dir, userData, port, { warm = false, profDir = null } = {}
       // the owner uses the Lab every day: its warm preview page is made after each start (tools/three-boot.js)
       if (!args.includes('--no-lab')) await c.evaluate("store.set('labboot.used', Date.now()); true").catch(() => null);
       if (SYNC) {
-        const cloud = `${userData}-cloud`; fs.mkdirSync(cloud, { recursive: true });
+        const cloud = require("./tmp-own").own(`${userData}-cloud`); /* (tmpclean106) removed however the run ends */ fs.mkdirSync(cloud, { recursive: true });
         const st = await c.evaluate(`(async () => { await window.hub.sync.on({ root: ${JSON.stringify(cloud)} });
           for (let i = 0; i < 480; i++) { const x = await window.hub.sync.status(); if (['synced', 'conflict', 'pending'].includes(x?.state)) return x.state; await new Promise((r) => setTimeout(r, 500)); }
           return 'timeout'; })()`).catch((e) => `error ${e.message}`);
@@ -290,13 +290,13 @@ function printSummary(sm, tag = '') {
   const keep = opt('--keep');
   const sides = [{ name: 'new', app: APP }, ...(AB ? [{ name: 'base', app: AB }] : [])].map((x, k) => ({
     ...x, dir: copyApp(x.app, keep ? (AB ? `${keep}-${x.name}` : keep) : null),
-    userData: fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-ud-')), port: 9600 + k * 7 + Math.floor(Math.random() * 280), runs: [] }));
+    userData: require('./tmp-own').mkdtemp('hearth-ib83-ud-'), port: 9600 + k * 7 + Math.floor(Math.random() * 280), runs: [] }));
   console.log(`${sides.map((x) => `${x.name}: ${x.app}`).join(' · ')} · runs ${RUNS}${PROF ? ' · profiled' : ''}${SYNC ? ' · sync on' : ''} · load ${os.loadavg().map((x) => x.toFixed(2)).join(' ')}`);
   for (const sd of sides) await locked(() => launch(sd.dir, sd.userData, sd.port, { warm: true }));
   for (let i = 0; i < RUNS; i++) {
     const order = sides.length > 1 && i % 2 ? [...sides].reverse() : sides;
     for (const sd of order) {
-      const profDir = PROF ? fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-prof-')) : null;
+      const profDir = PROF ? require('./tmp-own').mkdtemp('hearth-ib83-prof-') : null;
       let r = null;
       try { r = await locked(() => launch(sd.dir, sd.userData, sd.port, { profDir })); } catch (err) { console.log(`${sd.name} run ${i}: failed ${err.message}`); continue; }
       r.load = os.loadavg()[0];

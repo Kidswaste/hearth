@@ -84,7 +84,7 @@ const BUDGET = { claude: 305, astra: 165, director: 2170, directorFull: 9150, di
 
   // ---------- 4. only the owner's own words wake a sleeping tool set ----------
   const W = require(path.join(ROOT, 'toolwake.js'));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'promptdiet-wake-'));
+  const dir = require('./tmp-own').mkdtemp('promptdiet-wake-');
   W.setFile(path.join(dir, 'tool-wake.json'));
   const DAY = 86400000; const now = Date.UTC(2026, 9, 15, 12);
   fs.writeFileSync(path.join(dir, 'tool-wake.json'), JSON.stringify({ c1: { boardTools: now - 10 * DAY, captureTools: now - 10 * DAY } }));

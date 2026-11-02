@@ -1,7 +1,7 @@
 const assert = require('assert/strict');
 const fs = require('fs'); const os = require('os'); const path = require('path'); const { spawn } = require('child_process');
 const { Pool, Connection } = require('../codex-server'); const { Catalog, pages, mentions, inspect } = require('../codex-capabilities');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-capabilities-'));
+const dir = require('./tmp-own').mkdtemp('hearth-capabilities-');
 const opts = { spawn, kill: p => p.kill(), bin: process.execPath, args: [path.join(__dirname, 'fake-codex-server.js')], cwd: dir, env: { ...process.env, HEARTH_SERVER_TEST_DIR: dir }, requestMs: 800 };
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const trace = () => fs.readFileSync(path.join(dir, 'trace.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);

@@ -38,7 +38,7 @@ const ok = (cond, what, detail) => { if (cond) { passes += 1; if (VERBOSE) conso
 const raw = Sim.raw;
 const DAY = 864e5;
 const roots = new Set();
-const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-devices90-'));
+const SCRATCH = require('./tmp-own').mkdtemp('hearth-devices90-');
 roots.add(SCRATCH);
 
 const { REL, ID, MINT, CUT, makeChat, say, texts, rounds, converge } = PK;

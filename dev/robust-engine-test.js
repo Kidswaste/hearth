@@ -12,7 +12,7 @@ const assert = require('assert');
 
 process.env.HEARTH_TEST_TERMINAL = '1'; // update / sign-in windows run headless, brew / npm / installers only echo
 const ROOT = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'robust-engine-'));
+const dir = require('./tmp-own').mkdtemp('robust-engine-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
@@ -112,7 +112,7 @@ const fixed = (engine, action) => new Promise((resolve) => { const keep = setInt
   ok('Codex "requires a newer version": Update offered, that copy is remembered as too old');
 
   // ---- the newest copy on the computer is preferred, and a too-old run continues on it
-  const bins = fs.mkdtempSync(path.join(os.tmpdir(), 'robust-bins-'));
+  const bins = require('./tmp-own').mkdtemp('robust-bins-');
   const wrap = (sub, v) => { fs.mkdirSync(path.join(bins, sub)); const f = path.join(bins, sub, 'claude'); fs.writeFileSync(f, `#!/bin/sh\nFAKE_CLAUDE_VERSION=${v} exec "${process.execPath}" "${FAKE.claude}" "$@"\n`, { mode: 0o755 }); return f; };
   const oldBin = wrap('a', '2.1.1'); const newBin = wrap('b', '2.1.500');
   const PATH0 = process.env.PATH;

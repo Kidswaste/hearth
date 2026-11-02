@@ -29,7 +29,7 @@ const VERBOSE = argv.includes('--verbose');
 const SEEDS = Number(arg('--seeds', 6));
 let failures = 0; let passes = 0;
 const ok = (cond, what, detail) => { if (cond) { passes += 1; if (VERBOSE) console.log(`ok ${what}`); } else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 400)}` : ''}`); } };
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-bigsave88-'));
+const ROOT = require('./tmp-own').mkdtemp('hearth-bigsave88-');
 const SMALL = { min: 2048, max: 12 * 1024, every: 4 }; // (small segments: a few-hundred-message chat makes dozens)
 
 // ---------- made-up chats (fixed seeds; never real data) ----------
@@ -452,7 +452,7 @@ async function bench() {
   w.on('message', ({ id, res, err, ms }) => { const j = jobs.get(id); jobs.delete(id); if (err) j.reject(new Error(err)); else j.resolve({ res, ms }); });
   const op = (msg) => new Promise((resolve, reject) => { const id = ++seq; jobs.set(id, { resolve, reject }); w.postMessage({ ...msg, id }); });
   const med = (xs) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-bigsave88-bench-'));
+  const work = require('./tmp-own').mkdtemp('hearth-bigsave88-bench-');
   try {
     const sf = path.join(work, 'chat.json'); fs.copyFileSync(GIANT, sf);
     const chat = JSON.parse(fs.readFileSync(sf, 'utf8'));

@@ -70,7 +70,7 @@ function fakeDisk(files) {
   }
 
   // ---------- find(): kept copies + folder dates, on a real disk (Linux temp HOME / PATH) ----------
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'winstart79-'));
+  const tmp = require('./tmp-own').mkdtemp('winstart79-');
   const bin1 = path.join(tmp, 'bin1'); const bin2 = path.join(tmp, 'bin2');
   for (const d of [bin1, bin2]) fs.mkdirSync(d);
   const mk = (dir, name) => { const f = path.join(dir, name); fs.writeFileSync(f, '#!/bin/sh\necho 1.0.0\n', { mode: 0o755 }); return f; };
@@ -118,7 +118,7 @@ function fakeDisk(files) {
   else {
     process.env.HEARTH_THREE_DIR = THREE;
     const M = require('../gamemodemain');
-    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'winstart79-game-'));
+    const dataDir = require('./tmp-own').mkdtemp('winstart79-game-');
     require('../deploymain')._test.setDataDir(dataDir);
     M._test.setCtx({ dataDir, getWin: () => null });
     const code = (n) => `import * as THREE from 'three';\nconst s = new THREE.Scene(); // ${n}\n`;

@@ -12,7 +12,7 @@ const root = path.join(__dirname, '..');
 const fails = [];
 const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (!ok) fails.push(what); };
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-capmcp-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-capmcp-');
   const video = path.join(dir, 'ref clip.mp4');
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=25:duration=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', video]);
   // no data/game-bridge.json for this server: it behaves as if Hearth were closed

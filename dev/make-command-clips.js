@@ -70,7 +70,7 @@ if (!names.length) { console.error(`No clip for ${want} (known: ${Object.keys(CL
 if (spawnSync('ffmpeg', ['-version']).status !== 0) { console.error('ffmpeg is needed'); process.exit(2); }
 
 // the in-app script: each tour in turn (a calm start between them), the recordings' paths back as JSON
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-clips-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-clips-');
 const script = path.join(tmp, 'clips-check.js');
 fs.writeFileSync(script, `
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

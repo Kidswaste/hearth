@@ -32,7 +32,7 @@ const R94 = 'c33c1f37256c1d8dc89cb40fd1a3924fbd4fafe9'; // "Patch notes: round 9
 const MB = Number(process.env.ASIDE95_MB) || 60;
 let passes = 0; let failures = 0;
 const ok = (c, what, detail) => { if (c) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 700)}` : ''}`); } };
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'as95-'));
+const tmpRoot = require('./tmp-own').mkdtemp('as95-');
 const roots = new Set([tmpRoot]);
 const day = () => new Date().toISOString().slice(0, 10);
 const load = () => { const l = os.loadavg()[0] / Math.max(1, os.cpus().length); return Math.round(l * 100) / 100; };

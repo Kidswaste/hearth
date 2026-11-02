@@ -22,7 +22,7 @@ const W = require('../winfresh-core');
 
 let pass = 0; let fail = 0;
 const ok = (cond, what) => { if (cond) pass += 1; else { fail += 1; console.log(`FAIL ${what}`); } };
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-twocopies-'));
+const T = require('./tmp-own').mkdtemp('hearth-twocopies-');
 const write = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v)); };
 
 // a file system whose absolute paths (C:\… or /…) live under one temp folder: the other platform's layout, for real

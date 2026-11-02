@@ -5,7 +5,7 @@ const path = require('path');
 const { create, valid } = require('../offline-library');
 const { check } = require('../offline-project');
 (async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-offline-test-'));
+  const root = require('./tmp-own').mkdtemp('hearth-offline-test-');
   let requests = 0, online = true;
   const modules = {
     'build/three.module.js': "export * from './three.core.js';",

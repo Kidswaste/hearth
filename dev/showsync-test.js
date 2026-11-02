@@ -66,7 +66,7 @@ const SG = Core.sourceFromUrl('https://shotgun.live/en/cities/paris'), DC = Core
   ok('robots: allowed, disallowed, wildcard, other bots ignored', Core.robotsAllows(rd, '/browse/paris-1') && !Core.robotsAllows(rd, '/search/x') && !Core.robotsAllows(rd, '/events?q=1') && Core.robotsAllows('', '/x') && !Core.robotsAllows('User-agent: *\nDisallow: /', '/x') && Core.robotsAllows('User-agent: *\nDisallow: /\nAllow: /venue/', '/venue/a') && Core.robotsAllows('User-agent: *\nDisallow:', '/a') && !Core.robotsAllows('User-agent: hearth\nDisallow: /a\n\nUser-agent: *\nAllow: /', '/a/b'));
 
   // ---------- the sync: fetch → cache → geocode / logos → snapshot ----------
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'showsync-test-'));
+  const dataDir = require('./tmp-own').mkdtemp('showsync-test-');
   let clock = NOW, hits = [], overrides = {};
   const fetch = (u, o) => F.fakeFetch({ now: NOW, overrides, hits })(u, o);
   let shrunk = 0;
@@ -112,13 +112,13 @@ const SG = Core.sourceFromUrl('https://shotgun.live/en/cities/paris'), DC = Core
   snap = await S.refresh();
   ok('breaking: offline keeps every last good list', snap.shows.some((x) => x.title === 'Possession') && snap.shows.some((x) => /Floating Points/.test(x.title)) && snap.shows.every((x) => (x.end || x.start + 4 * 3600e3) >= clock) && /couldn't update|Couldn't reach/.test(snap.status || ''), snap.status);
   // robots says no: the page isn't fetched at all
-  const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'showsync-test-')); hits = [];
+  const dir2 = require('./tmp-own').mkdtemp('showsync-test-'); hits = [];
   overrides = { 'https://dice.fm/robots.txt': { file: 'robots-dice-deny.txt', headers: { 'content-type': 'text/plain' } } };
   const S2 = Main.create({ dataDir: dir2, fetch, shrink: async (b) => b, wait: async () => {}, now: () => NOW });
   snap = await S2.refresh();
   ok('robots: a disallowed page is never fetched, plain line', !hits.some((h) => h.url === DC.url) && snap.sources.find((s) => s.platform === 'dice').problem === 'robots', snap.sources);
   // a cache file that can't be read is never saved over
-  const dir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'showsync-test-')); fs.mkdirSync(path.join(dir3, 'showsync'));
+  const dir3 = require('./tmp-own').mkdtemp('showsync-test-'); fs.mkdirSync(path.join(dir3, 'showsync'));
   fs.writeFileSync(path.join(dir3, 'showsync', 'cache.json'), '{"v":1,"sources":{'); overrides = {};
   const S3 = Main.create({ dataDir: dir3, fetch, shrink: async (b) => b, wait: async () => {}, now: () => NOW });
   await S3.refresh();

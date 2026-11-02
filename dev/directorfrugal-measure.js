@@ -31,7 +31,7 @@ const trees = new Map();
 process.on('exit', () => { for (const d of trees.values()) { try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* temp */ } } });
 function treeOf(ref) {
   if (trees.has(ref)) return trees.get(ref);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dfrugal-'));
+  const dir = require('./tmp-own').mkdtemp('dfrugal-');
   trees.set(ref, dir);
   const have = PROMPT_FILES.filter((f) => { try { execFileSync('git', ['-C', ROOT, 'cat-file', '-e', `${ref}:${f}`], { stdio: 'ignore' }); return true; } catch { return false; } });
   const tar = execFileSync('git', ['-C', ROOT, 'archive', '--format=tar', ref, 'mcp', ...have], { maxBuffer: 64 << 20 });

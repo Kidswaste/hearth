@@ -27,7 +27,7 @@ const CASES = opt('--cases', 'start,10s,60s,hover').split(',');
 const MODES = opt('--modes', 'calm,idle').split(',').filter(Boolean);
 const HOVER = Number(opt('--hover', 300));
 const AT = { start: 1500, '10s': 10000, '60s': 60000, hover: 3000 };
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'll94o-'));
+const TMP = require('./tmp-own').mkdtemp('ll94o-');
 
 const SCENE = (i, hue) => `import * as THREE from 'three';
 const renderer = new THREE.WebGLRenderer({ antialias: true });

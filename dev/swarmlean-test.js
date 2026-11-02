@@ -48,7 +48,7 @@ check(SL.helperPick(opus, { chat: { model: 'opus' }, R: Router }) === null, 'a c
 check(JSON.stringify(SL.helperPick({ engine: 'claude', model: 'haiku' }, { R: Router })) === JSON.stringify({ effort: 'low' }), 'never a stronger model than the AI\'s own (Haiku stays Haiku)');
 
 // 4. a helper run: no memory, no habits, byte-stable when memory changes (a real engines.js run on the fake CLI)
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmlean-test-'));
+const dir = require('./tmp-own').mkdtemp('swarmlean-test-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });

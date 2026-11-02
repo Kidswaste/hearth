@@ -107,7 +107,7 @@ const noise = (x, y) => [255 * rnd(x, y, 1), 255 * rnd(x, y, 2), 255 * rnd(x, y,
 const normal = (x, y) => { const nx = Math.sin(x / 9) * 0.4; const ny = Math.cos(y / 11) * 0.4; const nz = Math.sqrt(1 - nx * nx - ny * ny); return [(nx * 0.5 + 0.5) * 255, (ny * 0.5 + 0.5) * 255, (nz * 0.5 + 0.5) * 255]; };
 
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-gametex-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-gametex-');
   try {
     const TX = require('../gametexmain'); TX.init({ decode: rawDecode });
     const M = require('../gamereadymain')._test; M.setDir(dir); M.setApp(path.join(__dirname, '..'));

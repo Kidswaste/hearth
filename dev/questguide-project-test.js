@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const M=require('../questguidemain'),W=require('../tools/workbench-core');
 (async()=>{
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-project-guide-')),kv=path.join(dir,'kv');fs.mkdirSync(kv);
+ const dir=require('./tmp-own').mkdtemp('hearth-project-guide-'),kv=path.join(dir,'kv');fs.mkdirSync(kv);
  const put=(k,v)=>fs.writeFileSync(path.join(kv,k+'.json'),JSON.stringify(v));
  const p={id:'fixture',name:'A little world',items:[{id:'scene:scene',type:'scene',ref:'scene'}],workspace:{sceneId:'scene'}},scenes=[{id:'scene',updatedAt:1,layers:[{id:'layer',code:'first version'}]}],wb=W.defaults();
  put('projects',{v:1,list:[p]});put('three-sketches',scenes);put('workbench-fixture',wb);

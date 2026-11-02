@@ -24,7 +24,7 @@ try {
   const chatId = H.activeChat[C.id];
   const v = Native.view(C.id);
   const attDir = await window.hub.attachmentsDir();
-  const dir = `/tmp/hearth-labdrop61-${Date.now().toString(36)}`;
+  const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-labdrop61-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   const glb = `${dir}/hyper_buildings.glb`;
   await window.hub.fs.write(glb, 'glTF fake model');
   const reset = () => { v.attachments.length = 0; Native.renderChips(C.id); };

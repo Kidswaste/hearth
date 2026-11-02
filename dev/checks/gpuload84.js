@@ -219,7 +219,7 @@ await safe('stage minimized', async () => {
   await window.hub.stageClose();
 });
 await safe('game minimized', async () => {
-  const DIR = '/tmp/hearth-gpuload84-game';
+  const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-gpuload84-game`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   await window.hub.fs.write(`${DIR}/index.html`, '<!doctype html><meta charset="utf-8"><title>g84</title><canvas id="c" width="320" height="180"></canvas><script>window.__f = 0; const g = document.getElementById("c").getContext("2d"); (function f() { window.__f += 1; g.fillStyle = `hsl(${window.__f % 360} 60% 50%)`; g.fillRect(0, 0, 320, 180); requestAnimationFrame(f); })();</script>');
   if (typeof GameMode === 'undefined') await Lazy.load('gamemode');
   await GameMode.play({ kind: 'html', path: `${DIR}/index.html` });

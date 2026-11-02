@@ -13,7 +13,7 @@ const out = { steps: [], problems: [] };
 const step = (ok, label, extra) => { out.steps.push(`${ok ? '✓' : '✖'} ${label}${extra !== undefined ? ` · ${typeof extra === 'string' ? extra : JSON.stringify(extra)}` : ''}`); if (!ok) out.problems.push(label); };
 try {
   const fsx = window.hub.fs;
-  const dir = `/tmp/hearth-aiundo-${Date.now().toString(36)}`;
+  const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-aiundo-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   await fsx.write(`${dir}/a.txt`, 'alpha');
   await Lazy.load('aiundo');
   await Lazy.load('activity');

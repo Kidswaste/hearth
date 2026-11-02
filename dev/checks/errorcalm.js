@@ -16,7 +16,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(120); } return null; };
 const steps = []; const problems = [];
 const step = (name, ok, info) => { steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); if (!ok) problems.push(name); return Boolean(ok); };
-const DIR = `/tmp/hearth-errorcalm-${Date.now()}`;
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-errorcalm-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const JARGON = /\bE(NOENT|ACCES|PERM|BUSY|NOTDIR|INVAL)\b|\bspawn\b|\bIPC\b|\bundefined\b|\bMCP\b|\bJSON\b|invoking remote|at \S+ \(|\bstderr\b|exit code/;
 // what a toast says on screen without its Details fold
 const shown = (n) => { const c = n.cloneNode(true); c.querySelectorAll('.ec-details, button').forEach((x) => x.remove()); return c.textContent.trim(); };

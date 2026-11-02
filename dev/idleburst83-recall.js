@@ -12,7 +12,7 @@ const { Worker } = require('worker_threads');
 const args = process.argv.slice(2);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const CHATS = path.resolve(opt('--chats', '/tmp/hearth-bigprofile72/chats'));
-const CACHE = path.resolve(opt('--cache', fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ib83-recall-'))));
+const CACHE = path.resolve(opt('--cache', require('./tmp-own').mkdtemp('hearth-ib83-recall-')));
 const Q = opt('--q', 'what did we decide about the nebula ribbon shader?');
 
 function thread() {

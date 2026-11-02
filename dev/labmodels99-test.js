@@ -24,7 +24,7 @@ const ROOT = path.join(__dirname, '..');
 
 if (process.argv[2] !== '--inside') {
   // a copy of the app's own files (store.js, projbundlemain.js and what they load) in a short temp folder
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lm99-'));
+  const dir = require('./tmp-own').mkdtemp('lm99-');
   for (const f of fs.readdirSync(ROOT)) if (/\.(js|json)$/.test(f) && f !== 'package-lock.json' && fs.statSync(path.join(ROOT, f)).isFile()) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   const r = spawnSync(process.execPath, [__filename, '--inside', dir, ...process.argv.slice(2)], { cwd: dir, env: { ...process.env, HEARTH_PROJBUNDLE_INLINE: '0' }, stdio: 'inherit', timeout: 240000 });
   fs.rmSync(dir, { recursive: true, force: true });
@@ -45,7 +45,7 @@ const K = require(path.join(APP, 'sync-kinds.js'));
 const sha = (p) => crypto.createHash('sha1').update(fs.readFileSync(p)).digest('hex');
 const rnd = (n, seed = 1) => { const b = Buffer.alloc(n); let x = seed * 2654435761 >>> 0; for (let i = 0; i < n; i += 4) { x = (x * 1664525 + 1013904223) >>> 0; b.writeUInt32LE(x, Math.min(i, n - 4)); } return b; };
 const tree = (dir) => { const out = []; const go = (d, r) => { let es = []; try { es = fs.readdirSync(d, { withFileTypes: true }); } catch { return; } for (const e of es) { const rr = r ? `${r}/${e.name}` : e.name; if (e.isDirectory()) go(path.join(d, e.name), rr); else out.push(rr); } }; go(dir, ''); return out.sort(); };
-const SRC = fs.mkdtempSync(path.join(os.tmpdir(), 'lm99src-'));
+const SRC = require('./tmp-own').mkdtemp('lm99src-');
 const w = (rel, data) => { const p = path.join(SRC, ...rel.split('/')); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, data); return p; };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==', 'base64');
 

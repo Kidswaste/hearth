@@ -23,7 +23,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const r1 = (n) => Math.round(n * 10) / 10;
 
 function copyApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-bgperf-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-bgperf-');
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -95,7 +95,7 @@ const memBy = (s) => { const by = {}; for (const p of s) { const k = p.kind.repl
 
 (async () => {
   const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-bgperf-profile-'));
+  const userData = require('./tmp-own').mkdtemp('hearth-bgperf-profile-');
   const env = { ...process.env, HEARTH_TEST_SAVE_DIR: path.join(dir, 'test-saves') };
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], { stdio: 'ignore', detached: true, env });
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };

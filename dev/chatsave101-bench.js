@@ -66,7 +66,7 @@ const runs = (fn) => { const out = []; for (let i = 0; i < N; i++) out.push(time
   sh = null; global.gc?.(); global.gc?.(); const h0 = process.memoryUsage().heapUsed; const keep = Array.from({ length: 20 }, () => chat.messages.map(W.shapeOf)); global.gc?.(); global.gc?.(); const h1 = process.memoryUsage().heapUsed;
   r['window: shapes held (KB, per chat; the strings are shared)'] = (h1 - h0) / 1024 / keep.length; keep.length = 0; sh = chat.messages.map(W.shapeOf);
   // ---- by change: the store thread's side (real storework.js) ----
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs101b-'));
+  const dir = require('./tmp-own').mkdtemp('cs101b-');
   const file = path.join(dir, 'c.json');
   const w = new Worker(path.join(ROOT, 'storework.js'), { workerData: { deltaSab: new SharedArrayBuffer(4) } });
   let seq = 0; const jobs = new Map();

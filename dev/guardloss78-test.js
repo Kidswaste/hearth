@@ -215,7 +215,7 @@ scenario('auto-loses', async () => {
 scenario('recover', async () => {
   const os = require('os'); const fs = require('fs'); const path = require('path'); const { spawnSync } = require('child_process');
   const ROOT = path.join(__dirname, '..');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-guardloss78-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-guardloss78-');
   for (const f of ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js', 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js', 'storeack-core.js', 'projects-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
   fs.mkdirSync(path.join(dir, 'data', 'kv'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'data', 'kv', 'chat-meta.json'), JSON.stringify({ a: { tags: ['x'] }, b: { folder: 'Work' }, c: { folder: 'Play' } }));

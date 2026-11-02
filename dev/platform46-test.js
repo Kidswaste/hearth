@@ -18,7 +18,7 @@ const ROOT = path.join(__dirname, '..');
 
 let pass = 0; let fail = 0;
 const check = (cond, what, got) => { if (cond) { pass += 1; console.log(`✓ ${what}`); } else { fail += 1; console.log(`✖ ${what}${got !== undefined ? ` — ${JSON.stringify(got).slice(0, 300)}` : ''}`); } };
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'platform46-test-'));
+const T = require('./tmp-own').mkdtemp('platform46-test-');
 const w = (root, rel, v) => { const f = path.join(root, ...rel.split('/')); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, v); return f; };
 
 (async () => {

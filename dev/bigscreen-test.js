@@ -114,7 +114,7 @@ st = C.remember(st, MAC, C.layoutKey([MBP]), { bounds: { x: 0, y: 30, width: 120
 ok(st.machines[MAC].screens && B.screenOf(st, MAC, K4_100)?.fullscreen === true, 'nativefeel remembering a place keeps the screens');
 
 // ---------- main side: the file, restore, start zoom, IPC, events ----------
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bigscreen-'));
+const tmp = require('./tmp-own').mkdtemp('bigscreen-');
 const file = path.join(tmp, 'window.json');
 const fakeScreen = (displays, primary) => {
   const L = {};

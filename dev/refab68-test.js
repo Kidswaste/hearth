@@ -77,7 +77,7 @@ ok(K.clock(62.44) === '1:02.4' && K.lufsText(-7.94) === '≈ −7.9 LUFS' && K.l
 ok(['a.wav', 'B.MP3', 'c.flac', 'd.m4a'].every(K.isAudioName) && !K.isAudioName('notes.txt'), 'audio file names: wav / mp3 / flac / m4a');
 
 // ---- 6. main: the scratch path
-const dA = fs.mkdtempSync(path.join(os.tmpdir(), 'refab68-')), pA = M.peekPath(dA), pB = M.peekPath(path.join(dA, 'other'));
+const dA = require('./tmp-own').mkdtemp('refab68-'), pA = M.peekPath(dA), pB = M.peekPath(path.join(dA, 'other'));
 ok(pA.startsWith(os.tmpdir()) && path.basename(pA) === 'desk-now.wav' && fs.existsSync(path.dirname(pA)) && pA === M.peekPath(dA) && pA !== pB && !pA.includes('creative-sketches'), 'the desk\'s scratch copy goes in the temp folder, one per Hearth data folder, never in the sketches folder');
 
 // ---- 7. 'sketch-peek' through the real instrument host

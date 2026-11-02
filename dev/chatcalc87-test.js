@@ -92,7 +92,7 @@ function compare(chat, s, o) {
 async function bench() {
   const src = '/tmp/hearth-bigchat84/chats/claude-giant0.json';
   if (!fs.existsSync(src)) require('./bigchat84-fixture.js').make('/tmp/hearth-bigchat84');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cc87b-')); const file = path.join(dir, 'giant.json'); fs.copyFileSync(src, file);
+  const dir = require('./tmp-own').mkdtemp('hearth-cc87b-'); const file = path.join(dir, 'giant.json'); fs.copyFileSync(src, file);
   const T = thread(); const agent = { id: 'claude', mode: 'native', engine: 'claude' };
   const calc = async (label) => { const t0 = performance.now(); const r = await T.op({ op: 'chatCalc', file, what: ALL, agent, tools: true }); console.log(`${label.padEnd(44)} ${Math.round(performance.now() - t0)} ms (thread ${r.ms} ms, ${r.how})`); return r; };
   try {
@@ -205,7 +205,7 @@ async function main() {
   }
 
   // ---------- the store thread ----------
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cc87-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-cc87-');
   const T = thread();
   try {
     const chat = chatOf(1300); chat.session = { id: 's1' }; delete chat.compact; delete chat.handoff; delete chat.lean;

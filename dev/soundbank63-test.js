@@ -50,7 +50,7 @@ const parsed = C.aiParse('Sure! {"1":["bass","DARK","nonsense"],"2":["pad"],"9":
 ok(parsed['id-bass'].join() === 'bass,dark' && parsed['id-pad'].join() === 'pad' && Object.keys(parsed).length === 2 && Object.keys(C.aiParse('no json', batch)).length === 0, 'AI reply: only allowed tags, only the batch, prose tolerated');
 
 // ---- 2. the main side
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-soundbank-'));
+const dir = require('./tmp-own').mkdtemp('hearth-soundbank-');
 const mine = path.join(dir, 'data', 'creative-vst', 'soundbank');
 const roots = { Vital: [path.join(dir, 'Documents', 'Vital', 'User', 'Presets')], 'Serum 2': [path.join(dir, 'Documents', 'Xfer', 'Serum 2 Presets', 'Presets', 'User')] };
 fs.mkdirSync(path.join(roots.Vital[0], 'Plucks'), { recursive: true }); fs.mkdirSync(roots['Serum 2'][0], { recursive: true });

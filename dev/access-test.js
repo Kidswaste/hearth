@@ -120,7 +120,7 @@ assert.strictEqual(bash('sudo x').grant, null);
 ok('"Allow for this chat" keys group alike requests (never for password commands)');
 
 // ---------------------------------------------------------------- engines: flags and prompt
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'access-engine-'));
+const dir = require('./tmp-own').mkdtemp('access-engine-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
@@ -129,8 +129,8 @@ const FAKE_CODEX = path.join(__dirname, 'fake-codex.js');
 engines.setEnginePaths({ claude: FAKE_CLAUDE, codex: FAKE_CODEX });
 const T = engines._test;
 T.loadDropped(FAKE_CLAUDE);
-const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'access-proj-'));
-const art = fs.mkdtempSync(path.join(os.tmpdir(), 'access-art-'));
+const proj = require('./tmp-own').mkdtemp('access-proj-');
+const art = require('./tmp-own').mkdtemp('access-art-');
 const claude = { id: 'claude', name: 'Claude', mode: 'native', engine: 'claude' };
 const astra = { id: 'astra', name: 'Astra', mode: 'native', engine: 'codex', codexTransport: 'exec' };
 const withAcc = (a, level, folders = [proj]) => ({ ...a, access: { level, folders }, accessChatId: 'chat-1' });

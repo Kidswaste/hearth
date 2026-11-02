@@ -161,7 +161,7 @@ ok('search: names, where it came from and its steps; newest first', () => {
 
 // the .hearthpack round trip (main side, plain Node)
 ok('a recipe travels in a .hearthpack: kind "recipe", no scene, its steps (and a layer step\'s code) kept', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-rc-'));
+  const tmp = require('./tmp-own').mkdtemp('hearth-rc-');
   const data = path.join(tmp, 'data'); fs.mkdirSync(data);
   const r = C.make({ name: 'Packed recipe', steps: [{ k: 'layer', name: 'Rings', code: '// rings\nconst P = tweak({ n: 3 });' }, { k: 'frame', id: '9:16' }, { k: 'slider', on: { name: 'Orb' }, key: 'glow', label: 'Glow', type: 'number', v: 2, min: 0, max: 3 }] });
   const packs = require('../packsmain.js');

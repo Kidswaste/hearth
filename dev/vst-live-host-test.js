@@ -44,7 +44,7 @@ out.helpers = 'picker order / UA preselection / remembered device / readout / ph
 const py = spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' }); const PY = (py.stdout || '').trim();
 if (py.status !== 0) { out.skipped.push('host part: python3 with numpy not found here'); console.log(JSON.stringify(out, null, 1)); process.exit(0); }
 (async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-vst-live-'));
+  const temp = require('./tmp-own').mkdtemp('hearth-vst-live-');
   const root = path.join(temp, 'plugins'); fs.mkdirSync(path.join(root, 'Vital.vst3'), { recursive: true }); fs.mkdirSync(path.join(root, 'Serum2.vst3'));
   const pbLog = path.join(temp, 'midi.jsonl');
   Object.assign(process.env, { PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), FAKE_PB_LOG: pbLog, FAKE_PB_PARAMS: '2000', FAKE_EDITOR_S: '1', PYTHONDONTWRITEBYTECODE: '1' });

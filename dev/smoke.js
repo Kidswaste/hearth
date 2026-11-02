@@ -40,6 +40,7 @@ const scriptFile = opt('--script');
 const shot = opt('--shot', path.join(os.tmpdir(), 'hearth-smoke.png'));
 const waitMs = Number(opt('--wait', 5000));
 const keep = args.includes('--keep');
+const TmpOwn = require('./tmp-own'); // (round 106, tmpclean106) the copy, profile and scratch folders go when the run ends, passed, failed, timed out or killed
 const ELECTRON = process.env.ELECTRON || '/opt/hearth-electron/electron';
 // (round 56, fixes56) a free port asked of the system (a random one could be another run's: two runs at once then read
 // each other's window); cdpConnect also only takes the page of this run's own copy
@@ -83,7 +84,7 @@ function cdnFile(url) {
 }
 
 function copyApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-'));
+  const dir = TmpOwn.mkdtemp('hearth-smoke-'); // (round 106, tmpclean106) removed however the run ends (dev/tmp-own.js; --keep keeps it)
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(APP_ROOT)) if (!skip.has(n)) fs.cpSync(path.join(APP_ROOT, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -140,12 +141,12 @@ async function cdpConnect(dir) {
   const profileDir = opt('--profile');
   if (profileDir && args.includes('--profile-fresh')) fs.rmSync(profileDir, { recursive: true, force: true });
   if (profileDir) fs.mkdirSync(profileDir, { recursive: true });
-  const userData = profileDir ? path.resolve(profileDir) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-profile-'));
+  const userData = profileDir ? path.resolve(profileDir) : TmpOwn.mkdtemp('hearth-smoke-profile-');
   // (round 56, fixes56) --tmp <dir>: the check's own scratch folder (window.SMOKE_TMP), kept; without it a fresh one per
   // run, removed at the end, so two runs of the same check at once never share files (dev/checks/game*.js write there).
   // Pass the same --tmp (and --profile) to a run that reads what an earlier one left (dev/checks/gameready-relaunch.js).
   const tmpOpt = opt('--tmp');
-  const runTmp = tmpOpt ? path.resolve(tmpOpt) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-smoke-tmp-'));
+  const runTmp = tmpOpt ? path.resolve(tmpOpt) : TmpOwn.mkdtemp('hearth-smoke-tmp-');
   fs.mkdirSync(runTmp, { recursive: true });
   const log = [];
   // Native save dialogs can't be answered here: files are saved straight into --save-dir (default <copy>/test-saves,
@@ -237,7 +238,7 @@ async function cdpConnect(dir) {
     if (winTest) { try { execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch { /* test process already gone */ } }
     else { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } }
   };
-  process.on('exit', killAll);
+  process.prependListener('exit', killAll); // (tmpclean106) first: Electron gone before its temp folders are removed
   for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { killAll(); process.exit(1); });
   child.stdout.on('data', (d) => log.push(String(d)));
   child.stderr.on('data', (d) => log.push(String(d)));

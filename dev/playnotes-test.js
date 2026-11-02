@@ -100,7 +100,7 @@ const t = async (name, fn) => { await fn(); n += 1; console.log(`✓ ${name}`); 
   });
 
   // ---------- the store (playnotesmain.js) on a throwaway data folder ----------
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'playnotes-test-'));
+  const dir = require('./tmp-own').mkdtemp('playnotes-test-');
   process.env.HEARTH_TEST_SAVE_DIR = path.join(dir, 'save');
   const sent = { game: [], hub: [] };
   const src = { kind: 'lab', id: 's1clink', title: 'Clink' };

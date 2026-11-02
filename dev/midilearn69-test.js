@@ -36,7 +36,7 @@ ok(K.search([{ key: 'filter_1_cutoff', label: 'Filter 1 Cutoff' }, { key: 'rever
 // ---- 2 + 3 need python3 with numpy
 const py = spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' }); const PY = (py.stdout || '').trim();
 if (py.status !== 0) { out.skipped.push('host parts: python3 with numpy not found here'); out.pass = true; console.log(JSON.stringify(out, null, 1)); process.exit(0); }
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-midilearn69-'));
+const temp = require('./tmp-own').mkdtemp('hearth-midilearn69-');
 const unit = spawnSync(PY, ['-I', path.join(__dirname, 'midilearn69-test.py'), path.join(__dirname, '..'), temp], { encoding: 'utf8', timeout: 60000 });
 if (unit.status !== 0) { console.error(unit.stdout, unit.stderr); process.exit(1); }
 const u = JSON.parse(unit.stdout.trim().split('\n').pop()); assert.ok(u.pass); out.checks.push(...u.checks.map(c => 'host math: ' + c));

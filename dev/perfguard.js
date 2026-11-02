@@ -67,7 +67,7 @@ const has = (n) => argv.includes(n);
 const OUT = path.resolve(opt('--out', path.join(os.tmpdir(), 'hearth-perfguard')));
 const FILE = path.resolve(opt('--file', path.join(DEV, 'perf-baseline.json')));
 const FIXTURE = opt('--fixture', '/tmp/hearth-bigprofile72'); // (run-checks makes the same one for projects72)
-const SYNC_FIXTURE = opt('--sync-fixture', path.join(os.tmpdir(), 'hearth-sync72-bigprofile'));
+const SYNC_FIXTURE = opt('--sync-fixture', '/tmp/hearth-sync72-bigprofile'); // (tmpclean106) a shared fixture: the same folder whatever TMPDIR says (dev/tmp-guard.js SHARED)
 const AB = opt('--ab');
 const FRESH_FIXTURE = opt('--fresh-fixture', '/tmp/hearth-perf93-fresh'); // (round 93: the heavy profile + one giant chat)
 const N = { labcold: Number(opt('--labcold', 4)), many: Number(opt('--many', 2)), fresh: Number(opt('--fresh', 3)), runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
@@ -237,6 +237,13 @@ function startup(m, tag, side = THIS) {
   } catch { m.problems.push('startup: no profile summary'); }
 }
 
+// (round 106, tmpclean106) a launch's scratch folder (--tmp, kept by smoke.js) emptied but for its measurements file:
+// the logs stay in the out folder, the rest (what the check wrote there) piled up with every launch
+function trimTmp(dir, keepName) {
+  const t = path.join(dir, 'tmp');
+  let names = []; try { names = fs.readdirSync(t); } catch { return; }
+  for (const n of names) if (n !== keepName) { try { fs.rmSync(path.join(t, n), { recursive: true, force: true }); } catch { /* fine */ } }
+}
 // one app launch (dev/perfguard-probe.js, this checkout's, against side.root's app)
 function appLaunch(m, tag, i, side = THIS, div = N.runs) {
   const dir = path.join(OUT, `app${tag}-${i}`); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
@@ -246,6 +253,7 @@ function appLaunch(m, tag, i, side = THIS, div = N.runs) {
   const r = sh([path.join(DEV, 'smoke.js'), '--app', side.root, '--fake-engines', '--data', FIXTURE, '--wait', '1000', '--check-timeout', '600000', '--tmp', path.join(dir, 'tmp'), '--lib', lib, '--script', path.join(DEV, 'perfguard-probe.js'), '--shot', path.join(dir, 'end.png')], path.join(dir, 'calib.json'));
   fs.writeFileSync(path.join(dir, 'smoke.log'), `${r.stdout || ''}${r.stderr || ''}`);
   let p = null; try { p = JSON.parse(fs.readFileSync(path.join(dir, 'tmp', 'perfguard-probe.json'), 'utf8')); } catch { m.problems.push(`app launch ${tag}${i}: no measurements (exit ${r.status}; ${path.join(dir, 'smoke.log')})`); }
+  trimTmp(dir, 'perfguard-probe.json');
   readCalib(m, 'app', side.name, path.join(dir, 'calib.json'), p?.calib);
   if (!p) return;
   for (const pr of p.problems || []) m.problems.push(`app launch ${tag}${i}: ${pr}`);
@@ -283,6 +291,7 @@ function labcoldLaunch(m, tag, i, side = THIS) {
   const r = sh([path.join(DEV, 'smoke.js'), '--app', side.root, '--fake-engines', '--no-lazy-wait', '--data', FIXTURE, '--wait', '100', '--check-timeout', '300000', '--tmp', path.join(dir, 'tmp'), '--script', path.join(DEV, 'perfguard-labcold.js')], path.join(dir, 'calib.json'));
   fs.writeFileSync(path.join(dir, 'smoke.log'), `${r.stdout || ''}${r.stderr || ''}`);
   readCalib(m, 'labcold', side.name, path.join(dir, 'calib.json'));
+  trimTmp(dir, 'perfguard-labcold.json');
   let p = null; try { p = JSON.parse(fs.readFileSync(path.join(dir, 'tmp', 'perfguard-labcold.json'), 'utf8')); } catch { m.problems.push(`labcold launch ${tag}${i}: no measurements (exit ${r.status}; ${path.join(dir, 'smoke.log')})`); return; }
   for (const pr of p.problems || []) m.problems.push(`labcold launch ${tag}${i}: ${pr}`);
   for (const [k, xs] of Object.entries(p.samples || {})) if (METRICS[k]) push(m, k, xs);
@@ -495,7 +504,12 @@ function makeBase(ref) {
   try { git('worktree', 'remove', '--force', dir); } catch { /* none */ }
   fs.rmSync(dir, { recursive: true, force: true }); try { git('worktree', 'prune'); } catch { /* fine */ }
   git('worktree', 'add', '--detach', dir, sha);
-  return { name: 'base', root: dir, ref, sha: sha.slice(0, 9), drop: () => { try { git('worktree', 'remove', '--force', dir); } catch { fs.rmSync(dir, { recursive: true, force: true }); try { git('worktree', 'prune'); } catch { /* fine */ } } } };
+  let dropped = false;
+  const drop = () => { if (dropped) return; dropped = true; try { git('worktree', 'remove', '--force', dir); } catch { fs.rmSync(dir, { recursive: true, force: true }); try { git('worktree', 'prune'); } catch { /* fine */ } } };
+  // (round 106, tmpclean106) the base worktree (a whole checkout) goes however the guard ends: an error, a timeout's
+  // kill, Ctrl-C (before, a guard that died half-way left it in the out folder and in git's worktree list)
+  if (!has('--keep-base')) { process.on('exit', drop); for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(EXIT.error)); }
+  return { name: 'base', root: dir, ref, sha: sha.slice(0, 9), drop };
 }
 function measureAB(base) {
   const mb = fresh(); const mn = fresh(); const NEW = { name: 'new', root: ROOT };

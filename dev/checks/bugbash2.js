@@ -127,7 +127,7 @@ r.setAnimationLoop((t) => { cam.fov = P.fov; cam.updateProjectionMatrix(); cam.p
 await safe('aicheck busy', async () => {
   const C = H.claudeAgent();
   await Lazy.load('options');
-  const dir = `/tmp/hearth-bugbash2-${Date.now().toString(36)}`;
+  const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-bugbash2-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   await window.hub.fs.write(`${dir}/seed.txt`, 'seed');
   const was = H.agent(C.id).fileAccess;
   H.agent(C.id).fileAccess = { level: 'full', folders: [dir] }; await saveConfig(); await wait(300);

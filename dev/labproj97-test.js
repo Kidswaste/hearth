@@ -25,7 +25,7 @@ const zipkit = require(path.join(__dirname, '..', 'zipkit.js'));
 let n = 0; let failed = 0;
 const tests = [];
 const ok = (name, fn) => tests.push([name, fn]);
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'lp97-'));
+const TMP = require('./tmp-own').mkdtemp('lp97-');
 const SRC = path.join(TMP, 'pc'); const DATA = path.join(TMP, 'data');
 fs.mkdirSync(path.join(SRC, 'refs'), { recursive: true }); fs.mkdirSync(DATA, { recursive: true });
 M._set({ dataDir: DATA });

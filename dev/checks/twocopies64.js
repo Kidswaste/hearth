@@ -25,7 +25,7 @@ const { spawn, execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..', '..');
 const ELECTRON = process.env.ELECTRON || '/opt/hearth-electron/electron';
 const argv = process.argv.slice(2);
-const OUT = path.resolve(argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-twocopies64-')));
+const OUT = path.resolve(argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : path.join(require('os').tmpdir(), 'hearth-checks', 'twocopies64')); // (tmpclean106) by hand: with the run logs (one folder, emptied each run), not a new temp folder per run
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 const HOME = path.join(OUT, 'home');
 const PROFILE = path.join(OUT, 'profile', 'agent-hub'); // %APPDATA%\agent-hub

@@ -81,7 +81,7 @@ ok('install: the command is shown', /npm install -g gltfpack/.test(C.installPlan
 
 // ---------- the main process' plan on a real folder (a throwaway one) ----------
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gameready-test-'));
+  const dir = require('./tmp-own').mkdtemp('gameready-test-');
   try {
     const M = require('../gamereadymain')._test;
     M.setDir(dir);

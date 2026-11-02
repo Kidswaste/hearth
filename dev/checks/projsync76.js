@@ -8,7 +8,7 @@
 //   node dev/smoke.js --check-timeout 240000 --lib dev/checks/journey-lib.js --script dev/checks/projsync76.js
 const { step, wait, until, click } = J;
 const api = window.hub.sync;
-const CLOUD = `/tmp/hearth-projsync76-${Date.now()}`;
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-projsync76-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const MAC = { id: 'studio-mac-76a2b3c4', name: 'Studio Mac', platform: 'darwin', dataDir: '/Users/q/Library/Application Support/Hearth/data', home: '/Users/q', lastSeen: Date.now() - 60000, lastOk: Date.now() - 60000 };
 await window.hub.fs.write(`${CLOUD}/Hearth/.sync/machines/${MAC.id}.json`, JSON.stringify(MAC));
 await window.hub.fs.write(`${CLOUD}/Hearth/files/.keep-folder`, '');

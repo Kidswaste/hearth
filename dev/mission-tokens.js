@@ -73,7 +73,7 @@ if (args.includes('--compare')) {
   process.exit(0);
 }
 
-const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mission-tokens-')), 'runs.jsonl');
+const log = path.join(require('./tmp-own').mkdtemp('mission-tokens-'), 'runs.jsonl');
 const smokeArgs = [path.join(__dirname, 'smoke.js'), '--fake-engines', '--check-timeout', '900000', '--script', path.join(__dirname, 'checks', 'mission-tokens.js')];
 if (opt('--only')) smokeArgs.push('--eval', `window.__missionTokensOnly = ${JSON.stringify(opt('--only'))}; 'only'`);
 const r = spawnSync(process.execPath, smokeArgs, { env: { ...process.env, FAKE_TOKEN_LOG: log, FAKE_DELAY: process.env.FAKE_DELAY || '1', FAKE_REPLY_CHARS: process.env.FAKE_REPLY_CHARS || '1600' }, encoding: 'utf8', maxBuffer: 64 << 20 });

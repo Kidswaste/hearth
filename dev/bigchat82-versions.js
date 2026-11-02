@@ -15,7 +15,7 @@ module.exports = async function versions({ ok, chatOf, message, ROOT }) {
   const S = require(path.join(ROOT, 'sync-merge.js'));
   const B = require(path.join(ROOT, 'bigchat-core.js'));
   const VC = require(path.join(ROOT, 'versions-core.js'));
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-versions-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat82-versions-');
   const dataDir = path.join(dir, 'data'); const stateDir = path.join(dataDir, 'sync');
   const ctx = { dataDir, cloudRoot: path.join(dir, 'cloud'), home: dir, win: false };
   const w = new Worker(path.join(ROOT, 'storework.js'));

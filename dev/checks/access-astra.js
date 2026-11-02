@@ -5,7 +5,7 @@
 const { step, wait, until } = J;
 const astra = H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
 const fsx = window.hub.fs;
-const dir = `/tmp/hearth-access-astra-${Date.now().toString(36)}`;
+const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-access-astra-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const other = `${dir}-other`;
 await fsx.write(`${dir}/old.txt`, 'old');
 await fsx.write(`${other}/keep.txt`, 'keep');

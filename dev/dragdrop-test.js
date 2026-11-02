@@ -158,7 +158,7 @@ ok(C.looksLikeName('Screenshot 2026-10-14 at 09.12.33.png') && C.looksLikeName('
   let M = null;
   try { M = require('../dragdropmain')._test; } catch (err) { console.log(`(dragdropmain not loaded: ${err.message})`); }
   if (M) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-dd-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-dd-');
     const f1 = M.writeTemp({ name: 'snippet.js', text: 'const é = 1;' }, dir);
     eq([path.basename(f1), fs.readFileSync(f1, 'utf8')], ['snippet.js', 'const é = 1;'], 'a code block becomes a file named as shown');
     const f2 = M.writeTemp({ name: 'snippet.js', base64: Buffer.from('xy').toString('base64') }, dir);

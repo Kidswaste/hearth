@@ -23,7 +23,7 @@ const os = require('os');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const ROOT = path.resolve(opt('--root', path.join(__dirname, '..')));
-const BIG = opt('--big', path.join(os.tmpdir(), 'hearth-sync72-bigprofile'));
+const BIG = opt('--big', '/tmp/hearth-sync72-bigprofile'); // (tmpclean106) a shared fixture: the same folder whatever TMPDIR says (dev/tmp-guard.js SHARED)
 const FIXTURE = opt('--fixture', path.join(os.tmpdir(), 'hearth-syncscope79-50k'));
 const RUNS = Number(opt('--runs', 3));
 const JSON_OUT = argv.includes('--json');
@@ -50,7 +50,7 @@ const count = { stat: 0, readdir: 0 };
 for (const k of ['stat', 'readdir']) { const f = fs.promises[k]; fs.promises[k] = function (...a) { count[k] += 1; return f.apply(this, a); }; }
 const { createEngine } = require(path.join(ROOT, 'sync-engine.js'));
 
-const RUN = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-syncscope79-perf-'));
+const RUN = require('./tmp-own').mkdtemp('hearth-syncscope79-perf-');
 const data = path.join(RUN, 'pc', 'data'); const cloud = path.join(RUN, 'cloud');
 fs.cpSync(FIXTURE, data, { recursive: true }); fs.rmSync(path.join(data, 'done'), { force: true });
 fs.mkdirSync(cloud, { recursive: true });

@@ -150,7 +150,7 @@ out.listed = listed?.length;
 if (!(listed?.length >= 61) || !listed.some((c) => c.id === big.id)) fail.push(`chats list: ${listed?.length}`);
 
 // ---------- 6. a sync pass (temp folder as the cloud drive) ----------
-const CLOUD = `/tmp/hearth-offmain-cloud-${Date.now()}`;
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-offmain-cloud-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 await window.hub.fs.write(`${CLOUD}/.keep`, '');
 await probe('syncFirstPass', async () => {
   const r = await window.hub.sync.on({ root: CLOUD });
@@ -165,7 +165,7 @@ await window.hub.sync.off();
 
 // ---------- 7. a folder search (Forge workspace search) and a recursive listing ----------
 {
-  const DIR = `/tmp/hearth-offmain-ws-${Date.now()}`;
+  const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-offmain-ws-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   for (let i = 0; i < 300; i++) await window.hub.fs.write(`${DIR}/d${i % 12}/note-${i}.md`, `# Note ${i}\n\n${say(i, 1)}\n${i === 123 ? 'the anvil line' : ''}\n${say(i, 2).repeat(20)}`);
   const found = await probe('folderSearch', async () => { let r; for (const q of ['anvil', 'orb rose', 'ember']) r = await window.hub.fs.search(DIR, q, { match: '\\.md$' }); return r; });
   const anvil = await window.hub.fs.search(DIR, 'anvil', { match: '\\.md$' });

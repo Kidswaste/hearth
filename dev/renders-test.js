@@ -122,7 +122,7 @@ const has = (bin) => { try { execFileSync(bin, ['-version'], { stdio: 'ignore' }
     assert.strictEqual(h.length, 120); assert.strictEqual(h[0].id, 'j4'); assert.strictEqual(new Set(h.map((x) => x.id)).size, 120);
   });
   if (!has('ffmpeg') || !has('ffprobe')) { console.log('skip: ffmpeg / ffprobe not installed (the real renders)'); } else {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-renders-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-renders-');
     const src = path.join(dir, 'clip.mp4');
     execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
     const encs = String(execFileSync('ffmpeg', ['-hide_banner', '-encoders'])).match(/^\s*[VAS][.\w]{5}\s+(\S+)/gm).map((l) => l.trim().split(/\s+/)[1]);

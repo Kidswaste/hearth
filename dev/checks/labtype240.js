@@ -186,7 +186,7 @@ if (!window.LT_REPORT) {
 }
 // ---------- 🧊 a model with bloom: its composer at the canvas's own pixels from its first frame ----------
 if (!window.LT_NOMODEL) {
-  const DIR = '/tmp/hearth-labtype240';
+  const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labtype240`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   // (a GLB: one triangle pair, made here)
   const pos = new Float32Array([-0.5, 0, 0, 0.5, 0, 0, 0, 1, 0, 0, 0, -0.5]); const idx = new Uint16Array([0, 1, 2, 0, 2, 3, 1, 3, 2, 0, 3, 1]);
   const bin = new Uint8Array(48 + 24); bin.set(new Uint8Array(pos.buffer), 0); bin.set(new Uint8Array(idx.buffer), 48);

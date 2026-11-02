@@ -29,8 +29,8 @@ const roSeen = { frame: [], loops: [] };
 const ls = (k, d) => { try { const v = localStorage.getItem(`hub.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } }; // the Lab's storage (ui.js store)
 const api = window.hub.sync;
 const T0 = Date.now();
-const CLOUD = `/tmp/hearth-labsync88-${T0}`;
-const SONGDIR = `/tmp/hearth-labsync88-song-${T0}`; // outside Hearth's folder, the home folder and any cloud drive
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-labsync88-${T0}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
+const SONGDIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labsync88-song-${T0}`; // outside Hearth's folder, the home folder and any cloud drive
 const MAC = { id: 'studio-mac-88c4d5e6', name: 'Studio Mac', platform: 'darwin', dataDir: '/Users/q/Library/Application Support/Hearth/data', home: '/Users/q', lastSeen: Date.now() - 60000, lastOk: Date.now() - 60000 };
 // History as an older Hearth left it: versions inside three-history.json (added to what's there: a temp profile anyway)
 const h0 = (await window.hub.kvGet('three-history', {})) || {};

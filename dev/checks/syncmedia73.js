@@ -9,7 +9,7 @@
 const { step, wait, until, click } = J;
 const api = window.hub.sync;
 const claude = H.claudeAgent();
-const CLOUD = `/tmp/hearth-syncmedia73-${Date.now()}`;
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-syncmedia73-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const F = (rel) => `${CLOUD}/Hearth/files/${rel}`;
 const dot = () => document.getElementById('sync-dot');
 const chip = () => dot()?.querySelector('.sync-chip')?.textContent || '';

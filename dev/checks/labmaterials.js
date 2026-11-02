@@ -6,7 +6,7 @@
 // (export page) = the preview, a model (its whole: not its ground) and one undo, three_do material, Lab search,
 // the scene outline the directors read, a 📜 recipe step's words, and nothing running while the picker is closed.
 //   node dev/smoke.js --check-timeout 240000 --script dev/checks/labmaterials.js --shot /tmp/labmaterials.png
-const DIR = '/tmp/hearth-labmaterials';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labmaterials`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return false; };
 const out = { steps: [], problems: [] };

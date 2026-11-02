@@ -164,7 +164,7 @@ async function main() {
   for (const rel of ['kv/media-ids.json', 'kv/three-lab-extras.json', 'kv/three-beatmaps.json']) ok(!S.localOnly(rel), `synced: ${rel}`);
 
   // ---------- the real sync engine, one shared folder, two computers ----------
-  const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-two-test-'));
+  const ROOT = require('./tmp-own').mkdtemp('hearth-two-test-');
   try {
     const W = (f, d) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, d); };
     const cloud = path.join(ROOT, 'cloud'); fs.mkdirSync(cloud, { recursive: true });
@@ -235,7 +235,7 @@ async function main() {
 
   // ---------- twocomputersmain.js: quick hash, relink in real folders, Find this file ----------
   const M = require('../twocomputersmain');
-  const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-two-main-'));
+  const TMP = require('./tmp-own').mkdtemp('hearth-two-main-');
   try {
     const home = path.join(TMP, 'home'); const data = path.join(TMP, 'data');
     fs.mkdirSync(path.join(home, 'Music', 'Album'), { recursive: true }); fs.mkdirSync(path.join(data, 'kv'), { recursive: true });

@@ -78,8 +78,8 @@ try {
 
   // ---------- 5. Recover lost scenes ----------
   await window.hub.kvSet('three-history', { versions: {}, trash: [{ id: 'trashed1', name: 'From the trash', code: sc('x', 'x').code, deletedAt: Date.now() - 7200e3 }] });
-  const BK = '/tmp/hearth-scenesafe-backups';
-  const SRC = '/tmp/hearth-scenesafe-bsrc';
+  const BK = `${window.SMOKE_TMP || '/tmp'}/hearth-scenesafe-backups`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
+  const SRC = `${window.SMOKE_TMP || '/tmp'}/hearth-scenesafe-bsrc`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
   await window.hub.fs.write(`${SRC}/kv/three-sketches.json`, JSON.stringify([sc('frombackup', 'From a backup')]));
   await window.hub.fs.zip([{ path: SRC, name: 'data' }], `${BK}/hearth-backup-2026-10-01-10-00.zip`);
   H.config.settings = { ...H.config.settings, backupDir: BK };

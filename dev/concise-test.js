@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'concise-test-'));
+const dir = require('./tmp-own').mkdtemp('concise-test-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
@@ -25,7 +25,7 @@ const fails = [];
 const check = (ok, what, info) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (!ok) { fails.push(what); if (info !== undefined) console.log('   ', typeof info === 'string' ? info : JSON.stringify(info).slice(0, 600)); } };
 const tok = (s) => Math.ceil(s.length / 4);
 
-const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'concise-proj-'));
+const proj = require('./tmp-own').mkdtemp('concise-proj-');
 const CLAUDE = { id: 'claude', name: 'Claude', engine: 'claude', mode: 'native', instructions: [{ text: 'Answer in short paragraphs' }], systemPrompt: 'A calm art director.' };
 const DIRECTOR = { id: 'threedirector', name: 'Three Director', engine: 'claude', mode: 'native', dock: 'three', threeTools: true, hubChatId: 'c1' };
 const FILES = { ...CLAUDE, access: { level: 'write', folders: [proj] } };

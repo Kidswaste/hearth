@@ -11,7 +11,7 @@ const path = require('path');
 const http = require('http');
 const assert = require('assert');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-deploy-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-deploy-');
 const STATE = path.join(tmp, 'fake-state');
 process.env.FAKE_DEPLOY_STATE = STATE;
 const FAKES = path.join(__dirname, 'fake-deploy');

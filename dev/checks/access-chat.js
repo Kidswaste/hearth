@@ -20,7 +20,7 @@ const answer = async (card, label) => {
 };
 const claude = H.claudeAgent();
 const fsx = window.hub.fs;
-const dir = `/tmp/hearth-access-${Date.now().toString(36)}`;
+const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-access-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 await fsx.write(`${dir}/a.txt`, 'alpha');
 await fsx.write(`${dir}/c.txt`, 'charlie');
 Access._setTimeout(5000);

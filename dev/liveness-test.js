@@ -15,7 +15,7 @@ const ROOT = path.join(__dirname, '..');
 const argv = process.argv.slice(2);
 const opt = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null; };
 const measureOnly = argv.includes('--measure');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'liveness-'));
+const dir = require('./tmp-own').mkdtemp('liveness-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 if (opt('--engines')) fs.copyFileSync(path.resolve(opt('--engines')), path.join(dir, 'engines.js'));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });

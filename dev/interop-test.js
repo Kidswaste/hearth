@@ -40,7 +40,7 @@ const until = async (fn, ms = 4000) => { const t = Date.now(); while (Date.now()
   // ---------- the module, with a fake window ----------
   const handlers = new Map(); const listeners = new Map(); const sent = [];
   const ipc = { handle: (ch, fn) => handlers.set(ch, fn), on: (ch, fn) => listeners.set(ch, fn) };
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'interop-test-'));
+  const dataDir = require('./tmp-own').mkdtemp('interop-test-');
   I.register(ipc, () => ({ isDestroyed: () => false, webContents: { send: (ch, d) => sent.push([ch, d]) } }), { dataDir });
   const call = (ch, ...a) => handlers.get(ch)({}, ...a);
   const src = fs.readFileSync(path.join(__dirname, '..', 'interopmain.js'), 'utf8');

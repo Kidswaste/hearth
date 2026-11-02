@@ -23,7 +23,7 @@ let n = 0; const ok = (what) => { n += 1; console.log(`✓ ${what}`); };
   ok('collaboration eyes: layer list text, selected marked, capped at 20 lines');
 
   // aemain.js readJobResult, loaded from a temp copy so its data folder is a temp one
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-r67-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-r67-');
   for (const f of ['aemain.js', 'adobe-data.js']) fs.copyFileSync(path.join(root, f), path.join(dir, f));
   fs.writeFileSync(path.join(dir, 'store.js'), `module.exports = { DATA_DIR: ${JSON.stringify(path.join(dir, 'data'))} };`);
   fs.mkdirSync(path.join(dir, 'data'));

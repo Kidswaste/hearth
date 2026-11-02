@@ -190,7 +190,7 @@ async function main() {
   const P = '/x/data/kv/notes.json';
   // ---- load ----
   {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-core-'));
+    const d = require('./tmp-own').mkdtemp('hearth-datasafe-core-');
     const f = path.join(d, 'kv', 'a.json'); W(f, [1, 2, 3]);
     const noWait = { wait: () => {} };
     let r = DS.load(faulty({ 'a.json': { code: 'EBUSY' } }), f, [], noWait);
@@ -231,7 +231,7 @@ async function main() {
   check(DS.storeOf(P)?.name === 'notes' && !DS.storeOf('/x/data/kv/three-sketches.json') && DS.storeOf('/x/data/memory.json')?.name === 'memory' && DS.storeOf('/app/config.json')?.name === 'config', 'storeOf: kv / memory / config (the Lab\'s scenes left to scenesafe)');
   // ---- guardWrite ----
   {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-gw-'));
+    const d = require('./tmp-own').mkdtemp('hearth-datasafe-gw-');
     const f = path.join(d, 'kv', 'notes.json'); W(f, [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
     const env = (xfs = fs) => ({ fs: xfs, path, cache: new Map() });
     let threw = null;
@@ -254,7 +254,7 @@ async function main() {
   }
   // ---- faults: only in a test run ----
   {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-f-'));
+    const d = require('./tmp-own').mkdtemp('hearth-datasafe-f-');
     W(path.join(d, '.datasafe-faults.json'), { 'x.json': { code: 'EBUSY' } }); W(path.join(d, 'x.json'), [1]);
     check(DS.faults(fs, d, {}) === fs, 'faults: ignored outside a test run (never in the owner\'s app)');
     let code = null; try { DS.faults(fs, d, { HEARTH_TEST_SAVE_DIR: '/tmp' }).readFileSync(path.join(d, 'x.json'), 'utf8'); } catch (e) { code = e.code; }
@@ -263,7 +263,7 @@ async function main() {
 
   // ---- config.json (datasafemain.config) ----
   {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-cfg-'));
+    const d = require('./tmp-own').mkdtemp('hearth-datasafe-cfg-');
     const D = path.join(d, 'data'); const C = path.join(d, 'config.json');
     W(C, { agents: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd', name: 'Newest' }], settings: { x: 1, y: 2, z: 3 }, layout: { start: 'grid' } });
     W(path.join(D, '.history', 'config', '2026-10-10T10-00-00-n3.json'), { agents: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], settings: { x: 1, y: 2, z: 3 }, layout: { start: 'grid' } });
@@ -293,7 +293,7 @@ async function main() {
   // ---- sync: a chats folder that can't be listed ----
   {
     const { createEngine } = require('../sync-engine.js');
-    const w = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-sync-'));
+    const w = require('./tmp-own').mkdtemp('hearth-datasafe-sync-');
     const cloud = path.join(w, 'cloud'); fs.mkdirSync(cloud, { recursive: true });
     const mk = (name) => {
       const m = { data: path.join(w, name, 'data'), config: path.join(w, name, 'app', 'config.json'), theme: path.join(w, name, 'app', 'theme.css'), home: path.join(w, name, 'home') };
@@ -335,7 +335,7 @@ async function main() {
 
   // ---- the store on throwaway copies, thread off and on ----
   for (const thread of ['0', '1']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-store-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-datasafe-store-');
     for (const f of STORE_FILES) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
     fs.copyFileSync(__filename, path.join(dir, 't.js'));
     const zipped = storeData(dir);
@@ -364,7 +364,7 @@ function makeFixture(dir) {
   const chat = (id, title, n) => ({ id, agentId: 'claude', title, createdAt: 1, updatedAt: Date.now() - n * 1000, session: {}, messages: Array.from({ length: n }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `${title} ${i}`, at: i + 1 })) });
   W(path.join(dir, 'chats', 'claude-dsa.json'), chat('claude-dsa', 'Datasafe A', 2));
   W(path.join(dir, 'chats', 'claude-dsb.json'), chat('claude-dsb', 'Datasafe B (held)', 3));
-  const bsrc = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-datasafe-bsrc-'));
+  const bsrc = require('./tmp-own').mkdtemp('hearth-datasafe-bsrc-');
   W(path.join(bsrc, 'data', 'chats', 'claude-dsz.json'), chat('claude-dsz', 'Only in a backup', 4));
   try { execFileSync('zip', ['-qr', path.join(backups, 'hearth-backup-2026-10-14-09-00.zip'), 'data'], { cwd: bsrc }); } catch { console.log('(no zip: the backup step will be skipped)'); }
   W(path.join(dir, '.datasafe-faults.json'), { 'config.json': { code: 'EBUSY', ms: 20000 }, 'memory.json': { code: 'EPERM', ms: 20000 }, 'chats/claude-dsb.json': { code: 'EBUSY', ms: 20000 }, 'kv/notes.json': { code: 'EBUSY', ms: 20000 } });

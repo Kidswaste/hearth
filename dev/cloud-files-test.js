@@ -16,7 +16,7 @@ const {attributes,pending}=require('../cloud-files');
   assert(pending(malformed.get('x')));
   assert.equal((await attributes(['x'],{platform:'darwin',execFile:()=>{throw Error('must not launch');}})).get('x'),0);
   if(process.platform==='win32'){
-    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-cloud-attrs-'));
+    const dir=require('./tmp-own').mkdtemp('hearth-cloud-attrs-'); // (tmpclean106) removed at the end
     try{
       const file=path.join(dir,"é space $name 'quote'.json");fs.writeFileSync(file,'{}');
       const r=await attributes([file,path.join(dir,'missing')]);

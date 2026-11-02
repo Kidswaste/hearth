@@ -10,7 +10,7 @@
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const { wait, until } = SQL;
-const DIR = '/tmp/hearth-labtemplates';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-labtemplates`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const lazyState = () => Lazy.state().find((g) => g.name === 'labtemplates')?.state;
 const png = (color) => { const c = document.createElement('canvas'); c.width = 16; c.height = 16; const g = c.getContext('2d'); g.fillStyle = color; g.fillRect(0, 0, 16, 16); return c.toDataURL('image/png').split(',')[1]; };
 // the share of pixels a test likes in a picture (a data URL)

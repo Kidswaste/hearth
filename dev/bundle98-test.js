@@ -32,7 +32,7 @@ const M = require(path.join(ROOT, 'projbundlemain.js'));
 
 const tests = [];
 const ok = (name, fn) => tests.push([name, fn]);
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'bd98-'));
+const TMP = require('./tmp-own').mkdtemp('bd98-');
 const SRC = path.join(TMP, 'pc'); const DATA = path.join(TMP, 'data'); const TRASH = path.join(TMP, 'Trash'); const OUT = path.join(TMP, 'out');
 for (const d of [SRC, DATA, TRASH, OUT]) fs.mkdirSync(d, { recursive: true });
 let trashed = [];

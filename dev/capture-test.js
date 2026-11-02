@@ -17,7 +17,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
 const T = FR.tools();
 if (!T.ffmpeg) { console.log('ffmpeg not found: skipped'); process.exit(0); }
 const makeOnly = process.argv.includes('--make') ? process.argv[process.argv.indexOf('--make') + 1] : null;
-const dir = makeOnly ? (fs.mkdirSync(makeOnly, { recursive: true }), makeOnly) : fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-frames-test-'));
+const dir = makeOnly ? (fs.mkdirSync(makeOnly, { recursive: true }), makeOnly) : require('./tmp-own').mkdtemp('hearth-frames-test-');
 const BITS = 11;
 // bar code: bit k of the frame number = a white 22×22 square at x = 10 + 26k, y = 200 (black when 0)
 function barcode() {

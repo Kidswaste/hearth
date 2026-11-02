@@ -55,7 +55,7 @@ function cdnFile(url) {
   return file.startsWith(root) && fs.existsSync(file) && fs.statSync(file).isFile() ? file : null;
 }
 function copyApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-soak-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-soak-');
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -216,8 +216,8 @@ function retainers(snap) {
 
 (async () => {
   const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-soak-profile-'));
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-soak-fix-'));
+  const userData = require('./tmp-own').mkdtemp('hearth-soak-profile-');
+  const tmp = require('./tmp-own').mkdtemp('hearth-soak-fix-');
   const fx = fixtures(tmp);
   const cloud = path.join(tmp, 'cloud');
   fs.mkdirSync(cloud, { recursive: true }); fs.writeFileSync(path.join(cloud, '.keep'), '');

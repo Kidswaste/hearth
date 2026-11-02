@@ -98,7 +98,7 @@ function table() {
 // ---------- recording Commands.list() from the running app ----------
 function record() {
   const { execFileSync } = require('child_process');
-  const script = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cmdonly-')), 'dump.js');
+  const script = path.join(require('./tmp-own').mkdtemp('hearth-cmdonly-'), 'dump.js');
   fs.writeFileSync(script, `await new Promise((r) => setTimeout(r, 1500));
 const at = new Set(Lazy.namesAtReady() || []);
 return '[CMDONLY]' + JSON.stringify(Commands.list().map((d) => ({ n: d.name, al: d.aliases || [], a: d.args || '', d: d.desc || '', ar: d.area, h: Boolean(d.hidden), r: at.has(d.name) })));`);

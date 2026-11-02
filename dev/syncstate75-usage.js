@@ -11,7 +11,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 if (process.argv[2] !== '--inside') {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-syncstate75-usage-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-syncstate75-usage-');
   for (const f of ['store.js', 'scenesafe-core.js', 'datasafe-core.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js']) fs.copyFileSync(path.join(__dirname, '..', f), path.join(dir, f));
   fs.copyFileSync(__filename, path.join(dir, 't.js'));
   const r = spawnSync(process.execPath, [path.join(dir, 't.js'), '--inside'], { cwd: dir, env: { ...process.env, HEARTH_STORE_THREAD: '1' }, encoding: 'utf8', timeout: 90000 });

@@ -24,7 +24,7 @@ let pass = 0; let fail = 0;
 const ok = (cond, what) => { if (cond) pass += 1; else { fail += 1; console.log(`FAIL ${what}`); } };
 for (const k of ['HTTPS_PROXY', 'HTTP_PROXY', 'https_proxy', 'http_proxy', 'ALL_PROXY', 'all_proxy']) delete process.env[k];
 for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'EMAIL']) delete process.env[k];
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-winfresh-'));
+const T = require('./tmp-own').mkdtemp('hearth-winfresh-');
 // a computer where Git was just installed: no user.name / user.email, and git may not guess one
 process.env.GIT_CONFIG_GLOBAL = path.join(T, 'global.gitconfig');
 fs.writeFileSync(process.env.GIT_CONFIG_GLOBAL, '[user]\n\tuseConfigOnly = true\n');

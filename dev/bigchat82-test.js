@@ -110,7 +110,7 @@ for (const [label, chat, pretty] of [['pretty', chatOf(60), true], ['compact', c
 
 // ---------- reading in steps ----------
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bigchat82-'));
+  const dir = require('./tmp-own').mkdtemp('bigchat82-');
   const file = path.join(dir, 'giant.json');
   const chat = chatOf(300);
   fs.writeFileSync(file, JSON.stringify(chat, null, 2));

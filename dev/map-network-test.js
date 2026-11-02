@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-map-network-'));
+const profile = require('./tmp-own').mkdtemp('hearth-map-network-');
 app.setPath('userData', profile);
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => {}); // Keep the test alive between its pre-update and post-update renderers.

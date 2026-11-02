@@ -182,7 +182,7 @@ const MISE_SHIM = '#!/bin/sh\nexec mise x -- claude "$@"\n';
     ok(asked && asked.cmd === '/bin/zsh' && asked.opts.timeout > 0 && asked.opts.killSignal === 'SIGKILL', 'shellPath: the shell itself (no string to a shell), with a timeout');
   }).then(() => M.shellPath({ shell: 'zsh; rm -rf ~', run: () => { throw new Error('ran'); } })).then((p) => eq(p, null, 'a strange $SHELL is never run'))
     .then(async () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'macpolish-'));
+      const dir = require('./tmp-own').mkdtemp('macpolish-');
       const cache = path.join(dir, 'shell-path.json');
       const before = process.env.PATH;
       const r = await M.adoptShellPath({ platform: 'darwin', cacheFile: cache, probe: async () => `${dir}:/definitely/missing` });
@@ -333,7 +333,7 @@ const MISE_SHIM = '#!/bin/sh\nexec mise x -- claude "$@"\n';
 
 // ---------- 11. through engines.js and installs.js (a temp copy, like the other engine tests) ----------
 {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'macpolish-eng-'));
+  const dir = require('./tmp-own').mkdtemp('macpolish-eng-');
   for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'macpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
   fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
   const T = require(path.join(dir, 'engines.js'))._test;
@@ -358,7 +358,7 @@ const MISE_SHIM = '#!/bin/sh\nexec mise x -- claude "$@"\n';
   eq(I.kindOf('claude', `${HOME}/Library/Application Support/fnm/node-versions/v22/installation/bin/claude`), 'npm', 'kind: fnm\'s Node → npm');
   eq(I.kindOf('codex', '/home/x/.nvm/versions/node/v22.0.0/bin/codex'), 'npm', 'kind: nvm → npm (unchanged)');
   // an nvm copy updates with the npm of its own Node
-  const nd = fs.mkdtempSync(path.join(os.tmpdir(), 'macpolish-nvm-'));
+  const nd = require('./tmp-own').mkdtemp('macpolish-nvm-');
   const bin = path.join(nd, '.nvm', 'versions', 'node', 'v22.1.0', 'bin');
   fs.mkdirSync(bin, { recursive: true });
   for (const n of ['claude', 'npm', 'node']) fs.writeFileSync(path.join(bin, n), '#!/bin/sh\n');

@@ -17,7 +17,7 @@ const { execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const FILE = path.join(ROOT, 'lazy-data.js');
 const check = process.argv.includes('--check');
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-lazy-'));
+const tmp = require('./tmp-own').mkdtemp('hearth-lazy-');
 const LazyData = new Function(`${fs.readFileSync(FILE, 'utf8')}; return LazyData;`)(); // eslint-disable-line no-new-func
 
 function smoke(root, body) {

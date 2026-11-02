@@ -96,7 +96,7 @@ t('/lab-export words', () => {
 // real ffmpeg runs on generated RGBA frames (alpha travels, loops cross-fade, GIF loops forever)
 let ff = null; try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); ff = 'ffmpeg'; } catch { /* none */ }
 if (ff) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'labexport-'));
+  const dir = require('./tmp-own').mkdtemp('labexport-');
   execFileSync(ff, ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=25:d=1.6,format=rgba,colorchannelmixer=aa=0.5', path.join(dir, 'f_%05d.png')]);
   const probe = (f) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-print_format', 'json', f]).toString()).streams[0];
   const run = (format, extra = {}) => { const a = C.args({ format, F: 25, n: 40, input: path.join(dir, 'f_%05d.png'), w: 160, h: 90, quality: 'draft', ...extra }); const out = path.join(dir, `o_${format}.${C.get(format).ext}`); execFileSync(ff, a.args.map((x) => (x === 'OUTPUT' ? out : x)).concat([]), { stdio: 'ignore' }); return probe(out); };

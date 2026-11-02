@@ -85,7 +85,7 @@ ok(/Tempo: 124 BPM, 4\/4/.test(rd) && /Key: A minor \(guessed from your notes\)/
 ok(/Key: not known/.test(K.readme({ song: 'x', source: 'y', bpm: 100, bars: 1, seconds: 2.4, files: [] })), 'README without a key says so');
 
 // ---- 6. main
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'stems69-')), dest = path.join(tmp, 'My Music');
+const tmp = require('./tmp-own').mkdtemp('stems69-'), dest = path.join(tmp, 'My Music');
 fs.mkdirSync(dest); fs.writeFileSync(path.join(dest, 'keep.txt'), 'the owner\'s file');
 const b1 = M.begin(dest, 'Night bus — stems 2026-10-26'), part = b1.folder + '.part';
 ok(b1.folder === path.join(dest, 'Night bus — stems 2026-10-26') && fs.existsSync(part) && !fs.existsSync(b1.folder), 'begin: the final name is chosen, the files go to "<name>.part" until finished');

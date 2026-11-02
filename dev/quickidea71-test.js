@@ -148,7 +148,7 @@ test('/idea words: "quest: …", "music › …", plain words go to Later', () =
 
 // ---------- the main process's side (quickideamain.js) on a throwaway folder ----------
 test('main side: save (words, a voice memo, a project), the store it writes, refusals, Move / Delete / Restore / Empty the Trash', async () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qi71-'));
+  const tmp = require('./tmp-own').mkdtemp('qi71-');
   process.env.HEARTH_TEST_SAVE_DIR = path.join(tmp, 'saves');
   const sent = [];
   const realLoad = Module._load;

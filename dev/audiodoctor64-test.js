@@ -33,7 +33,7 @@ const py = spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)
 if (py.status !== 0) { out.skipped.push('runtime part: python3 with numpy not found here'); console.log(JSON.stringify(out, null, 1)); process.exit(0); }
 
 (async () => {
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-audiodoctor-test-'));
+  const temp = require('./tmp-own').mkdtemp('hearth-audiodoctor-test-');
   try {
     const plugins = path.join(temp, 'VST3'); fs.mkdirSync(path.join(plugins, 'Vital.vst3'), { recursive: true }); fs.mkdirSync(path.join(plugins, 'Serum2.vst3'));
     const vitalPresets = path.join(temp, 'Vital', 'User', 'Presets'); fs.mkdirSync(path.join(vitalPresets, 'Pads'), { recursive: true });

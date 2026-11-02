@@ -33,7 +33,7 @@ function fixture({ bpm = 132, name = 'Bass', count = 3, modern = false } = {}) {
   const actual = 'C:/Program Files/Image-Line/FL Studio 2026/Data/Demo projects/Demo songs/Asher Postman - Future House.flp';
   let factory = null;
   if (fs.existsSync(actual)) { const s = F.parse(fs.readFileSync(actual)); assert.equal(s.bpm, 126); assert.ok(s.channels.some(c => c.name === 'Bass Layer' && c.notes === 32)); factory = { name: path.basename(actual), bpm: s.bpm, bassNotes: s.channels.find(c => c.name === 'Bass Layer').notes }; }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-flp-')); const file = path.join(dir, 'My idea.flp'); let now = Date.now();
+  const dir = require('./tmp-own').mkdtemp('hearth-flp-'); const file = path.join(dir, 'My idea.flp'); let now = Date.now();
   fs.writeFileSync(file, fixture({ count: 0, modern: true })); fs.utimesSync(file, new Date(now - 10000), new Date(now - 10000));
   let chosen = file;
   const api = M.create({ dataDir: dir, localDir: dir, now: () => now, pollRunning: async () => false, ui: { chooseProject: async () => chosen } });

@@ -23,7 +23,7 @@ const ROOT = path.join(__dirname, '..');
 let passes = 0; let failures = 0;
 const ok = (c, what, detail) => { if (c) { passes += 1; console.log(`✓ ${what}`); } else { failures += 1; console.log(`✖ ${what}${detail !== undefined ? ` — ${JSON.stringify(detail).slice(0, 500)}` : ''}`); } };
 const busy = (code = 'EBUSY') => Object.assign(new Error(`${code}: held (test)`), { code });
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'er104-'));
+const TMP = require('./tmp-own').mkdtemp('er104-');
 // only this test's own temp folders are ever removed: under the system's temp folder, named by a test
 function rmTemp(d) {
   const r = path.resolve(d);

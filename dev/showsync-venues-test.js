@@ -16,7 +16,7 @@ check('La Machine never borrows a footer ticket from another event',()=>{const s
 check('date-only nights survive the evening, never claim noon and cannot schedule fake times',()=>{const src=srcs.find(s=>s.id.endsWith('kilometre25')),url=f.urls.kilometre25,s=C.merge([[V.event(f.responses[url].body,src,url,now)]])[0],P=require('../showprep-core');assert.equal(C.thisWeek([s],s.start+10*3600e3).length,1);assert.match(C.showCampaign(s).quests[1].done,/confirm the start time/);assert.equal(P.keep(s).dateOnly,true);assert.throws(()=>P.ics(s),/Confirm/);assert.throws(()=>P.googleLink(s),/Confirm/);assert.ok(!C.line(s).includes('12:00'));const direct={...s,dateOnly:false,programme:undefined,start:s.start+11*3600e3,soldOut:true};for(const pair of [[s,direct],[direct,s]]){const merged=C.merge([pair]);assert.equal(merged.length,1);assert.equal(merged[0].dateOnly,false);assert.equal(merged[0].start,direct.start);assert.equal(merged[0].soldOut,true);}});
 check('published ISO and English dates and festival links are accepted',()=>{assert.deepEqual(V.dateParts('2026-10-23T23:59:00+00:00'),[2026,10,23]);assert.deepEqual(V.dateParts('October 23, 2026'),[2026,10,23]);assert.equal(C.sourceFromUrl('https://shotgun.live/fr/festivals/madame-loyal-paris').kind,'event');});
 (async()=>{
-  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-programme-test-'));let clock=now,hits=[],overrides={...f.responses,[C.PLATFORMS.shotgun.city]:{status:429,body:'<title>Vercel Security Checkpoint</title>'}};
+  const dir=require('./tmp-own').mkdtemp('hearth-programme-test-');let clock=now,hits=[],overrides={...f.responses,[C.PLATFORMS.shotgun.city]:{status:429,body:'<title>Vercel Security Checkpoint</title>'}};
   const make=()=>M.create({dataDir:dir,fetch:(u,o)=>F.fakeFetch({now,overrides,hits})(u,o),shrink:async b=>b,wait:async()=>{},now:()=>clock});
   let S=make(),snap=await S.refresh();
   check('challenged Shotgun still produces five programme venues on map',()=>{const shows=snap.shows.filter(s=>s.programme),pins=C.pins(C.venues(C.thisWeek(shows,clock)));assert.equal(shows.length,5);assert.equal(pins.length,5);assert.ok(shows.every(s=>Number.isFinite(s.venue.lat)));assert.ok(snap.sources.find(s=>s.url===C.PLATFORMS.shotgun.city).problem==='blocked');});
@@ -27,11 +27,11 @@ check('published ISO and English dates and festival links are accepted',()=>{ass
   clock+=21*3600e3;overrides[f.urls.badaboum]={status:503};snap=await S.refresh();
   check('detail failure keeps last good event with original checked date',()=>{const s=snap.shows.find(s=>s.programme?.name==='Badaboum');assert.ok(s);assert.equal(s.programme.checkedAt,clock-21*3600e3);assert.equal(snap.sources.find(s=>s.id===srcs[0].id).problem,'partial');});
   await S.setSettings({from:'followed'});check('followed-only really excludes the recovery sources',()=>assert.equal(S.snapshot().shows.length,0));
-  const dir2=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-programme-deny-'));hits=[];
+  const dir2=require('./tmp-own').mkdtemp('hearth-programme-deny-');hits=[];
   overrides={...f.responses,'https://badaboum.paris/robots.txt':{body:'User-agent: *\nDisallow: /'}};
   const deny=M.create({dataDir:dir2,fetch:(u,o)=>F.fakeFetch({now,overrides,hits})(u,o),shrink:async b=>b,wait:async()=>{},now:()=>now});await deny.refresh();
   check('robots refusal stops programme and all details',()=>assert.ok(!hits.some(h=>h.url.startsWith('https://badaboum.paris/')&&!h.url.endsWith('robots.txt'))));
-  const dir3=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-programme-upgrade-')),legacy=C.sourceFromUrl('https://shotgun.live/en/concerts/paris'),cached=C.emptyCache();
+  const dir3=require('./tmp-own').mkdtemp('hearth-programme-upgrade-'),legacy=C.sourceFromUrl('https://shotgun.live/en/concerts/paris'),cached=C.emptyCache();
   C.applyResult(cached,legacy,{ok:true,status:200,shows:C.parsePage(F.fillDates(fs.readFileSync(path.join(F.DIR,'shotgun-paris.html'),'utf8'),now),legacy).shows,etag:'old-url-etag'},now);
   cached.hosts={'shotgun.live':{blockedUntil:now+86400e3,status:429}};
   fs.mkdirSync(path.join(dir3,'showsync'));fs.writeFileSync(path.join(dir3,'showsync','cache.json'),JSON.stringify(cached));fs.writeFileSync(path.join(dir3,'showsync','settings.json'),JSON.stringify({enabled:true,from:'paris',follows:[]}));

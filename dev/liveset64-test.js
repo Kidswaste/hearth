@@ -75,7 +75,7 @@ ok(/bar 1\.1 launch Belleville 4 bars · bar 9\.3 switch Loud lead/.test(text.ex
 const qs = QC.upgrade(QC.initial()), camp = Q.startPersonal(qs, 'openmic'); ok(camp.quests.length === 4 && camp.quests[3].title === 'Play your set' && camp.quests[3].id === 'q-pq-openmic-4', 'a journal started now has the 4th step with a stable id');
 
 // ---- 5. the main process: clip paths stay in Hearth's folders, run paths are made there, file names are plain
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-liveset-'));
+const temp = require('./tmp-own').mkdtemp('hearth-liveset-');
 try {
   const f = liveSave(temp, 'Open mic: Oct?', 'clip pad-1.wav', new Uint8Array([1, 2, 3]));
   ok(f === path.join(temp, 'creative-live', 'Open mic Oct', 'clip pad-1.wav') && fs.readFileSync(f).length === 3 && !fs.existsSync(f + '.part'), 'liveSave: the set\'s own folder, written atomically');
@@ -98,7 +98,7 @@ ok(pyfx.status === 0 && JSON.parse(pyfx.stdout).every(([k, hz], i) => { const js
 const wavOf = file => { const b = fs.readFileSync(file); return P.decodeWav(new Uint8Array(b.buffer, b.byteOffset, b.length)); };
 const rms = (ch, a, b) => { let s = 0; for (let i = a; i < b; i++) s += ch[i] * ch[i]; return Math.sqrt(s / Math.max(1, b - a)); };
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-liveset-host-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-liveset-host-');
   const root = path.join(dir, 'plugins'); fs.mkdirSync(path.join(root, 'Vital.vst3'), { recursive: true });
   Object.assign(process.env, { PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), PYTHONDONTWRITEBYTECODE: '1', FAKE_MIDI_NOTE: '0', FAKE_PB_STATE_S: '0.15' });
   delete process.env.HEARTH_VST_ASIO;

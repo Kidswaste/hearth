@@ -18,7 +18,7 @@ const os = require('os');
 const path = require('path');
 const { Worker } = require('worker_threads');
 const ROOT = path.resolve(opt('--root', path.join(__dirname, '..'))); // --root: another copy of Hearth (before / after)
-const FIXTURE = opt('--fixture', path.join(os.tmpdir(), 'hearth-sync72-bigprofile'));
+const FIXTURE = opt('--fixture', '/tmp/hearth-sync72-bigprofile'); // (tmpclean106) a shared fixture: the same folder whatever TMPDIR says (dev/tmp-guard.js SHARED)
 const BUDGET = Number(opt('--budget', 50));
 const JSON_OUT = argv.includes('--json');
 
@@ -26,7 +26,7 @@ if (!fs.existsSync(path.join(FIXTURE, 'chats'))) { process.stderr.write(`making 
 const probe = require(path.join(ROOT, 'mainlag-probe.js')); // after the env: it slows fs.*Sync and profiles the thread
 const { createEngine } = require(path.join(ROOT, 'sync-engine.js'));
 
-const RUN = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-sync72-perf-'));
+const RUN = require('./tmp-own').mkdtemp('hearth-sync72-perf-');
 const pcData = path.join(RUN, 'pc', 'data'); const macData = path.join(RUN, 'mac', 'data'); const cloud = path.join(RUN, 'cloud');
 fs.cpSync(FIXTURE, pcData, { recursive: true });
 fs.mkdirSync(macData, { recursive: true }); fs.mkdirSync(cloud, { recursive: true });

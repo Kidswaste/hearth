@@ -118,7 +118,7 @@ const LAB = { click: 1000, prep: { start: 1010, end: 1200 }, main: { asked: 1210
     const r = C.regression(6000, 5600, { ratio: 0.85, slack: 300 }); assert.strictEqual(r.ok, false); assert.ok(/over 5400 ms/.test(r.why));
     assert.strictEqual(C.regression(0, 10).ok, false);
   });
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-readyspeed-test-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-readyspeed-test-');
   await t('the memory per game: kept on disk, read back by a new launch; the A/B key follows files, helpers, screen, look', async () => {
     const game = path.join(dir, 'game'); fs.mkdirSync(path.join(game, 'models'), { recursive: true });
     fs.writeFileSync(path.join(game, 'index.html'), '<!doctype html>'); fs.writeFileSync(path.join(game, 'models', 'a.glb'), 'glb');

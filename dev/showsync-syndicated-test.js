@@ -13,7 +13,7 @@ check('bad shapes/times/coordinates/links fail closed instead of erasing cache',
 check('multi-session festival remains one ticket with real outer dates',()=>{const row={...f.records['madame-loyal'][0],timings:JSON.stringify([{begin:'2026-10-24T18:00:00+02:00',end:'2026-10-25T02:00:00+02:00'},{begin:'2026-10-25T18:00:00+01:00',end:'2026-10-26T04:00:00+01:00'}])};const [s]=parse([row],madame);assert.equal(s.start,Date.parse('2026-10-24T16:00:00Z'));assert.equal(s.end,Date.parse('2026-10-26T03:00:00Z'));});
 check('real ticket-platform stock overrides syndicated unknown stock without duplicates',()=>{const [s]=parse(f.records.rex);for(const pair of [[s,{...s,programme:undefined,soldOut:true}],[{...s,programme:undefined,soldOut:true},s]]){const merged=C.merge([pair]);assert.equal(merged.length,1);assert.equal(merged[0].soldOut,true);}});
 (async()=>{
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hearth-syndication-'));let clock=now,hits=[],mode='good';
+ const dir=require('./tmp-own').mkdtemp('hearth-syndication-');let clock=now,hits=[],mode='good';
  const fetch=async(u,o)=>{if(u.startsWith(S.API)){
    if(mode==='offline')throw Error('offline');
    if(mode==='blocked'){hits.push({url:u});return new Response('',{status:429});}

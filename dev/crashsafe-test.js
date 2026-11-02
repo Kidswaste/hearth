@@ -13,7 +13,7 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const base = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-crashsafe-'));
+const base = require('./tmp-own').mkdtemp('hearth-crashsafe-');
 process.env.HEARTH_TEST_SAVE_DIR = base; // the Trash is a folder in the throwaway data (crashsafemain)
 const C = require(path.join(ROOT, 'crashsafe-core.js'));
 

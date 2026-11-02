@@ -113,7 +113,7 @@ const unfold = (txt) => txt.replace(/\r\n /g, '');
   ok('listing: kept shows survive P.keep', (() => { const k = P.keep(merged[0]); return k.links['Call Super'].listen && k.doors === ufo.doors && k.venue.url === 'https://shotgun.live/en/venues/la-machine-du-moulin-rouge'; })());
 
   // ---------- the main side: one timer, only while a reminder is on ----------
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'showprep-'));
+  const dir = require('./tmp-own').mkdtemp('showprep-');
   fs.mkdirSync(path.join(dir, 'kv'), { recursive: true });
   let clock = now0; const timers = []; const sent = [];
   const fake = { now: () => clock, setTimer: (fn, ms) => { const t = { fn, ms, on: true }; timers.push(t); return t; }, clearTimer: (t) => { t.on = false; }, emit: (ch, ev) => sent.push({ ch, ev }) };

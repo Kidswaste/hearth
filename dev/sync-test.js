@@ -20,7 +20,7 @@ let failures = 0; let passes = 0;
 const ok = (cond, what) => { if (cond) passes += 1; else { failures += 1; console.log(`FAIL ${what}`); } };
 const eqj = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-sync-test-'));
+const ROOT = require('./tmp-own').mkdtemp('hearth-sync-test-');
 const W = (file, data) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, data); };
 const R = (file) => fs.readFileSync(file, 'utf8');
 const J = (file) => JSON.parse(R(file));

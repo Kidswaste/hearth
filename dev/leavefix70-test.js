@@ -29,7 +29,7 @@ const VENUE = { name: 'Café de la Danse', lat: 48.8535, lon: 2.3722 };
 const DAYS = [[2026, 10, 24], [2026, 10, 25], [2026, 10, 26], [2026, 10, 30], [2026, 12, 31], [2027, 3, 27], [2027, 3, 28]]; // Sat, the October change (25 h), Mon, Fri, New Year's Eve, Sat, the March change (23 h)
 const mk = (key, kind, title, place, targetAt, words, now) => { const travel = K.travel(HOME, place); const it = { key, kind, title, place, targetAt, words, travel, from: 'Home', origin: 'home:1' }; return { ...it, ...K.plan(it, now) }; };
 const stamp = (ms) => new Date(ms).toString().slice(0, 21);
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'leavefix70-'));
+const tmpRoot = require('./tmp-own').mkdtemp('leavefix70-');
 
 test('the clock is Paris time, and both DST days really are 25 h / 23 h long', () => {
   assert.equal((at(2026, 10, 26, 0) - at(2026, 10, 25, 0)) / 3600e3, 25);

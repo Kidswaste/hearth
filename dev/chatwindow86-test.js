@@ -107,7 +107,7 @@ function windowed(r, ver, misses) {
 async function bench() {
   const src = '/tmp/hearth-bigchat84/chats/claude-giant0.json';
   if (!fs.existsSync(src)) require('./bigchat84-fixture.js').make('/tmp/hearth-bigchat84');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cw86b-')); const file = path.join(dir, 'giant.json'); fs.copyFileSync(src, file);
+  const dir = require('./tmp-own').mkdtemp('hearth-cw86b-'); const file = path.join(dir, 'giant.json'); fs.copyFileSync(src, file);
   const T = thread(); const t = async (label, msg) => { const t0 = performance.now(); const r = await T.op(msg); console.log(`${label.padEnd(36)} ${Math.round(performance.now() - t0)} ms`); return r; };
   try {
     const r = await t('chatWinOpen (first: cut + records)', { op: 'chatWinOpen', file, ver: 'b1', cpl: 90, tail: 300 });
@@ -130,7 +130,7 @@ async function bench() {
 
 async function main() {
   if (process.argv.includes('--bench')) { await bench(); return; }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-cw86-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-cw86-');
   const T = thread();
   try {
     // ---------- the array and its stubs ----------

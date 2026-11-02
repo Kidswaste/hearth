@@ -189,7 +189,7 @@ test('the kept list: validate, add (no double), remove, a walk\'s photos from it
 
 test('main side: writes only its own JPEG copies; scans a folder read-only (nested, skips non-photos); Trash only its copies; HEIC says why', async () => {
   const M = require('../parisphotosmain');
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'photos69-')), data = path.join(tmp, 'data'), shots = path.join(tmp, 'DCIM');
+  const tmp = require('./tmp-own').mkdtemp('photos69-'), data = path.join(tmp, 'data'), shots = path.join(tmp, 'DCIM');
   try {
     const api = M.create({ dataDir: data, nativeImage: null, platform: 'linux' });
     const file = await api.put('paris-photos/2026-10/ph-20261024-abcd.jpg', jpeg());

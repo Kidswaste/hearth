@@ -96,7 +96,7 @@ ok(home.pinless && home.month === '2026-10', 'a home session is a timeline dot (
 const rec = PJ.recap(moments, '2026-10', { guide: Q.guide }); ok(rec.counts.music === 2 && !rec.newSpots.includes('Sound desk') && /2 music sessions/.test(PJ.recapText(rec)), 'the month recap counts music sessions; "Sound desk" is not a new place');
 
 // ---- 4. the main side
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-bouncelog-'));
+const dir = require('./tmp-own').mkdtemp('hearth-bouncelog-');
 const now = new Date(2026, 9, 26, 14, 5, 33), p1 = M.sketchPath(dir, 'Park sketch · Belleville / 18 Oct', now);
 ok(path.dirname(p1) === path.join(dir, 'creative-sketches', 'Park sketch · Belleville 18 Oct') && path.basename(p1) === 'Sketch 2026-10-26 14.05.33.wav', 'a sketch goes in <data>/creative-sketches/<project>/ with a dated name: ' + path.basename(p1));
 fs.writeFileSync(p1, 'x'); ok(path.basename(M.sketchPath(dir, 'Park sketch · Belleville / 18 Oct', now)) === 'Sketch 2026-10-26 14.05.33 2.wav', 'a second save in the same second never overwrites');

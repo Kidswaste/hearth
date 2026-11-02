@@ -12,8 +12,8 @@ const { step, wait, until, click } = J;
 const fsx = window.hub.fs;
 const claude = H.claudeAgent();
 const astra = H.agents().find((a) => a.mode === 'native' && a.engine === 'codex');
-const dirC = `/tmp/hearth-aicheck-c-${Date.now().toString(36)}`;
-const dirA = `/tmp/hearth-aicheck-a-${Date.now().toString(36)}`;
+const dirC = `${window.SMOKE_TMP || '/tmp'}/hearth-aicheck-c-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
+const dirA = `${window.SMOKE_TMP || '/tmp'}/hearth-aicheck-a-${Date.now().toString(36)}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 await fsx.write(`${dirC}/seed.txt`, 'seed');
 await fsx.write(`${dirA}/seed.txt`, 'seed');
 const setFiles = async (a, level, dir) => { H.agent(a.id).fileAccess = { level, folders: [dir] }; delete H.agent(a.id).astraNoSandbox; await saveConfig(); await wait(300); };

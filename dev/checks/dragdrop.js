@@ -8,7 +8,7 @@
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const { wait, until } = SQL;
-const DIR = '/tmp/hearth-dragdrop-check';
+const DIR = `${window.SMOKE_TMP || '/tmp'}/hearth-dragdrop-check`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const SONG = '/tmp/hearth-test-song.wav';
 const VID = '/tmp/hearth-capture-test/cfr25.mp4';
 const PNG = (() => { const c = document.createElement('canvas'); c.width = 16; c.height = 16; const g = c.getContext('2d'); g.fillStyle = '#e6b450'; g.fillRect(0, 0, 16, 16); return c.toDataURL('image/png').split(',')[1]; })();

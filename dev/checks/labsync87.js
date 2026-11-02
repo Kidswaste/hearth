@@ -12,7 +12,7 @@
 const { step, wait, until } = J;
 const ls = (k, d) => { try { const v = localStorage.getItem(`hub.${k}`); return v == null ? d : JSON.parse(v); } catch { return d; } }; // the Lab's storage (ui.js store)
 const api = window.hub.sync;
-const CLOUD = `/tmp/hearth-labsync87-${Date.now()}`;
+const CLOUD = `${window.SMOKE_TMP || '/tmp'}/hearth-labsync87-${Date.now()}`; // (round 106, tmpclean106) in the run's scratch folder (SMOKE_TMP), removed after the run
 const MAC = { id: 'studio-mac-87c4d5e6', name: 'Studio Mac', platform: 'darwin', dataDir: '/Users/q/Library/Application Support/Hearth/data', home: '/Users/q', lastSeen: Date.now() - 60000, lastOk: Date.now() - 60000 };
 await window.hub.fs.write(`${CLOUD}/Hearth/.sync/machines/${MAC.id}.json`, JSON.stringify(MAC));
 await window.hub.fs.write(`${CLOUD}/Hearth/files/.keep-folder`, '');

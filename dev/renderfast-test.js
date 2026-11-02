@@ -52,7 +52,7 @@ t('a speed change is followed within a few frames', () => {
 // ---------- real ffmpeg: the same file both ways ----------
 let ff = null;
 try { execFileSync('ffmpeg', ['-hide_banner', '-version'], { stdio: 'pipe' }); ff = 'ffmpeg'; } catch { /* none here */ }
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'renderfast-'));
+const dir = require('./tmp-own').mkdtemp('renderfast-');
 const frames = (ext, count, extra = []) => {
   const d = path.join(dir, ext); fs.mkdirSync(d, { recursive: true });
   // a moving test picture (+ alpha for PNG) as numbered frames, like the export page's

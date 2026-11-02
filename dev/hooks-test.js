@@ -63,7 +63,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   ok('junk', ['.DS_Store', 'a.crdownload', 'b.part', '~$doc.docx', 'x.tmp', 'Thumbs.db'].every(C.junk) && !C.junk('render.mp4') && M.junk('c.download') && !M.junk('photo.jpg'));
 
   // ---------- the folder watcher ----------
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-hooks-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-hooks-');
   fs.writeFileSync(path.join(dir, 'old.txt'), 'there before');
   const got = [];
   const w = M.makeWatcher((d) => got.push(d), { settle: 150 });

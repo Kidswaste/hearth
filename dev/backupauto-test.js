@@ -187,7 +187,7 @@ const DAY = 864e5; const HOUR = 36e5; const MIN = 6e4;
 
 // ---------- 7. the main side on real files ----------
 (async () => {
-  const T = fs.mkdtempSync(path.join(os.tmpdir(), 'backupauto-test-'));
+  const T = require('./tmp-own').mkdtemp('backupauto-test-');
   process.env.HEARTH_TEST_SAVE_DIR = path.join(T, 'saves');
   delete process.env.HEARTH_TEST_OPEN;
   fs.mkdirSync(process.env.HEARTH_TEST_SAVE_DIR, { recursive: true });

@@ -169,7 +169,7 @@ const V916 = { w: 1080, h: 1920, fps: 30, duration: 20, bitrate: 10e6, codec: 'h
 
   // ---------- with ffmpeg: a tiny video, measured and fixed for real ----------
   if (!has('ffmpeg') || !has('ffprobe')) { console.log('(no ffmpeg: the real-video tests are skipped)'); } else {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-pk-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-pk-');
     const src = path.join(dir, 'clip.mp4');
     execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=180x320:rate=30:d=4', '-f', 'lavfi', '-i', 'sine=frequency=330:duration=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
     const probe = (f) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', f], { encoding: 'utf8' }));

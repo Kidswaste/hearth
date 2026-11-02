@@ -16,7 +16,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const FROM = (() => { const i = process.argv.indexOf('--from'); return i > 0 ? path.resolve(process.argv[i + 1]) : path.join(__dirname, '..'); })();
-const T = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-labchats54-'));
+const T = require('./tmp-own').mkdtemp('hearth-labchats54-');
 const g = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
 const write = (f, s) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, s); };
 const read = (f) => fs.readFileSync(f, 'utf8');

@@ -220,7 +220,7 @@ async function engine() {
   }
   // a very long chat's differing messages, on the store thread
   {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-ka94-chat-'));
+    const dir = require('./tmp-own').mkdtemp('hearth-ka94-chat-');
     try {
       const msgs = Array.from({ length: 3000 }, (_, i) => ({ id: `m${i}`, role: i % 2 ? 'assistant' : 'user', at: i, text: `message ${i} ${'x'.repeat(200)}` }));
       fs.writeFileSync(path.join(dir, 'a.json'), JSON.stringify({ id: 'c', title: 'Tour diary', messages: [...msgs, { id: 'here1', role: 'user', at: 9e9, text: 'only on the PC' }] }));

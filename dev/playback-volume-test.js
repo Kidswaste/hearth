@@ -1,5 +1,5 @@
 const assert = require('assert/strict'), fs = require('fs'), os = require('os'), path = require('path'), vm = require('vm');
-const master = require('../volumemain'), dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-volume-unit-'));
+const master = require('../volumemain'), dir = require('./tmp-own').mkdtemp('hearth-volume-unit-');
 const handlers = {}, events = {}, broadcasts = [], jobs = [];
 const frame = { send: (...args) => broadcasts.push(args) }, wc = { mainFrame: frame, isDestroyed: () => false };
 frame.framesInSubtree = [frame];

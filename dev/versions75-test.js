@@ -20,7 +20,7 @@ const Zip = require('../zipkit');
 const VERBOSE = process.argv.includes('--verbose');
 let failures = 0; let passes = 0;
 const ok = (cond, what, detail) => { if (cond) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 500)}` : ''}`); } };
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-versions75-'));
+const ROOT = require('./tmp-own').mkdtemp('hearth-versions75-');
 const raw = Sim.raw;
 const msg = (id, text, at = 1000) => ({ id, role: id.startsWith('u') ? 'user' : 'assistant', text, at });
 const chat = (id, msgs, extra = {}) => ({ id, agentId: 'claude', title: 'Plan', updatedAt: 1000, messages: msgs, ...extra });

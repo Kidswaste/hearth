@@ -12,7 +12,7 @@ const assert = require('assert');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-lazymanifest-'));
+const dir = require('./tmp-own').mkdtemp('hearth-lazymanifest-');
 let n = 0;
 const ok = (cond, msg) => { assert.ok(cond, msg); n++; };
 const runs = [];

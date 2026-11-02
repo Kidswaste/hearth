@@ -58,7 +58,7 @@ C.checkProof({ type: 'file', title: names.loop, path: '/tmp/x.wav', kind: 'audio
 ok(/4 bars of 4 at 120 BPM/.test(text.excerpt) && /C4@0.00s/.test(text.excerpt) && /cannot hear/.test(text.coverage) && JSON.parse(text.analysis).durationSeconds === 1, 'proof text in Codex\'s contract (honest about listening)');
 
 // ---- 2. parkSave + the main side's fields
-const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-parkjam-'));
+const temp = require('./tmp-own').mkdtemp('hearth-parkjam-');
 try {
   const f = parkSave(temp, 'Park sketch · Belleville · 18 Oct', names.loop, wav);
   ok(f === path.join(temp, 'creative-park', 'Park sketch · Belleville · 18 Oct', names.loop) && fs.readFileSync(f).length === wav.length, 'a take lands in the sketch\'s folder');
@@ -74,7 +74,7 @@ out.core = 'parkOutput / buffers / battery controls / WAV / ambience layer / MID
 const py = spawnSync('python3', ['-c', 'import numpy, sys; print(sys.executable)'], { encoding: 'utf8' }); const PY = (py.stdout || '').trim();
 if (py.status !== 0) { out.skipped.push('host part: python3 with numpy not found here'); console.log(JSON.stringify(out, null, 1)); process.exit(0); }
 (async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-parkjam-host-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-parkjam-host-');
   const root = path.join(dir, 'plugins'); fs.mkdirSync(path.join(root, 'Vital.vst3'), { recursive: true }); fs.mkdirSync(path.join(root, 'Serum2.vst3'));
   Object.assign(process.env, { PYTHONPATH: path.join(__dirname, 'fixtures', 'fake-vst-py'), PYTHONDONTWRITEBYTECODE: '1', FAKE_SD_NO_UA: '1', FAKE_MIDI_NOTE: '0' });
   delete process.env.HEARTH_VST_ASIO;

@@ -25,7 +25,7 @@ const THREAD = argv.includes('--thread'); // every computer's big-store work on 
 
 let failures = 0; let passes = 0;
 const ok = (cond, what, detail) => { if (cond) passes += 1; else { failures += 1; console.log(`FAIL ${what}${detail !== undefined ? ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 400)}` : ''}`); } };
-const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-sync72-'));
+const ROOT = require('./tmp-own').mkdtemp('hearth-sync72-');
 const raw = Sim.raw;
 
 // ---------- a world: a clock, a cloud, computers ----------

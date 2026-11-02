@@ -15,7 +15,7 @@ const F = require('./fake-common');
 
 const ROOT = path.join(__dirname, '..');
 const args = process.argv.slice(2);
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokens-test-'));
+const dir = require('./tmp-own').mkdtemp('tokens-test-');
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js', 'toolwake.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });

@@ -11,6 +11,8 @@
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step) · --names (list) / --exact (run names as checks, not groups)
 //   · --fixtures-only · --stop (first failure)
+//   · --tmp-strict (fail on a /tmp/hearth-* folder the run left; on for release) · (round 106) each check runs with its own
+//   temp root (TMPDIR), removed when it ends; the end of the run names any /tmp/hearth-* folder left (dev/tmp-guard.js)
 // Groups: qa, release, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
 const os = require('os');
@@ -417,9 +419,12 @@ if (argv.includes('--names')) { console.log([...new Set((names.length ? names : 
 const wanted = [...new Set((names.length ? names : ['qa']).flatMap((n) => (!argv.includes('--exact') && GROUPS[n]) || [UNIT.includes(n) ? `unit:${n}` : n]))];
 for (const n of wanted) if (!n.startsWith('unit:') && !all.includes(n)) { console.error(`No check "${n}" (sh dev/run-checks.sh --list)`); process.exit(2); }
 
+// (round 106, tmpclean106) one run folder (<tmp>/hearth-run-XXXXXX), a temp root per check in it (TMPDIR & co.), removed
+// when the check ends, and the guard: /tmp/hearth-* folders a check left are named at the end (dev/tmp-guard.js)
+const TG = require('./tmp-guard.js').create();
 // ---------- fixtures (made once, reused; all in the temp folder, never in the app) ----------
 const T = '/tmp'; // the checks name these paths themselves
-const sh = (cmd, a) => execFileSync(cmd, a, { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] });
+const sh = (cmd, a) => execFileSync(cmd, a, { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'], env: { ...process.env, TMPDIR: TG.runDir } }); // (tmpclean106) a maker's scratch goes with the run folder
 const FIX = [
   { re: /hearth-test-song|make-test-song|\.wav\b/, path: `${T}/hearth-test-song.wav`, make: () => sh('node', ['dev/make-test-song.js', `${T}/hearth-test-song.wav`]) },
   { re: /hearth-test-videos|VIDS\b/, path: `${T}/hearth-test-videos`, make: () => sh('sh', ['dev/make-test-videos.sh', `${T}/hearth-test-videos`]) },
@@ -547,7 +552,7 @@ const PAIRS = { 'gameready-relaunch': 'gameready' };
 const pairDirs = {};
 for (const [later, first] of Object.entries(PAIRS)) {
   if (!wanted.includes(later) || !wanted.includes(first) || wanted.indexOf(first) > wanted.indexOf(later)) continue;
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), `hearth-${first}-pair-`));
+  const d = fs.mkdtempSync(path.join(TG.runDir, `${first}-pair-`)); // (tmpclean106) in the run folder
   pairDirs[first] = pairDirs[later] = { d, flags: ['--profile', path.join(d, 'profile'), '--tmp', path.join(d, 'tmp')], last: later };
 }
 const dropPair = (n) => { const p = pairDirs[n]; if (p && p.last === n) { try { fs.rmSync(p.d, { recursive: true, force: true, maxRetries: 3 }); } catch { /* tmp is cleaned later */ } } };
@@ -566,15 +571,17 @@ for (const n of wanted) {
     continue;
   }
   let r;
+  const tt = TG.open(n); // (tmpclean106) this check's temp root: TMPDIR & co. (tt.env), removed when it ends
+  const tenv = { ...process.env, ...tt.env };
   if (n.startsWith('unit:')) {
     const u = n.slice(5);
     const extra = u === 'cut-test' ? [`${T}/hearth-test-videos`] : [];
-    r = spawnSync('node', [path.join(DEV, `${u}.js`), ...extra], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+    r = spawnSync('node', [path.join(DEV, `${u}.js`), ...extra], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env: tenv });
   } else if (/^\/\/\s*driver:\s*node\b/m.test(srcOf(n))) {
     // (round 64, twocopies64) a check that starts the app itself (two copies, one after the other): run as a Node script
-    r = spawnSync('node', [path.join(CHECKS, `${n}.js`), '--out', path.join(OUT, n)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+    r = spawnSync('node', [path.join(CHECKS, `${n}.js`), '--out', path.join(OUT, n)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env: tenv });
   } else if (n.startsWith('astra-')) {
-    r = spawnSync('node', [path.join(DEV, 'astra-smoke.js'), n.slice(6), '--shot', path.join(OUT, `${n}.png`)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20 });
+    r = spawnSync('node', [path.join(DEV, 'astra-smoke.js'), n.slice(6), '--shot', path.join(OUT, `${n}.png`)], { cwd: ROOT, encoding: 'utf8', timeout: 1800000, maxBuffer: 64 << 20, env: tenv });
   } else {
     const shots = path.join(OUT, n);
     // step pictures only when asked (--shots): a 1080×1080 screenshot mid-journey can starve a recording on a busy machine
@@ -584,9 +591,10 @@ for (const n of wanted) {
       : /^voice/.test(n) ? { ...process.env, HEARTH_WHISPER: path.join(DEV, 'fake-whisper.js'), HEARTH_WHISPER_MODEL: path.join(DEV, 'fake-whisper.js') }
       : /^(game(mode|ready|input|tex|look|audio|stream|fps54)|playloop|playbudget|playlatency|shadowready|labcanvas56|readyspeed|ctxloss|trim-drive|gcchurn60|playnotes62|hitchmap63|offline-project)/.test(n) ? { ...process.env, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } // (round 74, checkhealth74: offline-project "downloads" the scene libraries from this copy)
       : EXTRA_ENV[n] ? { ...process.env, ...EXTRA_ENV[n] } : process.env; // (round 74) EXTRA_ENV // (round 52: ▶ Play builds a scene's page with three.js from this copy, no network; round 60: trim-drive's ▶ Play commands too)
-    r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: n === 'longrun72' ? 5400000 : 1800000, maxBuffer: 64 << 20, env }); // (round 72) the long run takes LR_MINUTES + setup
+    r = spawnSync('node', a, { cwd: ROOT, encoding: 'utf8', timeout: n === 'longrun72' ? 5400000 : 1800000, maxBuffer: 64 << 20, env: { ...env, ...tt.env } }); // (round 72) the long run takes LR_MINUTES + setup
   }
   dropPair(n);
+  const leftTmp = tt.close(); // (tmpclean106) its root removed; the /tmp/hearth-* folders it left anyway
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(log, text);
   // failed: a non-zero exit, a result with a top-level "ok": false or "pass": false (round 39: appsearch reports "pass"; round 43: a non-empty top-level "errors" list, as the capture checks report) (not one nested in what a check reports), a ✖ step,
@@ -601,10 +609,23 @@ for (const n of wanted) {
   // "cantTell" list) passes, but says so on its line: passed ≠ measured
   const cantTell = bad ? '' : (text.match(/"cantTell":\s*\[\s*"([^"]+)"/)?.[1] || text.match(/^CAN'T TELL ([^\n]+)/m)?.[1] || ''); // (a Node test: a "CAN'T TELL …" line)
   if (cantTell) results.at(-1).cantTell = cantTell;
-  console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}`);
+  console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}${leftTmp.length ? `  (left in /tmp: ${leftTmp.map((l) => l.name).join(', ').slice(0, 160)})` : ''}`);
   if (bad && argv.includes('--stop')) break;
 }
 const failed = results.filter((x) => !x.ok);
 const optedOut = results.filter((x) => x.skipped).length;
 console.log(`\n${results.length - failed.length - optedOut}/${results.length - optedOut} passed${optedOut ? ` (${optedOut} opt-in skipped)` : ''} in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
-process.exit(failed.length ? 1 : 0);
+// (round 106, tmpclean106) the temp folders: what the checks' roots held (removed with them) and any /tmp/hearth-* folder
+// the run made and didn't remove (a leak: the check that made it should remove it; a shared fixture belongs in
+// dev/tmp-guard.js's SHARED list, documented). The release group (or --tmp-strict) fails on a leak.
+const tg = TG.finish();
+const mb = (kb) => `${Math.round(kb / 1024)} MB`;
+const tops = [...tg.held].sort((a, b) => b.kb - a.kb).slice(0, 5).map((h) => `${h.check} ${mb(h.kb)}`).join(', ');
+console.log(`temp: ${mb(tg.heldKb)} removed with the checks' temp roots${tops ? ` (most: ${tops})` : ''}`);
+for (const s of tg.stuck) console.log(`temp: ✖ ${s.check}: its root ${s.root} couldn't be removed (${s.why})`);
+const tmpStrict = names.includes('release') || argv.includes('--tmp-strict');
+if (tg.left.length) {
+  console.log(`temp: ${tmpStrict ? '✖' : '!'} ${tg.left.length} /tmp/hearth-* folder(s) left by this run (${mb(tg.left.reduce((s, l) => s + l.kb, 0))}):`);
+  for (const l of tg.left) console.log(`  ${l.check}: ${path.join(TG.base, l.name)} (${mb(l.kb)})`);
+} else console.log('temp: 0 /tmp/hearth-* folders left by this run');
+process.exit(failed.length || (tmpStrict && tg.left.length) ? 1 : 0);

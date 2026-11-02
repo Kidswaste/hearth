@@ -43,7 +43,7 @@ function cdnFile(url) {
   return fs.existsSync(file) && fs.statSync(file).isFile() ? file : null;
 }
 function copyApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-perf-'));
+  const dir = require('./tmp-own').mkdtemp('hearth-perf-');
   const skip = new Set(['.git', 'data', 'electron', 'electron-mac', 'node_modules', 'dev']);
   for (const n of fs.readdirSync(ROOT)) if (!skip.has(n)) fs.cpSync(path.join(ROOT, n), path.join(dir, n), { recursive: true });
   const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
@@ -129,7 +129,7 @@ function analyzeIdle(events, ms) {
 
 (async () => {
   const dir = copyApp();
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-perf-profile-'));
+  const userData = require('./tmp-own').mkdtemp('hearth-perf-profile-');
   const child = spawn('xvfb-run', ['-a', '-s', '-screen 0 1600x1000x24', ELECTRON, dir, '--no-sandbox', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'], { stdio: 'ignore', detached: true });
   const killAll = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } try { execFileSync('pkill', ['-9', '-f', dir]); } catch { /* gone */ } };
   process.on('exit', killAll);

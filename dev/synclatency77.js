@@ -80,7 +80,7 @@ if (process.platform === 'linux' && !argv.includes('--node-watch')) {
     return ee;
   };
 }
-const RUN = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-synclat77-'));
+const RUN = require('./tmp-own').mkdtemp('hearth-synclat77-');
 const say = (...a) => { if (!JSON_OUT) console.log(...a); };
 const vlog = (...a) => { if (VERBOSE) console.log(`  [${((Date.now() - T0) / 1000).toFixed(2)}]`, ...a); };
 const T0 = Date.now();

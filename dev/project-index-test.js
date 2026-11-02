@@ -26,7 +26,7 @@ for (let i = 0; i < 20; i++) {
 }
 const old = seed(); old.list[0].items[1].id = 'capture:/Users/me/data/captures/still.png';
 assert.equal(S.toCloud(old, windows).list[0].items.length, 2); // identical entry collapses, differing label stays
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-project-index-'));
+const dir = require('./tmp-own').mkdtemp('hearth-project-index-');
 const file = path.join(dir, 'projects.json');
 fs.writeFileSync(file, JSON.stringify(input));
 const source = fs.readFileSync(file), before = fs.statSync(file);

@@ -6,7 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { Pool, legacyItem } = require('../codex-server');
 const root = path.join(__dirname, '..');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-server-'));
+const dir = require('./tmp-own').mkdtemp('hearth-server-');
 const fixture = path.join(__dirname, 'fake-codex-server.js');
 const logs = [];
 const pool = new Pool({ spawn, kill: (p) => p.kill(), idleMs: 30000, requestMs: 2000, log: (s) => logs.push(s) });
