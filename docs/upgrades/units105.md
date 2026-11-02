@@ -160,7 +160,15 @@ release run is theirs to say.
 
 ## Runs
 
-RUNS_PLACEHOLDER
+Final, on this branch (box shared with other sessions; load average 0.4–2):
+- Full unit list three times (`node dev/run-checks.js unit`, 250 tests each): **250/250, 250/250, 250/250** (24, 23,
+  24 min), no "can't tell" line in any of them.
+- Under the lock: `qa-commands qa-keys qa-mac polish lazy` ✓ 5/5; `fastboot unit:boot-test` ✓ 2/2: the whole
+  `release` group's app part.
+- Alone: updatesafe-test 188/188, configsafe-test all passed, emptyread104-test 35/35, datasafe-scan pass,
+  perfectloop-test 18/18, labpace-test all passed, audio-test 29/29, timemachine-test all passed at every time of day
+  scanned (00:00–23:58), direction-test, scenesafe-test 79/79, storeack77-test 187/187, synchard74-test 170/170
+  (×3 at load ≈ 16).
 
 ## For Codex
 No Codex-owned file was edited.
