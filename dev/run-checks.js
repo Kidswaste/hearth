@@ -7,10 +7,11 @@
 //   sh dev/run-checks.sh                      # the quick group (qa)
 //   sh dev/run-checks.sh board capture        # groups, or check names (journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
+//   flock /tmp/hearth-run.lock sh dev/run-checks.sh release   # (round 105) before a release: the quick app group (qa) + every unit test
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step) · --names (list) / --exact (run names as checks, not groups)
 //   · --fixtures-only · --stop (first failure)
-// Groups: qa, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
+// Groups: qa, release, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -397,6 +398,11 @@ const GROUPS = {
   unit: UNIT.map((u) => `unit:${u}`),
 };
 GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.astra, ...GROUPS.unit])];
+// (round 105, units105) what a release runs: the default app list (qa, what a run with no names runs) and every unit
+// test. Round 104 ran the whole unit list for the first time in a while and found four failing on the base for weeks
+// (they were never in a usual release run). Timing tests in it are load-aware (dev/loadwait.js): a box too busy to
+// tell says "can't tell" on its line instead of failing. docs/upgrades/units105.md
+GROUPS.release = [...new Set([...GROUPS.qa, ...GROUPS.unit])];
 
 if (argv.includes('--list')) {
   for (const [g, list] of Object.entries(GROUPS)) if (g !== 'all') console.log(`${g}: ${list.join(' ')}`);
