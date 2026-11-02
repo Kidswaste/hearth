@@ -39,7 +39,9 @@ out.push('✓ diff/patch: 300 random edits + a rewrite round-trip');
 const doc = C.blank();
 const states = [];
 let st = { layers: [{ id: 'main', name: 'Orb', code, opacity: 1 }], vals: {}, sel: 'main', palette: null };
-const t0 = Date.now();
+// (round 105, units105) a fixed clock (noon): with Date.now() the merge in 5 thinned across midnight when the test
+// ran in the last 17 minutes of a day (thin at t0 + 1,000 s: yesterday's versions hourly), and failed then only
+const t0 = new Date(2026, 9, 12, 12, 0, 0).getTime();
 for (let i = 0; i < 120; i += 1) {
   st = C.clone(st);
   const r = i % 6;
@@ -101,6 +103,32 @@ C.gc(m);
 assert.ok(m.versions.length >= 100, `merged versions (${m.versions.length})`);
 m.versions.forEach((v) => assert.ok(C.stateOf(m, v), 'merged rebuild'));
 out.push(`✓ merge by id: ${a.versions.length} + ${b.versions.length} → ${m.versions.length} versions, all rebuild`);
+
+// 5b. (round 105, units105) one computer thins across midnight while the other adds versions on the same key: the
+// other's versions all come through the merge and rebuild (its key was taken out with the thinned versions, and the
+// merge took it out too: heal() dropped 15 of the other computer's 30 versions)
+{
+  const n0 = new Date(2026, 9, 12, 23, 50, 0).getTime();
+  const d0 = C.blank();
+  let s0 = { layers: [{ id: 'main', name: 'Orb', code }], vals: {}, sel: 'main' };
+  for (let i = 0; i < 40; i += 1) { s0 = C.clone(s0); s0.layers[0].code = mutate(s0.layers[0].code); C.add(d0, s0, { at: n0 + i * 1000 }); }
+  const base2 = C.clone(d0); const a2 = C.clone(base2); const b2 = C.clone(base2);
+  let x = C.stateOf(a2, C.latest(a2)); let y = C.clone(x);
+  for (let i = 0; i < 30; i += 1) { x = C.clone(x); x.layers[0].code = mutate(x.layers[0].code); C.add(a2, x, { at: n0 + 60000 + i * 1000 }); }
+  const bIds = [];
+  for (let i = 0; i < 30; i += 1) { y = C.clone(y); y.layers[0].code = mutate(y.layers[0].code); bIds.push([C.add(b2, y, { at: n0 + 60500 + i * 1000 }).id, y]); }
+  const thinned = C.thin(a2, n0 + 20 * 60000); // 00:10 the next day: the 23:50 versions are yesterday's, hourly
+  const m2 = merge3(base2, a2, b2).value;
+  const lost = C.heal(m2);
+  C.gc(m2, n0 + 20 * 60000);
+  const back = bIds.filter(([id, st]) => { const v = m2.versions.find((w) => w.id === id); return v && C.same(C.stateOf(m2, v), st); }).length;
+  assert.ok(thinned > 0, 'the thinning took versions out');
+  assert.strictEqual(lost, 0, 'thinned across midnight: no version of the other computer lost its key');
+  assert.strictEqual(back, 30, `the other computer's 30 versions all rebuild (${back})`);
+  const later = C.clone(a2); C.thin(later, n0 + 8 * 864e5); C.gc(later, n0 + 8 * 864e5);
+  assert.ok(!later.held && Object.keys(later.keys).every((k) => later.versions.some((v) => v.k === k)), 'a week on: the keys held for it are let go');
+  out.push(`✓ thinned across midnight on one computer (${thinned} out), the other's 30 versions all through the merge; held keys let go a week on`);
+}
 
 // 6. code diff for the "what changed" view
 const cd = C.codeDiff('a\nb\nc\nd\ne\nf\ng', 'a\nb\nC\nd\ne\nf\ng\nh', { ctx: 1 });
