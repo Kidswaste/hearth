@@ -24,33 +24,35 @@ const probe = () => {
     return /\/(ui|powerwise)\.js:/.test(s[0] || '') && s[1] ? `${f(s[0])} < ${f(s[1])}` : f(s[0]);
   };
   const count = (kind, k) => { P.n[kind] += 1; const key = `${kind} ${k}`; P.by.set(key, (P.by.get(key) || 0) + 1); };
-  // ---- the fake 240 Hz screen: while callbacks wait, each real frame (60 Hz here) carries 4 fake ones a quarter apart ----
-  const q = new Map(); let id = 0; let realOn = false; let idleFrames = 0;
+  // ---- the fake 240 Hz screen: while callbacks wait and the page is really being drawn (a real frame came in the last
+  // 100 ms: a hidden window or a parked frame gets none), they run on a 240-a-second interval ----
+  const q = new Map(); let id = 0; let realOn = false; let lastReal = -1; let timer = 0; let empty = 0;
+  const rci = window.clearInterval.bind(window);
   const fire = () => {
+    P.ticks += 1;
     if (!q.size) return;
-    P.ticks += 1; P.busy += 1;
+    P.busy += 1;
     const t = raw.now(); const list = [...q.values()]; q.clear();
     for (const [cb, k] of list) { count('raf', k); try { cb(t); } catch (err) { raw.st.call(window, () => { throw err; }); } }
   };
-  const real = () => { lastReal = raw.now(); if (q.size || timer) raw.raf.call(window, real); else realOn = false; arm(); };
   const want = () => { if (!realOn) { realOn = true; raw.raf.call(window, real); } };
+  function real() { lastReal = raw.now(); if (q.size || timer) raw.raf.call(window, real); else realOn = false; arm(); }
   // (one interval while frames are wanted: a chain of timeouts is clamped and drifts; it stops after 3 empty ticks)
-  let empty = 0; const rci = window.clearInterval.bind(window);
-  const arm = () => {
+  function arm() {
     if (timer || !q.size) return;
     want();
-    if (raw.now() - lastReal > 100) return; // (not drawn lately: the next real frame starts the grid again)
+    if (raw.now() - lastReal > 100) return; // (not drawn lately: the next real frame starts it again)
     empty = 0;
     timer = raw.si.call(window, () => {
       if (raw.now() - lastReal > 100) { rci(timer); timer = 0; want(); return; }
       if (!q.size) { empty += 1; if (empty > 3) { rci(timer); timer = 0; } return; }
       empty = 0; fire();
-    }, step());
-  };
+    }, 1000 / P.hz);
+  }
   window.requestAnimationFrame = function (cb) {
     if (typeof cb !== 'function') return raw.raf.call(window, cb);
     id += 1; q.set(id, [cb, site()]);
-    if (!realOn) { realOn = true; idleFrames = 0; raw.raf.call(window, real); }
+    arm();
     return id;
   };
   window.cancelAnimationFrame = function (i) { if (!q.delete(i)) raw.caf.call(window, i); };
