@@ -254,7 +254,7 @@ async function cdpConnect(dir) {
   try {
     const ws = new WebSocket(await cdpConnect(dir));
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
-    let id = 0; const pending = new Map(); const attached = [];
+    let id = 0; const pending = new Map(); const attached = []; const frameScripts = [];
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
@@ -264,7 +264,11 @@ async function cdpConnect(dir) {
       if (process.env.SMOKE_DEBUG && msg.method === 'Target.attachedToTarget') console.log('attached', msg.params.targetInfo.type, msg.params.targetInfo.url.slice(0, 80));
       if (msg.method === 'Target.attachedToTarget') {
         const sid = msg.params.sessionId;
-        attached.push({ sid, id: msg.params.targetInfo.targetId }); // (a check's { cdp, target: 'three-sandbox' } goes to it)
+        attached.push({ sid, id: msg.params.targetInfo.targetId, type: msg.params.targetInfo.type }); // (a check's { cdp, target: 'three-sandbox' } goes to it)
+        // (round 107, fps107) { frameScript: { match, source } }: a script every new document of a matching iframe target
+        // runs before its own (the target waits for the debugger until then): a check's counters / fake screen in the Lab page.
+        // match: the iframe targets' URL; the script itself looks at location (a frame made blank is navigated later)
+        for (const fsx of frameScripts) if (msg.params.targetInfo.type === 'iframe' && new RegExp(fsx.match).test(msg.params.targetInfo.url)) send('Page.enable', {}, sid) && send('Page.addScriptToEvaluateOnNewDocument', { source: fsx.source }, sid).then((r) => { if (process.env.SMOKE_DEBUG) console.log('frameScript', JSON.stringify(r).slice(0, 200)); });
         send('Fetch.enable', { patterns: CDN_PATTERNS }, sid);
         send('Runtime.enable', {}, sid);
         send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid);
@@ -330,7 +334,14 @@ async function cdpConnect(dir) {
       let result;
       // { trace: 'start' } / { trace: 'stop' }: a timeline trace; stop returns what was painted (count, area per layer)
       // (round 39, labmemory) { snapshot: file, target? }: a heap snapshot of the window (or an iframe target) saved to file
-      if (req.snapshot) {
+      if (req.frameScript) {
+        // (round 107, fps107) for the iframe targets attached from now on, and every iframe target already attached (their
+        // next document: a frame made blank and navigated later keeps its target, its URL empty until then)
+        frameScripts.push(req.frameScript);
+        const ids = new Set(attached.filter((x) => x.type === 'iframe').map((x) => x.id));
+        for (const a of attached.filter((x) => ids.has(x.id))) await send('Page.enable', {}, a.sid) && await send('Page.addScriptToEvaluateOnNewDocument', { source: req.frameScript.source }, a.sid);
+        result = { scripts: frameScripts.length, now: ids.size };
+      } else if (req.snapshot) {
         const infos = req.target ? (await send('Target.getTargets', {})).result?.targetInfos || [] : [];
         const ids = new Set(infos.filter((x) => new RegExp(req.target).test(x.url)).map((x) => x.targetId));
         const t = req.target ? attached.filter((a) => ids.has(a.id)).pop() : null;

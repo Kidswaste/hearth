@@ -203,6 +203,15 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   "….bin isn't next to ….gltf". Remove the reference on the PC: its whole folder is in the Recycle Bin (and in the Mac's
   sync **Deleted files**).
 
+## 14. Graphics card load on the 240 Hz screen, state by state (round 107, fps107)
+- On the PC's 240 Hz screen, with Task Manager › Performance › GPU open beside Hearth (or its Processes tab with the
+  GPU column), note the GPU % for about 20 s in each state: **(1)** a chat open, idle · **(2)** the giant chat (or the
+  longest one you have) opened, scrolled up a bit and back, then idle · **(3)** the Lab with a scene playing on Auto ·
+  **(4)** the same with another app (Spotify, the DAW) in front, then Hearth minimized · **(5)** Hearth behind another
+  app on a chat · **(6)** a long reply streaming. Expected: (1), (2), (5) ≈ 0 %; (4) minimized ≈ 0 %; (3) and (4)
+  in front of the DAW clearly lower than before this round; (6) only while it streams. Play something in Spotify
+  through all of it: any crackle, say in which state.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
