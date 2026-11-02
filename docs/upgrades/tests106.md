@@ -132,7 +132,20 @@ and round67-test leave their `mkdtemp` folder behind; together ≈ 54 MB a relea
 
 - r1 and r2: all 53, one by one under the lock: the same 47 pass both times, the same 3 fail the same way, vst-live
   needs `HEARTH_VST_PYTHON`, the two non-Node tests fail as plain Node (and pass run their way, once each).
-- `release` after the change: see the end of this file.
+- `release` after the change (`flock … node dev/run-checks.js release`, 36 min, load ≈ 1.2–1.7 plus other
+  sessions' unlocked tests): **308 checks: 302 passed, 3 known failures (the three above, each failing its known
+  way), 1 opt-in skipped (vst-live-test), 2 failed**, and the two `NOT_UNIT` lines printed. Before this round the
+  release was 256 checks. All 47 newly listed tests that pass alone passed in it. The 2 failures were in the old list:
+  - **localanswers-test** (ours, round 45): "what's new in the Lab?" read the live patch notes' newest three rounds.
+    Since round 105's patch notes (`7d0bfeb`, after units105's runs) those are 103–105, none with a Lab part, so the
+    question rightly answers nothing (the AI is asked instead). Stale test, fixed: the Lab part is checked on the
+    newest three rounds that have one, and on the newest three it must answer nothing when they have none. Passes 3/3.
+  - **audio-test** (round 23, made load-aware in round 105): "song: analysed in < 4 s" at 4.6 s, with the box factor
+    at 1 and 38 ms waited, so the judge called it a failure, not "can't tell". Alone under the lock right after: 9 s
+    runs, passed 3/3. The box was shared with other sessions' tests, which don't take the lock; CPU-time slowdowns from
+    a busy sibling hyperthread that the before / after calibration missed. Not changed here; if it shows up again,
+    calibrating during the timing instead of around it is the next step.
+  Net after the fix: 303 of the 304 that are judged pass, the one left a timing test under load.
 
 ## For Codex
 
