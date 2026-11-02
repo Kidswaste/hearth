@@ -99,7 +99,14 @@ ok('"what changed today?" → the newest round\'s parts, from the patch notes', 
     const a = L.news(notes, q, { W });
     assert.ok(a && a.go.type === 'news' && a.text.includes(`Round ${notes[0].round}`), `${q}: ${JSON.stringify(a)}`);
   }
-  const lab = L.news(notes, 'what\'s new in the lab?', { W });
+  // (round 106, tests106) "what's new in the Lab?" reads the newest three rounds; rounds 103–105 have no Lab part (it
+  // answers nothing then, and the AI is asked), so this part is checked on the newest three rounds that have one
+  const all3 = fs.readFileSync(path.join(__dirname, '../docs/patch-notes/index.txt'), 'utf8').split('\n').map((l) => l.trim()).filter((l) => /^round-\d+\.md$/.test(l))
+    .map((f) => ({ round: Number(/\d+/.exec(f)[0]), text: fs.readFileSync(path.join(__dirname, '../docs/patch-notes', f), 'utf8') }));
+  const firstLab = all3.findIndex((n) => W.parse(n.text, n.round).items.some((x) => x.kind === 'feature' && x.group === 'lab'));
+  assert.ok(firstLab >= 0, 'a round with a Lab part in the patch notes');
+  if (!notes.some((n) => W.parse(n.text, n.round).items.some((x) => x.kind === 'feature' && x.group === 'lab'))) assert.strictEqual(L.news(notes, 'what\'s new in the lab?', { W }), null);
+  const lab = L.news(all3.slice(firstLab, firstLab + 3), 'what\'s new in the lab?', { W });
   assert.ok(lab && /Lately in the Lab/.test(lab.text), JSON.stringify(lab));
   assert.strictEqual(L.news(notes, 'what changed in my code?', { W }), null);
   assert.strictEqual(L.answer(built, 'what changed today?'), null); // news is its own path
