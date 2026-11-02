@@ -55,7 +55,7 @@ const AUDIT = [
   ['chatcalc-core.js', 2, 'not-chat', 'store thread: the parsed file (the whole way) and its records per message (round 87)'],
   ['chatsafe.js', 2, 'windowed', 'the read-only reader (never a windowed chat): a chat under 8 MB as read; a giant one by range from the store thread, its last messages then "Show earlier" a page at a time (round 87: never read whole on the main process)'],
   ['chatwin-core.js', 1, 'windowed', 'the access layer itself'],
-  ['chatwin.js', 15, 'windowed', 'the access layer itself'],
+  ['chatwin.js', 16, 'windowed', 'the access layer itself (round 104: ranges reads a chat loaded whole meanwhile from its list, checked whole: an array of the same length, no stub)'],
   ['comp-dispatch.js', 3, 'windowed', 'count, push, the last message'],
   ['context-core.js', 2, 'not-chat', 'pure: the list it is handed (its callers are listed)'],
   ['costcoach-core.js', 1, 'not-chat', "main process: a chat file's records"],

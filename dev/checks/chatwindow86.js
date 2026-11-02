@@ -13,11 +13,11 @@
 //   react       a reaction on #2001 (never loaded): its block read first, saved by change, on disk exactly there
 //   edit        edit-from-here on an older message of yours (not loaded): its block read, the chat cut there ("truncate
 //               to n": trunc), the reply: on disk the chat ends there, everything before it unchanged
-//   export      /export json: the chat loaded whole first (load-all), the file = the whole-chat way byte for byte;
+//   export      /export json: the chat read a range at a time, never loaded whole (round 104), the file = the whole-chat way byte for byte;
 //               a minute later it goes back to its window (here at once: rewindow)
 //   sync        the chat file replaced as sync does when the other computer changed it (the version kept at the
 //               start: 6,000 messages): the chat let go and opened again, windowed, its end drawn
-// Nothing in a measured step may load the chat whole except export, nothing may reach an unloaded message's content
+// Nothing in a measured step may load the chat whole (export too, since round 104), nothing may reach an unloaded message's content
 // (chatwin misses), no change may be refused (poisoned).
 // window.CW86_OFF = 1: the same steps with the setting off (the chat held whole: the "before" numbers).
 // window.CW_REPORT = 1: report without failing.
@@ -265,6 +265,9 @@ newWholes();
   out.panels.refsSame = JSON.stringify(out.panels.refs) === JSON.stringify(out.panels.wholeRefs);
   if (!BEFORE) { const all = []; for (const m of [...chat.messages].reverse()) for (const p of ChatWinCore.SCAN.paths(m)) if (!all.includes(p)) all.push(p); out.panels.scanSame = JSON.stringify(all) === JSON.stringify(out.panels.scanAll); out.panels.scanN = all.length; out.panels.scanHasOld = all.includes(oldPath); delete out.panels.scanAll; }
   CW()?.rewindow?.(chat, true);
+  // (round 104, checksgc104) the check's own whole copy let go here, as after export (heap()): a GC-only task is
+  // judged now, and this one is the check's comparison's, not a step's
+  await gc();
   if (!OFF && !BEFORE) {
     if (!out.panels.thingsOk || !out.panels.thingsSame || !out.panels.things.includes(`${OLDT}:${thing.path}`)) out.problems.push(`panels: Made here on the first try ${JSON.stringify({ ok: out.panels.thingsOk, err: out.panels.thingsErr, same: out.panels.thingsSame })}`);
     if (!out.panels.refsOk || !out.panels.refsSame) out.problems.push(`panels: @file on the first try ${JSON.stringify({ ok: out.panels.refsOk, err: out.panels.refsErr, same: out.panels.refsSame })}`);
@@ -334,7 +337,10 @@ try {
   if (!OFF && (!out.edit.deltas || out.edit.wholeSaves)) out.problems.push(`edit: saved ${out.edit.deltas} by change, ${out.edit.wholeSaves} whole`);
 }
 
-// ---------- export (load-all) ----------
+// ---------- export ----------
+// (round 104, checksgc104) /export json of a windowed chat reads it a range at a time (chatwin.js ranges): the chat is
+// never loaded whole for it (it was: ≈ 90 MB of objects, then a 55–90 ms garbage collection when they were let go).
+// The check loads it whole itself afterwards, outside the step, for the whole-chat way's bytes to compare with
 if (typeof ChatCmds === 'undefined' && window.Lazy?.load) await Lazy.load('chatcmds');
 const saves = window.SMOKE_SAVES || '';
 const sp = /\\/.test(saves) ? '\\' : '/';
@@ -342,11 +348,13 @@ const fileOf = (f) => `${saves}${sp}${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.
 await step('export', async () => {
   await Commands.exec('/export json', claude.id, { say: () => {}, note: () => {} });
   const st = await until(() => window.hub.fs.stat(fileOf('json')), 300);
-  return { bytes: st?.size || 0 };
-}, { wholeOk: true });
-out.export.loadedWhole = !Native.isWin?.(chat);
+  return { bytes: st?.size || 0, stayedWindowed: Boolean(Native.isWin?.(chat)) };
+}, { wholeOk: OFF });
+if (!OFF && !BEFORE && !out.export.stayedWindowed) out.problems.push('export: the chat was loaded whole for it');
 // the whole-chat way's bytes, hashed now (compared with the file at the end, after the heap's been read)
 const sha = async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+if (!OFF) { await Native.loadWhole(ID); newWholes(); } // (the check's own: the comparison)
+out.export.loadedWhole = !Native.isWin?.(chat);
 // (made in a callback of its own: the 57 MB string never sits in this script's suspended frame, where it stayed alive)
 const wantSha = Native.isWin?.(chat) ? null : await new Promise((res) => { setTimeout(() => { res(sha(JSON.stringify({ ...chat, session: undefined, hearthExport: 1 }, null, 2))); }, 0); });
 out.heap.exportWholeMB = MB((await heap()) - heap0);

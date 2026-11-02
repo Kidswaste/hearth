@@ -165,7 +165,10 @@ function stats(events, opts = {}) {
 // those are judged — the check keeps its own idea of a long task, the trace only says what each one cost; a task
 // the observer reports can show in the trace as a task and the microtask checkpoint after it: their CPU is summed),
 // delays ({ pid: run delay ms over the trace }), steal (the share of the CPUs a virtual machine's host took over the
-// trace, 0–0.9: a thread's own CPU time includes it, so a task's CPU is counted without it) }.
+// trace, 0–0.9: a thread's own CPU time includes it, so a task's CPU is counted without it), cover (round 104: the share
+// of an observed span its own events must cover for their CPU to count, 0.8; 0 for a span that isn't one task, as a
+// key's key → frame) }. A task that is mostly garbage collection says so (gc: true); with observed, the GC-only tasks
+// the observer never reports are added and judged too (unobserved: true).
 // Without thread times in the trace: verdict 'unknown'.
 function longTasks(events, opts = {}) {
   const min = opts.min ?? 50; const budget = opts.budget ?? Infinity;
@@ -184,26 +187,40 @@ function longTasks(events, opts = {}) {
   const [pid] = main.split(':');
   const delayMs = opts.delays ? (opts.delays[main] ?? opts.delays[pid] ?? null) : null;
   let tasks;
+  // (round 104, checksgc104) a GC-only task: an outermost event whose time is mostly V8 / Blink garbage collection (the
+  // trace's GC events: MajorGC, MinorGC, V8.GC_*, BlinkGC.*, CppGC.*; dev/smoke.js's light trace asks for them). The
+  // window's long-task observer never reports one, so a check judging the observer's tasks never saw a 55–90 ms major
+  // GC (cw103's "What's left"). Its GC share: the outermost GC events inside it, by wall time
+  const GC = /^(MajorGC|MinorGC|V8\.GC|BlinkGC\.|CppGC\.)/;
+  const gcOf = (() => {
+    const gcs = all.filter((e) => GC.test(e.name)); let gi = 0;
+    return (t) => { while (gi < gcs.length && gcs[gi].ts < t.ts) gi++; let s = 0; let end = -1; for (let i = gi; i < gcs.length && gcs[i].ts < t.ts + t.dur; i++) { const e = gcs[i]; if (e.ts < end) continue; s += Math.min(e.ts + e.dur, t.ts + t.dur) - e.ts; end = e.ts + e.dur; } return s; };
+  })();
+  const cpuOfTask = (t) => (Number.isFinite(t.tdur) ? r1(t.tdur / 1000) : null);
   if (Array.isArray(opts.observed)) {
-    // each observed task: the CPU of the outermost events inside its span (±1 ms)
+    // (round 104, checksgc104) each observed task: the outermost events that are the task's own, those with at least
+    // half of their time inside its span, and their CPU (all of it, never less than the task's own). Round 88 took the
+    // events wholly inside the span ± 1 ms, and round 102 the events overlapping it when none was: an observed 72 ms
+    // task whose own event stuck out of the window by a ms or two (the observer's span is rounded to whole ms and read
+    // on another clock than the trace's) was matched to the 0.3 ms idle callback that ran just before it, inside the
+    // window, and judged on 0.3 ms of CPU. The task's own events must cover most of its span (≥ 80 %, as round 102
+    // asked of its overlap); else it stays unknown (the check judges its wall time)
     tasks = opts.observed.filter((o) => o.ms >= min).sort((a, b) => b.ms - a.ms).map((o) => {
-      const a = t0 + (o.at - 1) * 1000; const b = t0 + (o.at + o.ms + 1) * 1000;
-      const inside = top.filter((t) => t.ts >= a && t.ts + t.dur <= b);
-      // (round 102, checks102) none inside the ±1 ms window (the observer's span is rounded to whole ms and read on
-      // another clock than the trace's): the task came back "unknown", and chatwindow86 then judged its WALL time, the
-      // one path where it still did. Now the outermost events overlapping the span, each with ALL its CPU (never less
-      // than the task's own), when they cover most of the span; else it stays unknown, judged on wall time as before
-      if (!inside.length && hasCpu) {
-        const lo = t0 + o.at * 1000; const hi = lo + o.ms * 1000;
-        const ov = top.map((t) => ({ t, x: Math.max(0, Math.min(hi, t.ts + t.dur) - Math.max(lo, t.ts)) })).filter((v) => v.x > 0);
-        const covered = ov.reduce((s, v) => s + v.x, 0);
-        if (ov.length && covered >= 0.8 * o.ms * 1000) return { at: r1(o.at), ms: r1(o.ms), cpuMs: r1(ov.reduce((s, v) => s + (v.t.tdur || 0), 0) / 1000), traced: r1(covered / 1000), matched: 'overlap' };
-      }
-      return { at: r1(o.at), ms: r1(o.ms), cpuMs: inside.length && hasCpu ? r1(inside.reduce((x, t) => x + (t.tdur || 0), 0) / 1000) : null, traced: inside.length ? r1(inside.reduce((x, t) => x + t.dur, 0) / 1000) : 0 };
+      const lo = t0 + o.at * 1000; const hi = lo + o.ms * 1000;
+      const own = top.map((t) => ({ t, x: Math.max(0, Math.min(hi, t.ts + t.dur) - Math.max(lo, t.ts)) })).filter((v) => v.x > 0 && v.x >= 0.5 * v.t.dur);
+      const covered = own.reduce((x, v) => x + v.x, 0);
+      const r = { at: r1(o.at), ms: r1(o.ms), cpuMs: null, traced: r1(own.reduce((x, v) => x + v.t.dur, 0) / 1000) };
+      if (own.length && hasCpu && covered >= (opts.cover ?? 0.8) * o.ms * 1000) r.cpuMs = r1(own.reduce((x, v) => x + (v.t.tdur || 0), 0) / 1000);
+      if (own.length && own.reduce((x, v) => x + gcOf(v.t), 0) >= 0.5 * own.reduce((x, v) => x + v.t.dur, 0)) r.gc = true;
+      return r;
     });
+    // (round 104) the GC-only tasks the observer didn't report (none of its tasks covers them), judged as its own are
+    const seen = (t) => opts.observed.some((o) => { const lo = t0 + o.at * 1000; const hi = lo + o.ms * 1000; return Math.min(hi, t.ts + t.dur) - Math.max(lo, t.ts) > 0.5 * t.dur; });
+    for (const t of top) if (t.dur / 1000 >= min && gcOf(t) >= 0.5 * t.dur && !seen(t)) tasks.push({ at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: cpuOfTask(t), traced: r1(t.dur / 1000), gc: true, unobserved: true });
+    tasks.sort((x, y) => y.ms - x.ms);
   } else {
     tasks = top.filter((t) => t.dur / 1000 >= min).sort((a, b) => b.dur - a.dur)
-      .map((t) => ({ at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: Number.isFinite(t.tdur) ? r1(t.tdur / 1000) : null }));
+      .map((t) => ({ at: r1((t.ts - t0) / 1000), ms: r1(t.dur / 1000), cpuMs: cpuOfTask(t), ...(gcOf(t) >= 0.5 * t.dur ? { gc: true } : {}) }));
   }
   const over = tasks.filter((t) => t.ms > budget);
   // (round 95, labflake95) the check's own observed list comes back whole: cut to 8, a 9th hitch came back with no CPU
@@ -231,7 +248,7 @@ function longTasks(events, opts = {}) {
   }
   out.verdict = over.some((t) => t.judged === 'over') ? 'over' : over.some((t) => t.judged === 'unknown') ? 'unknown' : 'load';
   const worst = over.find((t) => t.judged === out.verdict) || over[0];
-  out.why = `${worst.ms} ms task: ${worst.why}`;
+  out.why = `${worst.ms} ms ${worst.gc ? 'garbage collection' : 'task'}${worst.unobserved ? ' (not reported by the page\'s long-task observer)' : ''}: ${worst.why}`;
   return out;
 }
 module.exports = { stats, longTasks };

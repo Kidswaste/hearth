@@ -19,9 +19,27 @@ const ChatSafe = (() => {
   // ---------- the chat itself, read-only ----------
   const SHOWN = 60; // the last messages shown (↑ shows the rest)
   const shown = (m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'opinion') && !m.compactReq;
+  // (round 104, checksgc104) a long text in parts of ≈ 2,000 characters, each cut right after a line break and laid out
+  // only when it comes near (content-visibility, chatsafe.css): a giant chat's last reply (40,000 characters shown)
+  // was one text laid out whole in the reader's first frame, a 44–100 ms task, though only its end was in view. The
+  // same text and the same lines: a part ending in its line break draws as the text did there (a text with no line
+  // break to cut at stays whole)
+  const PART_CH = 2000;
+  const textEl = (t) => {
+    const box = el('div', { class: 'chatsafe-text' });
+    if (t.length <= PART_CH * 2) { box.textContent = t; return box; }
+    for (let a = 0; a < t.length;) {
+      let b = a + PART_CH < t.length ? t.indexOf('\n', a + PART_CH) : -1;
+      b = b < 0 || b - a > PART_CH * 3 ? t.length : b + 1;
+      const p = el('div', { class: 'chatsafe-part', text: t.slice(a, b) });
+      p.style.containIntrinsicSize = `auto ${Math.max(20, Math.round(((b - a) / 70) * 21))}px`;
+      box.append(p); a = b;
+    }
+    return box;
+  };
   const rowEl = (m, name) => el('div', { class: `chatsafe-msg ${m.role}` },
     el('div', { class: 'chatsafe-who', text: m.role === 'user' ? 'You' : m.role === 'opinion' ? `${m.from || 'Second opinion'}` : (m.compactSummary ? 'Summary' : name) }),
-    el('div', { class: 'chatsafe-text', text: String(m.text || '').slice(0, 40000) }));
+    textEl(String(m.text || '').slice(0, 40000)));
   function messagesEl(chat, name, all = false) {
     if (chat?.big) return bigEl(chat, name);
     const box = el('div', { class: 'chatsafe-msgs' });

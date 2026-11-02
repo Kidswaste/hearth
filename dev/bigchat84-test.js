@@ -62,6 +62,20 @@ async function exportTests(chats) {
     ok(join(CE.html(chat, { head: '<h1>t</h1>\n', row: (m) => row(m) })) === `<h1>t</h1>\n${chat.messages.filter((m) => m.role !== 'error').map(row).join('\n')}\n`, `export html #${k}`);
     const parts = []; const n = await CE.pump(CE.json(chat), (t) => { parts.push(t); }, { part: 3000, slice: 1 });
     ok(parts.join('') === want && n === want.length && (want.length < 6000 || parts.length > 1), `pump in parts #${k} (${parts.length})`);
+    // (round 104, checksgc104) the same files from the messages read a range at a time (a windowed giant chat exported
+    // without loading it whole: chatwin.js ranges), in ranges of 1, 7 and 400; a short read throws
+    const ms = chat.messages;
+    const rangesOf = (part, cut = 0) => ({ n: ms.length, async* [Symbol.asyncIterator]() { for (let a = 0; a < ms.length - cut; a += part) yield ms.slice(a, Math.min(ms.length - cut, a + part)); } });
+    for (const part of [1, 7, 400]) {
+      const got = []; await CE.pump(CE.jsonFrom(chat, rangesOf(part)), (t) => { got.push(t); }, { part: 3000, slice: 1 });
+      ok(got.join('') === want, `export json by ranges of ${part} #${k}`);
+      const o = { name: 'Claude', agentName: 'Claude', date: chat.createdAt }; const md = chatMarkdown(chat, { name: 'Claude' });
+      const gm = []; await CE.pump(CE.mdFrom(chat, rangesOf(part), o), (t) => { gm.push(t); });
+      ok(gm.join('') === md, `export md by ranges of ${part} #${k}`);
+      const gt = []; await CE.pump(CE.txtFrom(chat, rangesOf(part), o), (t) => { gt.push(t); });
+      ok(gt.join('') === md.replace(/\*\*|__|`/g, ''), `export txt by ranges of ${part} #${k}`);
+    }
+    if (ms.length) { let threw = false; try { await CE.pump(CE.jsonFrom(chat, rangesOf(3, 1)), () => {}); } catch { threw = true; } ok(threw, `export by ranges: a short read throws, never a part as the whole #${k}`); }
   }
 }
 
