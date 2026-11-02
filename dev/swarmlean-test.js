@@ -48,7 +48,11 @@ check(SL.helperPick(opus, { chat: { model: 'opus' }, R: Router }) === null, 'a c
 check(JSON.stringify(SL.helperPick({ engine: 'claude', model: 'haiku' }, { R: Router })) === JSON.stringify({ effort: 'low' }), 'never a stronger model than the AI\'s own (Haiku stays Haiku)');
 
 // 4. a helper run: no memory, no habits, byte-stable when memory changes (a real engines.js run on the fake CLI)
-const dir = require('./tmp-own').mkdtemp('swarmlean-test-');
+const dir = require('./tmp-own').mkdtemp('swarmlean-test-'); // (tmpclean106)
+// (round 106, tests106) the fake engines keep their state in this run's folder (not the shared <tmp>/hearth-fake-engines),
+// and the folder goes when the test ends: nothing left in the temp folder
+process.env.FAKE_STATE = path.join(dir, 'fake-state');
+process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });

@@ -113,6 +113,34 @@ UNIT.push('findmem92-test'); // (round 92, findmem92) Find in this project keeps
 UNIT.push('labproj97-test'); // (round 97, labproj97) a project's Lab work in a .hearthproject and in Duplicate project: each scene's History, its song's ⚡ bars and loop, its pin, its sequence pick (labproj-core.js: fresh ids, shape checks, songs compared the Windows way, History's names = scenesafe-core's), a reference's file still used elsewhere never trashed (refShared), export → peek → unpack with the song packed once and its bars under the unpacked path, a missing song named
 UNIT.push('bundle98-test'); // (round 98, bundle98) a model made of several files in a .hearthproject and in Duplicate project (assetdeps-core.js: a .gltf with its .bin and textures in sub-folders and a folder up, written on Windows (\\, another case, an absolute path), an .obj with its .mtl, a .glb; a missing buffer named), export → unpack in its layout, copyAsset / untake, and failure injection at every step of unpack and of apply (a thrown write, a full disk, Cancel): nothing half-imported stays, each thing in its Trash
 UNIT.push('labmodels99-test'); // (round 99, labmodels99) a model of several files in the Lab itself (labmodels-core.js: a reference's folder, missing files in plain words, the preview's resolution = three-sandbox.html's own, a drop grouped), store.js importRef copying a .gltf / .obj / .glb whole into refs/<time>-<name>/ (names sync never carries moved or named, secrets never copied), every file of the copy synced and brought down (online-only on either computer, through the simulator), the folder's Trash rule
+// (round 106, tests106) the 53 dev/*-test.js files that were in no list (so never in `release`), each run and sorted
+// (docs/upgrades/tests106.md). Codex's and the creative-direction session's run too: it costs a few seconds and catches
+// what a change in shared code breaks. Each one that isn't run as a plain Node test, or whose failure is known, is
+// listed below with why; nothing is left out without a line here.
+UNIT.push('lazy-groups-test', 'swarmlean-test'); // ours: (round 54, fixes54) every lazy group's files and globals stay whole through merges · (round 33, swarmlean) lean missions' estimates, brief, helper pick and helper prompt
+UNIT.push('credits-test', 'direction-test', 'finishline-test', 'moodqualities-test', 'round67-test'); // the creative-direction session's (round 67): credit log, ✦ Direction's math + branches, ⚑ Finish line, moodboard qualities, Astra / Swarm / After Effects repair
+UNIT.push('adaptive-feedback-test', 'codex-capabilities-test', 'codex-server-test', 'codex-usage-test', 'codex-workspace-test', 'creative-test', 'engine-health-watch-test', 'engine-watch-test', 'gpu-canvas-test', 'map-session-test', 'offline-library-test', 'outing-guide-test', 'project-continuity-test', 'project-desk-test', 'project-index-test', 'project-workspace-test'); // Codex's
+UNIT.push('quest-atlas-fit-test', 'quest-chat-test', 'quest-deck-test', 'quest-field-test', 'quest-focus-test', 'quest-life-test', 'quest-project-catalog-test', 'quest-proof-test', 'quest-review-test', 'quest-workstation-test', 'quest-world-test', 'questguide-picker-ui-test', 'questguide-project-test', 'questguide-test'); // Codex's (quests)
+UNIT.push('routine-accounting-test', 'routine-allowance-test', 'routine-controls-test', 'scene-recording-test', 'showsync-syndicated-test', 'showsync-venues-test', 'visual-feedback-test', 'vst-host-test', 'workbench-story-test', 'workbench-test'); // Codex's
+UNIT.push('playback-volume-test', 'quest-chat-service-test', 'questguide-flp-test'); // Codex's, failing: see KNOWN_FAIL
+UNIT.push('vst-live-test'); // Codex's, needs real plugins: see UNIT_OPT_IN
+// (round 106) needs a real machine: runs only when its variable is set, else "skipped (opt-in …)" on its line
+const UNIT_OPT_IN = {
+  'vst-live-test': ['HEARTH_VST_PYTHON', 'the path of a Python with Pedalboard / sounddevice, and Serum 2 / Vital installed (Windows audio device; real plugins, muted output)'],
+};
+// (round 106) known failures (files we don't own, reported to their owner): they run in every release and show on their
+// line, but don't fail it while the failure matches `match`. A different failure fails the run as usual; one that
+// passes says so (take it off this list). Never a way to hide a failure: each has its cause and the round that broke it.
+const KNOWN_FAIL = {
+  'playback-volume-test': { owner: 'Codex', match: /MIDIMAP_ACTIONS is not defined/, why: 'stale test: it runs a slice of creative-vstmain.js in a vm with a fixed list of globals; round 69 (midilearn69, 0099bb6) added MIDIMAP_ACTIONS there' },
+  'quest-chat-service-test': { owner: 'Codex', match: /quest planner took too long/, why: 'stale test: its hub.kvGet stub ignores {status:true}; since round 67 (sweep67, fa7e057) quest-chat.js reads its cache as a status read (a read failure is never "empty"), so the stub reads as "unreadable", nothing is cached and the cached call waits 90 s' },
+  'questguide-flp-test': { owner: 'Codex', match: /save verifies tempo without a MIDI device/, why: 'Codex PR #34 (a142105, 19 Oct) made questguidemain poll only when the step is app "fl" or the guide kind is "music"; the test starts a custom guide with bpm / bass steps and no app, so a saved .flp is never looked at (with kind "music" it passes)' },
+};
+// (round 106) dev/*-test.js not run by the unit runner (not a plain Node test), each with how it runs
+const NOT_UNIT = {
+  'creative-export-test': 'Codex\'s helper, not a standalone test: it reads the files the creative app check saved (node dev/smoke.js --save-dir <dir> --script dev/checks/creative.js, then node dev/creative-export-test.js <dir>); passes that way',
+  'map-network-test': 'Codex\'s, an Electron script (require(\'electron\')): xvfb-run -a /opt/hearth-electron/electron --no-sandbox dev/map-network-test.js; passes that way (localhost only)',
+};
 const by = (re) => all.filter((n) => re.test(n));
 const GROUPS = {
   labproj97: ['labproj97', 'unit:labproj97-test', 'projbundle', 'projaudit91', 'projects', 'labsync88', 'labboot', 'lazy', 'unit:projbundle-test', 'unit:projbig85-test', 'unit:projaudit91-test', 'unit:labsync88-test', 'unit:scenesafe-test', 'unit:datasafe-scan', 'unit:winmac-test', 'unit:errorcalm-scan', 'unit:storeack-scan', 'unit:chatsafe-scan', 'unit:boot-test', 'unit:lazymanifest-test'], // (round 97, labproj97) a project's Lab work exported → imported on a fresh profile, and duplicated → edited → deleted (docs/upgrades/labproj97.md)
@@ -560,14 +588,15 @@ process.on('exit', () => { for (const p of Object.values(pairDirs)) { try { fs.r
 // (round 60, trimdrive60) an opt-in check (one that spends the owner's real account, hardware…) says so in its header:
 // "// opt-in: NAME". It runs only when NAME is set in the environment (QUEST_LIVE_REVIEW=1 sh dev/run-checks.sh
 // quest-review-live), and its header's flags (an --eval that opts it in) are passed then only; otherwise "skipped (opt-in)"
-const optInOf = (n) => (n.startsWith('astra-') ? '' : (srcOf(n).match(/^\/\/\s*opt-in:\s*([A-Z][A-Z0-9_]*)/m) || [])[1] || '');
+const optInOf = (n) => (n.startsWith('astra-') ? '' : (n.startsWith('unit:') && UNIT_OPT_IN[n.slice(5)]?.[0]) || (srcOf(n).match(/^\/\/\s*opt-in:\s*([A-Z][A-Z0-9_]*)/m) || [])[1] || ''); // (round 106) or UNIT_OPT_IN
 for (const n of wanted) {
   const started = Date.now();
   const log = path.join(OUT, `${n.replace('unit:', 'unit-')}.log`);
   const optIn = optInOf(n);
   if (optIn && !process.env[optIn]) {
     results.push({ n, ok: true, skipped: true, s: 0, why: '' });
-    console.log(`- ${n.padEnd(22)}    0 s  skipped (opt-in: set ${optIn}=1 to run it)`);
+    const hint = n.startsWith('unit:') && UNIT_OPT_IN[n.slice(5)]?.[1]; // (round 106) a variable that holds a path says what
+    console.log(`- ${n.padEnd(22)}    0 s  skipped (opt-in: set ${optIn}${hint ? ` to ${hint}` : '=1'} to run it)`);
     continue;
   }
   let r;
@@ -602,19 +631,30 @@ for (const n of wanted) {
   const verdict = n.startsWith('unit:') || n.startsWith('astra-') ? '' : verdictOf(text);
   const bad = r.status !== 0 || Boolean(verdict) || /^(?:\{ ?| )"(?:ok|pass)":\s*false/m.test(text) || /^ "errors": \[\s*"/m.test(text) || /^\s*"?✖/m.test(text) || /^(FAIL|✖)/m.test(text);
   const why = bad ? (text.match(/\d+ problem\(s\):\n([^\n]*)/)?.[1] || text.match(/^\s*"?✖[^\n]*/m)?.[0] || verdict || text.match(/^FAIL[^\n]*/m)?.[0] || text.match(/"problems":\s*\[[^\]]*\]/)?.[0] || (r.error ? r.error.message : `exit ${r.status}`)).trim().slice(0, 200) : '';
-  results.push({ n, ok: !bad, s: Math.round((Date.now() - started) / 1000), why });
+  // (round 106, tests106) a known failure (KNOWN_FAIL) failing the known way: shown, not counted; any other way: a failure
+  const kf = KNOWN_FAIL[n.replace(/^unit:/, '')];
+  const known = bad && kf && kf.match.test(text);
+  results.push({ n, ok: !bad || known, known, s: Math.round((Date.now() - started) / 1000), why });
   // (round 58, codexcare58) a part a check couldn't run here (a top-level "skipped" list) shows on its line: passed ≠ all tested
   const skipped = bad ? '' : (text.match(/"skipped":\s*\[\s*"([^"]+)"/)?.[1] || '');
   // (round 88, checkfix88) a load-aware check that couldn't judge a timing (the box too busy to tell: a top-level
   // "cantTell" list) passes, but says so on its line: passed ≠ measured
   const cantTell = bad ? '' : (text.match(/"cantTell":\s*\[\s*"([^"]+)"/)?.[1] || text.match(/^CAN'T TELL ([^\n]+)/m)?.[1] || ''); // (a Node test: a "CAN'T TELL …" line)
   if (cantTell) results.at(-1).cantTell = cantTell;
-  console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}${leftTmp.length ? `  (left in /tmp: ${leftTmp.map((l) => `${l.name}${l.maybeOther ? " (another run going: maybe its)" : ""}`).join(', ').slice(0, 160)})` : ''}`);
-  if (bad && argv.includes('--stop')) break;
+  console.log(`${known ? '!' : bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${known ? `  known failure (${kf.owner}'s, docs/upgrades/tests106.md): ${kf.why.slice(0, 160)}` : bad ? `  ${why}` : ''}${kf && !bad ? '  (passed: take it off KNOWN_FAIL in run-checks.js)' : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}${leftTmp.length ? `  (left in /tmp: ${leftTmp.map((l) => `${l.name}${l.maybeOther ? " (another run going: maybe its)" : ""}`).join(', ').slice(0, 160)})` : ''}`);
+  if (bad && !known && argv.includes('--stop')) break;
+}
+// (round 106, tests106) a run with the whole unit list says what it doesn't run, and fails on a dev/*-test.js in no list
+// (a new test nobody registered would otherwise never run)
+if (wanted.includes('unit:boot-test') && GROUPS.unit.every((u) => wanted.includes(u))) {
+  for (const [u, why] of Object.entries(NOT_UNIT)) console.log(`- unit:${u.padEnd(17)}    not run here: ${why.slice(0, 200)}`);
+  const unlisted = fs.readdirSync(DEV).filter((f) => /-test\.js$/.test(f)).map((f) => f.slice(0, -3)).filter((u) => !UNIT.includes(u) && !NOT_UNIT[u]);
+  if (unlisted.length) { results.push({ n: 'unit:unlisted', ok: false, s: 0, why: unlisted.join(' ') }); console.log(`✖ unit:unlisted              ${unlisted.length} dev/*-test.js in no list (add each to UNIT, or NOT_UNIT with why): ${unlisted.join(' ')}`); }
 }
 const failed = results.filter((x) => !x.ok);
 const optedOut = results.filter((x) => x.skipped).length;
-console.log(`\n${results.length - failed.length - optedOut}/${results.length - optedOut} passed${optedOut ? ` (${optedOut} opt-in skipped)` : ''} in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
+const knownFailed = results.filter((x) => x.known).length;
+console.log(`\n${results.length - failed.length - optedOut - knownFailed}/${results.length - optedOut} passed${knownFailed ? ` (${knownFailed} known failure${knownFailed > 1 ? 's' : ''}, KNOWN_FAIL)` : ''}${optedOut ? ` (${optedOut} opt-in skipped)` : ''} in ${Math.round((Date.now() - t0) / 60000)} min · logs: ${OUT}`);
 // (round 106, tmpclean106) the temp folders: what the checks' roots held (removed with them) and any /tmp/hearth-* folder
 // the run made and didn't remove (a leak: the check that made it should remove it; a shared fixture belongs in
 // dev/tmp-guard.js's SHARED list, documented). The release group (or --tmp-strict) fails on a leak.
