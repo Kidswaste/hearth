@@ -212,6 +212,14 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   in front of the DAW clearly lower than before this round; (6) only while it streams. Play something in Spotify
   through all of it: any crackle, say in which state.
 
+## 15. The Lab with a song on the 240 Hz screen (round 108, beat108)
+- On the 240 Hz screen, a song scene playing in the Lab on Auto: Task Manager's GPU % for about 20 s, then the same
+  with another app in front. Expected: about the same as §14's (3) and (4) without a song (before this round a playing
+  song kept the Lab waking on every screen frame).
+- Set a loop (A–B) of one or two bars over a kick and let it go round for a minute; click on the timeline just before
+  B a few times while it plays. Expected: the loop sounds as tight as before (no extra bit of the next beat before it
+  jumps back, no double hit), and the picture jumps with the sound. Do the same on battery if it's a laptop.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
