@@ -106,8 +106,11 @@ the rates):
 ## Runs
 - `beat108`: pass (the table above).
 - `fps107 labpace labfps89 labboot gpuload84 labaudio77 labaudio beatlink perfectloop unit:labaudio77-test
-  unit:boot-test`: see below.
-- `release`: see below.
+  unit:boot-test`: 11 / 11 pass (labfps89 noted one 450 ms frame as "can't tell under load", as it does under load).
+- `release`: 304 / 307 passed (the 3 known Codex failures), 0 temp folders left; `unit:boot-test` passes.
+- On the way, the first runs of beat108 kept losing the preview's graphics context on the 240 Hz fake screen; that was
+  the gate's runaway above (20,000 frame callbacks a second with the check scene's three frame loops), fixed before the
+  numbers above were taken.
 
 ## For Codex
 No Codex-owned file was edited.
