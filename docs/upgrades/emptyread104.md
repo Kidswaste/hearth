@@ -139,8 +139,16 @@ mirrors the tested shapes.
 - `node dev/emptyread104-test.js`: ✓ 35/35.
 - `datasafe-test` 104/104, `scenesafe-test` 79/79, `configsafe-test` all passed, `backupauto-test` 107/107,
   `datasafe-scan` pass (82 audited, 0 new).
-- Full unit list (`node dev/run-checks.js unit`), `sync72 sync keptaside94 projects labsync88 lazy` under the lock,
-  and `node dev/sync72-test.js --thread`: see below.
+- Under the lock: `sync72 sync keptaside94 projects labsync88` ✓ 5/5; `lazy unit:boot-test unit:emptyread104-test
+  unit:datasafe-scan` ✓ 4/4.
+- `node dev/sync72-test.js --thread`: ✓ 209 passed.
+- Full unit list (`node dev/run-checks.js unit`, run alongside the app checks): 243/249. The six failures are unrelated
+  to this round:
+  - `updatesafe-test` ("inside another project"), `perfectloop-test` and `labpace-test` fail the same way on the base
+    (`258aff7`).
+  - `audio-test` ("analysed in < 4 s") is a timing check that fails here alone too; this round doesn't touch audio.
+  - `timemachine-test` (a random merge count) and `synchard74-test` (`diskfull`, under load) pass when run again alone
+    (synchard74: 170/170).
 
 ## For Codex
 Minimal edits, each marked `(round 104, emptyread104)`:
