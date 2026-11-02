@@ -462,6 +462,9 @@ const OPS = {
       return { ok: true, bytes: r.bytes };
     } finally { if (deltaDone) { Atomics.add(deltaDone, 0, 1); Atomics.notify(deltaDone, 0); } }
   },
+  // (round 107, startup107) at launch (store.js warm): the chats list's rows read back and checked against the files, so
+  // the window's first list (while the window loads) finds them in memory. Nothing is answered from it: list does its own pass
+  warm({ dir, cache }) { rowsLoad(cache, dir); chats(dir); rowsSave(dir); return true; },
   list({ dir, ds, cache }) {
     rowsLoad(cache, dir);
     const list = chats(dir).map(({ e }) => e.sum).sort((a, b) => b.updatedAt - a.updatedAt);

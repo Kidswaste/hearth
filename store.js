@@ -486,6 +486,13 @@ function listChats() {
   }
   return listChatsSync();
 }
+// (round 107, startup107) main.js at launch (the first Hearth only): the thread starts while Electron gets ready and the
+// window opens, and reads the chats list's rows back (warm), instead of starting on the window's first list (≈ 0.1 s of the
+// first screen's wait on the heavy profile). A read only: the window's list still does its own pass after it
+function warm() {
+  if (!thread()) return;
+  ask({ op: 'warm', dir: CHATS_DIR, cache: path.join(DATA_DIR, '.cache', 'chat-list.json') }).catch(() => {});
+}
 function listChatsSync() {
   let names;
   try { names = chatNames(); } catch { return lastList ? lastList.slice() : []; }
@@ -802,7 +809,7 @@ module.exports = {
   },
   DATA_DIR,
   ATTACH_DIR,
-  listChats,
+  listChats, warm,
   searchChats,
   recall,
   projFind, // (round 81, projsearch81)

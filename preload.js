@@ -77,6 +77,7 @@ contextBridge.exposeInMainWorld('hub', {
   engineStatus: call('engine:status'),
   perfLag: call('perf:lag'), // (round 20, offmain) main-process event-loop delay since the last ask (dev checks)
   bootStatus: call('boot:status'), // (round 19) what a slow start waits for in the main process (splash.js)
+  bootReady: () => ipcRenderer.send('boot:ready'), // (round 107, startup107) the first screen is up: main.js's waiting work may run (start.js)
   engineDoctor: call('engine:doctor'),
   engineInstalls: call('engine:installs'),
   engineFix: call('engine:fix'),
