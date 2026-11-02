@@ -214,9 +214,12 @@ if (out.reply.taskMs > B.replyTaskMs) bad(`a reply in the long chat: ${out.reply
 if (out.reply.messagesAdded > 4) bad(`a reply re-added ${out.reply.messagesAdded} messages`);
 // (round 104, checksgc104) the slowest key judged load-aware (see typing): its own CPU over the budget fails; over on
 // wall time only while the box was busy (the thread's wait for a CPU, or the probe that much slower) is "can't tell"
-for (const k of out.typing40.slow) {
-  const what = `key ${k.i + 1}: ${k.ms} ms (> ${B.worstKeyMs}), ${k.cpuMs ?? '?'} ms of the window's own CPU, probe ${k.probeMs ?? '?'} ms against ${out.typing40.probeMs} before the keys (${k.slowBy}×)${k.why ? `; ${k.why}` : ''}`;
-  if (k.verdict === 'over') bad(`slowest key too slow: ${what}`); else out.cantTell.push(`typing: ${what}`);
+{
+  const what = (k) => `key ${k.i + 1}: ${k.ms} ms (> ${B.worstKeyMs}), ${k.cpuMs ?? '?'} ms of the window's own CPU, probe ${k.probeMs ?? '?'} ms against ${out.typing40.probeMs} before the keys (${k.slowBy}×)${k.why ? `; ${k.why}` : ''}`;
+  const worst = (v) => out.typing40.slow.filter((k) => k.verdict === v).sort((a, b) => b.ms - a.ms);
+  const over = worst('over'); const load = worst('load');
+  if (over.length) bad(`slowest key too slow: ${what(over[0])}${over.length > 1 ? ` (${over.length} keys over)` : ''}`);
+  if (load.length) out.cantTell.push(`typing: ${what(load[0])}${load.length > 1 ? ` (${load.length} keys over, each the box's)` : ''}`);
 }
 if (!out.showAll.line || !/resting/i.test(out.showAll.line) || out.showAll.messagesInDom < N - 5) bad(`show all: ${JSON.stringify(out.showAll)}`);
 // (the made-up chats go: nothing left behind in the app copy's list)
