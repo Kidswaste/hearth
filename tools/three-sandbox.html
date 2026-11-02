@@ -581,11 +581,13 @@ function realRAF(fn) {
 // to skip there), nor with a song or live sound playing (the beat tick's own timing), a sequence, a show, a recording,
 // an offline render, ▶ Play or the export page. GATE.scr: the screen's frame (the shortest gap between two frames seen
 // over the last 2 s; frames come in pairs while the gate holds, so it is still the screen's).
-const GATE = { q: [], timer: 0, scr: 0, min: 0, t0: 0, last: -1, held: 0 };
+// (a fast screen is believed only when at least a quarter of those gaps, and 10, were short: one odd gap on a 60 Hz
+// screen never turns it on)
+const GATE = { q: [], timer: 0, scr: 0, min: 0, n: 0, short: 0, t0: 0, last: -1, held: 0 };
 function gateSeen(t) {
   const d = t - GATE.last; GATE.last = t;
-  if (d > 1 && d < 50 && (!GATE.min || d < GATE.min)) GATE.min = d;
-  if (t - GATE.t0 > 2000) { GATE.t0 = t; if (GATE.min) GATE.scr = GATE.min; GATE.min = 0; }
+  if (d > 1 && d < 50) { GATE.n += 1; if (d < 12) { GATE.short += 1; if (!GATE.min || d < GATE.min) GATE.min = d; } }
+  if (t - GATE.t0 > 2000) { GATE.t0 = t; GATE.scr = GATE.short >= Math.max(10, GATE.n / 4) ? GATE.min : 0; GATE.min = 0; GATE.n = 0; GATE.short = 0; }
 }
 function gateOpen() { GATE.timer = 0; const q = GATE.q; GATE.q = []; for (const w of q) nativeRAF(w); }
 function gateMs() {
