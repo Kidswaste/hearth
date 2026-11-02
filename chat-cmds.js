@@ -1074,38 +1074,55 @@ const ChatCmds = (() => {
   // web page's replies rendered on a Markdown worker of its own (md.js), in batches. The window never holds one long
   // task for it (a giant chat: ≈ 0.4 s for JSON, seconds for the page, then 60 MB sent at once)
   const BIG_EXPORT = 300; // messages
+  // (round 105, merge105) the Markdown worker for a page's replies: render(texts) → their HTML (the worker's; here only
+  // when it can't run), close() when the page is made. replyHtml (a chat in memory) and htmlFrom (by ranges) share it
+  function mdRender() {
+    let w = null; try { w = new Worker('md.js'); } catch { w = null; }
+    let seq = 0;
+    return {
+      async render(texts) {
+        const html = w ? await new Promise((ok) => { w.onmessage = (e) => ok(e.data?.html || []); w.onerror = () => { w = null; ok([]); }; w.postMessage({ id: seq += 1, texts }); }) : [];
+        const t0 = performance.now();
+        const out = texts.map((t, x) => (typeof html[x] === 'string' ? html[x] : renderMarkdown(t)));
+        if (performance.now() - t0 > 12) await new Promise((r) => setTimeout(r, 0));
+        return out;
+      },
+      close() { try { w?.terminate(); } catch { /* gone */ } w = null; },
+    };
+  }
   async function replyHtml(chat) { // → index → the reply's HTML (made on a worker; here only when it can't run)
     const out = new Map(); const todo = [];
     chat.messages.forEach((m, i) => { if (m.role !== 'error' && m.role !== 'user' && typeof m.text === 'string') todo.push(i); });
-    let w = null; try { w = new Worker('md.js'); } catch { w = null; }
+    const md = mdRender();
     try {
       for (let k = 0; k < todo.length;) {
         let j = k; let n = 0; while (j < todo.length && (j === k || n < 5e5)) { n += chat.messages[todo[j]].text.length; j += 1; }
         const batch = todo.slice(k, j); k = j;
-        const html = w ? await new Promise((ok) => { w.onmessage = (e) => ok(e.data?.html || []); w.onerror = () => { w = null; ok([]); }; w.postMessage({ id: k, texts: batch.map((i) => chat.messages[i].text) }); }) : [];
-        const t0 = performance.now();
-        batch.forEach((i, x) => { out.set(i, typeof html[x] === 'string' ? html[x] : renderMarkdown(chat.messages[i].text)); });
-        if (performance.now() - t0 > 12) await new Promise((r) => setTimeout(r, 0));
+        const html = await md.render(batch.map((i) => chat.messages[i].text));
+        batch.forEach((i, x) => { out.set(i, html[x]); });
       }
-    } finally { try { w?.terminate(); } catch { /* gone */ } }
+    } finally { md.close(); }
     return out;
   }
   async function exportBig(chat, f, dest, defaultPath, ranges = null) {
     const agent = H.agent(chat.agentId);
     const o = { name: agent?.name, agentName: agent?.name, date: fmtDate(chat.createdAt) };
-    let pieces;
+    let pieces; let md = null;
     // (round 104, checksgc104) a windowed giant chat as JSON / Markdown / text: read through a range at a time
     // (ChatWin.ranges), never loaded whole (the same file, byte for byte)
-    if (ranges) pieces = f === 'json' ? ChatExport.jsonFrom(chat, ranges) : f === 'txt' ? ChatExport.txtFrom(chat, ranges, o) : ChatExport.mdFrom(chat, ranges, o);
+    // (round 105, merge105) and as a web page: each range's replies rendered on the Markdown worker as it is read
+    if (ranges && f === 'html') { md = mdRender(); pieces = ChatExport.htmlFrom(chat, ranges, { head: htmlHead(chat), render: md.render, row: (m, i, h) => htmlRow(m, agent, () => h ?? renderMarkdown(m.text)) }); } else if (ranges) pieces = f === 'json' ? ChatExport.jsonFrom(chat, ranges) : f === 'txt' ? ChatExport.txtFrom(chat, ranges, o) : ChatExport.mdFrom(chat, ranges, o);
     else if (f === 'json') pieces = ChatExport.json(chat);
     else if (f === 'html') { const h = await replyHtml(chat); pieces = ChatExport.html(chat, { head: htmlHead(chat), row: (m, i) => htmlRow(m, agent, () => h.get(i) ?? renderMarkdown(m.text)) }); } else pieces = f === 'txt' ? ChatExport.txt(chat, o) : ChatExport.md(chat, o);
-    if (dest === 'clipboard') { const parts = []; await ChatExport.pump(pieces, (t) => { parts.push(t); }); return { text: parts.join('') }; }
-    const s = await window.hub.saveStream.start({ defaultPath, filters: [{ name: EXPORT_FORMATS[f], extensions: [f] }] });
-    if (!s) return { path: null };
-    const enc = new TextEncoder();
-    // (round 103, cw103) parts of ≈ 0.5 MB: a 2 MB part's encoding and send was one 75–130 ms window task on a busy box
-    try { await ChatExport.pump(pieces, (t) => window.hub.saveStream.part(s.id, enc.encode(t)), { part: 5e5 }); } catch (x) { window.hub.saveStream.end(s.id, false).catch(() => {}); throw x; }
-    return { path: await window.hub.saveStream.end(s.id, true) };
+    try {
+      if (dest === 'clipboard') { const parts = []; await ChatExport.pump(pieces, (t) => { parts.push(t); }); return { text: parts.join('') }; }
+      const s = await window.hub.saveStream.start({ defaultPath, filters: [{ name: EXPORT_FORMATS[f], extensions: [f] }] });
+      if (!s) return { path: null };
+      const enc = new TextEncoder();
+      // (round 103, cw103) parts of ≈ 0.5 MB: a 2 MB part's encoding and send was one 75–130 ms window task on a busy box
+      try { await ChatExport.pump(pieces, (t) => window.hub.saveStream.part(s.id, enc.encode(t)), { part: 5e5 }); } catch (x) { window.hub.saveStream.end(s.id, false).catch(() => {}); throw x; }
+      return { path: await window.hub.saveStream.end(s.id, true) };
+    } finally { md?.close(); }
   }
   const EXPORT_FORMATS = { md: 'Markdown', json: 'JSON (re-import with /import)', html: 'Web page', txt: 'Plain text' };
   R({
@@ -1120,9 +1137,9 @@ const ChatCmds = (() => {
       const [fmtName = 'md', dest = 'file'] = args.toLowerCase().split(/\s+/).filter(Boolean);
       const f = EXPORT_FORMATS[fmtName] ? fmtName : 'md';
       // (round 104, checksgc104) a windowed giant chat as JSON / Markdown / text is read a range at a time, never whole
-      // (whole: ≈ 90 MB of objects, and a 55–90 ms garbage collection when they were let go); the web page still
-      // loads it whole first (its replies are rendered as a batch)
-      const ranges = Native.isWin?.(chat) && f !== 'html' && typeof ChatWin !== 'undefined' && ChatWin.ranges && typeof ChatExport !== 'undefined' && window.hub.saveStream ? ChatWin.ranges(chat) : null;
+      // (whole: ≈ 90 MB of objects, and a 55–90 ms garbage collection when they were let go)
+      // (round 105, merge105) the web page too (ChatExport.htmlFrom: a range's replies rendered on the worker)
+      const ranges = Native.isWin?.(chat) && typeof ChatWin !== 'undefined' && ChatWin.ranges && typeof ChatExport !== 'undefined' && window.hub.saveStream ? ChatWin.ranges(chat) : null;
       if (!ranges && Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) a windowed giant chat: whole first (one save dialog)
       if (ranges || (chat.messages?.length >= BIG_EXPORT && typeof ChatExport !== 'undefined' && window.hub.saveStream)) { // (round 84, bigchat84)
         const r = await exportBig(chat, f, /^clip/.test(dest) ? 'clipboard' : 'file', `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.${f}`, ranges);

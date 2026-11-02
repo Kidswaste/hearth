@@ -1,6 +1,6 @@
 // opt-in: GC104
 // (round 104, checksgc104) A measurement, not a check: the window's garbage collections after a giant chat's /export
-// json and after a whole load (Native.loadWhole, then back to its window as a quiet minute later), each followed by
+// json (and, since round 105, html) and after a whole load (Native.loadWhole, then back to its window as a quiet minute later), each followed by
 // 20 s of ordinary use (a scroll up and back every 2 s) under a light trace with V8's GC events. Reports per stretch
 // the window's GC-only tasks (wall / own CPU), its longest GC, the GC time in all and the heap's peak. Run against an
 // older build with dev/smoke.js --app <its folder> for the before numbers. Fixture: dev/bigchat84-fixture.js.
@@ -42,6 +42,12 @@ await stretch('export', async () => {
   await Commands.exec('/export json', claude.id, { say: () => {}, note: () => {} });
   await wait(500);
   CW()?.rewindow?.(chat, true); // (a quiet minute later, here at once: nothing to do when it never left its window)
+});
+// (round 105, merge105) the web page too (on round 104 it loaded the chat whole first, then went back to its window)
+if (!window.GC104_SKIP_HTML) await stretch('exportHtml', async () => {
+  await Commands.exec('/export html', claude.id, { say: () => {}, note: () => {} });
+  await wait(500);
+  CW()?.rewindow?.(chat, true);
 });
 await stretch('loadWhole', async () => { await Native.loadWhole(ID); await wait(500); CW()?.rewindow?.(chat, true); });
 await stretch('quiet', async () => { await wait(500); });

@@ -76,6 +76,33 @@ async function exportTests(chats) {
       ok(gt.join('') === md.replace(/\*\*|__|`/g, ''), `export txt by ranges of ${part} #${k}`);
     }
     if (ms.length) { let threw = false; try { await CE.pump(CE.jsonFrom(chat, rangesOf(3, 1)), () => {}); } catch { threw = true; } ok(threw, `export by ranges: a short read throws, never a part as the whole #${k}`); }
+    // (round 105, merge105) the web page by ranges (htmlFrom): each range's replies rendered in batches by an async
+    // render (the Markdown worker in the app), the rows as html() makes them with the same renderer, byte for byte
+    {
+      const mdOf = (t) => `<p>${t.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`; // the "Markdown" both ways use
+      const reply = (m) => m.role !== 'error' && m.role !== 'user' && typeof m.text === 'string';
+      const prow = (m, h) => `<section class="${m.role}">${m.role === 'user' ? `<p>${m.text}</p>` : h}</section>`;
+      const pageWant = join(CE.html(chat, { head: '<h1>t</h1>\n', row: (m) => prow(m, mdOf(m.text)) })); // as chat-cmds.js: renderMarkdown(m.text)
+      for (const [part, batch] of [[1, 5e5], [7, 40], [400, 5e5], [400, 1]]) {
+        let calls = 0; let most = 0;
+        const render = async (texts) => { calls += 1; most = Math.max(most, texts.length); await null; return texts.map(mdOf); };
+        const got = []; await CE.pump(CE.htmlFrom(chat, rangesOf(part), { head: '<h1>t</h1>\n', batch, render, row: (m, i, h) => prow(m, h ?? mdOf(m.text)) }), (t) => { got.push(t); }, { part: 3000, slice: 1 });
+        ok(got.join('') === pageWant, `export html by ranges of ${part} (batches of ${batch} chars) = the whole-chat page #${k}`);
+        const replies = ms.filter(reply).length;
+        ok(replies ? calls >= Math.ceil(replies / part) && most <= part : calls === 0, `export html by ranges of ${part}: rendered a range at a time, never the whole chat at once #${k}`, { calls, most, replies });
+      }
+      if (ms.length) {
+        let threw = false; try { await CE.pump(CE.htmlFrom(chat, rangesOf(3, 1), { head: '', render: async (t) => t.map(mdOf), row: (m, i, h) => prow(m, h) }), () => {}); } catch { threw = true; }
+        ok(threw, `export html by ranges: a short read throws, never a part as the whole #${k}`);
+      }
+      if (ms.some(reply)) {
+        let threw = false; try { await CE.pump(CE.htmlFrom(chat, rangesOf(400), { head: '', render: async (t) => t.slice(1).map(mdOf), row: (m, i, h) => prow(m, h) }), () => {}); } catch { threw = true; }
+        ok(threw, `export html by ranges: a render that comes back short throws #${k}`);
+        const parts = []; let threw2 = false;
+        try { await CE.pump(CE.htmlFrom(chat, rangesOf(1), { head: '<h1>t</h1>\n', render: async () => { throw new Error('worker gone'); }, row: (m, i, h) => prow(m, h) }), (t) => { parts.push(t); }, { part: 1 }); } catch { threw2 = true; }
+        ok(threw2 && parts.join('') !== pageWant, `export html by ranges: a render that fails throws (the save stream ends with false) #${k}`);
+      }
+    }
   }
 }
 

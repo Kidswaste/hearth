@@ -619,7 +619,8 @@ const OPS = {
     // now waits for the next pass (merged as if there were none, a counter store added both computers' counts whole). A
     // base that reads but doesn't parse (written whole by a rename: a damaged disk) stays "none", as before: it never heals
     let base = null; if (baseFile) { let bt = null; try { bt = fs.readFileSync(baseFile, 'utf8'); } catch (err) { if (err?.code !== 'ENOENT') return { stale: true }; } if (bt !== null) { try { base = S.parseJson(bt); } catch { base = null; } } }
-    const r = S.merge3(base, ours, S.toCloud(JSON.parse(theirsText), ctx), { counters, keepAll });
+    // (round 105, merge105) shared: a base the engine knows (baseFile given) whose text is gone: a count is never added twice
+    const r = S.merge3(base, ours, S.toCloud(JSON.parse(theirsText), ctx), { counters, keepAll, shared: Boolean(baseFile) });
     const text = JSON.stringify(r.value); const hm = sha(text);
     let localOut = null;
     if (hm !== lh) {
