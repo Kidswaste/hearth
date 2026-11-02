@@ -27,7 +27,17 @@ const key = async (k, { ctrl = false } = {}) => {
 };
 const typeText = (text) => cdp('Input.insertText', { text });
 const menuItem = (re) => [...document.querySelectorAll('#menu button')].find((b) => re.test(b.textContent.trim()) && visible(b));
-const pickMenu = async (re, ms = 4000) => { await until(() => menuItem(re), ms); const b = menuItem(re); if (b) await click(b); return Boolean(b); };
+// a menu row: brought into view inside the menu (a long menu scrolls), clicked where it is; when something else is under
+// that point (the menu runs past the window's edge on a small headless screen), the row's own click (noted)
+const menuFallbacks = [];
+const pickMenu = async (re, ms = 4000) => {
+  await until(() => menuItem(re), ms); const b = menuItem(re); if (!b) return false;
+  b.scrollIntoView({ block: 'center' }); await frame();
+  const r = b.getBoundingClientRect(); const x = Math.round(r.left + Math.min(r.width / 2, 40)); const y = Math.round(r.top + r.height / 2);
+  const hit = document.elementFromPoint(x, y);
+  if (hit && (hit === b || b.contains(hit))) await click(b); else { menuFallbacks.push(b.textContent.trim().slice(0, 40)); b.click(); await wait(120); }
+  return true;
+};
 const card = () => document.querySelector('dialog.pb-card[open]');
 const deskName = () => document.querySelector('.pj-home .pj-p-name')?.textContent || '';
 const nameBtn = () => document.querySelector('.workspace-switcher .workspace-project-name');

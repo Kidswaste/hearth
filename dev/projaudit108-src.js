@@ -123,7 +123,7 @@ try {
 } catch (err) {
   step('no exception', false, String(err?.stack || err).slice(0, 700));
 }
-step('slow steps (ms)', true, slow);
+step('slow steps (ms)', true, { ...slow, menuFallbacks });
 out.fails = out.steps.filter((s) => !s.ok).map((s) => s.name);
 out.pass = !out.fails.length;
 return JSON.stringify(out);
