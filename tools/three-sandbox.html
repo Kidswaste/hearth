@@ -568,17 +568,23 @@ function realRAF(fn) {
     w = (t) => { if (t !== FR.t) { gateSeen(t); FR.t = t; FR.E += 1; } FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } };
     frWrap.set(fn, w);
   }
-  if (GATE.timer) { GATE.q.push(w); return 0; }
+  // (round 108, beat108) a frame held by the gate answers GATE_ID, not 0, and is held once: the page's loops keep the
+  // id as "a frame is coming" (LQ.raf, GM.raf). With 0, every layer frame asked for in a gated stretch queued the
+  // layers' flush again; the extra flushes ran the next frame's layer callbacks in the same frame, which queued more:
+  // with two or more frame loops in a scene (onHit, everyBeats, a second animation) they grew without end (20,000
+  // callbacks a second here) until the preview lost its graphics context
+  if (GATE.timer) { if (!GATE.q.includes(w)) GATE.q.push(w); return GATE_ID; }
   const ms = gateMs();
-  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.timer = realSetTimeout(gateOpen, ms); return 0; }
+  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.timer = realSetTimeout(gateOpen, ms); return GATE_ID; }
   return nativeRAF(w);
 }
+const GATE_ID = 0x1fffffff; // (never cancelled: the page's own loops don't cancel theirs; a sketch's frames have ids of their own)
 // (round 107, fps107) the page's frames on a fast screen with the preview capped (Auto ≤ 60, 30 with another app in
 // front): the cap skipped the frames in between, but every loop of the page (the frame counter, the compositor, the
 // layers' callbacks) still woke on each of the screen's frames, 240 a second on the owner's screen to draw 60 or 30.
 // Now, after a drawn frame, the page's frames are asked for again only a screen frame + 4 ms before the cap's next one
 // (a timer: one skipped frame and the drawn one, instead of three or seven skipped). Never on a 60 Hz screen (nothing
-// to skip there), nor with a song or live sound playing (the beat tick's own timing), a sequence, a show, a recording,
+// to skip there), nor with live sound or footage playing (round 108: a song may: see beat108), a sequence, a show, a recording,
 // an offline render, ▶ Play or the export page. GATE.scr: the screen's frame (the shortest gap between two frames seen
 // over the last 2 s; frames come in pairs while the gate holds, so it is still the screen's).
 // (a fast screen is believed only when at least a quarter of those gaps, and 10, were short: one odd gap on a 60 Hz
@@ -593,7 +599,9 @@ function gateOpen() { GATE.timer = 0; const q = GATE.q; GATE.q = []; for (const 
 function gateMs() {
   if (!(fpsCap > 0) || capNext < 0 || GAME || !(GATE.scr > 1 && GATE.scr < 12)) return 0;
   try {
-    if (mode !== 'sketch' || XP_PAGE || RDY.lock || SQ.on || SQ.off || stepping || fullRes() || liveKind || (mediaEl && !mediaEl.paused)) return 0;
+    // (round 108, beat108) a song playing no longer keeps it off: its loop points / trimmed end have their own timer
+    // (see "the song's edges between drawn frames"); footage (its parts, frame-exact cuts) and EDGE.legacy (checks) do
+    if (mode !== 'sketch' || XP_PAGE || RDY.lock || SQ.on || SQ.off || stepping || fullRes() || liveKind || (mediaEl && !mediaEl.paused && (EDGE.legacy || isVideo || fparts))) return 0;
   } catch { return 0; } // (asked before the page has set up what it looks at)
   const ms = capNext - realNow() - GATE.scr - 4;
   return ms >= GATE.scr ? ms : 0;
@@ -3709,6 +3717,7 @@ const TRIG_NAMES = ['kick', 'bass', 'snare', 'hats', 'hit'];
 let trigCfg = null;
 const trigState = Object.fromEntries(TRIG_NAMES.map((n) => [n, { at: -1e9, armed: true, e: 0 }]));
 let trigWatch = false; let trigFired = [];
+const TRIGLOG = { on: false, list: [] }; // (checks, beat108: window.__labBeat.log)
 function bandOf(lo, hi, hz) {
   let s = 0; let n = 0;
   for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
@@ -3724,6 +3733,7 @@ function runTriggers(now, hz) {
     else if (s.armed && s.e >= c.thr && now - s.at >= c.gap) {
       s.at = now; s.armed = false;
       if (trigWatch) trigFired.push(n);
+      if (TRIGLOG.on && TRIGLOG.list.length < 2000) TRIGLOG.list.push([n, now, mediaEl && !liveKind ? AV.core.read(AV.S, now / 1000) : null]); // (checks, beat108)
       if (n === 'kick' && liveKind) liveTempo(now / 1000);
     }
   }
@@ -4244,10 +4254,14 @@ let prevT = 0;
 // (round 55, labplay55) it runs only while a song / footage plays: with none (a game scene, a paused song) it asked for
 // a frame of its own on every screen frame to do nothing; the media's 'play' starts it again (mediaKick)
 let mediaLoop = true;
-function mediaKick() { if (mediaEl) prevT = mediaEl.currentTime; if (mediaLoop) return; mediaLoop = true; realRAF(mediaTick); }
+function mediaKick() { if (mediaEl) prevT = mediaEl.currentTime; edgeArm(); if (mediaLoop) return; mediaLoop = true; realRAF(mediaTick); }
 function mediaTick() {
-  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; mediaLoop = false; return; }
+  if (!mediaEl || mediaEl.paused) { prevT = mediaEl?.currentTime || 0; mediaLoop = false; edgeStop(); return; }
   paceNext(mediaTick, false);
+  mediaEdge(0);
+}
+// the song's edges, looked at from a frame (src 0) or from the edge timer (1: its wake, 2: a fine look)
+function mediaEdge(src) {
   const t = mediaEl.currentTime;
   if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
   if (recUntil != null && t >= recUntil) {
@@ -4255,17 +4269,99 @@ function mediaTick() {
     stopRecording();
     mediaEl.pause();
   } else if (region && loopOn && recUntil == null && prevT >= region.a - 0.1 && prevT < region.b && t >= region.b) {
+    if (EDGE.log) edgeNote('loop', src, t, region.b);
     if (LOOPC.on) loopSeam(); // (round 31, perfectloop) the last beat blending into the first
     avJump(true, region.a); // (round 77: the pictures wrap when the sound does)
     mediaEl.currentTime = region.a;
     sendState();
   } else if (trim && !(region && loopOn) && prevT < trim.b && t >= trim.b) {
+    if (EDGE.log) edgeNote('trim', src, t, trim.b);
     // the trimmed song's end: loop back to its start, or stop there like the end of the file
     if (loopOn && recUntil == null) { avJump(true, trim.a); mediaEl.currentTime = trim.a; sendState(); } else { mediaEl.pause(); mediaEl.currentTime = trim.b; post({ type: 'media-state', time: trim.b, duration: mediaEl.duration || 0, playing: false, ended: true }); }
   }
   prevT = mediaEl.currentTime;
+  edgeArm(src === 0);
 }
 realRAF(mediaTick);
+// ---------- the song's edges between drawn frames (round 108, beat108) ----------
+// The loop points (A–B) and the trimmed song's end were looked at only in the page's frames, so the page asked for a
+// frame on every one of the screen's (240 a second on the owner's screen) and fps107's frame gate stayed off for as
+// long as a song played. Now a timer looks at them too, from the song's own position: it wakes one audio step (the
+// element's time moves in steps of one audio callback, ≈ 10 ms) + EDGE.slack before the song can reach the edge, then
+// looks every ≈ 1 ms until it has (each look its own task: the element's time is fresh in each). The edge is acted on
+// within about a millisecond of the element reaching it, drawn frame or not (it was within one screen frame: 4.2 ms at
+// 240 Hz, 16.7 ms at 60). The frames still look too (whichever sees it first acts; the other then sees the song back
+// at A). With that, a playing song lets the gate hold the page's frames (a recording, footage, a sequence and live
+// sound still keep it off). Nothing else the page does with a song needs the frames between drawn ones: the song's
+// clock (songNow) is read at each drawn frame's show time; beats, triggers (audio.kick…, ⚡), onHit / onBar /
+// everyBeats run in the layers' frames, which the cap already ran on drawn frames only; the ⚡ panel's bars come from
+// their own 40 ms timer (docs/upgrades/beat108.md).
+// The fine looks: a 1 ms timer asked for from a message task (a chain of timers is held to 4 ms after five). A song
+// that doesn't get there (stalled, a busy machine) is looked at every 8 ms after 60 ms of fine looks: never a spin.
+// EDGE.slack follows how late the wake timer has come (3–20 ms: Windows' timers can be coarse).
+const EDGE = { timer: 0, due: 0, fine: false, fineAt: 0, mc: null, legacy: false, log: null, looks: 0, arms: 0, wakes: 0, slack: 3 };
+function edgeNext() {
+  if (EDGE.legacy || !mediaEl || mediaEl.paused || recUntil != null || fparts) return Infinity;
+  if (region && loopOn) return region.b;
+  if (trim) return trim.b;
+  return Infinity;
+}
+function edgeStop() { if (EDGE.timer) { realClearTimeout(EDGE.timer); EDGE.timer = 0; } EDGE.fine = false; }
+const edgeLead = () => Math.max(10, AV.step * 1000) + EDGE.slack; // ms: how long before the edge the fine looks start
+// ms until the element reaches the next edge it would act on (≤ 0 or NaN: none ahead)
+const edgeLeft = () => { const b = edgeNext(); return b < Infinity ? ((b - mediaEl.currentTime) / (mediaEl.playbackRate || 1)) * 1000 : NaN; };
+// fromFrame: a frame's look moves the wake only earlier (the element's time steps; the wake looks again anyway)
+function edgeArm(fromFrame = false) {
+  const left = edgeLeft();
+  if (!(left > 0)) { if (EDGE.timer || EDGE.fine) edgeStop(); return; } // (none, or past it without acting: as before)
+  if (EDGE.fine) return; // (the fine looks go on until the edge: edgeLook)
+  const ms = left - edgeLead();
+  if (ms > 1) {
+    const due = realNow() + ms;
+    if (EDGE.timer && (fromFrame ? due > EDGE.due - 1 : Math.abs(due - EDGE.due) <= 1)) return;
+    edgeStop(); EDGE.due = due; EDGE.arms += 1; EDGE.timer = realSetTimeout(edgeWake, ms);
+    return;
+  }
+  edgeStop(); EDGE.fine = true; EDGE.fineAt = realNow(); edgeFine();
+}
+function edgeWake() {
+  EDGE.timer = 0; EDGE.wakes += 1;
+  const late = realNow() - EDGE.due; EDGE.slack = Math.min(20, Math.max(3, late + 2, EDGE.slack * 0.9));
+  if (mediaEl && !mediaEl.paused) mediaEdge(1);
+}
+function edgeFine() {
+  if (!EDGE.mc) { EDGE.mc = new MessageChannel(); EDGE.mc.port1.onmessage = edgeLook; }
+  EDGE.timer = realSetTimeout(edgePing, realNow() - EDGE.fineAt > 60 ? 8 : 1);
+}
+function edgePing() { EDGE.timer = 0; if (EDGE.fine) EDGE.mc.port2.postMessage(0); }
+function edgeLook() {
+  if (!EDGE.fine) return;
+  EDGE.looks += 1;
+  if (!mediaEl || mediaEl.paused) { edgeStop(); return; }
+  const left = edgeLeft();
+  if (!(left <= edgeLead() + 8)) { edgeStop(); edgeArm(); return; } // (moved away meanwhile, a seek: a wake timer again)
+  if (left > 0) { prevT = mediaEl.currentTime; edgeFine(); return; } // (not yet: one more look)
+  EDGE.fine = false;
+  mediaEdge(2); // (there: acted on as a frame would, then the next edge's wake)
+}
+// (checks) where the song was when an edge was acted on: [kind, src, page ms, the element's time, the edge, the
+// song's read position on its clock then (the audio clock's fit: what's heard + the output path)]
+function edgeNote(kind, src, t, b) {
+  const now = realNow(); const rate = mediaEl.playbackRate || 1;
+  if (now - AV.at >= 4) { AV.at = now; avSample(now); }
+  const read = AV.core.read(AV.S, now / 1000) + (avRendered() ? 0 : rate * AV.lead);
+  EDGE.log.push([kind, src, now, t, b, read]); if (EDGE.log.length > 400) EDGE.log.shift();
+}
+// (checks, beat108) legacy(true): the page as before round 108 (edges looked at in frames only, the frame gate off while
+// a song plays), for an A/B in one run; log(true): the edges acted on (edgeNote) and the ⚡ triggers fired ([name, page
+// ms, the song's heard time then]); state(): the edge timer's counts
+window.__labBeat = {
+  legacy(on) { EDGE.legacy = Boolean(on); edgeStop(); if (!on && mediaEl && !mediaEl.paused) edgeArm(); return EDGE.legacy; },
+  log(on) { EDGE.log = on ? [] : null; TRIGLOG.on = Boolean(on); TRIGLOG.list = []; return Boolean(on); },
+  edges: () => EDGE.log || [],
+  trigs: () => TRIGLOG.list,
+  state: () => ({ legacy: EDGE.legacy, timer: Boolean(EDGE.timer), fine: EDGE.fine, arms: EDGE.arms, wakes: EDGE.wakes, looks: EDGE.looks, slack: Math.round(EDGE.slack * 10) / 10, gateHeld: GATE.held, gateScr: Math.round(GATE.scr * 100) / 100, cap: fpsCap }),
+};
 const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region && !trim; };
 function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null, rate = 1, trim: tr = null }) {
   if (pendingPlay != null) { playing = pendingPlay; pendingPlay = null; }
@@ -4363,6 +4459,7 @@ function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
   if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
+  if (cmd !== 'volume') { edgeStop(); edgeArm(); } // (round 108, beat108: the next loop point / trimmed end, from where the song is now)
 }
 
 // ---------- the song's clock, the page's side (round 77, labaudio77; the math is <avsync-core> above) ----------
