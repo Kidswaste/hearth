@@ -53,7 +53,7 @@ const deskAction = async (re, done, ms = 15000) => {
     const picked = opened && await pickMenu(re);
     const r = picked && await until(done, ms, 60);
     if (r) return r;
-    menuMissed.push({ row: String(re).slice(2, 30), opened, picked, menuOpen: Boolean(document.querySelector('#menu button') && visible(document.querySelector('#menu button'))) });
+    menuMissed.push({ row: String(re).slice(2, 30), opened, picked, menuOpen: Boolean(document.querySelector('#menu button') && visible(document.querySelector('#menu button'))), dialogs: [...document.querySelectorAll('dialog[open]')].map((d) => d.className).slice(0, 4), toasts: [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 80)).slice(0, 3), at: H.activeId, dots: (() => { const d = deskDots(); if (!d) return 'none'; const r = d.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return h === d || d.contains(h) ? 'hit' : `${h?.tagName}.${String(h?.className).slice(0, 40)}`; })() });
     try { hideMenu?.(); } catch { /* */ }
   }
   return null;
