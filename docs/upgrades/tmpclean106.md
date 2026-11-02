@@ -115,6 +115,13 @@ base too, run by hand (its "what changed today?" case reads the newest patch not
 once on a 1 ms timestamp tie in its ranking case and `bouncelog66-test` once on "saving silence" while another
 checkout's unit tests were running; both pass when run again by hand. Not skipped, not changed here.
 
+**After merging tests106** (the unit list now 308 checks, KNOWN_FAIL / UNIT_OPT_IN / NOT_UNIT, `unit:unlisted`):
+`release` 304/307 passed, 3 known failures (Codex's, KNOWN_FAIL), 1 opt-in skipped, 37 min; 7 MB removed with the
+checks' temp roots; **0** `/tmp/hearth-*` folders left (a listing before and after agreed: nothing new). `--exact lazy
+sync72`: 2/2, **0** left. The per-check roots stay short (`/tmp/hearth-run-XXXXXX/001`, 26 characters), well under the
+length where Electron's socket paths break; `dev/fake-common.js`'s `<tmp>/hearth-fake-engines` lands in each check's
+root under the runner. swarmlean-test keeps tests106's `FAKE_STATE` in its own folder, made with `tmp-own`.
+
 **Two runs at once.** Another checkout's run (old code) leaves its folders in `/tmp` while ours runs. The guard checks
 whether another run is going when a check starts and ends (a Node script in a `dev/` folder that isn't this runner or
 what started it, read from `/proc`); a folder that appears then is named as "maybe the other run's" and doesn't fail
