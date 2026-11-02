@@ -54,16 +54,16 @@ Timings are headless on a shared 4-CPU box.
 | Round 91's 26 flows (create from the switcher, a chat or a Lab scene; rename, colour, mark, cover; things in and out; drops on the Desk; switching by the name ▾, the keyboard and Ctrl/⌘+K; archive; delete → Undo; Deleted things › Restore; the Lab's scenes in the project; two computers: arrive, archive, rename both, "told", deleted while open) | **works**: `projaudit91` and `projaudit91-sync` pass. Wizard ≈ 7.5 s, switch ≈ 3.7 s | works |
 | A multi-file model added to a project's scene in the Lab (Lab's own add) | works: copied whole into `refs/`; the colour picture and the one a folder up show | works |
 | Export that project (Desk ⋯ › ⇪ Export project… › Export…) | works (≈ 0.4 s) | works |
-| Import it on the other computer (Projects ⋯ › ⇩ Import project…) | works: every file arrives in its layout. The project opens by itself in **≈ 9.5 s (slow-ish)**, mostly the Lab's first start on a fresh profile | works |
+| Import it on the other computer (Projects ⋯ › ⇩ Import project…) | works: every file arrives in its layout. The project opens by itself in **7.6–15 s (slow)**, mostly the Lab's first start on a fresh profile | works (slow, noted) |
 | …open its scene: **the textures show** | **broken**. Steps: import the file, open the project, open its scene. The model stays blank and the layer says "this .gltf points to .bin / texture files next to it: export as one .glb, or add those files too"; the console shows `GLTFLoader: Couldn't load texture`. Cause: the Lab only looked for a model's other files when the model was in `data/refs/<time>-<name>/`. An import unpacks it in `data/assets/projects/<project>/assets/<n>/`, so the Lab sent the .gltf alone | **works**: the colour picture and the one a folder up show (texels read back) |
 | Duplicate (Desk ⋯ › ⧉ Duplicate project) | works: the copy's model gets its own folder | works |
 | …edit the copy's scene (two runs) and its History (Earlier versions… › Preview › Restore this version) | works | works |
 | …delete the copy (its ⋯ › Delete the project…) | works: it goes to Recently deleted. The original's code, layers, History, time machine and model files are unchanged, and its scene still shows the model's pictures | works |
 | Rename on both computers while one computer's sync records are held (EHELD path) | **works**: nothing is merged halfway while held, and nothing goes up over the Mac's version. Once the records read, there is one name on both and the other is kept aside (the panel's note). The chat put in and the new colour are both kept. The window's save over the Mac's version waits (EHELD), then merges, so the rename made there survives and so do the Mac's notes. Keep both gives one project with both names | works |
-| Switch right after a start, before the Lab group loaded (Ctrl/⌘+K › name › Enter) | **works**: the Lab ends on that project's scene and stays there (not the scene the Lab had last). **≈ 7.4–8.8 s (slow-ish)** to ready, which includes loading the Lab's code, about 3.4 MB | works |
+| Switch right after a start, before the Lab group loaded (Ctrl/⌘+K › name › Enter) | **works**: the Lab ends on that project's scene and stays there (not the scene the Lab had last). **5–8.8 s (slow-ish)** to ready, which includes loading the Lab's code (about 3.4 MB). Tested both with the Lab's code held back and with it loading by itself during the switch | works |
 | Giant chat: switch to its project with the name ▾ | works (≈ 4.8 s to ready) | works |
 | …Find in this project | works: index ≈ 3 s in the background, a query 65 ms, its row opens the 6,000-message chat on the message in 1.5 s | works |
-| …⇪ Export project… | works: the card in ≈ 0.9 s ("6 chats · 71.7 MB"), the file written in ≈ 6.1 s | works |
+| …⇪ Export project… | works: the card in 0.7–2.3 s ("6 chats · 71.7 MB"), the file written in ≈ 6 s. Once in four runs, the ⋯ row's click did nothing (see below) | works; flaky menu click noted |
 | Kept-aside compare, the project changed on both sides: Compare… | works: "In use now" / "Kept aside", both names in words, no paths or ids. What doesn't clash is kept from both (the chat put in here, the Mac's notes) | works |
 | …Keep this one (the kept-aside side) | works: that name shows on the Desk and in the name ▾ at once (≈ 0.6 s). The replaced version goes to Deleted files and the choice reaches the cloud copy | works |
 | …Undo | works: the earlier version is back with its things, on the Desk and in the name ▾ and in the cloud copy. One project, never two | works |
@@ -101,10 +101,30 @@ The scene preparation lives in `tools/three-sandbox.html` (the beat108 stream's 
 - `node dev/labmodels99-test.js`: 80 passed. `node dev/bundle98-test.js`: 86 passed.
 - `node dev/boot-test.js`: 3110 checks passed. `dev/lazy-manifest.js --check`: up to date.
 - Under the lock:
-  - `projaudit108` (pc, fresh, start, giant): all steps pass;
-  - `projaudit108-sync`: passes;
-  - `projaudit91 projaudit91-sync projects desk89 projopen86 labproj97 bundle98 labmodels99 keptaside94 lazy`, then
-    `release` once: see the final runs below.
+  - `projaudit108` (pc, fresh, start, giant): passes (262 s);
+  - `projaudit108-sync`, `unit:projaudit108-test`: pass.
+- Under the lock, `projaudit91 projaudit91-sync projects desk89 projopen86 labproj97 bundle98 labmodels99 keptaside94
+  lazy unit:boot-test unit:labmodels99-test unit:lazymanifest-test`: all pass except `projopen86`.
+  - `projopen86` failed on its timing budgets: "export_card held the main process 60–73 ms", or "import: the window
+    held 70–78 ms in one task (budget 60)".
+  - It fails the same way on this round's base (`c4d7631`, run from a clean copy): "import: the window held 70 ms in
+    one task". So this is the box under load, not this round. This round's only app change, `folderOf`, isn't on
+    that path.
+- `node dev/run-checks.js release`: 305/308 passed. The 3 failures are the known ones (`KNOWN_FAIL`, Codex's); 1 was
+  skipped as opt-in.
+
+### What the checks saw along the way (not fixed)
+
+- **A Desk ⋯ menu row that didn't respond: 3 times in about 10 runs.** The row was under the pointer and clicked, the
+  menu stayed open (or closed), and nothing happened: no card, no toast. Once on the giant chat's ⇪ Export project…,
+  the ⋯ wouldn't even open on the next tries. It didn't happen in a probe made for it (Clink's Desk: its ⋯ never
+  redrawn over 6 s, 4 of 4 clicks opened the menu).
+  - `projaudit108`'s Desk actions now try a row once more when it does nothing, and record each miss with what was on
+    screen in "slow steps" (`menuMissed`).
+  - Worth a look if the owner ever reports a menu click that "did nothing".
+- **Opening an imported project's scene:** 7.6–15 s on a fresh profile (the Lab's first start, the model's pictures
+  decoded). Opening the same scene again takes about 0.5 s.
+- **A switch right after a start:** 5–8.8 s to ready, including loading the Lab's code.
 
 ## Files
 
