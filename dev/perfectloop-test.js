@@ -103,6 +103,9 @@ function page() {
   const ctx = { Math, Number, Object, Error, Map, globalThis: null, SQ: { on: false, T: 0 }, region: null, ctxLayer: null, layers: new Map(), mediaEl: { currentTime: 0 }, liveKind: null, parked: false,
     realNow: () => 0, keyTime: () => 0, sqLocal: () => 0, layerOfStack: (s) => (/blob:layer/.test(String(s)) ? 'L1' : null), composite: () => ({ style: {}, animate: () => ({}) }), post: () => {}, realSetTimeout: () => 0, document: { body: { appendChild() {} } } };
   ctx.globalThis = ctx;
+  // (round 105, units105) since round 77 (labaudio77) the loop helpers read the song's time as heard, songNow() (its
+  // audio-clock half is labaudio77-test's); this page's song is paused, where songNow() is the element's exact time
+  ctx.songNow = () => (ctx.mediaEl ? ctx.mediaEl.currentTime : 0);
   vm.createContext(ctx);
   vm.runInContext(`${src}\nglobalThis.__L = { LOOPC, loopClock, loopFold, loopNowMs, loopMessage };`, ctx);
   return ctx;
