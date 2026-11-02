@@ -301,6 +301,21 @@ app.on('web-contents-created', (_event, contents) => {
   });
 });
 
+// (round 107, startup107) work that can wait until the window's first screen is up (start.js says so: 'boot:ready'; at
+// the latest 8 s after the window opened). Any main-process work while the window loads delays its first usable chat
+// by as much (the window's files, its navigation and its first reads all pass through this thread). Each job runs in
+// its own task, 0.3 s after the first screen and one after the other; an IPC that needs one of them earlier still works
+// (each job is something its own IPC also does on demand)
+const firstScreen = { up: false, jobs: [], timer: null };
+function afterFirstScreen(fn) { if (firstScreen.up) setImmediate(fn); else firstScreen.jobs.push(fn); }
+function firstScreenUp() {
+  if (firstScreen.up) return;
+  firstScreen.up = true; clearTimeout(firstScreen.timer); bootMark('firstScreen');
+  const next = () => { const fn = firstScreen.jobs.shift(); if (!fn) return; try { fn(); } catch (err) { console.warn('after the first screen:', err.message); } setImmediate(next); };
+  setTimeout(next, 300);
+}
+ipcMain.on('boot:ready', firstScreenUp);
+
 // (round 19, splash) the startup sync pass (≤ 1.5 s, only with sync on) used to keep the window from opening; now the
 // window opens at once and only reads / writes of your data wait for the pass, which runs while the page loads
 let syncGate = null; // the startup pass, until it's done
@@ -720,8 +735,15 @@ function registerAfterWindow() {
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
   powerwise.register(ipcMain, { bgmain, getWin: () => win }); // (round 39) staying awake while it matters, battery / saver, wake
-  const stopEngineChecks = engineChecks().start({ power: powerwise, monitor: require('electron').powerMonitor, window: win });
-  app.once('will-quit', stopEngineChecks);
+  // (round 107, startup107) after the first screen: engine-watch checks on the window's focus, and the window takes the
+  // focus as it is shown, so every start ran the whole install check (several processes started from this thread,
+  // ≈ 0.1–0.15 s of it) while the window loaded. The same check now runs once the first screen is up (when focused)
+  afterFirstScreen(() => {
+    if (!win || win.isDestroyed()) return;
+    const stopEngineChecks = engineChecks().start({ power: powerwise, monitor: require('electron').powerMonitor, window: win });
+    app.once('will-quit', stopEngineChecks);
+    if (win.isFocused()) engineChecks().check().catch(() => {});
+  });
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
   aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
@@ -795,8 +817,8 @@ function registerAfterWindow() {
   } });
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
-  require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
-  require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
+  require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor, later: afterFirstScreen }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
+  require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR, later: afterFirstScreen }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
   // (round 71, quickidea71) 💡 Quick idea: the tray item / its key open a small always-on-top window; the inbox store and the voice memos (loaded on first use)
   const quickIpc = lazyIpc('quickideamain.js', (m, ipc) => m.register(ipc, { store, dataDir: store.DATA_DIR, getWin: () => win, send, icon: appshell.ensureIcon(), keyInfo: appshell.quickKeyInfo, trayMenu: appshell.trayMenuOf }));
   appshell.onQuickIdea(() => { quickIpc.load(); require('./quickideamain').open(); });
@@ -868,6 +890,11 @@ app.whenReady().then(async () => {
   const two = await twocopies.gate({ app, BrowserWindow, ipcMain, icon: appshell.ensureIcon(), background: SPLASH_BG, bring: bringFromCopy }).catch((err) => { console.warn('twocopies:', err.message); return { close() {} }; });
   if (two.quit) return;
   createWindow();
+  // (round 107, startup107) the store thread starts while the window's page process starts, and reads the chats list's rows
+  // back (store.js warm): the window's first list no longer waits for the thread to start (before 'ready' it held Electron's
+  // own start back ≈ 30 ms)
+  store.warm();
+  firstScreen.timer = setTimeout(firstScreenUp, 8000); firstScreen.timer.unref?.(); // (round 107) a page that never says
   two.close();
   if (two.note) win.webContents.once('did-finish-load', () => setTimeout(() => win?.webContents.executeJavaScript(`window.toast?.(${JSON.stringify(two.note)}, { timeout: 12000 })`).catch(() => {}), 2500)); // (round 29, fastboot) first: the page process starts while the rest is set up (same tick, so no IPC yet)
   // data moved here from another computer (or folder): point saved file locations at the new data folder

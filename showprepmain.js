@@ -45,12 +45,17 @@ function create({ dataDir, now = () => Date.now(), emit = () => {}, setTimer = s
 }
 
 let api = null;
-function register(ipcMain, { dataDir, getWin }) {
+function register(ipcMain, { dataDir, getWin, later }) {
   api = create({ dataDir, emit: (ch, ev) => { try { const w = getWin?.(); if (w && !w.isDestroyed()) w.webContents.send(ch, ev); } catch { /* no window: nothing to tell */ } } });
-  try { api.arm(); } catch (err) { console.warn('[showprep] reminder', err.message); }
+  // (round 107, startup107) later: armed once the first screen is up (main.js), not while the window loads (reading and
+  // checking the whole show log took ≈ 30 ms of the main process there); an 'arm' / 'state' asked before that arms first
+  let armed = false;
+  const armNow = () => { if (armed) return; armed = true; try { api.arm(); } catch (err) { console.warn('[showprep] reminder', err.message); } };
+  if (later) later(armNow); else armNow();
   ipcMain.handle('shows:remind', async (_e, { op } = {}) => {
     try {
-      if (op === 'arm') return { ok: true, value: api.arm() };
+      if (op === 'arm') { armed = true; return { ok: true, value: api.arm() }; }
+      armNow();
       if (op === 'fire' && process.env.HEARTH_TEST_SAVE_DIR) return { ok: true, value: await api.fire() }; // checks only: "it's time" now
       return { ok: true, value: api.state() };
     } catch (err) { return { ok: false, error: err.message }; }

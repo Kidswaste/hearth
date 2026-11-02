@@ -254,7 +254,7 @@ function electronShrink(buf) {
 }
 
 let api = null;
-function register(ipcMain, { dataDir }) {
+function register(ipcMain, { dataDir, later }) {
   const { net } = require('electron');
   // (round 64, mapfirst64) the map now starts the once-a-day read when it opens, so test runs (dev/smoke.js) are offline
   // until a check installs the saved responses with shows:test: no check ever reads the real Shotgun / DICE
@@ -270,7 +270,8 @@ function register(ipcMain, { dataDir }) {
   ipcMain.handle('shows:follow', safe((u) => api.follow(u)));
   ipcMain.handle('shows:unfollow', safe((q) => api.unfollow(q)));
   // (round 62, showprep62) the show night reminder: one timer, only while a reminder is switched on (showprepmain.js)
-  try { require('./showprepmain').register(ipcMain, { dataDir, getWin: () => require('electron').BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && /\/index\.html(?:[?#]|$)/.test(w.webContents.getURL())) }); } catch (err) { console.warn('[showprep]', err.message); }
+  // (round 107, startup107) later: main.js's "after the first screen" (the reminder is armed then)
+  try { require('./showprepmain').register(ipcMain, { dataDir, later, getWin: () => require('electron').BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && /\/index\.html(?:[?#]|$)/.test(w.webContents.getURL())) }); } catch (err) { console.warn('[showprep]', err.message); }
   // tests only (dev/smoke.js): fixture responses instead of the network; a URL that has none fails like offline
   // { overrides } installs dev/fixtures/showsync (+ overrides: url → { file | body, status, headers } | null);
   // { advance: ms } moves the sync's clock on (so "tomorrow's" refresh can run); { report: true } → the URLs asked

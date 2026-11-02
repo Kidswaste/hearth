@@ -30,7 +30,9 @@ function dateParts(text) {
   return mon < 0 ? null : [+m[3], mon + 1, +m[1]];
 }
 // Convert published Paris wall time, including DST, independently of the computer's time zone.
-const paris = new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Paris', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' });
+// (round 107, startup107) made on first use: its time zone data took ≈ 20 ms of the main process right after the window opened
+let parisFmt = null;
+const paris = { formatToParts: (t) => (parisFmt ||= new Intl.DateTimeFormat('en-GB', { timeZone:'Europe/Paris', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23' })).formatToParts(t) };
 function parisTime(parts, hm = [0, 0]) {
   if (!parts || parts[0] < 2020 || parts[0] > 2100 || hm[0] > 23 || hm[1] > 59) return NaN;
   const [y,m,d] = parts, [h,minute] = hm, target = Date.UTC(y,m-1,d,h,minute);

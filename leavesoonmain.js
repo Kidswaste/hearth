@@ -119,10 +119,14 @@ function create({ dataDir, now = () => Date.now(), emit = () => {}, setTimer = s
 }
 
 let api = null;
-function register(ipcMain, { dataDir, getWin, powerMonitor }) {
+function register(ipcMain, { dataDir, getWin, powerMonitor, later }) {
   api = create({ dataDir, emit: (ch, ev) => { try { const w = getWin?.(); if (w && !w.isDestroyed()) w.webContents.send(ch, ev); } catch { /* no window: nothing to tell */ } } });
-  try { api.arm(); } catch (err) { console.warn('[leavesoon] arm', err.message); }
-  try { powerMonitor?.on?.('resume', () => { try { api.arm(); } catch { /* next change re-arms */ } }); } catch { /* no power events here */ } // after sleep: due → rings (within 2 min) or missed
-  ipcMain.handle('leave:op', async (_e, a = {}) => { try { return { ok: true, value: await api.op(a) }; } catch (err) { return { ok: false, error: err.message }; } });
+  // (round 107, startup107) later: armed once the first screen is up (main.js), not while the window loads; any leave:op
+  // asked before that arms first (a reminder due meanwhile rings then, as after a sleep)
+  let armed = false;
+  const armNow = () => { if (armed) return; armed = true; try { api.arm(); } catch (err) { console.warn('[leavesoon] arm', err.message); } };
+  if (later) later(armNow); else armNow();
+  try { powerMonitor?.on?.('resume', () => { try { armed = true; api.arm(); } catch { /* next change re-arms */ } }); } catch { /* no power events here */ } // after sleep: due → rings (within 2 min) or missed
+  ipcMain.handle('leave:op', async (_e, a = {}) => { try { armNow(); return { ok: true, value: await api.op(a) }; } catch (err) { return { ok: false, error: err.message }; } });
 }
 module.exports = { create, register };

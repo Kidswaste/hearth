@@ -66,4 +66,5 @@ window.hub.onConfigChanged(configChanged); // (round 50) news of an older save w
   apply(await config);
   performance.mark('hearth:ready'); // the first screen is up (dev/perf-report.js measures startup to here)
   dispatchEvent(new Event('hearth:ready')); // (round 16) lazy.js loads the deferred feature modules from here
+  window.hub.bootReady?.(); // (round 107, startup107) main.js runs what it kept for after the first screen
 })();
