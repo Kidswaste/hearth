@@ -159,10 +159,9 @@ for (const [name, fn] of Object.entries(liveCases)) {
 // 29 µs at a calibration of 57 ms), then scaled by how much slower the box is right now (the perfguard calibration's
 // one-thread benchmark, run here before and after; never below 1, as perfguard does). Over that only while the box
 // ran more than twice slower than at the baseline: "can't tell" (run-checks says so on the line), not a pass or a fail.
-const CAL_REF_MS = 57; const PER_OBJ = 0.6 * 1.47; const FIXED = 20 * 1.47;
-const calBench = new Function(`${require('./perfguard-calib.js').BENCH_SRC}; return perfguardBench;`)(); // eslint-disable-line no-new-func
-const calNow = () => { calBench(null); const t = []; for (let i = 0; i < 5; i += 1) t.push(calBench(null).total); return t.sort((a, b) => a - b)[2]; };
-const cal0 = calNow();
+const LW = require('./loadwait');
+const PER_OBJ = 0.6 * 1.47; const FIXED = 20 * 1.47;
+const cal0 = LW.calibMs();
 const costs = [];
 for (const n of [100, 500, 2000]) {
   const T = makeScene(n); const N = n > 1000 ? 40 : 200;
@@ -178,8 +177,7 @@ for (const n of [100, 500, 2000]) {
   costs.push({ n, us });
 }
 {
-  const cal = Math.max(cal0, calNow());
-  const factor = Math.max(1, cal / CAL_REF_MS);
+  const factor = LW.boxFactor(Math.max(cal0, LW.calibMs()));
   for (const { n, us } of costs) {
     const budget = (n * PER_OBJ + FIXED) * factor;
     const what = `the signature of a ${n}-object scene costs ${us.toFixed(1)} µs (Node; budget ${budget.toFixed(0)} µs, the box ${factor.toFixed(2)}× the baseline's calibration)`;

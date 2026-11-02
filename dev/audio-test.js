@@ -12,6 +12,23 @@ const verbose = process.argv.includes('--verbose');
 let fails = 0; let total = 0;
 const check = (name, ok, info) => { total += 1; if (!ok) fails += 1; console.log(`${ok ? '✓' : '✖'} ${name}${info !== undefined ? ` ${JSON.stringify(info)}` : ''}`); };
 const r3 = (x) => Math.round(x * 1000) / 1000;
+// (round 105, units105) the two speed checks, load-aware (dev/loadwait.js, as checks102 judged wall times): the box's
+// speed is taken before and after the timing (perfguard's calibration benchmark: a busy box slows a CPU-bound run
+// without it ever waiting for a CPU) and the budget scaled by how much slower than the perf baseline's box it ran
+// (never below 1); a wall time over that by no more than what the process waited for a CPU / the disk is the box's:
+// "can't tell" (said on run-checks' line), not a pass or a fail. The budgets themselves are round 23's
+const LW = require('./loadwait');
+function timed(fn) {
+  const c0 = LW.calibMs(); const a = LW.snap(); const t0 = Date.now();
+  fn();
+  const ms = Date.now() - t0; const w = LW.waited(a, LW.snap());
+  return { ms, w, factor: Math.round(LW.boxFactor(Math.max(c0, LW.calibMs())) * 100) / 100 };
+}
+function timing(name, { ms, w, factor }, budget, info = {}) {
+  const b = Math.round(budget * factor); const j = LW.judge(ms, b, w);
+  const about = { ...info, ms, budget: b, box: factor, waited: w ? w.cpuWait + w.ioFull : null };
+  if (j === 'load') { total += 1; console.log(`CAN'T TELL ${name} ${JSON.stringify(about)}`); } else check(name, j === 'ok', about);
+}
 function match(found, truth, tol) {
   const hit = truth.filter((t) => found.some((f) => Math.abs(f - t) <= tol)).length;
   const good = found.filter((f) => truth.some((t) => Math.abs(f - t) <= tol)).length;
@@ -24,15 +41,13 @@ function match(found, truth, tol) {
   const s = song({ bpm: 128, secs: 40, sr: rate, lead: 0.3 });
   const T = s.truth;
   const frames = []; let f = 0;
-  const t0 = Date.now();
   const st = AF.stream({ rate, hop, bytes: true, track: true, onFrame: (feat, spec, wave) => { frames.push({ t: (1024 + f * hop) / rate, v: Float32Array.from(feat), spec0: spec[3], wave0: wave[0] }); f += 1; } });
-  for (let i = 0; i < s.samples.length; i += 128) st.push(s.samples.subarray(i, i + 128)); // render quanta
-  const ms = Date.now() - t0;
+  const tm = timed(() => { for (let i = 0; i < s.samples.length; i += 128) st.push(s.samples.subarray(i, i + 128)); }); // render quanta
   const I = AF.IDX;
   const on = (k) => frames.filter((x, j) => x.v[k] === 1 && (j === 0 || frames[j - 1].v[k] !== 1)).map((x) => x.t);
   // the onset is heard when the attack is inside the window (≤ one window late): times are compared ~25 ms earlier
   const shift = (arr) => arr.map((t) => t - 0.025);
-  check('live: 40 s analysed faster than real time ×20', ms < 2000, { ms, frames: frames.length });
+  timing('live: 40 s analysed faster than real time ×20', tm, 2000, { frames: frames.length });
   const kicks = match(shift(on(I.kickOn)), T.kicks, 0.04);
   check('live: kicks found on time (±40 ms)', kicks.recall > 0.9 && kicks.precision > 0.85, kicks);
   const snares = match(shift(on(I.snareOn)), T.snares, 0.045);
@@ -88,9 +103,9 @@ function match(found, truth, tol) {
 {
   const s = song({ bpm: 126, form: true, sr: 44100, lead: 0.5 });
   const T = s.truth;
-  const t0 = Date.now();
-  const tr = AF.analyzeTrack(s.samples, s.sr);
-  const ms = Date.now() - t0;
+  let tr = null;
+  const tm = timed(() => { tr = AF.analyzeTrack(s.samples, s.sr); });
+  const { ms } = tm;
   const drops = T.sections.filter((x) => x.name === 'Drop').map((x) => x.start);
   const build = T.sections.find((x) => x.name === 'Build');
   check('song: features for every 10 ms', tr.n === Math.floor(s.samples.length / Math.round(s.sr / 100)) && tr.data.length === tr.n * tr.F, { n: tr.n, secs: r3(s.samples.length / s.sr), ms });
@@ -103,7 +118,7 @@ function match(found, truth, tol) {
   check('song: drop pulses at the drop and fades', at(drops[0] + 0.1, 'drop') > 0.85 && at(drops[0] + 5, 'drop') < 0.2, [r3(at(drops[0] + 0.1, 'drop')), r3(at(drops[0] + 5, 'drop'))]);
   const brk = T.sections.find((x) => x.name === 'Break').start;
   check('song: intensity higher in the drop than in the break', at(drops[0] + 8, 'intensity') > at(brk + 6, 'intensity') + 0.2, [r3(at(drops[0] + 8, 'intensity')), r3(at(brk + 6, 'intensity'))]);
-  check('song: analysed in < 4 s', ms < 4000, ms);
+  timing('song: analysed in < 4 s', tm, 4000);
 }
 
 // ---------- 5. the mapping curve ----------
