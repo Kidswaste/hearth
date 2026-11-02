@@ -3,10 +3,12 @@
 // copy as its sync would; Sync now brings it). Settling by itself is on, as the owner has it:
 //   both      here: renamed on the Desk ("Tour (PC)") and a chat put in; the Mac: renamed ("Tour (Mac)") and its notes
 //             written → one version kept, the other kept aside; the sync panel says so
-//   compare   the panel's Compare… → both side by side: the names, the notes and the chat, in words (no paths or ids)
-//   keep      Keep this one on the Mac's side → the Mac's name here, at once on the Desk and in the name ▾; nothing the
-//             PC added is gone for good (the PC's version in Deleted files)
-//   undo      the toast's Undo → this PC's version again (its name and its chat), on the Desk and in the name ▾
+//   compare   the panel's Compare… → both side by side ("In use now" / "Kept aside"), the two names in words (no paths
+//             or ids)
+//   keep      Keep this one on the kept-aside side → that name here, at once on the Desk and in the name ▾; the version
+//             it replaced in Deleted files; in the cloud copy
+//   undo      the toast's Undo → the version that was in use again (its name and its things), on the Desk and in the
+//             name ▾; one project, never two
 // Only a temp folder is used as the cloud, and the check's own temp data folder (never real data).
 //   node dev/smoke.js --check-timeout 300000 --lib dev/checks/journey-lib.js --script dev/checks/projaudit108-sync.js
 const { step, wait, until, click } = J;
@@ -80,7 +82,7 @@ await section('compare', async () => {
   const heads = [...(v?.querySelectorAll('.ka-h b') || [])].map(text);
   kept = Projects.get(p.id)?.name;
   step('Compare: both side by side, the two names in words', /Tour \(PC\)/.test(body) && /Tour \(Mac\)/.test(body), body.slice(0, 400));
-  step('…"This PC" and "Mac", each with Keep this one', heads.some((h) => /This PC/.test(h)) && heads.some((h) => /Mac/.test(h)) && v.querySelectorAll('.ka-keep').length === 2, heads);
+  step('…"In use now" and "Kept aside", each with Keep this one', heads.some((h) => /In use now/.test(h)) && heads.some((h) => /Kept aside/.test(h)) && v.querySelectorAll('.ka-keep').length === 2, heads);
   step('…no paths or ids in the view', !JARGON.test(text(v)), text(v).match(JARGON)?.[0]);
 });
 

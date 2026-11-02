@@ -11,20 +11,29 @@ try {
   await until(() => document.querySelector('#agent-buttons .space-button'), 60000);
   await Lazy.load('projects'); await Projects.ready();
   const clink = Projects.get('pjbp0'); const other = Projects.get('pjbp1');
+  // (the fixture keeps Clink and Neon Tide 1 archived: out of the name ▾ by design; put back to Active as the owner would)
+  for (const x of [clink, other]) if (x?.status === 'archived') Projects.setStatus(x, 'active');
+  await Projects.flush();
   step('fixture: "Clink" holds the giant chat', clink?.items.some((x) => x.ref === 'claude-giant0'), clink?.items.length);
   await safe('switch', async () => {
-    await ProjectWorkspace.open(other.id); await ProjectWorkspace.go('overview');
-    await until(() => deskName() === other.name, 30000);
+    const tA = performance.now();
+    await ProjectWorkspace.open(other.id).catch((e) => step('open "Neon Tide 1"', false, e.message)); await ProjectWorkspace.go('overview').catch(() => {});
+    await until(() => deskName() === other.name && nameBtn(), 60000);
+    slow.firstOpen = Math.round(performance.now() - tA);
+    step(`first: "${other.name}" open on its Desk (the name ▾ there)`, Boolean(nameBtn()) && deskName() === other.name, { ms: slow.firstOpen, desk: deskName(), state: JSON.stringify(ProjectWorkspace.state()).slice(0, 300) });
     await click(nameBtn());
-    await until(() => menuItem(/^Clink/), 4000);
+    await until(() => menuItem(/Clink/), 4000);
     const t0 = performance.now();
-    await click(menuItem(/^Clink/));
+    await click(menuItem(/Clink/));
     await until(() => ProjectWorkspace.current()?.id === 'pjbp0' && ProjectWorkspace.state().phase === 'ready', 120000, 50);
     slow.switch = Math.round(performance.now() - t0);
     step('the name ▾ › Clink: the project with the giant chat is open (ready)', ProjectWorkspace.current()?.id === 'pjbp0' && ProjectWorkspace.state().phase === 'ready', { ms: slow.switch, state: JSON.stringify(ProjectWorkspace.state()).slice(0, 300) });
   });
   await safe('find', async () => {
     await ProjectWorkspace.go('overview');
+    const tI = performance.now();
+    await until(() => deskName() === 'Clink' && ProjFind.state().ready.includes('pjbp0'), 120000, 100);
+    slow.findIndex = Math.round(performance.now() - tI);
     const box = await until(() => { const b = document.querySelector('.pw-desk .pf-input, .pj-home .pf-input'); return b && visible(b) ? b : null; }, 30000);
     step('the Desk: Find in this project', Boolean(box));
     await click(box);
@@ -32,7 +41,7 @@ try {
     await typeText(RARE);
     const row = await until(() => [...document.querySelectorAll('.pf-group[data-g="chat"] .pf-row')].find(visible), 60000, 50);
     slow.find = Math.round(performance.now() - t0);
-    step(`…“${RARE}” (in message #30 of the giant chat) is found`, Boolean(row), { ms: slow.find, groups: [...document.querySelectorAll('.pf-group')].map((g) => g.dataset.g) });
+    step(`…“${RARE}” (in message #30 of the giant chat) is found`, Boolean(row), { ms: slow.find, desk: deskName(), stats: JSON.stringify(ProjFind.state().stats || {}).slice(0, 300), groups: [...document.querySelectorAll('.pf-group')].map((g) => g.dataset.g) });
     if (!row) return;
     const hit = ProjFind._S?.rows?.[Number(row.dataset.i)];
     const t1 = performance.now();
@@ -49,7 +58,7 @@ try {
     const t0 = performance.now();
     const c = await until(() => card()?.querySelector('.pb-go') && card(), 120000, 50);
     slow.exportCard = Math.round(performance.now() - t0);
-    step('the Desk\'s ⋯ › ⇪ Export project… opens the card (what goes: the giant chat)', picked && Boolean(c) && /6,0\d\d messages|messages/.test(c?.textContent || ''), { ms: slow.exportCard, card: c?.textContent?.slice(0, 240) });
+    step('the Desk\'s ⋯ › ⇪ Export project… opens the card (what goes: the giant chat)', picked && Boolean(c) && /Its chats · \d+ chats · [\d.]+ MB/.test(c?.textContent || ''), { ms: slow.exportCard, picked, desk: deskName(), state: JSON.stringify(ProjectWorkspace.state()).slice(0, 200), status: card()?.textContent?.slice(0, 300) || [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ').slice(0, 300) });
     if (!c) return;
     const t1 = performance.now();
     await click(c.querySelector('.pb-go'));
