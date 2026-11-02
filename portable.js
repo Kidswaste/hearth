@@ -56,7 +56,9 @@ function fixMovedPaths() {
 const norm = (p) => String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 // (round 64, twocopies64) the folder's own id (copyId: which Electron profile is this copy's) stays with the folder
 function writeOrigin(o) {
-  let copyId; try { copyId = JSON.parse(require('./scenesafe-core').readRetry(fs, ORIGIN)).copyId; } catch { copyId = undefined; }
+  // (round 104, emptyread104) an origin note there but unreadable: not rewritten (it dropped copyId, and this copy then
+  // opened a different Electron profile: its sign-ins and site data looked gone); written next time
+  let copyId; try { copyId = JSON.parse(require('./scenesafe-core').readRetry(fs, ORIGIN)).copyId; } catch (err) { if (err?.code !== 'ENOENT') return; copyId = undefined; }
   try { fs.writeFileSync(ORIGIN, JSON.stringify(copyId ? { ...o, copyId } : o, null, 2)); } catch { /* not critical */ }
 }
 

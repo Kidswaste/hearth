@@ -1,11 +1,18 @@
 {
- "note": "Audited in round 43 (datasafe). New code: use DataSafe.load / DataSafe.save (renderer) or datasafe-core load (main).",
+ "note": "Audited in round 43 (datasafe) and round 104 (emptyread104: kind \"read\", one per function and read call). New code: use DataSafe.load / DataSafe.save (renderer) or datasafe-core load (main); a read whose failure is not ENOENT throws or refuses, never \"empty\".",
  "audited": [
   {
    "file": "access.js",
    "kind": "kv",
    "store": "access-log",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "adobemain.js",
+   "kind": "read",
+   "fn": "readJson",
+   "call": "readFileSync(f, 'utf8')",
+   "why": "an Adobe script's answer file, polled until it is there (null = not yet); nothing written from it"
   },
   {
    "file": "aiundo.js",
@@ -27,6 +34,13 @@
   },
   {
    "file": "appshell.js",
+   "kind": "read",
+   "fn": "loadWindowState",
+   "call": "readFileSync(WINDOW_STATE, 'utf8')",
+   "why": "window size / position (data/window.json): not the owner's work; a failed read only resets the window size"
+  },
+  {
+   "file": "appshell.js",
    "kind": "main",
    "why": "window position / tray state (data/window.json): not the owner's work; a lost read only resets the window size"
   },
@@ -44,6 +58,20 @@
   },
   {
    "file": "assetsmain.js",
+   "kind": "read",
+   "fn": "register",
+   "call": "readFileSync(p)",
+   "why": "assets:read / assets:readText answer null to the window (a preview); nothing is written from it"
+  },
+  {
+   "file": "assetsmain.js",
+   "kind": "read",
+   "fn": "register",
+   "call": "readFileSync(p, 'utf8')",
+   "why": "assets:read / assets:readText answer null to the window (a preview); nothing is written from it"
+  },
+  {
+   "file": "assetsmain.js",
    "kind": "main",
    "why": "reads a model's .gltf to list its files (no read → default → save); the library index goes through the kv store"
   },
@@ -58,6 +86,13 @@
    "kind": "kv",
    "store": "astra-personas",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "audiodoctormain.js",
+   "kind": "read",
+   "fn": "runHelper",
+   "call": "readFileSync(answer, 'utf8')",
+   "why": "the audio check helper's answer file: unreadable = the check is shown as failed; nothing written"
   },
   {
    "file": "board-links.js",
@@ -137,6 +172,20 @@
    "why": "the Hearth Chrome profile's own prefs: rebuilt by Chrome; not the owner's work"
   },
   {
+   "file": "configsafe-core.js",
+   "kind": "read",
+   "fn": "readState",
+   "call": "readFileSync(p.state, 'utf8')",
+   "why": "configsafe's state note, read for decisions only (a theme copied only when data/theme.css is not there; settle's handedBack: both versions kept either way). Its read-modify-writes go through patchState (round 104), which refuses a note it can't read"
+  },
+  {
+   "file": "configsafe-core.js",
+   "kind": "read",
+   "fn": "migrate",
+   "call": "readRetry(dfs, p.defTheme)",
+   "why": "the default theme.css held at the move: not copied this start (tried next start); nothing written over"
+  },
+  {
    "file": "deploy.js",
    "kind": "kv",
    "store": "deploy-history",
@@ -177,8 +226,17 @@
   },
   {
    "file": "gamemodemain.js",
-   "kind": "main",
-   "why": "▶ Play's built game page cache (data/game/<scene>/hearth-play.json + play.html): derived from the scene, not the owner's work; an unreadable cache is simply rebuilt from the scene"
+   "kind": "read",
+   "fn": "buildScene",
+   "call": "readFile(metaFile, 'utf8')",
+   "why": "Play's built-page cache key (hearth-play.json): unreadable = rebuilt from the scene; derived, not the owner's work"
+  },
+  {
+   "file": "gametexmain.js",
+   "kind": "read",
+   "fn": "pictures",
+   "call": "readFile(p.path)",
+   "why": "a model's picture that can't be read is left as it is (noted 'couldn't be read'), not converted; nothing written over it"
   },
   {
    "file": "habits.js",
@@ -190,6 +248,13 @@
    "file": "installs.js",
    "kind": "main",
    "why": "engine install cache (engine-installs.json): rebuilt by a scan"
+  },
+  {
+   "file": "interopmain.js",
+   "kind": "read",
+   "fn": "register",
+   "call": "readFileSync(obsFile, 'utf8')",
+   "why": "the OBS test file (smoke runs): an empty answer to the window; nothing written"
   },
   {
    "file": "interopmain.js",
@@ -213,6 +278,13 @@
    "kind": "kv",
    "store": "memory-meta",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "nativefeelmain.js",
+   "kind": "read",
+   "fn": "readJson",
+   "call": "readFileSync(f, 'utf8')",
+   "why": "window memory per screen: not the owner's work"
   },
   {
    "file": "nativefeelmain.js",
@@ -267,10 +339,73 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
+   "file": "safetynetmain.js",
+   "kind": "read",
+   "fn": "readJson",
+   "call": "readRetry(fs, p)",
+   "why": "the crash marker (session.json) and journal: diagnostic, rewritten each start; the journal at a crash falls back to its .prev copy"
+  },
+  {
+   "file": "scenesafe-core.js",
+   "kind": "read",
+   "fn": "prepareWrite",
+   "call": "readRetry(fs, o.file)",
+   "why": "the periodic automatic copy of the scenes: a copy is a bonus (the reads that guard scenes leaving refuse since round 104)"
+  },
+  {
+   "file": "scenesafemain.js",
+   "kind": "read",
+   "fn": "readJson",
+   "call": "readRetry(fs, file)",
+   "why": "Recover's list of the Lab's earlier versions: an unreadable copy is left out of the list; a recovery merges, nothing is replaced"
+  },
+  {
    "file": "speed-core.js",
    "kind": "kv",
    "store": "speed",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "storework.js",
+   "kind": "read",
+   "fn": "chatRestore",
+   "call": "readRetry(dfs, file)",
+   "why": "refuses on the next line: an unreadable chat returns EHELD ('can't be read just now. Nothing was changed')"
+  },
+  {
+   "file": "sync-engine.js",
+   "kind": "read",
+   "fn": "copyBig",
+   "call": "readFile(meta, 'utf8')",
+   "why": "a big copy's resume note: unreadable = the copy starts again from the beginning (only its own part file is rewritten)"
+  },
+  {
+   "file": "sync-engine.js",
+   "kind": "read",
+   "fn": "prevText",
+   "call": "readFile(out, 'utf8')",
+   "why": "the guard's base for a big store: null = no common base, so a window's later save keeps everything of both (designed, round 97)"
+  },
+  {
+   "file": "sync-engine.js",
+   "kind": "read",
+   "fn": "restore",
+   "call": "readFile(dst, 'utf8')",
+   "why": "the guard's base when a trash item is put back: null = no common base, so a window's later save keeps everything of both; the version in place goes to the trash first"
+  },
+  {
+   "file": "sync-engine.js",
+   "kind": "read",
+   "fn": "renameThere",
+   "call": "readFile(basePath(from), 'utf8')",
+   "why": "a rename already done on disk carries its base text: unreadable = the renamed store's next merge is two-way (keeps everything of both; a counter store may count one change twice). Refusing would leave the rename half-recorded"
+  },
+  {
+   "file": "sync-engine.js",
+   "kind": "read",
+   "fn": "renameHere",
+   "call": "readFile(basePath(from), 'utf8')",
+   "why": "as renameThere: the rename is done; a base not carried makes the next merge two-way, keeping everything"
   },
   {
    "file": "tokenaudit.js",
@@ -345,6 +480,13 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
+   "file": "updatermain.js",
+   "kind": "read",
+   "fn": "settle",
+   "call": "readRetry(fs, mine)",
+   "why": "refuses on the next line: the owner's config unreadable, the tracked file stays as it is (continue)"
+  },
+  {
    "file": "updatesafe-core.js",
    "kind": "main",
    "why": "the update swap's own marker files (updatesafe.md): read-or-nothing by design"
@@ -354,6 +496,13 @@
    "kind": "kv",
    "store": "ui-usage",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
+  },
+  {
+   "file": "versionsmain.js",
+   "kind": "read",
+   "fn": "fromZip",
+   "call": "readFile(path.join(dest, ...e.name.split('/')), 'utf8')",
+   "why": "a version read out of a backup zip for the list: null = not offered; the temp folder removed"
   }
  ]
 }

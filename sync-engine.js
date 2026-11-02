@@ -173,7 +173,11 @@ function createEngine(o) {
     stateQ = store.save(state); // in order, never throws; a pass ends only once it is on disk
   };
   const basePath = (rel) => path.join(stateDir, 'base', ...rel.split('/'));
-  async function readBase(rel) { try { return S.parseJson(await fsp.readFile(basePath(rel), 'utf8')); } catch { return null; } } // (round 103, syncstall103) async
+  // (round 104, emptyread104) only a base that isn't there is "none" (a two-way merge, keeping everything); one that can't be
+  // read now (held) throws: the merge waits and is tried next pass (merged as if there were no base, a counter store added
+  // both computers' counts whole and a thing removed on one computer came back). One that reads but doesn't parse (bases
+  // are written whole by a rename: a damaged disk) stays "none", as before: it would never heal
+  async function readBase(rel) { let t; try { t = await fsp.readFile(basePath(rel), 'utf8'); } catch (err) { if (err?.code === 'ENOENT') return null; throw err; } try { return S.parseJson(t); } catch { return null; } } // (round 103, syncstall103) async
   // (round 70, bigprofile70) each base folder is made once per run (a first pass over ~1,800 JSON files asked the disk
   // to make the same few folders ~1,800 times, on the main process); one that went away meanwhile is made again
   const baseDirs = new Set();
@@ -743,7 +747,9 @@ function createEngine(o) {
     } catch { /* none yet */ }
   }
   // (round 74, synchard74) .sync/format.json: { min } (missing / unreadable / a placeholder = no minimum)
-  async function readFormat() { try { const j = S.parseJson(await fsp.readFile(path.join(META, 'format.json'), 'utf8')); return { min: Number(j.min) || 0 }; } catch { return { min: 0 }; } }
+  // (round 104, emptyread104) missing = no minimum; there but unreadable (held, a placeholder that won't read, half
+  // written) = held: the pass waits (it went on as if there were no minimum)
+  async function readFormat() { let t; try { t = await fsp.readFile(path.join(META, 'format.json'), 'utf8'); } catch (err) { return err?.code === 'ENOENT' ? { min: 0 } : { min: 0, held: true }; } try { const j = S.parseJson(t); return { min: Number(j.min) || 0 }; } catch { return { min: 0, held: true }; } }
   const nameOf = (mid) => peers.find((p) => p.id === mid)?.name || (mid ? String(mid).replace(/-[0-9a-f]{8}$/, '') : 'another computer');
   let journalOut = [];
   // (round 73, syncmedia73) one flush at a time: the big lane and a pass may both end at once (two read-append-write
@@ -754,7 +760,7 @@ function createEngine(o) {
     if (!journalOut.length) return;
     const file = path.join(META, 'journal', `${machine.id}.jsonl`);
     let lines = [];
-    try { lines = (await fsp.readFile(file, 'utf8')).split('\n').filter(Boolean); } catch { /* new */ }
+    try { lines = (await fsp.readFile(file, 'utf8')).split('\n').filter(Boolean); } catch (err) { if (err?.code !== 'ENOENT') throw err; } // (round 104, emptyread104) held: not rewritten without its earlier lines (journalOut kept for the next flush)
     lines.push(...journalOut.slice(-4000).map((j) => JSON.stringify({ ...j, f: ME }))); // (round 74, synchard74) stamped with this Hearth's format (round 75: only the 4,000 kept are turned into text: a first sync of 50,000 files held the main process ≈ 50 ms here)
     journalOut = [];
     await atomicWrite(file, `${lines.slice(-4000).join('\n')}\n`);
@@ -1554,6 +1560,7 @@ function createEngine(o) {
     // in the cloud says so in .sync/format.json ({ min }); an older one then stops writing (it would damage them) and
     // says "update Hearth on this computer". This version only reads it (o.minFormat raises it, for a future break).
     const fmt = await readFormat();
+    if (fmt.held) return finish({ state: 'offline', error: 'held' }, t0); // (round 104, emptyread104)
     if (fmt.min > ME) return finish({ state: 'offline', error: 'old-version', need: fmt.min }, t0);
     if (o.minFormat && o.minFormat <= ME && !(fmt.min >= o.minFormat)) await atomicWrite(path.join(META, 'format.json'), JSON.stringify({ min: o.minFormat, by: machine.name, at: now() })).catch((err) => log('format', err.message));
     status.state = 'syncing'; emit();
@@ -2106,7 +2113,9 @@ function createEngine(o) {
   function guardWrite(file, value) {
     const rel = relOfLocal(file);
     if (!rel || !pulledPrev.has(rel)) return value;
-    let disk; let diskText; try { diskText = fs.readFileSync(file, 'utf8'); disk = S.parseJson(diskText); } catch { return value; }
+    // (round 104, emptyread104) a file that's gone: saved as given; one that can't be read now: the save waits (EHELD: the
+    // store holds it and tries again; it was saved unmerged, over what had just arrived)
+    let disk; let diskText; try { diskText = fs.readFileSync(file, 'utf8'); disk = S.parseJson(diskText); } catch (err) { if (err?.code === 'ENOENT') return value; throw Object.assign(new Error(`${rel} can't be read just now (${err?.code || 'garbled'}): not saved over`), { code: 'EHELD' }); }
     const isCfg = rel === 'app/config.json';
     const ours = S.toCloud(isCfg ? S.portableConfig(value) : value, ctx);
     const theirs = S.toCloud(isCfg ? S.portableConfig(disk) : disk, ctx);
@@ -2162,7 +2171,7 @@ function createEngine(o) {
       const big = await o.asideBig?.take({ how, rel: n.rel, file, src, from: fromName, ctx }); // (round 95, aside95) a big store: read, kept both and written on the store thread (asidework.js); null: here, as before
       if (big && !big.ok) return big;
       const ent = big ? null : entNow(file); // (round 97, syncsweep97) as read (choiceWrite)
-      let ours = null; if (!big) try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch { /* none here */ }
+      let ours = null; if (!big) try { const v = S.parseJson(fs.readFileSync(file, 'utf8')); ours = S.toCloud(n.rel === 'app/config.json' ? S.portableConfig(v) : v, ctx); } catch (err) { if (err?.code !== 'ENOENT') return { ok: false, error: 'The version here can\'t be read just now. Nothing was changed; try again in a moment.' }; } // (round 104, emptyread104) unreadable is not "none here" (Keep both became "use theirs")
       const kept = big ? null : S.toCloud(S.fromCloud(S.parseJson(await fsp.readFile(src, 'utf8')), ctx), ctx);
       const v = big ? null : how === 'both' && ours ? S.keepBoth(ours, kept, fromName, undefined, { inPlace: S.inPlaceOf(n.rel) }) /* (round 91, projaudit91) one project with both names */ : kept;
       // the guard's base for the window's next save: its copy as it last saved it (its change waiting since then merges

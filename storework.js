@@ -599,7 +599,7 @@ const OPS = {
       let lr; let cr; let bb = null;
       try { lr = readStill(localFile); cr = readStill(cloudFile); } catch { return { stale: true }; }
       if (!lr || !cr) return { stale: true }; // (one is being written: the next pass)
-      if (baseFile) { try { bb = fs.readFileSync(baseFile); } catch { bb = null; } }
+      if (baseFile) { try { bb = fs.readFileSync(baseFile); } catch (err) { if (err?.code !== 'ENOENT') return { stale: true }; bb = null; } } // (round 104, emptyread104) unreadable is not "no base": the next pass
       const O = formOf(localFile, ctx, S, lr); const T = formOf(cloudFile, null, S, cr);
       const lb = lr.buf;
       const r = O && T ? BC().mergeChat({ baseBuf: bb, localBuf: lb, cloudBuf: cr.buf, ctx, S, lh, ch, counters, keepAll, forms: { O, T } }) : null;
@@ -615,7 +615,10 @@ const OPS = {
     try { ours = S.toCloud(S.parseJson(localRaw), ctx); theirsText = JSON.stringify(S.parseJson(cloudRaw)); } catch { return { stale: true }; }
     const oursText = JSON.stringify(ours);
     if (sha(oursText) !== lh || sha(theirsText) !== ch) return { stale: true };
-    let base = null; if (baseFile) { try { base = S.parseJson(fs.readFileSync(baseFile, 'utf8')); } catch { base = null; } }
+    // (round 104, emptyread104) only a base that isn't there is "none" (two-way, keeping everything); one that can't be read
+    // now waits for the next pass (merged as if there were none, a counter store added both computers' counts whole). A
+    // base that reads but doesn't parse (written whole by a rename: a damaged disk) stays "none", as before: it never heals
+    let base = null; if (baseFile) { let bt = null; try { bt = fs.readFileSync(baseFile, 'utf8'); } catch (err) { if (err?.code !== 'ENOENT') return { stale: true }; } if (bt !== null) { try { base = S.parseJson(bt); } catch { base = null; } } }
     const r = S.merge3(base, ours, S.toCloud(JSON.parse(theirsText), ctx), { counters, keepAll });
     const text = JSON.stringify(r.value); const hm = sha(text);
     let localOut = null;

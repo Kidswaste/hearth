@@ -91,7 +91,14 @@ function keepCopy(dfs, p, name, text, at) {
   writeAtomic(dfs, f, text);
   return f;
 }
-function mark(p, dfs, patch) { writeState(p, { ...(readState(p, dfs) || {}), ...patch }, dfs); }
+// (round 104, emptyread104) the note's marks plus `patch`, written only over a note that was read (or isn't there): one held
+// or half written is never rewritten with the new mark alone (it lost handedBack / theme) → false: not written, next time
+function patchState(p, patch, dfs = fs) {
+  let cur = {};
+  try { cur = JSON.parse(dfs.readFileSync(p.state, 'utf8')); } catch (err) { if (err?.code !== 'ENOENT') return false; }
+  return writeState(p, { ...(isObj(cur) ? cur : {}), ...patch }, dfs);
+}
+function mark(p, dfs, patch) { patchState(p, patch, dfs); }
 
 // the config Hearth uses: the owner's (own) + what the defaults have that it lacks. Agents join by id (the owner's
 // fields win, a field only the default has is filled in); a default agent missing from the owner's list joins only
@@ -175,4 +182,4 @@ async function afterStart(U, cfg) {
   return { brought: [...(r?.brought || []), ...(s?.brought || [])], settled: s?.settled || [] };
 }
 
-module.exports = { afterStart, FILES, paths, migrate, effective, unsetMarks, ownFile, readEffective, readState, writeState, keepCopy, writeAtomic };
+module.exports = { afterStart, FILES, paths, migrate, effective, unsetMarks, ownFile, readEffective, readState, writeState, patchState, keepCopy, writeAtomic };

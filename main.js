@@ -327,13 +327,15 @@ function holdConfig(config) {
     // what the file has now that the held save lacks stays (agents by id, parts): the save came from a window that
     // hadn't seen it yet
     try { c = require('./updatesafe-core').bringConfig(c, JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))).value; } catch { /* the save as it is (the guard still checks it) */ }
-    try { const r = cfgStore.save(syncmain.guardConfig(c)); if (r.ok) send('config:changed', loadAll()); } catch (err) { console.warn('config (after the update):', err.message); }
+    try { const r = cfgStore.save(syncmain.guardConfig(c)); if (r.ok) send('config:changed', loadAll()); } catch (err) { if (err?.code === 'EHELD' && !cfgHeld) { holdConfig(c); return; } console.warn('config (after the update):', err.message); } // (round 104, emptyread104) held: again in a moment
   };
-  setTimeout(later, 300);
+  setTimeout(later, updating() ? 300 : 1000);
 }
 ipcMain.handle('config:save', afterSync((_e, config) => {
   if (updating()) { holdConfig(config); return { ok: true, held: true }; }
-  config = syncmain.guardConfig(config); // a config that just arrived from another computer is merged, not undone
+  // a config that just arrived from another computer is merged, not undone · (round 104, emptyread104) the settings file
+  // can't be read just now (EHELD): the save waits and is tried again, never saved unmerged over what arrived
+  try { config = syncmain.guardConfig(config); } catch (err) { if (err?.code !== 'EHELD') throw err; holdConfig(config); return { ok: true, held: true }; }
   // (round 29, safetynet) temp file + rename: a crash or a power cut mid-save can't leave half a config.json
   // (round 43, datasafe) never a config that isn't one, never over a file it couldn't read, never every agent at once
   const r = cfgStore.save(config);
