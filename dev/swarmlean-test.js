@@ -49,6 +49,10 @@ check(JSON.stringify(SL.helperPick({ engine: 'claude', model: 'haiku' }, { R: Ro
 
 // 4. a helper run: no memory, no habits, byte-stable when memory changes (a real engines.js run on the fake CLI)
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swarmlean-test-'));
+// (round 106, tests106) the fake engines keep their state in this run's folder (not the shared <tmp>/hearth-fake-engines),
+// and the folder goes when the test ends: nothing left in the temp folder
+process.env.FAKE_STATE = path.join(dir, 'fake-state');
+process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
 for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'access-rules.js', 'connectionsmain.js', 'recall-core.js', 'context-core.js']) { try { fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); } catch { /* optional */ } }
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
