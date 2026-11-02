@@ -19,8 +19,12 @@ const LabModelsCore = (() => {
   const base = (p) => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   // a reference copied whole: data/refs/<time>-<name>/<rel> → { dir, rel } (rel with "/"); a single file → null
   // (the same folder rule as tools/three.js trashRefFile and projbundlemain.js untake)
+  // (round 108, projaudit108) and a model an imported project brought (a .hearthproject unpacked in
+  // data/assets/projects/<project>/assets/<n>/…: each model in its own numbered folder, its layout kept, bundle98):
+  // before, the Lab read it as one file on the computer that imported it, and its pictures and .bin never showed
   function folderOf(p) {
-    const m = /^(.*[\\/]refs[\\/]\d{10,}-[^\\/]+)[\\/](.+)$/.exec(String(p || ''));
+    const s = String(p || '');
+    const m = /^(.*[\\/]refs[\\/]\d{10,}-[^\\/]+)[\\/](.+)$/.exec(s) || /^(.*[\\/]assets[\\/]projects[\\/][^\\/]+[\\/](?:assets|files)[\\/]\d+)[\\/](.+)$/.exec(s);
     return m ? { dir: m[1], rel: m[2].split(/[\\/]+/).join('/') } : null;
   }
   // the plan's missing entries ({ name, of, why? }) in plain words
