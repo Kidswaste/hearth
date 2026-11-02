@@ -394,20 +394,6 @@
    "why": "the guard's base when a trash item is put back: null = no common base, so a window's later save keeps everything of both; the version in place goes to the trash first"
   },
   {
-   "file": "sync-engine.js",
-   "kind": "read",
-   "fn": "renameThere",
-   "call": "readFile(basePath(from), 'utf8')",
-   "why": "a rename already done on disk carries its base text: unreadable = the renamed store's next merge is two-way (keeps everything of both; a counter store may count one change twice). Refusing would leave the rename half-recorded"
-  },
-  {
-   "file": "sync-engine.js",
-   "kind": "read",
-   "fn": "renameHere",
-   "call": "readFile(basePath(from), 'utf8')",
-   "why": "as renameThere: the rename is done; a base not carried makes the next merge two-way, keeping everything"
-  },
-  {
    "file": "tokenaudit.js",
    "kind": "kv",
    "store": "tool-use",

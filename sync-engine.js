@@ -1170,7 +1170,8 @@ function createEngine(o) {
         const theirsText = await cloudText(rel, C);
         const theirs = S.toCloud(S.parseJson(theirsText), ctx);
         const base = state.base[rel] ? await readBase(rel) : null; // (round 103, syncstall103) await
-        const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel) }); // (round 72, sync72)
+        // (round 105, merge105) shared: a known common version whose text is gone (none on disk): a count is never added twice
+        const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel), shared: Boolean(state.base[rel]) }); // (round 72, sync72)
         const text = canon(r.value);
         m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L); } }; // (round 103, syncstall103) await
       }
@@ -1252,6 +1253,17 @@ function createEngine(o) {
     notePulled(rel, `${kindOf(rel)}-deleted`);
     return true;
   }
+  // (round 105, merge105) the base text a rename carries to the new name: the old name's base file, as before; when it
+  // can't be read (held a moment on Windows) or isn't there, the renamed file itself if it is that very version (a rename
+  // is the same content under another name: hash h). Lost, the store's next merge was two-way: a counter store added
+  // both computers' whole counts (5 → 7 and 6 gave 13, not 8) and a thing removed on one computer came back
+  async function movedBase(from, to, h) {
+    if (!S.isJsonRel(from)) return undefined;
+    try { return await fsp.readFile(basePath(from), 'utf8'); } catch { /* the renamed file below */ }
+    if (!S.isJsonRel(to) || SPECIAL[to]) return undefined;
+    try { const t = canon(S.toCloud(S.parseJson(await fsp.readFile(localPathOf(to), 'utf8')), ctx)); if (sha(t) === h) return t; } catch { /* none: merge's shared */ }
+    return undefined;
+  }
   async function renameThere(from, to, C, h) { // a file renamed / moved here: moved in the cloud too (no re-upload)
     if (!(await same(C.file, { size: C.size ?? undefined, mtime: C.mtime }))) return false;
     const dst = cloudPathOf(to);
@@ -1262,7 +1274,7 @@ function createEngine(o) {
     const st = await fsp.stat(dst);
     state.cloud[to] = [st.size, st.mtimeMs, h, jkey(to)]; delete state.cloud[from];
     await baseIdle(from); // (round 72)
-    const t = S.isJsonRel(from) ? await fsp.readFile(basePath(from), 'utf8').catch(() => undefined) : undefined; // (round 103, syncstall103) async
+    const t = await movedBase(from, to, h); // (round 105, merge105) was: unreadable → no base text
     setBase(to, h, t); dropBase(from); delete state.local[from];
     journalOut.push({ t: now(), op: 'move', from, rel: to, h, s: st.size });
     sum.renamed += 1;
@@ -1279,7 +1291,7 @@ function createEngine(o) {
     const st = await fsp.stat(dst);
     state.local[to] = [st.size, st.mtimeMs, h]; delete state.local[from];
     await baseIdle(from); // (round 72)
-    const t = S.isJsonRel(from) ? await fsp.readFile(basePath(from), 'utf8').catch(() => undefined) : undefined; // (round 103, syncstall103) async
+    const t = await movedBase(from, to, h); // (round 105, merge105) was: unreadable → no base text
     setBase(to, h, t); dropBase(from); delete state.cloud[from];
     sum.renamed += 1;
     notePulled(from, `${kindOf(from)}-deleted`); notePulled(to, kindOf(to));
