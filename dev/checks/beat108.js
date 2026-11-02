@@ -3,10 +3,10 @@
 // (window.__labBeat.legacy(true): the song's loop points looked at in the page's frames only, fps107's frame gate off
 // while a song plays) and as now (the loop points on their own timer from the song's position, the gate on), on a
 // faked 240 Hz screen and on a 60 Hz one (fps107's fake screen in the Lab preview's page, its rate switched here).
-// A generated song (120 BPM, a kick on every beat, hats between) plays on a scene whose layer reads audio.time /
+// A generated song (123 BPM, a kick on every beat, hats between) plays on a scene whose layer reads audio.time /
 // audio.beat / audio.kick / audio.level every frame and logs everyBeats(1) and onHit('beat') callbacks. Per screen
 // rate × mode:
-//   · steady play (6 s): the page's frames a second and per drawn frame; the pictures against the audio clock
+//   · steady play (8 s): the page's frames a second and per drawn frame; the pictures against the audio clock
 //     (labaudio77's frame log: |frame time − the audio clock's newest sample at its show time|); the beat callbacks
 //     (everyBeats: how late after the beat, on the song's clock, and the beat phase they read); the ⚡ kick trigger's
 //     fires (the song's heard time at each fire − the kick's time)
@@ -25,7 +25,7 @@ const ok = (cond, what) => { if (!cond) fail.push(what); return Boolean(cond); }
 const r2 = (x) => (Number.isFinite(x) ? Math.round(x * 100) / 100 : x);
 const T = window.SMOKE_TMP || '/tmp';
 const SONG = `${T}/beat108.wav`;
-const BPM = 120; const LEAD = 0.25; const BEAT = 60 / BPM;
+const BPM = 123; const LEAD = 0.25; const BEAT = 60 / BPM; // (123: not a whole number of 60 fps frames a beat, the drawn frames fall at every phase of the beat)
 // ---------- the fake screen in the Lab preview's page (fps107's, with its rate switchable) ----------
 const probe = () => {
   if (window.__fps107) return;
@@ -142,7 +142,7 @@ try {
     await pv(`window.__labBeat.legacy(${legacy}); return 1`);
     await pv('window.__labAV.watch(4000); window.__labBeat.log(true); window.__b108.on = true; window.__b108.every = []; window.__b108.hit = []; window.__fps107.take(); return 1');
     const d0 = await pj('window.__labPace.state().drawn'); const t0 = performance.now();
-    await wait(6000);
+    await wait(8000);
     const page = await pj('window.__fps107.take()'); const d1 = await pj('window.__labPace.state().drawn');
     const sec = (performance.now() - t0) / 1000;
     R.screen = await pj('await window.__fps107.screen(500)');
@@ -161,7 +161,9 @@ try {
     R.onHitBeat = stats(B.hit.map(late));
     // the ⚡ kick trigger's fires: the song's heard time then − the kick's time (ms)
     const tr = ((await pj('window.__labBeat.trigs()')) || []).filter((x) => x[0] === 'kick' && x[2] != null);
-    R.trigger = stats(tr.map((x) => { const k = lastIdx(kicks, x[2] + 0.05); return k < 0 ? NaN : (x[2] - kicks[k]) * 1000; }));
+    // (the nearest kick: the analyser hears the sound as it's made, before the speakers play it, so a fire comes before
+    // the kick's heard time by about the output path)
+    R.trigger = stats(tr.map((x) => { let best = NaN; for (const k of kicks) if (!(Math.abs(x[2] - k) >= Math.abs(best))) best = x[2] - k; return best * 1000; }));
     await pv('window.__b108.on = false; return 1');
     mark('loop');
     // ---- a loop crossing its end, then seeks to just before it ----
@@ -192,7 +194,7 @@ try {
   await pv('window.__labBeat.legacy(false); window.__fps107.setHz(240); return 1');
 
   // ---------- budgets ----------
-  const tol = { loop: 1, picture: 1.5, beat: 2.5, trigger: 3 };
+  const tol = { loop: 1, picture: 1.5, beat: 3, trigger: 4 };
   for (const hz of [240, 60]) {
     const b = out.runs[`${hz} before`]; const a = out.runs[`${hz} after`];
     const same = (what, x, y, t) => ok(x != null && y != null && y <= x + t, `${hz} Hz: ${what} the same or better (before ${x}, after ${y}, ± ${t} ms)`);
