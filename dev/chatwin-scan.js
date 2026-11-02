@@ -39,7 +39,7 @@ const AUDIT = [
   ['board-plus.js', 1, 'throws', "every picture of a chat (an explicit action): an old message's big images list throws"],
   ['cachewise.js', 1, 'windowed', "the last reply's usage, from the end"],
   ['chat-calm.js', 1, 'windowed', 'the message under the pointer (drawn: loaded)'],
-  ['chat-cmds.js', 33, 'throws', 'commands on the chat on screen: lookups by role / index read small fields; whatever reads older content throws and Commands.exec runs it again once the chat is whole (round 86); /export loads it whole first; Chat stats (stats, moved from native.js in round 93) runs after Native has loaded the chat whole'],
+  ['chat-cmds.js', 32, 'throws', 'commands on the chat on screen: lookups by role / index read small fields; whatever reads older content throws and Commands.exec runs it again once the chat is whole (round 86); /export of a windowed chat reads it a range at a time (rounds 104, 105: ChatWin.ranges), otherwise whole first; Chat stats (stats, moved from native.js in round 93) runs after Native has loaded the chat whole'],
   ['chat-cost.js', 6, 'throws', 'counts by role, the last messages from the end; the nearest "ctx" from the end throws when it is old'],
   ['chat-fresh.js', 4, 'throws', "the last usage / ctx from the end; a fresh summary found by its flag (its text throws when it's old: /fresh edit runs again whole)"],
   ['chat-live.js', 1, 'windowed', 'the last reply, from the end'],
