@@ -94,8 +94,11 @@ function create(opts = {}) {
       if (four[1]) return ex('repo-other', { top: four[0] });
       return checkout({ gitDir: four[2], branch: four[3] });
     }
-    // (no .git here at all: git's answer to the four is its answer to the first)
-    const top = !all.ok && !C.gitDirOf(DIR) ? all : await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
+    // (no .git here at all and git printed nothing: its answer to the four is its answer to the first)
+    // (round 105, units105) only when git printed nothing: inside another project whose branch has no commit yet, git
+    // answers the top and the prefix and only HEAD fails; that answer was taken as "not a checkout" (Connect offered,
+    // never "inside another project")
+    const top = !all.ok && !all.out && !C.gitDirOf(DIR) ? all : await git(['rev-parse', '--show-toplevel'], { timeout: 15000 });
     if (top.missing) return ex('git');
     if (!top.ok) {
       const why = C.classify(top.err);
@@ -380,7 +383,11 @@ function create(opts = {}) {
     if (!gd) return { ok: true, brought: [] };
     let common = gd; try { common = path.resolve(gd, fs.readFileSync(path.join(gd, 'commondir'), 'utf8').trim()); } catch { /* not a worktree */ }
     if (![gd, common].some((d) => fs.existsSync(path.join(d, 'logs', 'refs', 'stash')) || fs.existsSync(path.join(d, 'refs', 'stash')))) return { ok: true, brought: [] }; // no stash: no git run
-    const kept = C.readState(DIR, 'ownback', null);
+    // (round 105, units105) the note of stashes already handled there but unreadable (held): never "none handled" (each
+    // was brought back again, over a file the owner had since put back the repo's way); asked again next start
+    const ks = C.readStateStatus(DIR, 'ownback');
+    if (ks.state === 'unreadable') return { ok: false, brought: [] };
+    const kept = ks.state === 'ok' ? ks.value : null;
     const sk = stashKey();
     if (kept?.stashKey && kept.stashKey === sk) return { ok: true, brought: [] }; // (round 78) the same stashes, all handled
     const done = new Set(kept?.shas || []);
@@ -427,13 +434,18 @@ function create(opts = {}) {
   // o = { own: { config, theme }, keep: dir } → { ok, settled: [files], brought: [what] }
   async function settle(o = {}) {
     const own = o.own || {};
-    if (busy || !own.config || C.readState(DIR, 'journal', null)) return { ok: false, settled: [], brought: [] };
+    // (round 105, units105) a journal there but unreadable (held) is an update half done, never "none"
+    if (busy || !own.config || C.readStateStatus(DIR, 'journal').state !== 'missing') return { ok: false, settled: [], brought: [] };
     const CS = require('./configsafe-core');
     const keepP = { keep: o.keep || path.join(path.dirname(own.config), '.configsafe') };
     // went back to a version from before the move (handBack): that version kept the owner's settings in the tracked
     // files, so what it changed there wins this once
     const stP = { state: path.join(keepP.keep, 'state.json') };
-    const handed = Boolean(CS.readState(stP)?.handedBack);
+    // (round 105, units105) that note unreadable (held): nothing decided this start (read as "not handed back", the
+    // older version's edits lost their turn to win)
+    const hs = CS.stateStatus(stP);
+    if (hs.state === 'unreadable') return { ok: false, settled: [], brought: [] };
+    const handed = Boolean(hs.value?.handedBack);
     // (round 78, winperf78) the same HEAD and the same tracked files as when both were found the repo's own: settled
     const head = headNow();
     const print = head ? JSON.stringify([head, statKey(path.join(DIR, CONFIG)), statKey(path.join(DIR, THEME)), Boolean(own.config), Boolean(own.theme), handed]) : '';

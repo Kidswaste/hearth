@@ -42,6 +42,12 @@ function writeAtomic(dfs, file, text) {
   if (dfs.readFileSync(file, 'utf8') !== text) throw Object.assign(new Error(`${path.basename(file)} read back differently`), { code: 'EREADBACK' });
 }
 const readState = (p, dfs = fs) => { try { return JSON.parse(dfs.readFileSync(p.state, 'utf8')); } catch { return null; } };
+// (round 105, units105) the note that says what happened: { state: 'ok', value } · { state: 'missing' } · { state:
+// 'unreadable' } (held, half written): the updater decides nothing on a note it couldn't read
+function stateStatus(p, dfs = fs) {
+  let t; try { t = dfs.readFileSync(p.state, 'utf8'); } catch (err) { return err?.code === 'ENOENT' ? { state: 'missing' } : { state: 'unreadable', code: err?.code || 'read' }; }
+  try { return { state: 'ok', value: JSON.parse(t) }; } catch { return { state: 'unreadable', code: 'garbled' }; }
+}
 function writeState(p, value, dfs = fs) { try { writeAtomic(dfs, p.state, `${JSON.stringify(value, null, 2)}\n`); return true; } catch { return false; } }
 
 // → { mode: 'data' | 'legacy', migrated: [files moved this start], why?, paths }
@@ -182,4 +188,4 @@ async function afterStart(U, cfg) {
   return { brought: [...(r?.brought || []), ...(s?.brought || [])], settled: s?.settled || [] };
 }
 
-module.exports = { afterStart, FILES, paths, migrate, effective, unsetMarks, ownFile, readEffective, readState, writeState, patchState, keepCopy, writeAtomic };
+module.exports = { afterStart, FILES, paths, migrate, effective, unsetMarks, ownFile, readEffective, readState, stateStatus, writeState, patchState, keepCopy, writeAtomic };
