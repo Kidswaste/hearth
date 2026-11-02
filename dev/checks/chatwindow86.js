@@ -15,6 +15,8 @@
 //               to n": trunc), the reply: on disk the chat ends there, everything before it unchanged
 //   export      /export json: the chat read a range at a time, never loaded whole (round 104), the file = the whole-chat way byte for byte;
 //               a minute later it goes back to its window (here at once: rewindow)
+//   exportHtml  /export html the same way (round 105): its replies rendered on the Markdown worker a range at a time,
+//               never loaded whole; the page = the same command on the chat loaded whole, byte for byte
 //   sync        the chat file replaced as sync does when the other computer changed it (the version kept at the
 //               start: 6,000 messages): the chat let go and opened again, windowed, its end drawn
 // Nothing in a measured step may load the chat whole (export too, since round 104), nothing may reach an unloaded message's content
@@ -351,12 +353,30 @@ await step('export', async () => {
   return { bytes: st?.size || 0, stayedWindowed: Boolean(Native.isWin?.(chat)) };
 }, { wholeOk: OFF });
 if (!OFF && !BEFORE && !out.export.stayedWindowed) out.problems.push('export: the chat was loaded whole for it');
-// the whole-chat way's bytes, hashed now (compared with the file at the end, after the heap's been read)
+// (round 105, merge105) /export html the same way: the replies of a range rendered on the Markdown worker as it is read,
+// never the chat loaded whole. Its bytes are hashed here and compared below with the whole-chat way's page (the same
+// command once the chat is loaded whole)
 const sha = async (text) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+const fileSha = (f) => new Promise((res) => { setTimeout(() => { window.hub.fs.read(fileOf(f), { maxBytes: 300 * 1048576 }).then((t) => res(sha(t)), () => res('')); }, 0); });
+await step('exportHtml', async () => {
+  await Commands.exec('/export html', claude.id, { say: () => {}, note: () => {} });
+  const st = await until(() => window.hub.fs.stat(fileOf('html')), 300);
+  return { bytes: st?.size || 0, mtime: st?.mtime || 0, stayedWindowed: Boolean(Native.isWin?.(chat)) };
+}, { wholeOk: OFF });
+if (!OFF && !BEFORE && !out.exportHtml.stayedWindowed) out.problems.push('exportHtml: the chat was loaded whole for it');
+const htmlSha = await fileSha('html');
+// the whole-chat way's bytes, hashed now (compared with the file at the end, after the heap's been read)
 if (!OFF) { await Native.loadWhole(ID); newWholes(); } // (the check's own: the comparison)
 out.export.loadedWhole = !Native.isWin?.(chat);
 // (made in a callback of its own: the 57 MB string never sits in this script's suspended frame, where it stayed alive)
 const wantSha = Native.isWin?.(chat) ? null : await new Promise((res) => { setTimeout(() => { res(sha(JSON.stringify({ ...chat, session: undefined, hearthExport: 1 }, null, 2))); }, 0); });
+// (round 105, merge105) the whole-chat way's page: the same command on the chat loaded whole (replyHtml + ChatExport.html)
+if (!Native.isWin?.(chat)) {
+  await Commands.exec('/export html', claude.id, { say: () => {}, note: () => {} });
+  await until(async () => ((await window.hub.fs.stat(fileOf('html')))?.mtime || 0) !== out.exportHtml.mtime, 300);
+  out.exportHtml.same = Boolean(htmlSha) && htmlSha === await fileSha('html');
+} else out.exportHtml.same = false;
+if (!out.exportHtml.same) out.problems.push('exportHtml: the page differs from the whole-chat way\'s');
 out.heap.exportWholeMB = MB((await heap()) - heap0);
 if (!OFF) { // a minute later the chat goes back to its window (here at once)
   out.export.backToWindow = Boolean(CW()?.rewindow(chat, true) && Native.isWin(chat));

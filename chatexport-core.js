@@ -79,6 +79,30 @@
     for (let i = 0; i < chat.messages.length; i++) { const m = chat.messages[i]; if (m.role === 'error') continue; yield `${first ? '' : '\n'}${o.row(m, i)}`; first = false; }
     yield '\n';
   }
+  // (round 105, merge105) the web page from ranges (as jsonFrom): each range's replies rendered in batches of about
+  // o.batch characters by o.render(texts) → Promise<html[]> (chat-cmds.js: the Markdown worker, md.js), then its rows,
+  // o.row(m, i, html) (html: the reply's, undefined for the others). Only one range's messages and HTML are held at a
+  // time. The same text as html() with the same row; a count that doesn't add up to n throws (never a part as the whole)
+  const isReply = (m) => m.role !== 'error' && m.role !== 'user' && typeof m.text === 'string';
+  async function* htmlFrom(chat, ranges, o) {
+    const batch = o.batch ?? 5e5;
+    yield o.head;
+    let first = true; let i = 0;
+    for await (const r of ranges) {
+      const todo = []; for (let j = 0; j < r.length; j++) if (isReply(r[j])) todo.push(j);
+      const h = new Map();
+      for (let k = 0; k < todo.length;) {
+        let j = k; let n = 0; while (j < todo.length && (j === k || n < batch)) { n += r[todo[j]].text.length; j += 1; }
+        const some = todo.slice(k, j); k = j;
+        const out = await o.render(some.map((x) => r[x].text));
+        if (!Array.isArray(out) || out.length !== some.length) throw new Error('A part of this chat\'s page didn\'t render: nothing was written.');
+        some.forEach((x, y) => h.set(x, out[y]));
+      }
+      for (let j = 0; j < r.length; j++) { const m = r[j]; const at = i; i += 1; if (m.role === 'error') continue; yield `${first ? '' : '\n'}${o.row(m, at, h.get(j))}`; first = false; }
+    }
+    if (i !== ranges.n) throw new Error(`the chat read ${i} of ${ranges.n} messages`);
+    yield '\n';
+  }
   // pieces → parts of about `part` characters, each handed to write(text) (awaited: the window's turn ends there), and a
   // pause (o.pause) whenever `slice` ms went by making them. → the characters written
   async function pump(pieces, write, { part = 2e6, slice = 12, pause = () => new Promise((r) => setTimeout(r, 0)), now = () => performance.now() } = {}) {
@@ -91,5 +115,5 @@
     if (n || !all) { all += n; await write(buf.join('')); }
     return all;
   }
-  return { json, md, txt, html, pump, jsonFrom, mdFrom, txtFrom };
+  return { json, md, txt, html, pump, jsonFrom, mdFrom, txtFrom, htmlFrom };
 }));
