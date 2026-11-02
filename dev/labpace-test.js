@@ -150,6 +150,19 @@ for (const [name, fn] of Object.entries(liveCases)) {
   check(!a.live && a.a !== b.a, 'onBeforeCompile that keeps its shader (userData.shader): its uniforms are read, not "live"');
 }
 // cost
+// (round 105, units105) the budget in this box's speed. Round 33 set "n × 0.6 + 20 µs" on its machine, where its code
+// measured 245 µs for 500 objects (docs/upgrades/labpace.md). The same code (a8174f2's page and test), run on the box
+// the perf baseline is recorded on (dev/perf-baseline.json: Xeon 2.8 GHz, the perfguard calibration ≈ 57 ms), measures
+// 360–428 µs for 500 objects: that box is ≥ 1.47× slower than round 33's. Every version since round 58 measures 0.62–0.70
+// µs an object here (the code only got faster: round 33's own is 0.72–0.96), so "0.6" never held on this box for any
+// version: the test, not the app. The budget is round 33's carried over by that measured 1.47 (0.88 µs an object +
+// 29 µs at a calibration of 57 ms), then scaled by how much slower the box is right now (the perfguard calibration's
+// one-thread benchmark, run here before and after; never below 1, as perfguard does). Over that only while the box
+// ran more than twice slower than at the baseline: "can't tell" (run-checks says so on the line), not a pass or a fail.
+const LW = require('./loadwait');
+const PER_OBJ = 0.6 * 1.47; const FIXED = 20 * 1.47;
+const cal0 = LW.calibMs();
+const costs = [];
 for (const n of [100, 500, 2000]) {
   const T = makeScene(n); const N = n > 1000 ? 40 : 200;
   // (round 35, bugbash2) the best of 6 rounds after a warm-up: one mean over the whole run failed now and then when the
@@ -161,7 +174,16 @@ for (const n of [100, 500, 2000]) {
     const t0 = process.hrtime.bigint(); for (let i = 0; i < N; i += 1) P.signature(T.scene, T.camera, T.r, [1, 1, 1, 0]);
     us = Math.min(us, Number(process.hrtime.bigint() - t0) / 1000 / N);
   }
-  check(us < n * 0.6 + 20, `the signature of a ${n}-object scene costs ${us.toFixed(1)} µs (Node)`);
+  costs.push({ n, us });
+}
+{
+  const factor = LW.boxFactor(Math.max(cal0, LW.calibMs()));
+  for (const { n, us } of costs) {
+    const budget = (n * PER_OBJ + FIXED) * factor;
+    const what = `the signature of a ${n}-object scene costs ${us.toFixed(1)} µs (Node; budget ${budget.toFixed(0)} µs, the box ${factor.toFixed(2)}× the baseline's calibration)`;
+    if (us >= budget && factor > 2) console.log(`CAN'T TELL ${what}`);
+    else check(us < budget, what);
+  }
 }
 
 // ---------- 4. the gate ----------

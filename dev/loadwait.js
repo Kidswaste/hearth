@@ -99,4 +99,20 @@ function stallWatch({ every = 5, keep = 0 } = {}) {
 }
 const judgeStall = (s, budget) => (!(s.maxMs >= budget) ? 'ok' : s.maxOwn >= budget ? 'over' : 'load');
 
-module.exports = { snap, waited, judge, stallWatch, judgeStall };
+// (round 105, units105) how fast one busy thread runs on this box right now: perfguard's calibration benchmark
+// (dev/perfguard-calib.js, one thread, CPU + GC + a JSON round-trip), the median of 5 runs after a warm-up, in ms. A
+// CPU-bound timing test runs it before and after its timing: a box that is busy without the test ever waiting for a
+// CPU (another process on the same core's other hyperthread, a CPU slowed down) shows here and not in waited().
+// The perf baseline's box (dev/perf-baseline.json: Xeon 2.8 GHz, 4 CPUs) gives ≈ 57 ms when quiet: CALIB_REF_MS.
+// boxFactor(ms) → how much slower than that (never below 1, as perfguard does: a quieter box doesn't tighten)
+const CALIB_REF_MS = 57;
+let calBench = null;
+function calibMs() {
+  if (!calBench) calBench = new Function(`${require('./perfguard-calib.js').BENCH_SRC}; return perfguardBench;`)(); // eslint-disable-line no-new-func
+  calBench(null);
+  const t = []; for (let i = 0; i < 5; i += 1) t.push(calBench(null).total);
+  return t.sort((a, b) => a - b)[2];
+}
+const boxFactor = (ms, ref = CALIB_REF_MS) => Math.max(1, ms / ref);
+
+module.exports = { snap, waited, judge, stallWatch, judgeStall, calibMs, boxFactor, CALIB_REF_MS };

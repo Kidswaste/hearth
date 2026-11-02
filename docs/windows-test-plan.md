@@ -9,6 +9,12 @@ Your job: check the things below on real Windows and report back plain results (
   (`HEARTH_DATA_DIR` pointed at a temp folder, or Hearth's own `--profile`/test flags if present — check README).
 - Never upload anything. Never sign in to anything. Ask Quentin before closing his running Hearth.
 - Before pushing a fix to main, run `node dev/run-checks.js --exact unit:winmac-test unit:datasafe-scan unit:errorcalm-scan unit:storeack-scan unit:boot-test` (a Windows-only call needs a `winmac-ok` comment saying why).
+- Before a release (round 105, units105): `node dev/run-checks.js release` runs the default app list (`qa`) and
+  every Node unit test (`unit`, about 250). In a cloud session run it under the shared lock:
+  `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package flock /tmp/hearth-run.lock node dev/run-checks.js release`
+  (`--names release` lists them; `--out <dir>` keeps the logs elsewhere). Timing tests are load-aware: on a box too
+  busy to judge, a line ends with "(can't tell under load: …)" — a pass that measured nothing, not a failure. Every
+  line must be ✓; a ✖ is reported, never skipped.
 - If a step needs Quentin (e.g. putting on headphones), ask him in one plain sentence.
 
 ## 0. Get the latest

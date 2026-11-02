@@ -365,6 +365,34 @@ const stashes = (d) => g(d, 'stash', 'list', '--format=%gs');
     ok(!stashes(app) && !C.readState(app, 'journal') && (await U.status({ fetch: false })).ok, `${how}: no stash left, journal closed`);
   }
   {
+    // (round 104 / 105, emptyread104 + units105) the journal / pending note there but unreadable (held: here a folder in
+    // its place, EISDIR): never "none": nothing decided, nothing cleaned up, the owner's stashed edit kept
+    const { dev, app } = setup();
+    push(dev, { 'ui.js': '// ui 2\n' }, 'Two');
+    const U = create({ dir: app });
+    await U.status();
+    const from = head(app); const to = g(app, 'rev-parse', 'origin/main');
+    write(path.join(app, 'notes.txt'), 'one (my edit)\n');
+    const name = C.stashName('edits', from, to);
+    g(app, 'stash', 'push', '-m', name);
+    const jf = path.join(C.stateDir(app), 'journal.json');
+    fs.mkdirSync(jf, { recursive: true });
+    const s = await U.status({ fetch: false });
+    ok(!s.ok && s.reason === 'held' && !s.fix, `the journal held: "can't be read just now", no fix offered (${s.reason})`);
+    for (const how of ['resume', 'rollback']) {
+      const f = await U.fix(how);
+      ok(!f.ok && f.reason === 'held' && fs.statSync(jf).isDirectory() && stashes(app).endsWith(name) && head(app) === from, `the journal held: ${how} changes nothing, the stash kept (${f.reason})`);
+    }
+    const a = await U.apply();
+    ok(!a.ok && head(app) === from && stashes(app).endsWith(name), `the journal held: no update over it (${a.reason})`);
+    fs.rmSync(jf, { recursive: true });
+    const pf = path.join(C.stateDir(app), 'pending.json');
+    fs.mkdirSync(pf, { recursive: true });
+    ok((await U.status({ fetch: false })).reason === 'held', 'the pending note held: the same');
+    fs.rmSync(pf, { recursive: true });
+    ok((await U.status({ fetch: false })).ok, 'both read again: fine');
+  }
+  {
     // a merge left open by hand (MERGE_HEAD with conflict marks)
     const { dev, app } = setup();
     push(dev, { 'notes.txt': 'theirs\n' }, 'Theirs');

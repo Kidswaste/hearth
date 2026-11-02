@@ -30,6 +30,7 @@ function hearthAudioCore() {
   const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const keyName = (k) => (k < 0 ? '' : `${NOTE_NAMES[k % 12]} ${k < 12 ? 'major' : 'minor'}`);
   const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const DB_TO_LN = Math.LN10 / 20; // (round 105, units105) 10 ** (d / 20) = exp(d × DB_TO_LN)
 
   // ---------- an FFT and the analyser's spectrum ----------
   function fftPlan(n) {
@@ -84,14 +85,18 @@ function hearthAudioCore() {
     const ex = extractor({ rate, size: N, track });
     const dt = hop / rate;
     function frame() {
-      for (let i = 0; i < N; i += 1) { re[i] = ring[(w + i) % N] * win[i]; im[i] = 0; }
+      // (round 105, units105) the ring read in its two runs (no % per sample), the same values
+      const tail = N - w;
+      for (let i = 0; i < tail; i += 1) re[i] = ring[w + i] * win[i];
+      for (let i = tail; i < N; i += 1) re[i] = ring[i - tail] * win[i];
+      im.fill(0);
       fft(re, im);
       for (let k = 0; k < H; k += 1) {
-        const mag = Math.hypot(re[k], im[k]) / N;
+        const a = re[k]; const b = im[k]; const mag = Math.sqrt(a * a + b * b) / N; // (round 105, units105: not Math.hypot, several times slower; the same bytes on the test songs)
         db[k] = mag > 1e-10 ? 20 * Math.log10(mag) : -200;
         if (bytes) { smooth[k] = 0.6 * smooth[k] + 0.4 * mag; const d = smooth[k] > 1e-10 ? 20 * Math.log10(smooth[k]) : -200; spec[k] = d <= -100 ? 0 : d >= -30 ? 255 : Math.round(((d + 100) / 70) * 255); }
       }
-      if (bytes) for (let i = 0; i < N; i += 1) { const v = Math.round(128 + ring[(w + i) % N] * 128); wave[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
+      if (bytes) for (let i = 0; i < N; i += 1) { const v = Math.round(128 + ring[i < tail ? w + i : i - tail] * 128); wave[i] = v < 0 ? 0 : v > 255 ? 255 : v; }
       const feat = !features || features() ? ex.frame(db, dt, n ? ms / n : 0, n ? kms / n : 0) : null;
       ms = 0; kms = 0; n = 0;
       onFrame(feat, spec, wave);
@@ -202,7 +207,9 @@ function hearthAudioCore() {
       if (!(dt > 0)) dt = 0.0107;
       t += dt;
       // each bin 0..1 between −75 and −10 dB (a −75 dB floor: quiet bins flickering aren't onsets)
-      for (let k = 1; k < H; k += 1) { const d = db[k]; u[k] = d <= -75 ? 0 : d >= -10 ? 1 : (d + 75) / 65; mag[k] = d > -200 ? 10 ** (d / 20) : 0; }
+      // (round 105, units105) the magnitude back from dB as exp(d × ln10 / 20), not 10 ** (d / 20): the slowest line of a
+      // song's analysis (a power per bin, 1,024 bins 100 times a second); the same features byte for byte on the test songs
+      for (let k = 1; k < H; k += 1) { const d = db[k]; u[k] = d <= -75 ? 0 : d >= -10 ? 1 : (d + 75) / 65; mag[k] = d > -200 ? Math.exp(d * DB_TO_LN) : 0; }
       if (!started) { prev.set(u); started = true; }
       const slow = Math.min(1, dt / 8); const fast = Math.min(1, dt / 0.25);
       for (let j = 0; j < 8; j += 1) {

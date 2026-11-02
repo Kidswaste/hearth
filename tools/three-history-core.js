@@ -187,7 +187,19 @@ const TMCore = (() => {
   }
   // keys no version uses any more go (a merged list may bring a version whose key the other computer kept: it's
   // in keys too, merged by id)
-  function gc(doc) { const used = new Set(doc.versions.map((v) => v.k)); for (const k of Object.keys(doc.keys)) if (!used.has(k)) delete doc.keys[k]; }
+  // (round 105, units105) …except a key whose last version thinning took out less than a week ago (doc.held: key → that
+  // version's time). The other computer may have added versions on it since the last sync (it was its newest key), and
+  // a key taken out here was taken out of the merge too (removed on one side, untouched on the other): its new versions
+  // came without what they're rebuilt from, and heal() dropped them (a scene's history thinned across midnight on one
+  // computer lost the other's versions of the same minutes). Unused for a week: let go.
+  const HOLD = 7 * 864e5;
+  function gc(doc, now = Date.now()) {
+    const used = new Set(doc.versions.map((v) => v.k));
+    const held = doc.held && typeof doc.held === 'object' ? doc.held : {};
+    for (const k of Object.keys(doc.keys)) if (!used.has(k) && !(held[k] >= now - HOLD)) delete doc.keys[k];
+    for (const k of Object.keys(held)) if (!doc.keys[k] || used.has(k)) delete held[k];
+    if ('held' in doc && !Object.keys(held).length) delete doc.held;
+  }
   // versions whose key is missing (half a sync) can't be rebuilt: dropped
   function heal(doc) { const n = doc.versions.length; doc.versions = doc.versions.filter((v) => v && v.id && doc.keys[v.k]); return n - doc.versions.length; }
 
@@ -213,7 +225,12 @@ const TMCore = (() => {
     let kept = list.filter((v) => keep.has(v.id));
     if (kept.length > cap) kept = kept.slice(kept.length - cap);
     const n = doc.versions.length - kept.length;
-    if (n) { const ids = new Set(kept.map((v) => v.id)); doc.versions = doc.versions.filter((v) => ids.has(v.id)); gc(doc); }
+    if (n) {
+      const ids = new Set(kept.map((v) => v.id));
+      // (round 105, units105) the keys of the versions taken out, held a week (gc)
+      for (const v of doc.versions) if (!ids.has(v.id) && v.k && v.at >= now - HOLD) { doc.held = doc.held && typeof doc.held === 'object' ? doc.held : {}; doc.held[v.k] = Math.max(doc.held[v.k] || 0, v.at); }
+      doc.versions = doc.versions.filter((v) => ids.has(v.id)); gc(doc, now);
+    }
     return n;
   }
 

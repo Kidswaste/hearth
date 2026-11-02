@@ -258,6 +258,71 @@ const used = (app, CS) => CS.effective(json(path.join(app, 'data', 'config.json'
     write(path.join(app, 'data', 'config.json'), good);
   }
 
+  // ---------- 10. (round 104 / 105, emptyread104 + units105) the updater's notes and the owner's files held: never "none" ----------
+  {
+    const { dev, app } = makeApp('k');
+    await start(app); // moved, the checkout clean
+    const hold = (f) => { fs.rmSync(f, { force: true }); fs.mkdirSync(f, { recursive: true }); }; // a file that is there but can't be read (EISDIR, like a held one)
+    const unhold = (f) => fs.rmSync(f, { recursive: true, force: true });
+    const notes = path.join(app, '.git', 'hearth-update');
+    const stFile = path.join(app, 'data', '.configsafe', 'state.json');
+    const C = require(path.join(app, 'updatesafe-core.js'));
+    const sync = (...args) => { try { return { ok: true, out: g(app, ...args) }; } catch (e) { return { ok: false, out: String(e.stdout || '').trim() }; } };
+    const NAME = 'hearth-update 2026-11-02 09:00 (764fb08 → f994ef0): your edits';
+
+    // settle while the update's journal is held: an update half done, nothing settled
+    const tracked = text({ ...REPO, agents: [...REPO.agents, { id: 'trackedonly', name: 'In the tracked file' }] });
+    write(path.join(app, 'config.json'), tracked);
+    hold(path.join(notes, 'journal.json'));
+    let s = await start(app);
+    ok(!s.after.settled.length && read(path.join(app, 'config.json')) === tracked, `settle, the journal held: nothing settled, the tracked file as it was (${s.after.settled})`);
+    unhold(path.join(notes, 'journal.json'));
+    // settle while configsafe's own note is held: whether a Go back handed the settings back is unknown, nothing decided
+    const prevState = fs.existsSync(stFile) ? read(stFile) : null;
+    hold(stFile);
+    const { U } = load(app);
+    const st = await U.settle({ own: { config: path.join(app, 'data', 'config.json'), theme: path.join(app, 'data', 'theme.css') }, keep: path.join(app, 'data', '.configsafe') });
+    ok(!st.ok && !st.settled.length && read(path.join(app, 'config.json')) === tracked, 'settle, configsafe\'s note held: nothing settled');
+    unhold(stFile); if (prevState != null) write(stFile, prevState);
+    s = await start(app);
+    ok(s.after.settled.includes('config.json') && !dirty(app) && ids(json(path.join(app, 'data', 'config.json'))).includes('trackedonly'), `once both read: settled, the tracked file's agent in data (${s.after.settled})`);
+
+    // a stash put back into the tracked files while configsafe's note is held: left in place, the stash kept
+    write(path.join(app, 'config.json'), text({ ...REPO, agents: [...REPO.agents, { id: 'stashed2', name: 'From a stash' }] }));
+    g(app, 'stash', 'push', '-q', '-m', NAME);
+    pushUpdate(dev, 105); g(app, 'pull', '-q', '--ff-only');
+    const dataBefore = read(path.join(app, 'data', 'config.json'));
+    hold(stFile);
+    const r = C.runSteps(C.restoreSteps({ dir: app, stash: { sha: g(app, 'rev-parse', 'stash@{0}'), name: NAME } }), sync);
+    unhold(stFile); if (prevState != null) write(stFile, prevState);
+    ok(!r.ok && r.kept.includes('config.json') && /stashed2/.test(read(path.join(app, 'config.json'))) && stashes(app).length === 1 && read(path.join(app, 'data', 'config.json')) === dataBefore, 'a stash put back, configsafe\'s note held: the tracked file and the stash kept, data untouched');
+    g(app, 'checkout', '-q', 'HEAD', '--', 'config.json'); if (stashes(app).length) g(app, 'stash', 'drop', '-q');
+
+    // (round 104) the owner's data/theme.css held while a stash's theme.css clashes with an update's: never written over
+    write(path.join(app, 'data', 'theme.css'), '/* your own CSS */\n'); // still the repo's own: an update may write it
+    write(path.join(app, 'theme.css'), OWN_CSS);
+    g(app, 'stash', 'push', '-q', '-m', NAME);
+    pushUpdate(dev, 106, { theme: '/* new default CSS */\n' }); g(app, 'pull', '-q', '--ff-only');
+    const real = fs.readFileSync;
+    const ownTheme = path.join(app, 'data', 'theme.css');
+    fs.readFileSync = function (p, ...a) { if (path.resolve(String(p)) === ownTheme) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }); return real.call(this, p, ...a); };
+    try { C.runSteps(C.restoreSteps({ dir: app, stash: { sha: g(app, 'rev-parse', 'stash@{0}'), name: NAME } }), sync); } finally { fs.readFileSync = real; }
+    ok(read(ownTheme) === '/* your own CSS */\n' && stashes(app).length === 1, 'the owner\'s data/theme.css held during a put-back: not written, the stash kept');
+    g(app, 'checkout', '-q', 'HEAD', '--', 'theme.css'); if (stashes(app).length) g(app, 'stash', 'drop', '-q');
+
+    // bring back, its note of stashes already handled held: none brought again (over a file put back the repo's way since)
+    write(path.join(app, 'ui.js'), '// my ui edit\n');
+    g(app, 'stash', 'push', '-q', '-m', NAME);
+    const b1 = await load(app).U.bringBack({});
+    ok(b1.ok && b1.brought.includes('ui.js') && read(path.join(app, 'ui.js')) === '// my ui edit\n', `bring back: the stash's ui.js edit came back (${b1.brought})`);
+    g(app, 'checkout', '-q', 'HEAD', '--', 'ui.js'); // the owner puts it back the repo's way
+    const shipped = read(path.join(app, 'ui.js'));
+    hold(path.join(notes, 'ownback.json'));
+    const b2 = await load(app).U.bringBack({}).catch((err) => ({ ok: false, brought: [], threw: err.code }));
+    ok(!b2.ok && !b2.brought.length && read(path.join(app, 'ui.js')) === shipped, 'bring back, its note held: nothing brought again over the owner\'s choice');
+    unhold(path.join(notes, 'ownback.json'));
+  }
+
   // ---------- 5. effective() ----------
   {
     const CS = require(path.join(ROOT, 'configsafe-core.js'));

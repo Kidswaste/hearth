@@ -254,7 +254,11 @@ function* intoData(dir, stash, names) {
   let CS = null; try { CS = require('./configsafe-core'); } catch { CS = null; }
   // back from a version before the move (handBack): the tracked files are what the owner used there, and the next
   // start's settle lets those edits win once; they stay for it (as before this round)
-  if (CS?.readState({ state: path.join(dir, 'data', '.configsafe', 'state.json') })?.handedBack) return { own, left };
+  // (round 105, units105) that note there but unreadable (held): never "not handed back"; the tracked files stay where
+  // the stash put them (left) and the next start's settle decides once it reads
+  const st = CS ? CS.stateStatus({ state: path.join(dir, 'data', '.configsafe', 'state.json') }) : { state: 'missing' };
+  if (st.state === 'unreadable') return { own, left: names.filter((f) => fs.existsSync(path.join(dir, f))) };
+  if (st.value?.handedBack) return { own, left };
   for (const f of names) {
     let text = null; try { text = fs.readFileSync(path.join(dir, f), 'utf8'); } catch { continue; } // (deleted by the stash: nothing to bring)
     const head = yield ['show', `HEAD:${f}`];
