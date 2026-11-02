@@ -14,7 +14,10 @@ Your job: check the things below on real Windows and report back plain results (
   `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package flock /tmp/hearth-run.lock node dev/run-checks.js release`
   (`--names release` lists them; `--out <dir>` keeps the logs elsewhere). Timing tests are load-aware: on a box too
   busy to judge, a line ends with "(can't tell under load: …)" — a pass that measured nothing, not a failure. Every
-  line must be ✓; a ✖ is reported, never skipped.
+  line must be ✓; a ✖ is reported, never skipped. (Round 106, tests106: about 300 unit tests now, Codex's and the
+  creative-direction session's too.) A line starting with `!` is a known failure in a file we don't own (`KNOWN_FAIL`
+  in run-checks.js, each with its cause, reported to the owner): it doesn't fail the run while it fails the known
+  way. `- … skipped (opt-in …)` needs a real machine; `- … not run here` says how to run that one by hand.
 - If a step needs Quentin (e.g. putting on headphones), ask him in one plain sentence.
 
 ## 0. Get the latest
