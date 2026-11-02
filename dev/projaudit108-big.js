@@ -53,10 +53,9 @@ try {
   });
   await safe('export', async () => {
     await onDesk('pjbp0');
-    await openDots();
-    const picked = await pickMenu(/^⇪ Export project…/);
     const t0 = performance.now();
-    const c = await until(() => card()?.querySelector('.pb-go') && card(), 120000, 50);
+    const c = await deskAction(/^⇪ Export project…/, () => card()?.querySelector('.pb-go') && card(), 60000);
+    const picked = Boolean(c);
     slow.exportCard = Math.round(performance.now() - t0);
     step('the Desk\'s ⋯ › ⇪ Export project… opens the card (what goes: the giant chat)', picked && Boolean(c) && /Its chats · \d+ chats · [\d.]+ MB/.test(c?.textContent || ''), { ms: slow.exportCard, picked, desk: deskName(), state: JSON.stringify(ProjectWorkspace.state()).slice(0, 200), status: card()?.textContent?.slice(0, 300) || [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | ').slice(0, 300) });
     if (!c) return;
@@ -71,7 +70,7 @@ try {
 } catch (err) {
   step('no exception', false, String(err?.stack || err).slice(0, 700));
 }
-step('slow steps (ms)', true, slow);
+step('slow steps (ms)', true, { ...slow, menuFallbacks, menuMissed });
 out.fails = out.steps.filter((s) => !s.ok).map((s) => s.name);
 out.pass = !out.fails.length;
 return JSON.stringify(out);

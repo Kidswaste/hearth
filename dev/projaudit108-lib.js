@@ -44,6 +44,20 @@ const nameBtn = () => document.querySelector('.workspace-switcher .workspace-pro
 const deskDots = () => [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯');
 // the Desk's ⋯ opened (the Desk paints in the coming frame: a node may be redrawn under the pointer; tried again)
 const openDots = async () => { for (let i = 0; i < 4; i++) { await wait(250); const d = deskDots(); if (!d) continue; d.scrollIntoView({ block: 'center' }); await wait(200); await click(deskDots()); if (await until(() => document.querySelectorAll('#menu button').length && visible(document.querySelector('#menu button')), 1500)) return true; } return false; };
+// the Desk's ⋯ › a row, until what it does is seen (done()); a click on the row that did nothing (seen 3 times in ~12
+// runs: the menu row clicked where it was, nothing happened, no toast) is noted in menuMissed and tried once more
+const menuMissed = [];
+const deskAction = async (re, done, ms = 15000) => {
+  for (let i = 0; i < 2; i++) {
+    const opened = await openDots();
+    const picked = opened && await pickMenu(re);
+    const r = picked && await until(done, ms, 60);
+    if (r) return r;
+    menuMissed.push({ row: String(re).slice(2, 30), opened, picked, menuOpen: Boolean(document.querySelector('#menu button') && visible(document.querySelector('#menu button'))) });
+    try { hideMenu?.(); } catch { /* */ }
+  }
+  return null;
+};
 const size = async (p) => (p ? (await hub.fs.stat(p).catch(() => null))?.size ?? -1 : -1);
 const onDesk = async (id) => { if (ProjectWorkspace.current()?.id !== id) await ProjectWorkspace.open(id); await ProjectWorkspace.go('overview'); return until(() => visible(document.querySelector('.pj-home .pj-p-name')) && deskName() === Projects.get(id)?.name, 20000); };
 const fileRow = async (re) => { const d = document.querySelector('.pj-home .pw-project-files'); if (d && !d.open) { d.open = true; await wait(200); } await until(() => [...document.querySelectorAll('.pj-home .pw-project-files .pj-item')].some((r) => re.test(r.textContent)), 6000); return [...document.querySelectorAll('.pj-home .pw-project-files .pj-item')].find((r) => re.test(r.textContent)) || null; };

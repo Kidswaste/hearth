@@ -42,10 +42,8 @@ try {
   // ---------- export, by clicks ----------
   await safe('export', async () => {
     await onDesk(p.id);
-    await openDots();
-    const picked = await pickMenu(/^⇪ Export project…/);
-    const c = await until(() => card()?.querySelector('.pb-go') && card(), 30000);
-    step('the Desk\'s ⋯ › ⇪ Export project… opens the export card', picked && Boolean(c), document.querySelector('#menu')?.textContent?.slice(0, 200));
+    const c = await deskAction(/^⇪ Export project…/, () => card()?.querySelector('.pb-go') && card(), 30000);
+    step('the Desk\'s ⋯ › ⇪ Export project… opens the export card', Boolean(c), menuMissed);
     const t0 = performance.now();
     await click(c.querySelector('.pb-go'));
     await until(() => !card() && ProjBundle.last?.exported, 60000);
@@ -59,9 +57,8 @@ try {
   await safe('duplicate', async () => {
     await onDesk(p.id);
     const before = new Set(P.all().map((x) => x.id));
-    await openDots();
-    const picked = await pickMenu(/^⧉ Duplicate project/);
-    const copy = await until(() => P.all().find((x) => !before.has(x.id)), 30000);
+    const copy = await deskAction(/^⧉ Duplicate project/, () => P.all().find((x) => !before.has(x.id)), 30000);
+    const picked = Boolean(copy);
     await wait(1500);
     const csid = copy && P.get(copy.id)?.items.find((x) => x.type === 'scene')?.ref;
     step('the Desk\'s ⋯ › ⧉ Duplicate project makes “Garage108 copy” with its own scene', picked && copy && /Garage108 copy/.test(copy.name) && csid && csid !== sid, { name: copy?.name, csid });
@@ -85,13 +82,18 @@ try {
       dbg.menu = [...document.querySelectorAll('#menu button')].map((b) => b.textContent.trim()).slice(0, 20);
       if (await pickMenu(/^Earlier versions…$/)) {
         const rows = () => [...document.querySelectorAll('dialog[open] .vs-row')];
-        const row = await until(() => rows().filter((r) => /Lab time machine/.test(r.textContent)).at(-1), 12000); dbg.rows = rows().map((r) => r.textContent.trim().slice(0, 90));
-        const pv = row && [...row.querySelectorAll('button')].find((b) => /^Preview$/.test(b.textContent.trim()));
-        if (pv) {
+        await until(() => rows().length >= 2, 12000); dbg.rows = rows().map((r) => r.textContent.trim().slice(0, 90)); dbg.previews = [];
+        // the version from before the copy's edits: the row whose Preview shows the code then ("// v2"; which row holds
+        // it depends on when the time machine and the safety copy were taken)
+        for (let i = 0; i < rows().length && !restored; i++) {
+          const pv = [...rows()[i].querySelectorAll('button')].find((b) => /^Preview$/.test(b.textContent.trim()));
+          if (!pv) continue;
           await click(pv);
           const d = await until(() => document.querySelector('dialog.vs-pv[open]'), 5000);
-          const rb = d && [...d.querySelectorAll('button')].find((b) => /^Restore this version$/.test(b.textContent.trim()));
-          if (rb) { await click(rb); restored = Boolean(await until(() => /\/\/ v2/.test(allCode(ThreeLab.scenes.get(csid))), 8000)); }
+          const has = /\/\/ v2\b/.test(d?.textContent || '') && !/edited in the copy/.test(d?.textContent || ''); dbg.previews.push(has);
+          const rb = has && [...d.querySelectorAll('button')].find((b) => /^Restore this version$/.test(b.textContent.trim()));
+          if (rb) { await click(rb); restored = Boolean(await until(() => /\/\/ v2/.test(allCode(ThreeLab.scenes.get(csid))) && !/edited in the copy/.test(allCode(ThreeLab.scenes.get(csid))), 8000)); } else d?.close();
+          await wait(200);
         }
       }
     }
@@ -102,10 +104,8 @@ try {
     step('…the original\'s code, History and time machine untouched by the copy\'s edits', mid.code === A.code && mid.hist === A.hist && mid.tm === A.tm, { tm: [mid.tm, A.tm], code: mid.code === A.code, hist: mid.hist === A.hist });
     // the copy deleted from its Desk: ⋯ › Delete the project…
     const onCopy = await onDesk(copy.id);
-    const opened = await openDots();
-    const del = { onCopy: Boolean(onCopy), opened, desk: deskName(), menu: [...document.querySelectorAll('#menu button')].map((b) => [b.textContent.trim().slice(0, 30), visible(b)]).slice(-4) };
-    del.picked = await pickMenu(/^Delete the project…/);
-    await until(() => !P.get(copy.id), 6000);
+    const del = { onCopy: Boolean(onCopy), desk: deskName() };
+    del.done = Boolean(await deskAction(/^Delete the project…/, () => !P.get(copy.id), 6000));
     await P.flush(); await wait(800);
     step('the copy\'s ⋯ › Delete the project… deletes it (to Recently deleted)', !P.get(copy.id) && P.trashed().some((x) => x.id === copy.id), del);
     const after = { project: P.get(p.id), code: allCode(ThreeLab.scenes.get(sid)), hist: await histCodes(sid), tm: (await ThreeHistory.list(sid)).length, refs: ThreeLab.refsOf(sid).map((r) => r.path), layers: ThreeLab.scenes.layersOf(ThreeLab.scenes.get(sid) || {}).map((x) => x.name) };
@@ -123,7 +123,7 @@ try {
 } catch (err) {
   step('no exception', false, String(err?.stack || err).slice(0, 700));
 }
-step('slow steps (ms)', true, { ...slow, menuFallbacks });
+step('slow steps (ms)', true, { ...slow, menuFallbacks, menuMissed });
 out.fails = out.steps.filter((s) => !s.ok).map((s) => s.name);
 out.pass = !out.fails.length;
 return JSON.stringify(out);
