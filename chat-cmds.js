@@ -1090,11 +1090,14 @@ const ChatCmds = (() => {
     } finally { try { w?.terminate(); } catch { /* gone */ } }
     return out;
   }
-  async function exportBig(chat, f, dest, defaultPath) {
+  async function exportBig(chat, f, dest, defaultPath, ranges = null) {
     const agent = H.agent(chat.agentId);
     const o = { name: agent?.name, agentName: agent?.name, date: fmtDate(chat.createdAt) };
     let pieces;
-    if (f === 'json') pieces = ChatExport.json(chat);
+    // (round 104, checksgc104) a windowed giant chat as JSON / Markdown / text: read through a range at a time
+    // (ChatWin.ranges), never loaded whole (the same file, byte for byte)
+    if (ranges) pieces = f === 'json' ? ChatExport.jsonFrom(chat, ranges) : f === 'txt' ? ChatExport.txtFrom(chat, ranges, o) : ChatExport.mdFrom(chat, ranges, o);
+    else if (f === 'json') pieces = ChatExport.json(chat);
     else if (f === 'html') { const h = await replyHtml(chat); pieces = ChatExport.html(chat, { head: htmlHead(chat), row: (m, i) => htmlRow(m, agent, () => h.get(i) ?? renderMarkdown(m.text)) }); } else pieces = f === 'txt' ? ChatExport.txt(chat, o) : ChatExport.md(chat, o);
     if (dest === 'clipboard') { const parts = []; await ChatExport.pump(pieces, (t) => { parts.push(t); }); return { text: parts.join('') }; }
     const s = await window.hub.saveStream.start({ defaultPath, filters: [{ name: EXPORT_FORMATS[f], extensions: [f] }] });
@@ -1114,11 +1117,15 @@ const ChatCmds = (() => {
     },
     run: async (args, ctx) => {
       const chat = need(ctx);
-      if (Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) a windowed giant chat: whole first (one save dialog)
       const [fmtName = 'md', dest = 'file'] = args.toLowerCase().split(/\s+/).filter(Boolean);
       const f = EXPORT_FORMATS[fmtName] ? fmtName : 'md';
-      if (chat.messages?.length >= BIG_EXPORT && typeof ChatExport !== 'undefined' && window.hub.saveStream) { // (round 84, bigchat84)
-        const r = await exportBig(chat, f, /^clip/.test(dest) ? 'clipboard' : 'file', `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.${f}`);
+      // (round 104, checksgc104) a windowed giant chat as JSON / Markdown / text is read a range at a time, never whole
+      // (whole: ≈ 90 MB of objects, and a 55–90 ms garbage collection when they were let go); the web page still
+      // loads it whole first (its replies are rendered as a batch)
+      const ranges = Native.isWin?.(chat) && f !== 'html' && typeof ChatWin !== 'undefined' && ChatWin.ranges && typeof ChatExport !== 'undefined' && window.hub.saveStream ? ChatWin.ranges(chat) : null;
+      if (!ranges && Native.isWin?.(chat)) await Native.loadWhole(chat.id); // (round 86, chatwindow86) a windowed giant chat: whole first (one save dialog)
+      if (ranges || (chat.messages?.length >= BIG_EXPORT && typeof ChatExport !== 'undefined' && window.hub.saveStream)) { // (round 84, bigchat84)
+        const r = await exportBig(chat, f, /^clip/.test(dest) ? 'clipboard' : 'file', `${chat.title.replace(/[\\/:*?"<>|]/g, '_')}.${f}`, ranges);
         if (r.text != null) { await copyText(r.text, `Chat copied (${EXPORT_FORMATS[f]})`); return; }
         if (r.path) toast('Chat exported', { action: { label: 'Show', fn: () => window.hub.fs.reveal(r.path) } });
         return;

@@ -14,7 +14,21 @@
 // window.CW_REPORT = 1: report without failing (the before numbers).
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --lib dev/checks/smooth-lib.js --script dev/checks/chatwindow72.js
 const { wait, until, measure, brief } = M;
-const out = { problems: [] };
+const out = { problems: [], cantTell: [] };
+const B72 = { worstKeyMs: 120 }; // (the typing budget, judged below with B)
+// (round 104, checksgc104) the probe (as labstartfast's, checks102): a fixed piece of work (integers, small objects, a
+// layout, memory reads) in a task of its own; its wall ms says how fast the box ran right then
+const probeBox = (() => { let box = null; return () => { if (!box?.isConnected) { box = document.createElement('div'); box.style.cssText = 'position:absolute;left:-5000px;top:0;width:400px;font:14px sans-serif;contain:layout'; box.textContent = 'lorem ipsum dolor sit amet '.repeat(150); box.append(document.createElement('span')); document.body.append(box); } return box; }; })();
+const probeRun = () => {
+  const t0 = performance.now();
+  let h = 0x811c9dc5 | 0; for (let i = 0; i < 1500000; i++) { h ^= i & 0xff; h = Math.imul(h, 16777619); h ^= h >>> 15; }
+  const keep = []; let s = 0; for (let i = 0; i < 40000; i++) { const o = { i, a: [i, i * 2], t: `k${i & 4095}` }; s += o.a.length; if ((i & 255) === 0) keep.push(o); }
+  const box = probeBox(); for (let k = 0; k < 4; k++) { box.style.width = `${400 + (k % 4) * 60}px`; s += box.lastChild.offsetTop; }
+  const mem = (window.__cw72Mem ||= new Int32Array(1 << 22)); let j = 7; for (let i = 0; i < 60000; i++) { j = (j * 1103515245 + 12345) & 0x3fffff; s += mem[j]; }
+  window.__cw72H = h ^ s ^ keep.length;
+  return Math.round((performance.now() - t0) * 10) / 10;
+};
+const probeTask = () => new Promise((res) => { const ch = new MessageChannel(); ch.port1.onmessage = () => { const p = probeRun(); ch.port1.close(); res(p); }; ch.port2.postMessage(0); });
 const bad = (msg) => out.problems.push(msg);
 const claude = H.claudeAgent();
 activate(claude.id); await wait(400);
@@ -75,10 +89,35 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
 // ---------- 2. typing 40 characters (real keys) ----------
 {
   const ta = v().input; ta.focus(); await frame();
-  m0 = await metrics(); let worst = 0;
-  for (let i = 0; i < 40; i++) { const ch = i % 8 === 7 ? ' ' : 'a'; const k0 = performance.now(); await smoke({ cdp: 'Input.insertText', params: { text: ch } }); await frame(); worst = Math.max(worst, performance.now() - k0); }
+  // (round 104, checksgc104) load-aware: the 40 keys run under a light trace (dev/smoke.js { trace: 'start', tasks }),
+  // so a key over the budget is judged by the window thread's OWN CPU in its span (key → its frame) and the thread's
+  // wait for a CPU (dev/trace-stats.js longTasks, each key's span as an observed task), and by a probe (a fixed piece
+  // of work, its own task) taken right after a slow key against the same probe before the keys: over on its own CPU
+  // fails; over on wall time only, with the box that much slower right then, is "can't tell" (out.cantTell)
+  for (let k = 0; k < 5; k++) probeRun(); // (compiled and warmed: not counted)
+  const ref = []; for (let k = 0; k < 3; k++) { await wait(30); ref.push(await probeTask()); }
+  const traced = await smoke({ trace: 'start', tasks: true }).then((r) => !r?.error).catch(() => false);
+  performance.mark('cw72:typing'); const T0 = performance.now();
+  m0 = await metrics(); let worst = 0; const keys = []; const slowProbe = {};
+  for (let i = 0; i < 40; i++) {
+    const ch = i % 8 === 7 ? ' ' : 'a'; const k0 = performance.now();
+    await smoke({ cdp: 'Input.insertText', params: { text: ch } }); await frame();
+    const ms = performance.now() - k0; worst = Math.max(worst, ms); keys.push({ at: k0 - T0, ms });
+    if (ms > B72.worstKeyMs) slowProbe[i] = await probeTask(); // (the box's speed right then)
+  }
   m1 = await metrics();
-  out.typing40 = { ...busy(m0, m1), worstKeyMs: Math.round(worst) };
+  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 0, budget: B72.worstKeyMs, mark: 'cw72:typing', observed: keys, cover: 0 } }).catch(() => null) : null;
+  out.typing40 = { ...busy(m0, m1), worstKeyMs: Math.round(worst), probeMs: Math.min(...ref), trace: lt ? { verdict: lt.verdict, runDelayMs: lt.runDelayMs, stealPct: lt.stealPct, why: lt.why } : null };
+  // each key over the budget: its CPU, the probe after it, the verdict
+  out.typing40.slow = keys.map((k, i) => ({ i, ms: Math.round(k.ms) })).filter((k) => k.ms > B72.worstKeyMs).map((k) => {
+    const t = (lt?.tasks || []).find((x) => Math.abs(x.at - keys[k.i].at) < 0.2);
+    const slowBy = Math.min(2, Math.max(1, Math.round(((slowProbe[k.i] ?? 0) / Math.min(...ref)) * 100) / 100));
+    const own = t?.cpuMs == null ? null : Math.round(t.cpuMs * (1 - (lt.stealPct || 0) / 100) * 10) / 10;
+    // over on its own CPU: the app's, whatever the box did · the trace says the box (CPU wait covers the rest) or the
+    // probe ran that much slower right then: can't tell · else the app's
+    const verdict = own != null && own > B72.worstKeyMs ? 'over' : t?.judged === 'load' || k.ms <= B72.worstKeyMs * slowBy ? 'load' : 'over';
+    return { ...k, cpuMs: t?.cpuMs ?? null, judged: t?.judged || null, probeMs: slowProbe[k.i] ?? null, slowBy, verdict, why: t?.why || '' };
+  });
   ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -159,7 +198,7 @@ const sb = list(); out.open.scrollHeight = sb.scrollHeight; out.open.atEnd = sb.
 
 // ---------- verdicts (budgets) ----------
 const B = { openMs: 1500, openNodes: 4500, peakNodes: 9000, jumps: 0, drift: 2, // (round 73, chatsteady73: jumps 0 — pictures / videos of a waking block are measured first and their boxes reserved; round 72 allowed 4 for the 0–3 a climb had next to media)
-  replyTaskMs: 900, worstKeyMs: 120 };
+  replyTaskMs: 900, worstKeyMs: B72.worstKeyMs };
 out.budget = B;
 if (out.open.ms > B.openMs) bad(`opening took ${out.open.ms} ms (> ${B.openMs})`);
 if (out.open.listNodes > B.openNodes) bad(`open: ${out.open.listNodes} DOM nodes in the list (> ${B.openNodes})`);
@@ -173,7 +212,15 @@ if (out.rest.listNodesBackAtEnd > openNodes * 1.6 + 400) bad(`back at the end: $
 if (!out.find.found || !out.find.onScreen) bad(`find: ${JSON.stringify(out.find)}`);
 if (out.reply.taskMs > B.replyTaskMs) bad(`a reply in the long chat: ${out.reply.taskMs} ms of main-thread tasks (> ${B.replyTaskMs})`);
 if (out.reply.messagesAdded > 4) bad(`a reply re-added ${out.reply.messagesAdded} messages`);
-if (out.typing40.worstKeyMs > B.worstKeyMs) bad(`slowest key ${out.typing40.worstKeyMs} ms (> ${B.worstKeyMs})`);
+// (round 104, checksgc104) the slowest key judged load-aware (see typing): its own CPU over the budget fails; over on
+// wall time only while the box was busy (the thread's wait for a CPU, or the probe that much slower) is "can't tell"
+{
+  const what = (k) => `key ${k.i + 1}: ${k.ms} ms (> ${B.worstKeyMs}), ${k.cpuMs ?? '?'} ms of the window's own CPU, probe ${k.probeMs ?? '?'} ms against ${out.typing40.probeMs} before the keys (${k.slowBy}×)${k.why ? `; ${k.why}` : ''}`;
+  const worst = (v) => out.typing40.slow.filter((k) => k.verdict === v).sort((a, b) => b.ms - a.ms);
+  const over = worst('over'); const load = worst('load');
+  if (over.length) bad(`slowest key too slow: ${what(over[0])}${over.length > 1 ? ` (${over.length} keys over)` : ''}`);
+  if (load.length) out.cantTell.push(`typing: ${what(load[0])}${load.length > 1 ? ` (${load.length} keys over, each the box's)` : ''}`);
+}
 if (!out.showAll.line || !/resting/i.test(out.showAll.line) || out.showAll.messagesInDom < N - 5) bad(`show all: ${JSON.stringify(out.showAll)}`);
 // (the made-up chats go: nothing left behind in the app copy's list)
 Native.open(claude.id, small.id); await wait(300);

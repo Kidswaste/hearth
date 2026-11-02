@@ -340,8 +340,9 @@ async function cdpConnect(dir) {
         // (detail: also the top-level tasks and frame events, for dev/trace-stats.js: long tasks, forced layouts, input → paint)
         // (round 88, checkfix88) { trace: 'start', tasks: true }: a light trace (top-level tasks with their thread times and
         // the page's marks only) and the threads' CPU-wait counters now, for { trace: 'stop', tasks: {…} } below
+        // (round 104, checksgc104) + V8's GC events (only while a GC runs): a task that is only a GC is judged too
         traceEvents = []; traceDelay0 = req.tasks ? runDelays() : null;
-        result = (await send('Tracing.start', { categories: req.tasks ? `toplevel,blink.user_timing${req.cats ? `,${req.cats}` : ''}` : `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}${req.cats ? `,${req.cats}` : ''}`, transferMode: 'ReportEvents' })).result || {};
+        result = (await send('Tracing.start', { categories: req.tasks ? `toplevel,blink.user_timing,disabled-by-default-v8.gc${req.cats ? `,${req.cats}` : ''}` : `devtools.timeline,disabled-by-default-devtools.timeline${req.detail ? ',toplevel,disabled-by-default-devtools.timeline.frame,disabled-by-default-devtools.timeline.stack,blink.user_timing' : ''}${req.cats ? `,${req.cats}` : ''}`, transferMode: 'ReportEvents' })).result || {};
       } else if (req.trace === 'stop') {
         const done = new Promise((r) => { traceDone = r; });
         await send('Tracing.end'); await done;

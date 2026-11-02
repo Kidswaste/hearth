@@ -134,20 +134,60 @@ const ChatWin = (() => {
     const key = `${a}:${b}`;
     if (st.inflight.has(key)) return st.inflight.get(key);
     const job = (async () => {
-      const s = SV.shapes.get(chat);
-      const r = await window.hub.chatWin('range', { id: chat.id, ver: s?.ver, from: a, to: b });
-      if (!r?.bytes) throw new Error(r?.error === 'gone' ? 'This chat isn\'t on disk any more.' : 'This long chat\'s older messages can\'t be read just now. Nothing was changed; try again in a moment.');
-      if (!r.same && !other) { reloadSoon(chat); throw new Error('This long chat changed on disk: it opens again.'); }
-      if (r.n < b || r.from !== a || r.to !== b) throw new Error('This long chat is shorter on disk than here: nothing was changed.');
-      const msgs = msgsOf(await parse(r.bytes));
-      if (msgs.length !== b - a) throw new Error('A part of this long chat didn\'t read whole: nothing was changed.');
-      stat.ranges += 1;
+      const msgs = await readRange(chat, a, b, other);
       if (chat.messages !== st.px) return;
       const sh = SV.shapes.get(chat);
       for (let i = 0; i < msgs.length; i++) { const k = a + i; if (st.a.loaded(k) || k >= st.a.t.length) continue; st.a.put(k, msgs[i]); if (sh && k < sh.msgs.length) sh.msgs[k] = SV.shapeOf(msgs[i]); stat.fetched += 1; }
     })().finally(() => st.inflight.delete(key));
     st.inflight.set(key, job);
     return job;
+  }
+  // messages [a, b) as they are on disk (the version this window holds, unless other), parsed off this thread; never
+  // fewer than asked (a read that fails or comes back short throws: never "empty")
+  async function readRange(chat, a, b, other = false) {
+    const s = SV.shapes.get(chat);
+    const r = await window.hub.chatWin('range', { id: chat.id, ver: s?.ver, from: a, to: b });
+    if (!r?.bytes) throw new Error(r?.error === 'gone' ? 'This chat isn\'t on disk any more.' : 'This long chat\'s older messages can\'t be read just now. Nothing was changed; try again in a moment.');
+    if (!r.same && !other) { reloadSoon(chat); throw new Error('This long chat changed on disk: it opens again.'); }
+    if (r.n < b || r.from !== a || r.to !== b) throw new Error('This long chat is shorter on disk than here: nothing was changed.');
+    const msgs = msgsOf(await parse(r.bytes));
+    if (msgs.length !== b - a) throw new Error('A part of this long chat didn\'t read whole: nothing was changed.');
+    stat.ranges += 1;
+    return msgs;
+  }
+  // (round 104, checksgc104) the whole chat a range at a time for something that reads it through once (export): an
+  // async iterable of arrays of messages, in order, [0, n) in all: the loaded ones as they are here, the others read
+  // from the store thread for that range and NOT kept (the chat stays windowed). /export loaded the chat whole for
+  // this: ≈ 90 MB of objects held until it went back to its window, and the garbage collection that then let them go
+  // was a 55–90 ms task of its own. A range read that fails throws (never a part as the whole). A chat loaded whole
+  // meanwhile is read from its list. → null when the chat isn't windowed (its list is the whole chat)
+  function ranges(chat, part = PART) {
+    const st = live(chat);
+    if (!st) return null;
+    if (st.poison) throw new Error('This long chat opens again from disk first.');
+    const n = st.a.t.length;
+    return {
+      n,
+      async* [Symbol.asyncIterator]() {
+        for (let a = 0; a < n; a += part) {
+          const b = Math.min(n, a + part);
+          let disk = null;
+          if (live(chat) === st) { for (let k = a; k < b; k++) if (!st.a.loaded(k)) { disk = await readRange(chat, a, b); break; } }
+          if (st.poison) throw new Error('This long chat stopped a change while it was being read: nothing was written.');
+          const out = new Array(b - a);
+          if (live(chat) === st) {
+            if (st.a.t.length !== n) throw new Error('This long chat changed while it was being read: try again.');
+            for (let k = a; k < b; k++) { if (st.a.gone.has(k)) continue; if (k in st.a.t) out[k - a] = st.a.t[k]; else if (disk) out[k - a] = disk[k - a]; else throw new Error('This long chat didn\'t read whole: nothing was written.'); }
+          } else {
+            const ms = chat.messages; // (loaded whole meanwhile: its own list)
+            if (!Array.isArray(ms) || ms.length !== n || C.isStub(ms[a])) throw new Error('This long chat changed while it was being read: try again.');
+            for (let k = a; k < b; k++) if (k in ms) out[k - a] = ms[k];
+          }
+          disk = null;
+          yield out;
+        }
+      },
+    };
   }
   // the unloaded runs of [lo, hi), read in pieces of ≤ max messages
   async function fill(chat, st, lo, hi, max, other) {
@@ -373,7 +413,7 @@ const ChatWin = (() => {
     for (const c of R.chats.values()) { const st = live(c); if (st) { windowed += 1; loaded += st.a.keys().length; total += st.a.t.length; } }
     return { ...stat, windowed, loaded, total };
   }
-  const api = { is, open, keys, has, ensure, cut, whole, release, guess, usage, pins, save, hits, calc, calcSync, things, scan, reguess, bad, replaced, all, stats, rewindow, on, TAIL };
+  const api = { is, open, keys, has, ensure, cut, whole, ranges, release, guess, usage, pins, save, hits, calc, calcSync, things, scan, reguess, bad, replaced, all, stats, rewindow, on, TAIL };
   R.W.x = api;
   return api;
 })();
