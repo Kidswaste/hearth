@@ -609,7 +609,7 @@ for (const n of wanted) {
   // "cantTell" list) passes, but says so on its line: passed ≠ measured
   const cantTell = bad ? '' : (text.match(/"cantTell":\s*\[\s*"([^"]+)"/)?.[1] || text.match(/^CAN'T TELL ([^\n]+)/m)?.[1] || ''); // (a Node test: a "CAN'T TELL …" line)
   if (cantTell) results.at(-1).cantTell = cantTell;
-  console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}${leftTmp.length ? `  (left in /tmp: ${leftTmp.map((l) => l.name).join(', ').slice(0, 160)})` : ''}`);
+  console.log(`${bad ? '✖' : '✓'} ${n.padEnd(22)} ${String(results.at(-1).s).padStart(4)} s${bad ? `  ${why}` : ''}${skipped ? `  (skipped: ${skipped})` : ''}${cantTell ? `  (can't tell under load: ${cantTell.slice(0, 160)})` : ''}${leftTmp.length ? `  (left in /tmp: ${leftTmp.map((l) => `${l.name}${l.maybeOther ? " (another run going: maybe its)" : ""}`).join(', ').slice(0, 160)})` : ''}`);
   if (bad && argv.includes('--stop')) break;
 }
 const failed = results.filter((x) => !x.ok);
@@ -624,8 +624,13 @@ const tops = [...tg.held].sort((a, b) => b.kb - a.kb).slice(0, 5).map((h) => `${
 console.log(`temp: ${mb(tg.heldKb)} removed with the checks' temp roots${tops ? ` (most: ${tops})` : ''}`);
 for (const s of tg.stuck) console.log(`temp: ✖ ${s.check}: its root ${s.root} couldn't be removed (${s.why})`);
 const tmpStrict = names.includes('release') || argv.includes('--tmp-strict');
-if (tg.left.length) {
-  console.log(`temp: ${tmpStrict ? '✖' : '!'} ${tg.left.length} /tmp/hearth-* folder(s) left by this run (${mb(tg.left.reduce((s, l) => s + l.kb, 0))}):`);
-  for (const l of tg.left) console.log(`  ${l.check}: ${path.join(TG.base, l.name)} (${mb(l.kb)})`);
+if (tg.sure.length) {
+  console.log(`temp: ${tmpStrict ? '✖' : '!'} ${tg.sure.length} /tmp/hearth-* folder(s) left by this run (${mb(tg.sure.reduce((s, l) => s + l.kb, 0))}):`);
+  for (const l of tg.sure) console.log(`  ${l.check}: ${path.join(TG.base, l.name)} (${mb(l.kb)})`);
 } else console.log('temp: 0 /tmp/hearth-* folders left by this run');
-process.exit(failed.length || (tmpStrict && tg.left.length) ? 1 : 0);
+// a folder that appeared while another run was going (another checkout's checks / tests) may be that run's: named, not failed
+if (tg.maybe.length) {
+  console.log(`temp: ? ${tg.maybe.length} more appeared while another run was going (${tg.others.slice(0, 4).join(', ')}${tg.others.length > 4 ? '…' : ''}), maybe its (${mb(tg.maybe.reduce((s, l) => s + l.kb, 0))}):`);
+  for (const l of tg.maybe.slice(0, 40)) console.log(`  ${l.check}?: ${path.join(TG.base, l.name)} (${mb(l.kb)})`);
+}
+process.exit(failed.length || (tmpStrict && tg.sure.length) ? 1 : 0);

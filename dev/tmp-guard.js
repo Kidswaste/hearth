@@ -56,6 +56,23 @@ function snapshot() {
   return s;
 }
 const kbOf = (p) => { const r = spawnSync('du', ['-sk', p], { encoding: 'utf8' }); return Number((r.stdout || '').split('\t')[0]) || 0; };
+// another run at once (another checkout's checks or tests: a Node script in a dev/ folder that isn't this runner or
+// its children): a folder that appears in /tmp meanwhile may be that run's, so it's named but doesn't fail the run.
+// (Checked when a check starts and ends: this runner's own children are gone by then.)
+const ppidOf = (pid) => { try { return Number(fs.readFileSync(`/proc/${pid}/stat`, 'utf8').replace(/^.*\) /s, '').split(' ')[1]); } catch { return 0; } };
+const mine = new Set(); // this runner and the processes that started it (flock, a shell)
+for (let p = process.pid; p > 1 && !mine.has(p); p = ppidOf(p)) mine.add(p);
+function others() {
+  const out = [];
+  let pids = []; try { pids = fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)); } catch { return out; }
+  for (const pid of pids) {
+    if (mine.has(Number(pid))) continue;
+    let cmd = ''; try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' '); } catch { continue; }
+    const m = cmd.match(/(?:^|[\s/])dev\/[\w./-]+\.(?:js|sh)\b/);
+    if (m && /\bnode\b|\bsh\b|electron/.test(cmd)) out.push(`${pid} ${m[0].trim()}`);
+  }
+  return out;
+}
 const rm = (p) => { try { fs.rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }); return ''; } catch (e) { return e.code || e.message; } };
 
 function create() {
@@ -66,6 +83,7 @@ function create() {
   const leaks = []; // { check, name, kb }
   const held = []; // { check, kb }: what a check's root held when it ended (removed with it)
   const stuck = []; // { check, root, why }
+  const seenOthers = new Set(); // other runs seen during this one
   const removeRun = () => { rm(runDir); };
   process.on('exit', removeRun);
   for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => { removeRun(); process.exit(130); });
@@ -77,6 +95,7 @@ function create() {
       const root = path.join(runDir, String(++i).padStart(3, '0'));
       fs.mkdirSync(root, { recursive: true });
       const before = snapshot();
+      const busy0 = others();
       return {
         root,
         env: { TMPDIR: root, TMP: root, TEMP: root, HEARTH_TMP: root },
@@ -86,8 +105,10 @@ function create() {
           if (kb > 4) held.push({ check, kb });
           const why = rm(root);
           if (why && fs.existsSync(root)) stuck.push({ check, root, why });
+          const busy = [...busy0, ...others()];
+          for (const o of busy) seenOthers.add(o);
           const now = [];
-          for (const n of snapshot()) if (!before.has(n) && !isShared(n) && !isRunRoot(n)) now.push({ check, name: n, kb: kbOf(path.join(BASE, n)) });
+          for (const n of snapshot()) if (!before.has(n) && !isShared(n) && !isRunRoot(n)) now.push({ check, name: n, kb: kbOf(path.join(BASE, n)), maybeOther: busy.length > 0 });
           leaks.push(...now);
           return now;
         },
@@ -99,9 +120,11 @@ function create() {
       const left = leaks.filter((l) => fs.existsSync(path.join(BASE, l.name)));
       // a folder that appeared outside any check (the fixtures step, between checks) and isn't shared
       const seen = new Set(left.map((l) => l.name));
-      for (const n of snapshot()) if (!start.has(n) && !seen.has(n) && !isShared(n) && !(isRunRoot(n) && n !== runName)) left.push({ check: '(between checks)', name: n, kb: kbOf(path.join(BASE, n)) });
+      for (const n of snapshot()) if (!start.has(n) && !seen.has(n) && !isShared(n) && !(isRunRoot(n) && n !== runName)) left.push({ check: '(between checks)', name: n, kb: kbOf(path.join(BASE, n)), maybeOther: seenOthers.size > 0 });
       if (why && fs.existsSync(runDir) && !left.some((l) => l.name === runName)) left.push({ check: '(the run folder)', name: runName, kb: kbOf(runDir), why });
-      return { left, held, stuck, heldKb: held.reduce((s, h) => s + h.kb, 0) };
+      // sure: no other run was going while it appeared (those fail the release group); maybe: another run was
+      const sure = left.filter((l) => !l.maybeOther);
+      return { left, sure, maybe: left.filter((l) => l.maybeOther), others: [...new Set([...seenOthers].map((o) => o.replace(/^\d+ /, '')))], held, stuck, heldKb: held.reduce((s, h) => s + h.kb, 0) };
     },
   };
 }
