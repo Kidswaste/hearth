@@ -4084,8 +4084,7 @@ const ThreeLab = (() => {
         // (a warm run of another scene than this one, e.g. the chat on screen owns another: no cross-fade from it, as on a new page)
         // (round 73) a project opening swaps without the old picture: it lay under the opaque loading card, and taking it
         // read back every layer of the scene left (a few ms on a GPU, ≈ 0.1–0.4 s in software GL), in front of the new scene
-        // (round 109, projopen109) card: the stack draws under the project's loading card (nobody sees it until it's ready)
-        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec), ...(plainSwap ? { card: true } : {}) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: plainSwap ? '' : !overWarm || warmOf === current.id ? 'xfade' : '', ...(plainSwap ? { card: true } : {}) });
+        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: plainSwap ? '' : !overWarm || warmOf === current.id ? 'xfade' : '' });
         plainSwap = false;
         for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
         for (const L of layersOf()) building(L.id, true);

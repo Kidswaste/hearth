@@ -1,8 +1,7 @@
 // (round 89, desk89) The Desk's drawing, the page side: its scroll place is set in the coming frame instead of laying
 // out the window inside the task that built the Desk (desk-paint-core.js says why and how). projects-home.js calls
 // DeskPaint.place(S, y) where it wrote S.root.scrollTop (two marked lines). Loaded with the projects group, before it.
-// (round 109, projopen109) held(root, paint): a Desk drawn again while a button on it (or a menu row) is pressed waits
-// for the release.
+// (round 109, projopen109) held(root, paint): a Desk drawn again while a button on it is pressed waits for the release.
 // The Desk is rebuilt whole (replaceChildren) about 80 ms after a project change (a sync landing, a rename, an open's
 // save, the switch's own touch); a press that straddled it lost its click: the pressed ⋯ was gone at the release, so
 // the click went to the Desk's body and nothing opened (round 108's "a ⋯ that did nothing"). Now the redraw waits
@@ -24,10 +23,8 @@ const DeskPaint = (() => {
   addEventListener('pointerup', release, { capture: true, passive: true });
   addEventListener('pointercancel', release, { capture: true, passive: true });
   function held(root, fn) {
-    // (a press on a menu row counts too: the Desk's ⋯ menu, its row pressed while the Desk was drawn again, lost its click
-    // once in 22 tries in projopen109's probe, the click landing on the menu itself)
     const d = hold.down;
-    if (!hold.on || !d || !(d instanceof Element) || !(root?.contains(d) || d.closest('#menu, #menu-fly, #menu-fly2')) || !d.closest('button, a, input, select, textarea, summary, [role=button], [role=menuitem]')) return false;
+    if (!hold.on || !d || !(d instanceof Element) || !root?.contains(d) || !d.closest('button, a, input, select, textarea, summary, [role=button]')) return false;
     hold.waiting.push(fn); hold.held += 1;
     return true;
   }
