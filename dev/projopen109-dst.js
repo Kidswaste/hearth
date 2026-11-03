@@ -69,7 +69,6 @@ try {
       labCode: g.ms != null ? { from: rel(Math.round(g.at - (g.ms || 0))), ms: Math.round(g.ms) } : null, // (Lazy's at = when it was in)
       pageStart: off != null ? { from: rel(off), dcl: pg.nav ? rel(off + pg.nav.dcl) : null, ready: rel(T['page:ready']) } : null,
       firstDrawn: rel(T['page:stack-drawn']),
-      model: rel(T.modelLoaded),
       prep: { assetsMs: ps.assetsMs ?? null, compileMs: ps.compileMs ?? null, ms: ps.ms ?? null, end: rel(ps.at), pending: ps.pending ?? null, gl: ps.gl || null },
       workspace: timings,
       card: tl.map(([s, t]) => `${rel(t)} ${s}`),
@@ -98,7 +97,7 @@ try {
     const ms = end ? Math.round(end - t0) : null;
     const st = ProjectWorkspace.state();
     slow[`away_${label}`] = { ms, fired, phase: st.phase, error: st.error || r?.error || null, at: H.activeId, abandoned: ThreeLab.workspace?.state?.().abandoned ?? null, timings: st.timings || null };
-    step(`away (${label}): ProjectWorkspace.go('overview') mid-open → the open ends ready within 20 s (not 90 s at "Warming shaders")`, fired && ms != null && ms < 20000 && st.phase === 'ready' && !r?.error, slow[`away_${label}`]);
+    step(`away (${label}): ProjectWorkspace.go('overview') mid-open → the open ends ready within 10 s (not 90 s at "Warming shaders")`, fired && ms != null && ms < 10000 && st.phase === 'ready' && !r?.error, slow[`away_${label}`]);
     // then the scene from the Desk: the Lab on it, the model loaded, both loops' frames moving
     const t1 = now();
     await ProjectWorkspace.go('scene').catch((e) => { slow[`away_${label}`].sceneErr = e.message; });
