@@ -663,7 +663,7 @@ function runTrip(per, calls, hz) {
 window.__labRunaway = {
   state: () => ({ tripped: RUN.tripped, trips: RUN.trips, info: RUN.info, dropped: RUN.dropped, peakLoopPerSec: Math.round(RUN.peak), peakLoopPerFrame: RUN.peakF, peakCallsPerSec: Math.round(RUN.peakCalls), screenHz: Math.round(RUN.hz), limit: Math.round(RUN.lim), hotMs: Math.round(RUN.hotMs), windows: RUN.windows, bug107: RUN.bug107 }),
   // a new measure: the peaks from now (all: the trip too, back to the gated frames; checks only)
-  reset: (all = false) => { RUN.peak = 0; RUN.peakF = 0; RUN.peakCalls = 0; RUN.windows = 0; RUN.dropped = 0; if (all) { RUN.tripped = false; RUN.info = null; RUN.hotMs = 0; } return true; },
+  reset: (all = false) => { RUN.peak = 0; RUN.peakF = 0; RUN.peakCalls = 0; RUN.windows = 0; RUN.dropped = 0; RUN.topF = 0; if (all) { RUN.tripped = false; RUN.info = null; RUN.hotMs = 0; } return true; },
   bug107: (on) => { RUN.bug107 = Boolean(on); return RUN.bug107; },
 };
 // ======== (end of labchecks109's runaway guard) ========
