@@ -264,6 +264,7 @@ const ProjBundle = (() => {
         el('ul', { class: 'pb-list pb-adds' }, ...pv.lines.map((t) => el('li', { text: t }))),
         el('p', { class: 'hint pb-line', text: 'It comes in as a new project with its own copies: nothing you have is changed or replaced.' }));
       ui.say('');
+      window.LabIntent?.go('import'); // (round 109, projopen109) the import starts the Lab and the project opens in it: its code loads while the card is read
       const go = await new Promise((resolve) => {
         ui.buttons(button('Cancel', () => resolve(false)), button('Import as a new project', () => resolve(true), 'primary pb-go'));
         ui.onCancel(() => resolve(false));

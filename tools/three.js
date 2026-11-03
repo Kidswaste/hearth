@@ -1076,7 +1076,7 @@ const ThreeLab = (() => {
     // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
-    let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null;
+    let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null, workspaceAbandoned = 0; // (round 109, projopen109: warm-ups let go off screen)
     // (round 72, projects72) a project → project switch keeps the preview page (three.js loaded, contexts warm): the next
     // project's scene runs in it like any Lab sketch switch, instead of a new page per switch. Leaving to Projects releases it.
     let pageKept = false;
@@ -4886,7 +4886,7 @@ ${code}
     // A project owns a live preview only while open. The same preparation protocol as Present warms its assets
     // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
     api.workspace = {
-      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept, primed: pagePrimed }),
+      state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept, primed: pagePrimed, abandoned: workspaceAbandoned }),
       resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
       // a page kept for a switch that didn't happen (cancelled, back to Projects): released now
       releaseKept() { unprime(); if (workspaceReleased && pageKept) { pageKept = false; box.release(); ranOnce = false; } },
@@ -4909,7 +4909,15 @@ ${code}
         try {
           await new Promise((resolve, reject) => {
             let sent = false, finished = false;
-            const finish = err => { if(finished)return;finished=true;clearTimeout(timer); signal?.removeEventListener('abort', abort); workspaceMessage = null; err ? reject(err) : resolve(); };
+            // (round 109, projopen109) the Lab sent off screen mid-open (the Desk asked for, another tab, the window
+            // hidden): its page draws no frame there, so the warm-up's frames never came and the open sat at "Warming
+            // shaders" until the 90 s error. Now the warm-up is let go at once: the open goes on (its scene already runs in
+            // the page, held while off screen) and what wasn't warmed compiles with its first frames when the Lab shows.
+            const offScreen = () => document.visibilityState !== 'visible' || previewHost.checkVisibility?.({ visibilityProperty: true }) === false;
+            let awayT = 0;
+            const away = () => { clearTimeout(awayT); awayT = setTimeout(() => { if (!finished && offScreen()) { workspaceAbandoned += 1; finish(); } }, 0); };
+            addEventListener('hearth:activate', away); document.addEventListener('visibilitychange', away);
+            const finish = err => { if(finished)return;finished=true;clearTimeout(timer);clearTimeout(awayT);removeEventListener('hearth:activate', away);document.removeEventListener('visibilitychange', away); signal?.removeEventListener('abort', abort); workspaceMessage = null; err ? reject(err) : resolve(); };
             const abort = () => finish(new DOMException('Opening cancelled', 'AbortError'));
             const timer = setTimeout(() => finish(Error('The scene is taking too long to prepare. Retry, or open the editor to inspect it.')), 90000);
             const warm = async () => {

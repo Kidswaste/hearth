@@ -74,6 +74,7 @@ const ProjectsHome = (() => {
     // drawn before is kept as it is. It was rebuilt on every tab switch (≈ 60 ms of script plus a whole new Desk to draw), right where you click next
     const p = S.open && P.get(S.open);
     if (p && drawn === p.id && deskSig && deskSig === deskSigOf(p) && S.body.querySelector('.pj-p-head')) return;
+    if (window.DeskPaint?.held?.(S.root, () => paint())) { S.stale = true; return; } // (round 109, projopen109) a button on it is pressed: drawn after its click (desk-paint.js held)
     keepDesk();
     if (p) { paintProject(p); deskSig = deskSigOf(p); } else { S.open = null; deskSig = null; paintHome(); }
   }
