@@ -576,7 +576,7 @@ function realRAF(fn) {
   // callbacks a second here) until the preview lost its graphics context
   if (GATE.timer) { if (RUN.bug107) { GATE.q.push(w); return 0; } if (!GATE.q.includes(w)) GATE.q.push(w); return GATE_ID; } // (labchecks109: RUN.bug107, checks only: round 107's answer, to prove the guard)
   const ms = gateMs();
-  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.timer = realSetTimeout(gateOpen, ms); return RUN.bug107 ? 0 : GATE_ID; } // (labchecks109: RUN.bug107, round 107's answer)
+  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.due = realNow() + ms; GATE.timer = realSetTimeout(gateOpen, ms); return RUN.bug107 ? 0 : GATE_ID; } // (labchecks109: RUN.bug107, round 107's answer)
   return nativeRAF(w);
 }
 const GATE_ID = 0x1fffffff; // (never cancelled: the page's own loops don't cancel theirs; a sketch's frames have ids of their own)
@@ -585,24 +585,28 @@ const GATE_ID = 0x1fffffff; // (never cancelled: the page's own loops don't canc
 // layers' callbacks) still woke on each of the screen's frames, 240 a second on the owner's screen to draw 60 or 30.
 // Now, after a drawn frame, the page's frames are asked for again only a screen frame + 4 ms before the cap's next one
 // (a timer: one skipped frame and the drawn one, instead of three or seven skipped). Never on a 60 Hz screen (nothing
-// to skip there), nor with live sound or footage playing (round 108: a song may: see beat108), a sequence, a show, a recording,
-// an offline render, ▶ Play or the export page. GATE.scr: the screen's frame (the shortest gap between two frames seen
+// to skip there), nor with a sequence, a show, a recording, an offline render, ▶ Play or the export page (round 108: a
+// song may: see beat108; round 110: live sound and footage may too: see beatload110). GATE.scr: the screen's frame (the shortest gap between two frames seen
 // over the last 2 s; frames come in pairs while the gate holds, so it is still the screen's).
 // (a fast screen is believed only when at least a quarter of those gaps, and 10, were short: one odd gap on a 60 Hz
 // screen never turns it on)
-const GATE = { q: [], timer: 0, scr: 0, min: 0, n: 0, short: 0, t0: 0, last: -1, held: 0 };
+const GATE = { q: [], timer: 0, scr: 0, min: 0, n: 0, short: 0, t0: 0, last: -1, held: 0, due: 0, legacy110: false }; // (legacy110, checks only: live sound and footage keep the gate off, as before round 110)
 function gateSeen(t) {
   const d = t - GATE.last; GATE.last = t;
   if (d > 1 && d < 50) { GATE.n += 1; if (d < 12) { GATE.short += 1; if (!GATE.min || d < GATE.min) GATE.min = d; } }
   if (t - GATE.t0 > 2000) { GATE.t0 = t; GATE.scr = GATE.short >= Math.max(10, GATE.n / 4) ? GATE.min : 0; GATE.min = 0; GATE.n = 0; GATE.short = 0; }
 }
-function gateOpen() { GATE.timer = 0; const q = GATE.q; GATE.q = []; for (const w of q) nativeRAF(w); }
+function gateOpen() { GATE.timer = 0; if (CAPLOG.on && CAPLOG.gn < 4000) CAPLOG.gate[CAPLOG.gn++] = realNow() - GATE.due; const q = GATE.q; GATE.q = []; for (const w of q) nativeRAF(w); }
 function gateMs() {
   if (!(fpsCap > 0) || capNext < 0 || GAME || RUN.tripped || !(GATE.scr > 1 && GATE.scr < 12)) return 0; // (labchecks109: RUN.tripped, the plain frames after a runaway)
   try {
     // (round 108, beat108) a song playing no longer keeps it off: its loop points / trimmed end have their own timer
-    // (see "the song's edges between drawn frames"); footage (its parts, frame-exact cuts) and EDGE.legacy (checks) do
-    if (mode !== 'sketch' || XP_PAGE || RDY.lock || SQ.on || SQ.off || stepping || fullRes() || liveKind || (mediaEl && !mediaEl.paused && (EDGE.legacy || isVideo || fparts))) return 0;
+    // (see "the song's edges between drawn frames"); EDGE.legacy (checks) does.
+    // (round 110, beatload110) nor live sound: its kicks, tempo and beat are read in drawn frames only, as a song's
+    // (update(), at the cap's 60 with the gate or without), the sound arrives by message, never on a frame; nor
+    // footage: its cuts are timed from the video's own frames (requestVideoFrameCallback: partFrame) and a held frame
+    // from a timer of its own (holdArm). GATE.legacy110 (checks) keeps it off for both, as before
+    if (mode !== 'sketch' || XP_PAGE || RDY.lock || SQ.on || SQ.off || stepping || fullRes() || (liveKind && GATE.legacy110) || (mediaEl && !mediaEl.paused && (EDGE.legacy || (GATE.legacy110 && (isVideo || fparts))))) return 0;
   } catch { return 0; } // (asked before the page has set up what it looks at)
   const ms = capNext - realNow() - GATE.scr - 4;
   return ms >= GATE.scr ? ms : 0;
@@ -757,6 +761,9 @@ let frameCalls = 0; let lastCalls = 0;
 // (round 60, gcchurn60) the last 120 frames' work, in whole microseconds: a ring (an array pushed and shifted every frame
 // grew its storage again every few dozen frames); wr(k): the k-th oldest of the wrN kept (µs)
 const WR = new Int32Array(120); let wrN = 0; let wrI = 0;
+// (checks, beatload110) while window.__labBeat.log is on: each drawn frame's time after the cap's slot for it (ms), and
+// how late each frame-gate timer fired after it was due (ms); nothing is kept otherwise
+const CAPLOG = { on: false, n: 0, t: new Float64Array(4000), late: new Float32Array(4000), gn: 0, gate: new Float32Array(4000), en: 0, edge: new Float32Array(400) }; // (edge: the song's edge timer's wakes, ms after due)
 const wr = (k) => WR[(wrI - wrN + k + 120) % 120];
 function capOk(t) {
   if (!fpsCap || t === capT) return true;
@@ -3780,7 +3787,15 @@ const TRIG_NAMES = ['kick', 'bass', 'snare', 'hats', 'hit'];
 let trigCfg = null;
 const trigState = Object.fromEntries(TRIG_NAMES.map((n) => [n, { at: -1e9, armed: true, e: 0 }]));
 let trigWatch = false; let trigFired = [];
-const TRIGLOG = { on: false, list: [] }; // (checks, beat108: window.__labBeat.log)
+const TRIGLOG = { on: false, list: [], arr: [], upd: 0, updOff: 0, gap: 0 }; // (checks, beat108: window.__labBeat.log)
+// (checks, beatload110) live sound: when each analysis frame arrived from the Lab window and the ⚡ kick band's level in
+// it ([page ms, level 0..1]): a kick's reaction time is its fire − the first frame over the bar that carried it
+function trigArrive() {
+  const c = trigCfg?.kick; if (!c || !remoteFreq || TRIGLOG.arr.length >= 4000) return;
+  const hz = remoteRate / 2048; let sum = 0; let n = 0;
+  for (let i = Math.max(1, Math.floor(c.lo / hz)); i <= Math.min(remoteFreq.length - 1, Math.ceil(c.hi / hz)); i += 1) { sum += remoteFreq[i]; n += 1; }
+  TRIGLOG.arr.push([realNow(), n ? sum / n / 255 : 0]);
+}
 function bandOf(lo, hi, hz) {
   let s = 0; let n = 0;
   for (let i = Math.max(1, Math.floor(lo / hz)); i <= Math.min(freq.length - 1, Math.ceil(hi / hz)); i += 1) { s += freq[i]; n += 1; }
@@ -3796,7 +3811,7 @@ function runTriggers(now, hz) {
     else if (s.armed && s.e >= c.thr && now - s.at >= c.gap) {
       s.at = now; s.armed = false;
       if (trigWatch) trigFired.push(n);
-      if (TRIGLOG.on && TRIGLOG.list.length < 2000) TRIGLOG.list.push([n, now, mediaEl && !liveKind ? AV.core.read(AV.S, now / 1000) : null]); // (checks, beat108)
+      if (TRIGLOG.on && TRIGLOG.list.length < 2000) TRIGLOG.list.push([n, now, mediaEl && !liveKind ? AV.core.read(AV.S, now / 1000) : null, FR.inRaf ? FR.t : null, FR.inRaf && capT === FR.t ? 1 : 0, Math.round(TRIGLOG.gap * 100) / 100]); // (checks, beat108; beatload110: the frame's time, a drawn frame or not, ms since the read before)
       if (n === 'kick' && liveKind) liveTempo(now / 1000);
     }
   }
@@ -3845,6 +3860,7 @@ function update() {
   const now = realNow();
   if (now - lastUpdate < 8) return;
   const dt = Math.min(0.1, (now - lastUpdate) / 1000);
+  if (TRIGLOG.on) { TRIGLOG.upd += 1; if (!(FR.inRaf && capT === FR.t)) TRIGLOG.updOff += 1; TRIGLOG.gap = now - lastUpdate; } // (checks, beatload110: the sound read outside a drawn frame)
   lastUpdate = now;
   if (!mediaEl && !liveKind) {
     // No file loaded: a soft 120 bpm demo pulse so audio-reactive sketches still move.
@@ -4165,6 +4181,7 @@ function fxMessage(msg) {
     remoteWave = FX.wave ||= new Float32Array(2048);
     for (let i = 0; i < 2048; i += 1) remoteWave[i] = (wb[i] - 128) / 128;
     remoteRate = msg.rate || 48000;
+    if (TRIGLOG.on) trigArrive(); // (checks, beatload110)
   } else if (msg.type === 'audio-probe') {
     // for the checks and /audio: the values now (names → numbers)
     const out = {}; for (const n of msg.names || []) out[n] = Math.round(featVal(n) * 1000) / 1000;
@@ -4326,7 +4343,7 @@ function mediaTick() {
 // the song's edges, looked at from a frame (src 0) or from the edge timer (1: its wake, 2: a fine look)
 function mediaEdge(src) {
   const t = mediaEl.currentTime;
-  if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
+  if (fparts && !(region && loopOn) && recUntil == null) { partTick(t, src); prevT = mediaEl.currentTime; edgeArm(src === 0); return; } // (round 110: and the next part's end on the edge timer)
   if (recUntil != null && t >= recUntil) {
     recUntil = null;
     stopRecording();
@@ -4364,7 +4381,11 @@ realRAF(mediaTick);
 // EDGE.slack follows how late the wake timer has come (3–20 ms: Windows' timers can be coarse).
 const EDGE = { timer: 0, due: 0, fine: false, fineAt: 0, mc: null, legacy: false, log: null, looks: 0, arms: 0, wakes: 0, slack: 3 };
 function edgeNext() {
-  if (EDGE.legacy || !mediaEl || mediaEl.paused || recUntil != null || fparts) return Infinity;
+  if (EDGE.legacy || !mediaEl || mediaEl.paused || recUntil != null) return Infinity;
+  // (round 110, beatload110) footage playing its cut list: the jump before the part's first removed frame, from the
+  // video's own clock (partLead before it, as partFrame jumps): the page's frames looked for it there too (partTick),
+  // which the frame gate now holds between drawn ones; with a loop on, the cut list gives way to it (mediaEdge)
+  if (fparts && !(region && loopOn)) { const p = fparts[fpart]; return GATE.legacy110 || !p || p.hold ? Infinity : p.b - (partLead() / 1000) * (mediaEl.playbackRate || 1); }
   if (region && loopOn) return region.b;
   if (trim) return trim.b;
   return Infinity;
@@ -4389,7 +4410,7 @@ function edgeArm(fromFrame = false) {
 }
 function edgeWake() {
   EDGE.timer = 0; EDGE.wakes += 1;
-  const late = realNow() - EDGE.due; EDGE.slack = Math.min(20, Math.max(3, late + 2, EDGE.slack * 0.9));
+  const late = realNow() - EDGE.due; if (CAPLOG.on && CAPLOG.en < 400) CAPLOG.edge[CAPLOG.en++] = late; EDGE.slack = Math.min(20, Math.max(3, late + 2, EDGE.slack * 0.9));
   if (mediaEl && !mediaEl.paused) mediaEdge(1);
 }
 function edgeFine() {
@@ -4420,10 +4441,27 @@ function edgeNote(kind, src, t, b) {
 // ms, the song's heard time then]); state(): the edge timer's counts
 window.__labBeat = {
   legacy(on) { EDGE.legacy = Boolean(on); edgeStop(); if (!on && mediaEl && !mediaEl.paused) edgeArm(); return EDGE.legacy; },
-  log(on) { EDGE.log = on ? [] : null; TRIGLOG.on = Boolean(on); TRIGLOG.list = []; return Boolean(on); },
+  // (beatload110) legacy110(true): live sound and footage keep the frame gate off, a held frame ends in the page's frames
+  // only, as before round 110 (an A/B in one run)
+  legacy110(on) { GATE.legacy110 = Boolean(on); return GATE.legacy110; },
+  log(on) { EDGE.log = on ? [] : null; TRIGLOG.on = Boolean(on); TRIGLOG.list = []; TRIGLOG.arr = []; TRIGLOG.upd = 0; TRIGLOG.updOff = 0; CAPLOG.on = Boolean(on); CAPLOG.n = 0; CAPLOG.gn = 0; CAPLOG.en = 0; return Boolean(on); },
+  // (beatload110) each drawn frame's ms after the cap's slot for it, each frame-gate timer's ms after it was due
+  slots: () => ({ t: Array.from(CAPLOG.t.subarray(0, CAPLOG.n), (x) => Math.round(x * 100) / 100), late: Array.from(CAPLOG.late.subarray(0, CAPLOG.n), (x) => Math.round(x * 100) / 100), gate: Array.from(CAPLOG.gate.subarray(0, CAPLOG.gn), (x) => Math.round(x * 100) / 100), edge: Array.from(CAPLOG.edge.subarray(0, CAPLOG.en), (x) => Math.round(x * 100) / 100) }),
   edges: () => EDGE.log || [],
+  // (beatload110) cross(true): a look at the song's element about every millisecond (its own task each time), noting
+  // when its time first reaches the loop's B ([page ms, element time]): the page's reaction to it is the edge acted on
+  // (edges()) − that. Checks only: off, nothing runs
+  cross(on) {
+    if (!on) { EDGE.cx = null; return false; }
+    const cx = EDGE.cx = { list: [], prev: -1, mc: new MessageChannel() };
+    const look = () => { if (EDGE.cx !== cx) return; const t = mediaEl?.currentTime; const bb = region && loopOn ? region.b : null; if (bb != null && t != null) { if (t >= bb && cx.prev < bb && cx.list.length < 400) cx.list.push([realNow(), t]); cx.prev = t; } realSetTimeout(() => cx.mc.port2.postMessage(0), 1); };
+    cx.mc.port1.onmessage = look; look(); return true;
+  },
+  crossings: () => (EDGE.cx ? EDGE.cx.list : []),
   trigs: () => TRIGLOG.list,
-  state: () => ({ legacy: EDGE.legacy, timer: Boolean(EDGE.timer), fine: EDGE.fine, arms: EDGE.arms, wakes: EDGE.wakes, looks: EDGE.looks, slack: Math.round(EDGE.slack * 10) / 10, gateHeld: GATE.held, gateScr: Math.round(GATE.scr * 100) / 100, cap: fpsCap }),
+  beats: () => (beatMap?.beats?.length ? beatMap.beats : analysis?.beats || []), // (beatload110: the beat list the beat helpers count on: barInfo's)
+  arrivals: () => TRIGLOG.arr.map((x) => [Math.round(x[0] * 100) / 100, Math.round(x[1] * 1000) / 1000]), // (beatload110)
+  state: () => ({ upd: TRIGLOG.upd, updOff: TRIGLOG.updOff, parts: fparts ? fparts.length : 0, fpart, legacy110: GATE.legacy110, legacy: EDGE.legacy, timer: Boolean(EDGE.timer), fine: EDGE.fine, arms: EDGE.arms, wakes: EDGE.wakes, looks: EDGE.looks, slack: Math.round(EDGE.slack * 10) / 10, gateHeld: GATE.held, gateScr: Math.round(GATE.scr * 100) / 100, cap: fpsCap }),
 };
 const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region && !trim; };
 function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null, rate = 1, trim: tr = null }) {
@@ -4518,7 +4556,7 @@ function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }
   if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'trim') { trim = value && value.b > value.a ? value : null; applyLoop(); }
   if (cmd === 'pause') { mediaEl.pause(); if (frameStop && fclock && isVideo) stopOnFrame(req); }
-  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); avJump(!mediaEl.paused, mediaEl.currentTime); if (fparts && isVideo) fpart = partAt(value); if (ack) ackSeek(); else sendState(); }
+  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); avJump(!mediaEl.paused, mediaEl.currentTime); if (fparts && isVideo) { fpart = partAt(value); partRate(fpart); } if (ack) ackSeek(); else sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
   if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
@@ -4757,7 +4795,14 @@ function watchFrames(m) {
     // (capturefix2) a removed frame the decoder showed anyway (the jump's timer fired late: a busy machine, or a frame
     // due right at the cut) is not handed on: the sketch, the texture and the frame number keep the last kept frame,
     // and the jump happens now (labframes: "the sketch never sees a removed frame", f24 slipped through 3 runs of 3)
-    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && !fparts[fpart]?.hold && partAt(meta.mediaTime) < 0) {
+    // (round 110, beatload110) …nor one presented after a cut into a held frame (decoded before the jump: the hold's
+    // part was already the current one, and the frame went to the sketch: f90 of a cut f60–89 → a frame held at f105,
+    // under load). The hold stands
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && partAt(meta.mediaTime) < 0) {
+      // (round 110, beatload110) played into removed frames with no part to end (a seek there while playing): the next
+      // part now, from the video's own frame (the page's frames may be held by the frame gate: up to a drawn frame later)
+      if (fparts[fpart]?.hold) { /* the hold goes on */ } else
+      if (!GATE.legacy110 && (!fparts[fpart] || meta.mediaTime < fparts[fpart].a - 0.05)) partTick(meta.mediaTime); else
       partFrame(meta.mediaTime, meta);
       m.requestVideoFrameCallback(cb);
       return;
@@ -4784,6 +4829,17 @@ function stopOnFrame(req) {
 const partAt = (t) => (fparts ? fparts.findIndex((p) => t >= p.a - 1e-4 && t < p.b - 1e-4) : -1);
 // the next part after source time t (in play order), or -1
 const partAfter = (t) => (fparts ? fparts.findIndex((p) => p.a >= t - 1e-4) : -1);
+// (round 110, beatload110) a seek or a new cut list puts the footage in a part without entering it: its speed now. A held
+// frame plays at rate 0 (its clock stands still): stopped on one and sent elsewhere (a click on the timeline, a new
+// cut list), the footage kept rate 0 and played frozen. Into a held frame, the hold starts there (enterPart)
+function partRate(i) {
+  const p = fparts?.[i]; if (!p || !mediaEl) return;
+  if (p.hold) { enterPart(i); return; }
+  fholdUntil = 0;
+  const base = mediaEl.defaultPlaybackRate || 1; const want = base * (p.speed || 1);
+  if (mediaEl.playbackRate !== want) { try { mediaEl.playbackRate = want; } catch { mediaEl.playbackRate = base; } }
+  mediaEl.muted = Boolean(p.mute);
+}
 function enterPart(i) {
   const p = fparts[i]; fpart = i;
   if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
@@ -4792,9 +4848,10 @@ function enterPart(i) {
   // a held frame stands still (rate 0: the clock stops, the video stays "playing"); other parts at their speed
   const want = p.hold ? 0 : base * (p.speed || 1);
   if (mediaEl.playbackRate !== want) { try { mediaEl.playbackRate = want; } catch { mediaEl.playbackRate = base; } }
-  if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); return; }
+  if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); holdArm(i); return; }
   fholdUntil = 0;
   mediaEl.currentTime = fMid(fFrameAt(p.a));
+  if (!GATE.legacy110) { edgeStop(); edgeArm(); } // (round 110: this part's end on the edge timer)
 }
 function partEnd() {
   if (fpart + 1 < fparts.length) { enterPart(fpart + 1); sendState(); return; }
@@ -4808,17 +4865,39 @@ function partFrame(mt, meta) {
   const p = fparts[fpart];
   if (!p || p.hold) return;
   if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
-  if (mt >= p.b - 1e-4) { partEnd(); return; }
+  if (mt >= p.b - 1e-4) { partNote(4, null); partEnd(); return; }
   const rate = mediaEl.playbackRate || 1;
   const due = (meta?.expectedDisplayTime ?? performance.now()) + ((p.b - mt) / rate) * 1000;
-  // how late this page's timers fire (a busy machine): jump that much earlier
-  const lead = (600 / (fclock?.fps || 30)) / rate + Math.min(120, partLate * 1.5);
+  const lead = partLead();
   const i = fpart; const want = Math.max(0, due - lead - performance.now()); const at = performance.now() + want;
-  partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; partLate = partLate * 0.7 + Math.max(0, performance.now() - at) * 0.3; if (fpart === i && mediaEl && !mediaEl.paused) partEnd(); }, want);
+  partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; partLate = partLate * 0.7 + Math.max(0, performance.now() - at) * 0.3; if (fpart === i && mediaEl && !mediaEl.paused) { partNote(1, due); partEnd(); } }, want);
 }
 let partLate = 0;
+// how long before a part's first removed frame is due the page jumps (ms): 0.6 of a frame, plus how late this page's
+// timers fire (a busy machine): that much earlier
+const partLead = () => (600 / (fclock?.fps || 30)) / (mediaEl?.playbackRate || 1) + Math.min(120, partLate * 1.5);
+// (checks, beatload110) while window.__labBeat.log is on, each part's end as it is acted on: ['part', how (0 a page
+// frame, 1 the timer from the video's frame, 3 a held frame's timer, 4 a video frame already past it, 5 the edge timer
+// on the video's clock), page ms, the
+// element's time, the part, when it was due (page ms: the first removed frame's display, the held frame's end)]
+function partNote(src, due) { if (EDGE.log) { EDGE.log.push(['part', src, realNow(), mediaEl?.currentTime ?? null, fpart, due]); if (EDGE.log.length > 400) EDGE.log.shift(); } }
+// (round 110, beatload110) a held frame ends on a timer of its own (the video's clock stands still there, so no video
+// frame comes to time it): its end was looked at only in the page's frames, which the frame gate holds between drawn
+// ones; within about a millisecond now, the frames still look too (partTick). Shares partEnd's timer: one part at a time
+function holdArm(i) {
+  if (GATE.legacy110) return;
+  // (a wake 4 ms early, then looks ≈ 1 ms apart: a timer comes 1–2 ms late on a busy machine)
+  const look = () => {
+    partEnd.timer = 0;
+    if (fpart !== i || !fparts?.[i]?.hold || !mediaEl || mediaEl.paused) return;
+    const left = fholdUntil - performance.now();
+    if (left > 0.3) { partEnd.timer = realSetTimeout(look, left > 6 ? left - 4 : 1); return; }
+    partNote(3, fholdUntil); partEnd();
+  };
+  partEnd.timer = realSetTimeout(look, Math.max(0, fholdUntil - performance.now() - 4));
+}
 // per animation frame: holds, seeks into removed parts while playing, and a safety net for missed callbacks
-function partTick(t) {
+function partTick(t, src = 0) {
   if (fpart < 0 || !fparts[fpart] || (t < fparts[fpart].a - 0.05 && !fparts[fpart].hold)) {
     const i = partAt(t); const j = i >= 0 ? i : partAfter(t);
     if (j < 0) { if (loopOn) enterPart(0); else partEnd(); return; }
@@ -4826,8 +4905,13 @@ function partTick(t) {
     fpart = i;
   }
   const p = fparts[fpart];
-  if (p.hold) { if (!mediaEl.seeking && Math.abs(mediaEl.currentTime - fMid(fFrameAt(p.a))) > 0.5 / (fclock?.fps || 30)) mediaEl.currentTime = fMid(fFrameAt(p.a)); if (performance.now() >= fholdUntil) partEnd(); return; }
-  if (t >= p.b - 1e-4) partEnd();
+  if (p.hold) { if (!mediaEl.seeking && Math.abs(mediaEl.currentTime - fMid(fFrameAt(p.a))) > 0.5 / (fclock?.fps || 30)) mediaEl.currentTime = fMid(fFrameAt(p.a)); if (performance.now() >= fholdUntil) { partNote(0, fholdUntil); partEnd(); } return; }
+  if (t >= p.b - 1e-4) { partNote(0, null); partEnd(); return; }
+  // (round 110, beatload110) the edge timer (src 1 / 2): partLead before the end on the video's own clock, the same
+  // lead partFrame's timer aims for from the frame on screen. Whichever comes first jumps: the video's frames come
+  // seldom on a busy machine (≈ 5 a second here), and a timer set from an old one came after the end; the page's
+  // frames then caught the cut after the end (16.7 ms apart with the frame gate)
+  if (src > 0 && t >= p.b - (partLead() / 1000) * (mediaEl.playbackRate || 1) - 1e-4) { partNote(5, null); partEnd(); }
 }
 
 // ---------- recording ----------
@@ -13762,7 +13846,9 @@ function installRunGuards() {
     if (o.L && layerMix(o.L) <= 0) { e.lt = -1; sched(e.run); return; }
     // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
     if (parked && !SQ.off && !fullRes()) { e.lt = -1; parkQ.push(e.run); return; }
+    const due0 = capNext; const capT0 = capT; // (checks, beatload110: CAPLOG below; capOk stays self-contained: dev/project-desk-test.js runs it alone)
     if (!SQ.off && !capOk(t)) { sched(e.run); return; }
+    if (CAPLOG.on && capT !== capT0 && capT === t && due0 >= 0 && CAPLOG.n < 4000) { CAPLOG.t[CAPLOG.n] = t; CAPLOG.late[CAPLOG.n++] = t - due0; } // (how late each drawn frame came after the cap's slot for it)
     // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
     globalThis.f60 = PACE.core.f60(e.lt < 0 ? -1 : t - e.lt); e.lt = t;
     if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
@@ -16103,7 +16189,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'live-gain') { liveAuto = msg.auto !== false; liveSense = Number(msg.sense) || 1; }
   if (msg.type === 'live-stop') { liveReset(); window.__stopLive(); remoteFreq = null; remoteWave = null; if (!liveSrc) liveKind = null; }
   if (msg.type === 'live-remote') { if (!msg.on || liveKind !== msg.kind) liveReset(); liveKind = msg.on ? msg.kind : null; if (!msg.on) { remoteFreq = null; remoteWave = null; } if (msg.on) graph(); }
-  if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; }
+  if (msg.type === 'live-frame') { remoteFreq = msg.freq; remoteWave = msg.wave; remoteRate = msg.rate || 48000; if (TRIGLOG.on) trigArrive(); }
   if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
   if (msg.type === 'audio-stems') { STEMS.track = msg.track; STEMS.el = mediaEl; return; } // (round 30, stems) the song's parts, for the song loaded now
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
@@ -16133,7 +16219,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'av-devices') avDevices(); // (round 77, labaudio77: the Lab window heard a device change)
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
-  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
+  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (fpart >= 0) partRate(fpart); if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
   if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(msg.recordId); }
   if (msg.type === 'shader') shader?.set(msg.code);

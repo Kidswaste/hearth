@@ -220,6 +220,15 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
   B a few times while it plays. Expected: the loop sounds as tight as before (no extra bit of the next beat before it
   jumps back, no double hit), and the picture jumps with the sound. Do the same on battery if it's a laptop.
 
+## 16. The Lab with live sound and with footage on the 240 Hz screen (round 110, beatload110)
+- 🎧 Live → System sound with Spotify playing, a beat-reactive scene on Auto: Task Manager's GPU % for about 20 s.
+  Expected: about the same as §15's song (before this round live sound kept the Lab waking on every screen frame).
+  The scene should hit the kicks as before.
+- A video in the Lab with a few cuts (S at two frames, Delete between) and a frozen frame, played on a loop for a
+  minute, then the same while a game or a render keeps the PC busy. Expected: GPU % about the same as with a song; no
+  bit of a cut part ever shows (watch the frame counter and the picture at each cut), the frozen frame holds for its
+  length, and the sound jumps with each cut.
+
 ## Reporting
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
