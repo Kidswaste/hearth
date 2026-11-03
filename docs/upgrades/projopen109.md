@@ -6,7 +6,8 @@ Round 108 (`projaudit108.md`, "Slow" and "Not fixed") left four things:
 3. `projopen86` failed its 60 ms window budget (60–78 ms) on the base, regression or load unknown;
 4. a Desk ⋯ menu row sometimes ignored a click (3 in ~10 runs), never reproduced.
 
-All four are done: 2 and 4 are fixed (both reproduced first, every time for 2, 8 of 22 tries for 4); 3 is load, not a
+All four are done: 2 and 4 are fixed (both reproduced first: every time for 2; for 4, two causes, 8 of 22 presses and
+round 108's own Export click); 3 is load, not a
 regression, and the check now says so from the trace instead of failing; 1 is measured piece by piece, with one real
 cut (the Lab's code loads while you read the import card) and the rest named, most of it software-GL-only.
 
@@ -113,37 +114,49 @@ run in turn on the same box:
   `window.PO_NOTRACE = 1` turns it off; with `PO_PROF` (CPU profiles) it's off too. The main process's blocks are judged
   as before (none failed in these runs).
 
-## 4. The Desk ⋯ click that did nothing
+## 4. The Desk ⋯ click that did nothing: two causes, both fixed
 
 **Reproduced**: `dev/projopen109-menu.js` (projopen109's `menu` part) on Clink's Desk (projopen86's fixture: 1,063
 things) with 2 busy CPU processes beside it. Every click is a real one (press, a 70 ms hold, release), tried at 11
-moments 0–240 ms after a Desk redraw was set off, twice:
+moments 0–240 ms after a Desk redraw was set off, twice per run. And projaudit108's own `giant` run, now naming the
+open dialogs when a row misses, caught round 108's case itself.
 
-| | before (`--nohold`) | after |
-|---|---|---|
-| ⋯ pressed 0–240 ms after a project change (the Desk redrawn ≈ 80 ms later) | **8 of 22 missed** (all at 0–60 ms) | 0 of 44 (2 runs) |
-| ⋯ pressed right after the Desk was asked for (from the chat) | 0 of 22 | 0 of 44 |
-| a ⋯ row (Notes…) pressed 0–240 ms after a project change | 1 of 22 missed | 0 of 44 |
+| | before | after the Desk hold | after both fixes |
+|---|---|---|---|
+| ⋯ pressed 0–240 ms after a project change (the Desk redrawn ≈ 80 ms later) | **8 of 22 missed** (at 0–60 ms) | 0 of 132 (6 runs) | 0 of 22 |
+| ⋯ pressed right after the Desk was asked for (from the chat) | 0 of 22 | 0 of 132 | 0 of 22 |
+| a ⋯ row (Notes…) pressed 0–240 ms after a project change | 1 of 22 | **0–4 of 22** (6 runs: 0, 3, 0, 2, 4, 1) | **0 of 22** |
+| projaudit108 `giant`: ⋯ › ⇪ Export project… | | **missed 2 runs of 2**: the click opened **Notes · Clink** (the row above), whose modal then blocked the ⋯ | see Tested |
 
-**Cause.** The Desk is rebuilt whole (`replaceChildren`) about 80 ms after any project change: a sync landing, a
-rename, an open's own save, Export / Duplicate finishing. A press that straddled it lost its click: the ⋯ pressed was
-gone at the release, so the click went to the Desk's body and nothing opened. Round 108's flows click right after such
-changes, under load (the redraw then lands later and lasts longer).
-
-**Fix.** `desk-paint.js` `DeskPaint.held(root, paint)`: a Desk redraw that comes while a button on the Desk is pressed
+**Cause 1: the Desk redrawn under a press.** The Desk is rebuilt whole (`replaceChildren`) about 80 ms after any
+project change: a sync landing, a rename, an open's own save, Export / Duplicate finishing. A press that straddled it
+lost its click: the ⋯ pressed was gone at the release, so the click went to the Desk's body and nothing opened.
+**Fix:** `desk-paint.js` `DeskPaint.held(root, paint)`: a Desk redraw that comes while a button on the Desk is pressed
 waits for the release and runs in the task after the click (at most 1.5 s, for a release that never comes).
 `projects-home.js` paint asks it (one marked line). `DeskPaint.pressStats()` counts it; `holdPress(false)` is the
 check's before.
 
+**Cause 2: the menu's pop moved its rows.** The app's menu (`#menu`) came in with a 180 ms pop: from 5 px higher and
+96.5 % size, anchored top left. A row 300–600 px down the menu sat 15–25 px higher during the pop: about one row. A
+busy window (the Desk drawn again, under load) shows a frame of the pop for hundreds of ms; a click aimed at a row as
+drawn then landed, once the pop had ended, on the row **above**. That is round 108's "row that did nothing": ⇪ Export
+project… opened Notes… (whose modal the check didn't recognise, and which then made the Desk inert, so "the ⋯ wouldn't
+even open"); Notes… opened Look's submenu (the probe: the menu became 106 px tall, Look's two rows and ‹ back), or a
+separator was hit (nothing at all). **Fix:** `polish.css`: `#menu` fades in (opacity only) instead of popping; its
+rows still slide in a few px sideways, which aims the same. `forge-skin.css`: the same for the Forgeheart look's scan.
+Other menus (the Lab's, the chat's) keep their pop: they are short and open under the pointer.
+
 **Caught in the act** (for whatever is left): `renderer.js` `ClickWatch`. Each primary press on a menu row or a Desk
 button is followed to its click, and a miss is kept (the last 20) with why: `replaced` (the node was redrawn under
-the press), `elsewhere` (the click landed on another node), `blocked` (the pointer was on a row but the press went to
-something else: a modal dialog, something drawn over it), `noclick`; plus the open dialogs and the surface. In the
-before run it named all 9 misses: 8 `replaced` ⋯, 1 `elsewhere` (the Notes… row's click landed on `#menu` itself; not
-reproduced since). `ClickWatch.misses()` reads them. Nothing is sent anywhere and no click is changed.
+the press), `elsewhere` (the click landed on another node), `blocked` (the pointer was on a row or the ⋯ but the press
+went to something else: a modal dialog, something drawn over it), `noclick`; how far the row and its menu moved since
+the press; and the open dialogs with their titles and the surface. In the before run it named all 9 misses (8
+`replaced` ⋯, 1 `elsewhere`); in projaudit108's `giant` it named the Notes modal blocking the ⋯ (`blocked`, "Notes ·
+Clink"). A click that reaches the wrong row is a fine click to it: that kind is fixed at the cause (the pop) instead.
+`ClickWatch.misses()` reads them. Nothing is sent anywhere and no click is changed. projaudit108's `menuMissed` now
+lists the open dialogs' titles and ClickWatch's last misses too.
 
-Also tried and taken back: holding the Desk's redraw for a press on a menu row too. In its run 3 of 22 row clicks
-reached the row (ClickWatch saw no miss) but no prompt showed within 2 s; without it, 0 of 44.
+Also tried and taken back: holding the Desk's redraw for a press on a menu row too (no better: 3 of 22).
 
 ## Lab checks touched
 `projopen109`'s scene has two layers with their own frame loops plus the model layer (fps107's lesson), and the
@@ -155,7 +168,7 @@ owns those).
   `dev/projopen109-menu.js` (its app runs; helpers from `dev/projaudit108-lib.js`).
 - Changed: `tools/three.js` (prepare: the warm-up let go off screen), `tools/three-sandbox.html` (`rdyFrames` ends),
   `lab-intent.js` (project rows), `projbundle.js` (import intent), `desk-paint.js` (`held`), `projects-home.js` (one
-  marked line), `renderer.js` (`ClickWatch`), `dev/checks/projopen86.js` (load-aware), `dev/run-checks.js` (the
+  marked line), `renderer.js` (`ClickWatch`), `polish.css` / `forge-skin.css` (`#menu` fades in), `dev/checks/projopen86.js` (load-aware), `dev/run-checks.js` (the
   `projopen109` group).
 
 ## For Codex
@@ -177,5 +190,7 @@ owns those).
   the project's Desk while it's still opening. It finishes right away, and the scene is ready when you go back to it.
 - A click on a project's ⋯ button no longer gets lost when the Desk refreshes at that moment (after a sync, a rename,
   or an export finishing).
+- Menus no longer slide while they open, so a quick click on a menu row can't land on the row above it (for example
+  "Export project…" opening "Notes…" instead).
 - Importing a project: Hearth starts loading the Lab while you look at the import card, so the import itself is a
   little quicker. Picking a project in Ctrl/⌘+K does the same.
