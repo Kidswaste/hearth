@@ -46,11 +46,17 @@ let m = await ask(claude.id, 'hello');
 step('a signed-out Claude: "isn\'t signed in" with a sign-in button', m.role === 'error' && m.needsLogin && Boolean(view(claude.id).querySelector('.login-btn')), m.text.slice(0, 80));
 mark();
 await click(view(claude.id).querySelector('.login-btn'));
+await wait(300);
+// (signin111) the card says what happened in place of the button (a window opened, it may be behind Hearth)
+const said = view(claude.id).querySelector('.signin-said')?.textContent || '';
+step('the card says a window opened (it may be behind Hearth) and Hearth notices by itself', /window opened to sign in to Claude Code/.test(said) && /behind Hearth/.test(said) && /notices by itself/.test(said), said);
 await until(() => toasts().some((t) => /is ready and signed in/.test(t)), 20000);
 step('the sign-in window ran; Hearth checked again: "ready and signed in"', toasts().some((t) => /ready and signed in/.test(t)), toasts()[0]);
-await click(view(claude.id).querySelector('[data-msg-act="retry"]'));
+// (signin111) started from this chat, nothing of the reply written: the message goes out again by itself
+await until(() => toasts().some((t) => /Sending your message again/.test(t)), 10000);
 await wait(300); await until(() => !Native.isBusy(H.activeChat[claude.id]), 30000); await wait(300);
-step('Retry answers', lastMsg(claude.id).role === 'assistant', lastMsg(claude.id).text.slice(0, 60));
+const ms2 = Native.chatOf(claude.id).messages;
+step('after signing in the message went out again by itself, once, and was answered', toasts().some((t) => /Signed in to Claude Code ✓ Sending your message again/.test(t)) && lastMsg(claude.id).role === 'assistant' && ms2.filter((x) => x.role === 'user' && x.text === 'hello').length === 1, ms2.map((x) => x.role));
 
 // 3. too old for the model: Update under the error, Retry works
 await sw({ claudeVersion: '2.1.400', claudeNeeds: '2.1.500', updateTo: '2.1.600' });

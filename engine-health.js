@@ -121,7 +121,7 @@ const EngineHealth = (() => {
     const L = LABEL[engine] || engine;
     linkUi?.close();
     const status = el('p', { class: 'modal-text', text: `${why ? `Hearth couldn't open a window (${why}). ` : ''}Asking ${L} for its sign-in link…` });
-    const link = el('input', { class: 'signin-link-url', readOnly: true, value: '', attrs: { 'aria-label': 'Sign-in link' } });
+    const link = el('input', { class: 'signin-link-url', readOnly: true, value: '', style: { width: '100%', boxSizing: 'border-box' }, attrs: { 'aria-label': 'Sign-in link' } });
     const open = el('button', { type: 'button', class: 'primary', text: 'Open in browser', disabled: true });
     const copy = el('button', { type: 'button', text: 'Copy link', disabled: true });
     const again = el('button', { type: 'button', text: 'Try again', hidden: true });
