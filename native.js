@@ -630,8 +630,8 @@ const Native = (() => {
     }
     const login = t.closest('.login-btn');
     if (login) {
-      await window.hub.login(login.dataset.engine);
-      login.replaceWith(el('span', { class: 'hint', text: 'Finish signing in in the window that opened, then press Retry.' }));
+      const opened = await window.hub.login(login.dataset.engine);
+      login.replaceWith(el('span', { class: 'hint', text: opened ? 'Finish signing in in the window that opened (it may be behind Hearth), then press Retry.' : 'Hearth couldn\'t open the sign-in window. Open the doctor (Ctrl+K → doctor) to check the engine.' }));
     }
   }
 

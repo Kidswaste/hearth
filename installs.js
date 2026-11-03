@@ -327,7 +327,14 @@ function runInTerminal({ title, lines, marker, cwd, bin }) {
     const ps = [`$Host.UI.RawUI.WindowTitle = '${title.replace(/'/g, "''")}'`, `Write-Host '${title.replace(/'/g, "''")} (Hearth never sees your password)'`, 'Write-Host ""',
       ...lines, 'Write-Host ""', ...(marker ? [`Set-Content -LiteralPath '${marker.replace(/'/g, "''")}' -Value done`] : []), "Write-Host 'Done: go back to Hearth. You can close this window.'"].join('\n');
     const b64 = Buffer.from(ps, 'utf16le').toString('base64');
-    try { spawn('powershell.exe', ['-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64], { detached: true, stdio: 'ignore', windowsHide: false }).on('error', () => {}).unref(); return { ok: true, window: 'PowerShell' }; } catch (err) { return { ok: false, error: err.message }; }
+    // (round 110) through `start`: a detached powershell.exe spawned straight from Hearth could end up with no visible
+    // console ("nothing opens" when pressing Sign in); `start` always gives the new window its own visible console,
+    // brought to the front. The encoded script is plain base64, so it needs no quoting. winmac-ok: Windows-only branch
+    const args = `start "${title.replace(/"/g, "'")}" powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -EncodedCommand ${b64}`;
+    try {
+      spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', args], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).on('error', () => {}).unref();
+      return { ok: true, window: 'PowerShell' };
+    } catch (err) { return { ok: false, error: err.message }; }
   }
   const sh = ['#!/bin/sh', 'clear 2>/dev/null', `echo "${title.replace(/"/g, "'")} (Hearth never sees your password)."`, 'echo',
     ...lines, 'echo', ...(marker ? [`echo done > '${marker.replace(/'/g, `'\\''`)}'`] : []), 'echo "Done: go back to Hearth. You can close this window."', ''].join('\n');
