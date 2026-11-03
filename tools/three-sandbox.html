@@ -565,7 +565,8 @@ const frWrap = new WeakMap();
 function realRAF(fn) {
   let w = frWrap.get(fn);
   if (!w) {
-    w = (t) => { if (t !== FR.t) { gateSeen(t); FR.t = t; FR.E += 1; } FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } };
+    w = (t) => { if (t !== FR.t) { gateSeen(t); runSeen(t); FR.t = t; FR.E += 1; } if (runCount(w, t)) return; FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } }; // (labchecks109: runSeen / runCount, the runaway guard below)
+    w.__rw = -1; w.__rn = 0; w.__rt = -1; w.__rk = 0; // (labchecks109: the runaway guard's counts for this loop)
     frWrap.set(fn, w);
   }
   // (round 108, beat108) a frame held by the gate answers GATE_ID, not 0, and is held once: the page's loops keep the
@@ -573,9 +574,9 @@ function realRAF(fn) {
   // layers' flush again; the extra flushes ran the next frame's layer callbacks in the same frame, which queued more:
   // with two or more frame loops in a scene (onHit, everyBeats, a second animation) they grew without end (20,000
   // callbacks a second here) until the preview lost its graphics context
-  if (GATE.timer) { if (!GATE.q.includes(w)) GATE.q.push(w); return GATE_ID; }
+  if (GATE.timer) { if (RUN.bug107) { GATE.q.push(w); return 0; } if (!GATE.q.includes(w)) GATE.q.push(w); return GATE_ID; } // (labchecks109: RUN.bug107, checks only: round 107's answer, to prove the guard)
   const ms = gateMs();
-  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.timer = realSetTimeout(gateOpen, ms); return GATE_ID; }
+  if (ms > 0) { GATE.q.push(w); GATE.held += 1; GATE.timer = realSetTimeout(gateOpen, ms); return RUN.bug107 ? 0 : GATE_ID; } // (labchecks109: RUN.bug107, round 107's answer)
   return nativeRAF(w);
 }
 const GATE_ID = 0x1fffffff; // (never cancelled: the page's own loops don't cancel theirs; a sketch's frames have ids of their own)
@@ -597,7 +598,7 @@ function gateSeen(t) {
 }
 function gateOpen() { GATE.timer = 0; const q = GATE.q; GATE.q = []; for (const w of q) nativeRAF(w); }
 function gateMs() {
-  if (!(fpsCap > 0) || capNext < 0 || GAME || !(GATE.scr > 1 && GATE.scr < 12)) return 0;
+  if (!(fpsCap > 0) || capNext < 0 || GAME || RUN.tripped || !(GATE.scr > 1 && GATE.scr < 12)) return 0; // (labchecks109: RUN.tripped, the plain frames after a runaway)
   try {
     // (round 108, beat108) a song playing no longer keeps it off: its loop points / trimmed end have their own timer
     // (see "the song's edges between drawn frames"); footage (its parts, frame-exact cuts) and EDGE.legacy (checks) do
@@ -606,6 +607,66 @@ function gateMs() {
   const ms = capNext - realNow() - GATE.scr - 4;
   return ms >= GATE.scr ? ms : 0;
 }
+// ======== (round 109, labchecks109) the frame runaway guard ========
+// (another stream may edit the frame gate above; this block is the guard alone, and three marked hooks call it: in
+// realRAF's wrapper (runSeen / runCount), and RUN.tripped in gateMs)
+// Round 107's gate answered 0 for a held frame; with two or more frame loops in a scene the page's layer flush queued
+// itself again and again (20,000 callbacks a second) until the preview lost its graphics context (fixed in round 108,
+// beat108: GATE_ID). Whatever the next such bug is, it looks the same from here: one of the page's frame loops called
+// back far more often than the screen has frames. Each loop's wrapper (made once, in realRAF) counts its calls in a
+// window of about a second; at each window's end (on the first frame after it: nothing runs between frames) the busiest
+// loop's calls a second are set against the screen's rate (the frames seen in that window, the gate's learnt screen
+// frame, at least 60), and whether a loop ran more than once in one frame (a loop runs once a frame; where each call
+// draws, a runaway slows the frames down as it grows: on a software GPU it stayed under 4× the screen's rate a second
+// while running each loop thousands of times a frame, one frame taking minutes). Meanwhile a loop's calls past 4 in one
+// frame are dropped at once, so a runaway can't grow while the guard makes sure. Over either for 2 s in a row: the
+// page says so (a calm line in the Lab's console and a 'frame-runaway' message), drops the frame gate for good (the
+// plain requestAnimationFrame path: every loop asks the browser itself), lets out what the gate held, and from then on
+// runs each loop at most once a frame. Normal use: three
+// counters and two compares per frame callback, a few divisions a second. window.__labRunaway: the checks' view
+// (dev/checks/realscene-lib.js); bug107(true) gives held frames round 107's answer again (checks only).
+const RUN = { k: 4, kf: 4, holdMs: 2000, win: 0, t0: 0, e0: 0, top: 0, topF: 0, calls: 0, hotMs: 0, lim: 0, hz: 0, tripped: false, trips: 0, at: 0, info: null, dropped: 0, bug107: false,
+  peak: 0, peakF: 0, peakCalls: 0, windows: 0 };
+function runSeen(t) {
+  const dt = t - RUN.t0;
+  if (dt < 1000) return;
+  if (RUN.t0 > 0 && dt < 10000) { // (a longer gap: hidden, parked, a frame step; that window says nothing)
+    const s = dt / 1000;
+    const hz = Math.max(60, (FR.E - RUN.e0) / s, GATE.scr > 1 ? 1000 / GATE.scr : 0);
+    const per = RUN.top / s; const calls = RUN.calls / s;
+    RUN.hz = hz; RUN.lim = RUN.k * hz; RUN.windows += 1;
+    if (per > RUN.peak) RUN.peak = per;
+    if (calls > RUN.peakCalls) RUN.peakCalls = calls;
+    if (RUN.topF > RUN.peakF) RUN.peakF = RUN.topF;
+    if (per > RUN.lim || RUN.topF > 1) { RUN.hotMs += dt; if (!RUN.tripped && RUN.hotMs >= RUN.holdMs) runTrip(per, calls, hz); } else RUN.hotMs = 0;
+  } else RUN.hotMs = 0;
+  RUN.t0 = t; RUN.e0 = FR.E; RUN.top = 0; RUN.topF = 0; RUN.calls = 0; RUN.win += 1;
+}
+function runCount(w, t) {
+  RUN.calls += 1;
+  if (w.__rw !== RUN.win) { w.__rw = RUN.win; w.__rn = 0; }
+  if ((w.__rn += 1) > RUN.top) RUN.top = w.__rn;
+  if (w.__rt !== t) { w.__rt = t; w.__rk = 0; }
+  if ((w.__rk += 1) > RUN.topF) RUN.topF = w.__rk;
+  // a loop's calls in one frame past kf (4) are dropped at once (a runaway grows each frame: on a software GPU, where each
+  // call draws, one frame of it would take minutes); after a trip, past the first
+  if (w.__rk > (RUN.tripped ? 1 : RUN.kf)) { RUN.dropped += 1; return true; }
+  return false;
+}
+function runTrip(per, calls, hz) {
+  RUN.tripped = true; RUN.trips += 1; RUN.at = realNow();
+  RUN.info = { loopPerSec: Math.round(per), loopPerFrame: RUN.topF, callsPerSec: Math.round(calls), screenHz: Math.round(hz), limit: Math.round(RUN.k * hz), forMs: Math.round(RUN.hotMs), held: GATE.q.length, gate: Boolean(GATE.timer) };
+  if (GATE.timer) { realClearTimeout(GATE.timer); gateOpen(); }
+  post({ type: 'frame-runaway', ...RUN.info });
+  post({ type: 'console', level: 'warn', text: `The preview asked for its frames far faster than the screen shows them (${RUN.info.loopPerSec} a second against ${RUN.info.screenHz}); it went back to plain frames so it keeps drawing.` });
+}
+window.__labRunaway = {
+  state: () => ({ tripped: RUN.tripped, trips: RUN.trips, info: RUN.info, dropped: RUN.dropped, peakLoopPerSec: Math.round(RUN.peak), peakLoopPerFrame: RUN.peakF, peakCallsPerSec: Math.round(RUN.peakCalls), screenHz: Math.round(RUN.hz), limit: Math.round(RUN.lim), hotMs: Math.round(RUN.hotMs), windows: RUN.windows, bug107: RUN.bug107 }),
+  // a new measure: the peaks from now (all: the trip too, back to the gated frames; checks only)
+  reset: (all = false) => { RUN.peak = 0; RUN.peakF = 0; RUN.peakCalls = 0; RUN.windows = 0; RUN.dropped = 0; RUN.topF = 0; if (all) { RUN.tripped = false; RUN.info = null; RUN.hotMs = 0; } return true; },
+  bug107: (on) => { RUN.bug107 = Boolean(on); return RUN.bug107; },
+};
+// ======== (end of labchecks109's runaway guard) ========
 const realNow = performance.now.bind(performance); // (a sequence gives each scene its own clock: see "the sequence")
 // ---------- ▣ Present, got ready (round 52, presentready) ----------
 // Before a show (tools/three-ready.js) the scene is made ready here: every picture, video and model in, every shader it
