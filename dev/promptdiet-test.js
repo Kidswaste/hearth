@@ -43,7 +43,7 @@ const BUDGET = { claude: 305, astra: 165, director: 2170, directorFull: 9150, di
   const names = three.tools.map((t) => t.name);
   const doT = three.tools.find((t) => t.name === 'three_do');
   check(!names.includes('three_input') && !names.includes('three_contact_sheet') && /contact_sheet/.test(doT.description) && /input \{actions\}/.test(doT.description), 'three_input / three_contact_sheet: three_do commands in the lean list');
-  for (const [topic, re] of [['input', /three_input \(lean: three_do input\).*\nargs: actions, screenshot/s], ['contact_sheet', /three_contact_sheet \(lean: three_do contact_sheet\).*args: times, count/s], ['eval', /args: code, max, samples, every/], ['screenshot', /args: size, region, at, compare, frames, gap, force/], ['media_control', /args: action, time, end, frame, n, see/]]) {
+  for (const [topic, re] of [['input', /three_input \(lean: three_do input\).*\nargs: actions, screenshot/s], ['contact_sheet', /three_contact_sheet \(lean: three_do contact_sheet\).*args: times, count/s], ['eval', /args: code, max, samples, every/], ['screenshot', /args: size, region, at, on, compare, frames, gap, force/], ['media_control', /args: action, time, end, frame, n, see/]]) {
     const r = await three.call('three_do', { cmd: 'help', topic });
     check(re.test(r.content[0].text), `help ${topic}: every arg the lean schema leaves to the words`);
   }
