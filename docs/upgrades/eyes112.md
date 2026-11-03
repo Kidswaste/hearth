@@ -156,14 +156,14 @@ What one look costs the AI (image tokens ≈ w × h / 750, the text in character
   3.4 s for a bar line), `on`; the strip over one bar (`UNTIL_JS`) and its layout; compare per chat and per scene
   (`keepLook`, `lookBefore`); `at` from the analysis's hits; `sceneNow` (errors, models, motion in `three_layers`); the
   tempo in the music line; `ThreeDirector.moments()` for checks.
-- `mcp/three-mcp.js`: `three_screenshot`'s full description and schema name `on`. The lean one is unchanged.
+- `mcp/three-mcp.js`: `three_screenshot`'s full description and schema name `on` (the full list 9,132 tokens, under its 9,150 budget). The lean one is unchanged. `dev/promptdiet-test.js`: `on` in the args its help topic lists.
 - `dev/checks/eyes112.js` (new, group `eyes112` in `dev/run-checks.js`).
 - Not touched: `tools/three-sandbox.html` (no hook needed: the wait runs as an eval in the page), `tools/three.js`,
   collab-eyes.js, three-direction*, credits*, Swarm / manager / missions, every Codex-owned file.
 
 ## Checks
 - `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package flock /tmp/hearth-run.lock node dev/run-checks.js --exact eyes112`
-- Also run: CHECKS_RUN.
+- Also run: labchat92, labchat102, labmodels99, modeltex100 (its one late frame judged "can't tell under load"), labboot, lazy, unit:boot-test: 8/8 passed. `node dev/run-checks.js release`: 306/310, the 3 known failures (KNOWN_FAIL) and unit:promptdiet-test (the full director list 20 tokens over: trimmed, and its help-args line given `on`; it passes now, as do unit:directorlean-test, unit:directorfrugal-test, unit:directorgame-test and unit:director-mcp-test, which hold the lean list at 2,127 tokens).
 
 ## Left / risks
 - On this software-GL box a look is one frame after the kick (≈ 60 ms). On a real graphics card that is ≈ 7–17 ms.
