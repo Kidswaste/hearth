@@ -22,6 +22,9 @@ try {
   const P = Projects; const p = P.get('pjbp0');
   await onDesk(p.id); await wait(2500);
   ClickWatch.clear();
+  // (diagnosis) every prompt asked for, and when its dialog closed: a row that "did nothing" ran its action or not
+  const asked = []; const P0 = Modal.prompt; Modal.prompt = (...a) => { const at = performance.now(); const r = P0(...a); const d = [...document.querySelectorAll('dialog.ui-modal')].at(-1); const rec = { at, title: String(a[0]).slice(0, 20), shown: Boolean(d?.open), closed: null, how: null }; asked.push(rec); d?.addEventListener('close', () => { rec.closed = Math.round(performance.now() - at); rec.how = new Error().stack.split('\n').slice(2, 5).join(' < ').slice(0, 300); }); return r; };
+  const dlgClose = HTMLDialogElement.prototype.close; HTMLDialogElement.prototype.close = function (...a) { if (this.classList.contains('ui-modal')) (window.__po109close ||= []).push({ t: Math.round(performance.now()), by: new Error().stack.split('\n').slice(2, 6).join(' < ').slice(0, 400) }); return dlgClose.apply(this, a); };
   const delays = [0, 20, 40, 60, 80, 100, 120, 140, 160, 200, 240];
   for (const round of [0, 1]) {
     for (const d of delays) {
@@ -49,16 +52,19 @@ try {
       if (!await openDots()) { res.row.push({ d, round, ok: false, why: 'menu not open' }); continue; }
       const row = menuItem(/^Notes…/); if (!row) { res.row.push({ d, round, ok: false, why: 'no row' }); continue; }
       row.scrollIntoView({ block: 'center' }); await frame();
-      const spot = at(row);
+      const spot = at(row); const m = document.getElementById('menu'); const before = { rowY: Math.round(row.getBoundingClientRect().top), menuTop: Math.round(m.getBoundingClientRect().top), menuScroll: Math.round(m.scrollTop), menuH: m.offsetHeight };
+      const hit0 = document.elementFromPoint(spot.x, spot.y);
       P.setWorkspace(P.get(p.id), {});
-      await wait(d);
+      await wait(d); const tRow = performance.now();
       await pressAt(spot); await wait(HOLD_MS); await releaseAt(spot);
       const ok = Boolean(await until(promptOpen, 2000, 20));
-      res.row.push({ d, round, ok, sameNode: row.isConnected });
+      const mine = asked.filter((x) => x.at >= tRow);
+      const after = { rowY: Math.round(row.getBoundingClientRect().top), menuTop: Math.round(m.getBoundingClientRect().top), menuScroll: Math.round(m.scrollTop), menuH: m.offsetHeight, hit: (document.elementFromPoint(spot.x, spot.y)?.textContent || '').trim().slice(0, 20), hit0: (hit0?.textContent || '').trim().slice(0, 20) };
+      res.row.push({ d, round, ok, sameNode: row.isConnected, ...(ok ? {} : { before, after, asked: mine, closes: (window.__po109close || []).filter((x) => x.t >= tRow), dialogs: [...document.querySelectorAll('dialog')].map((x) => `${x.className}${x.open ? ' open' : ''}`).slice(0, 4), menu: menuOpen() }) });
     }
   }
   await closeAll();
-  const sum = (xs) => ({ tries: xs.length, missed: xs.filter((x) => !x.ok).length, at: xs.filter((x) => !x.ok).map((x) => `${x.d}${x.why ? ` ${x.why}` : ''}`) });
+  const sum = (xs) => ({ tries: xs.length, missed: xs.filter((x) => !x.ok).length, at: xs.filter((x) => !x.ok).map((x) => `${x.d}${x.why ? ` ${x.why}` : ''}${x.asked ? ` ${JSON.stringify({ before: x.before, after: x.after, asked: x.asked.length, menu: x.menu }).slice(0, 900)}` : ''}`) });
   const misses = ClickWatch.misses();
   const missed = res.redraw.concat(res.switch, res.row).filter((x) => !x.ok).length;
   step('slow steps (ms)', true, { hold: !window.PO109_NOHOLD, redraw: sum(res.redraw), switch: sum(res.switch), row: sum(res.row), clickWatch: misses.slice(-12), deskPaint: window.DeskPaint?.pressStats?.() || null, burn: window.SMOKE_BURN });

@@ -615,6 +615,11 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 @keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
 @keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top left; }
+/* (round 109, projopen109) the app's menu (#menu) fades in without moving: its pop (scale .965, 5 px up) moved every row
+   while it played, and a click aimed at a row drawn mid-pop landed on the row above once the pop ended: a busy window
+   (the Desk drawn again) shows a frame of the pop for hundreds of ms. The Desk's ⋯ › ⇪ Export project… opened Notes…
+   that way (projaudit108's "a ⋯ row that did nothing"). Rows still slide in sideways, a few px, which aims the same */
+:root:not([data-motion=off]) #menu { animation-name: hx-fade; }
 :root:not([data-motion=off]) .slash-menu { animation: hx-rise var(--dur-med) var(--ease-pop) both; transform-origin: bottom left; }
 /* (round 17) only the first rows slide in: a long menu animated every row, one compositor layer each */
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) both; }

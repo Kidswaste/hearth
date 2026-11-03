@@ -487,13 +487,16 @@ const ClickWatch = (() => {
     return null;
   };
   const say = (node) => (node?.nodeType === 1 ? `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ''}${typeof node.className === 'string' && node.className ? `.${node.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}${node.textContent ? ` "${node.textContent.trim().slice(0, 28)}"` : ''}` : String(node?.nodeName || node));
-  const scene = () => ({ dialogs: [...document.getElementsByTagName('dialog')].filter((d) => d.open).map((d) => `${d.className || d.id || 'dialog'}${d.matches(':modal') ? ' (modal)' : ''}${d.checkVisibility?.() === false ? ' (not drawn)' : ''}`).slice(0, 4), menu: menuState ? $('menu')?.hidden === false : false, at: typeof H !== 'undefined' ? H.activeId : null });
-  const keep = (why, p, extra = {}) => { misses.push({ why, row: say(p.b), ms: Math.round(performance.now() - p.t), ...extra, ...scene(), when: Math.round(p.t) }); if (misses.length > 20) misses.shift(); };
+  const scene = () => ({ dialogs: [...document.getElementsByTagName('dialog')].filter((d) => d.open).map((d) => `${d.className || d.id || 'dialog'}${d.matches(':modal') ? ' (modal)' : ''}${d.checkVisibility?.() === false ? ' (not drawn)' : ''} "${(d.querySelector('h2, h3')?.textContent || d.getAttribute('aria-label') || '').trim().slice(0, 40)}"`).slice(0, 4), menu: menuState ? $('menu')?.hidden === false : false, at: typeof H !== 'undefined' ? H.activeId : null });
+  // where the pressed node and its menu were at the press, and how far they moved by the miss
+  const spot = (b) => { const m = b?.closest?.('#menu, #menu-fly, #menu-fly2'); return { y: Math.round(b?.getBoundingClientRect?.().top ?? 0), mt: m ? Math.round(m.getBoundingClientRect().top) : null, ms: m ? Math.round(m.scrollTop) : null }; };
+  const moved = (p) => { if (!p.at || !p.b.isConnected) return {}; const n = spot(p.b); return { moved: { y: n.y - p.at.y, menuTop: n.mt != null && p.at.mt != null ? n.mt - p.at.mt : null, menuScroll: n.ms != null && p.at.ms != null ? n.ms - p.at.ms : null } }; };
+  const keep = (why, p, extra = {}) => { misses.push({ why, row: say(p.b), ms: Math.round(performance.now() - p.t), ...moved(p), ...extra, ...scene(), when: Math.round(p.t) }); if (misses.length > 20) misses.shift(); };
   addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !e.isPrimary) { press = null; return; }
     const t = e.target?.closest?.('button, [role=menuitem]');
     const hit = rowAt(e.clientX, e.clientY);
-    if (t && t.closest(WHERE)) { press = { b: t, t: performance.now(), id: ++n }; return; }
+    if (t && t.closest(WHERE)) { press = { b: t, t: performance.now(), id: ++n, at: spot(t) }; return; }
     press = null;
     if (hit && !(e.target instanceof Node && hit.contains(e.target))) keep('blocked', { b: hit, t: performance.now() }, { got: say(e.target) });
   }, { capture: true, passive: true });
