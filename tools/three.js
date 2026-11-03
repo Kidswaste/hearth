@@ -332,6 +332,7 @@ const ThreeLab = (() => {
       get onStage() { return target === 'stage'; },
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
       get query() { return loadedWith; }, // (round 37, labboot)
+      get warm() { return Boolean(warmed); }, // (round 112, labopen112) a page from tools/three-boot.js waits to be taken at the first load
       // a load is on its way (its runs wait in the queue): no need to load again
       get loading() { return Boolean(nonce) && !ready; },
       // the page was loaded for another three.js version or pixel ratio than the one wanted now
@@ -4447,6 +4448,14 @@ ${code}
       const SSafe = window.LabSceneSafe;
       const kv = (k, d) => (SSafe ? SSafe.read(k, d) : window.hub.kvGet(k, d).then((value) => ({ ok: true, state: 'ok', value })));
       const early = sketches;
+      // (round 112, labopen112) the preview page starts loading now, beside these reads, instead of after them: it was
+      // ≈ 0.1 s of a first open spent waiting (the reads, the toolbar, a painted frame, the sliders read) before the page
+      // (≈ 0.4 s of its own start: a new process, 1.1 MB of page, three.js) even began. Its 'ready' is held until the
+      // first run (as a project's preload, round 74). Not when a warm page is waiting to be taken (tools/three-boot.js):
+      // that one shows its picture at once. A page loaded for another frame size than the scene wants is loaded again
+      // by the run, as before. localStorage 'labopen.early' = '0': the old order (A/B)
+      { let off = false; try { off = localStorage.getItem('labopen.early') === '0'; } catch { /* no storage */ }
+        if (!off && !box.warm && !box.loading && !box.ready && !box.onStage && !current) { box.reload(); box.hold(true); } }
       // (round 48, labstartfast) the scene's own four first; the versions and the pictures (the two biggest: 40 versions
       // of every layer, a picture per scene, megabytes to copy into the window) after the first frame is on its way:
       // nothing on screen needs them (see laterReads)
