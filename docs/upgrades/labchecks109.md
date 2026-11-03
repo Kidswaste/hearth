@@ -94,21 +94,30 @@ plus **a song** (124 BPM, generated: a kick on each beat, a snare on 2 and 4, ha
 labmodels99, add models to a single still layer with no song: the frame gate is never on there.)
 
 ## 4. The guard in the Lab page (`tools/three-sandbox.html`, "the frame runaway guard")
-Its own marked block after the frame gate, called from three marked hooks (the wrapper in `realRAF`, and
-`RUN.tripped` in `gateMs`): each of the page's frame loops (its wrapper, made once) counts its calls in a window of
-about a second, and its calls within one frame. At each window's end (on the next frame):
-- the busiest loop's calls a second against **4 × the screen's rate** (the frames seen in the window, the gate's learnt
-  screen frame, at least 60), and
-- its most calls in **one** frame against 4 (a loop runs once a frame). This second test was needed: on a software GPU
-  each runaway call draws, the frames slow down as it grows, and round 107's runaway stayed under 4× the screen's rate
-  a second while running the layer flush ~285 times a frame.
+Its own marked block after the frame gate, called from three marked hooks (the wrapper in `realRAF`: `runSeen` /
+`runCount`; `RUN.tripped` in `gateMs`; and `RUN.bug107`, a checks-only switch, in the gate's two "held" answers). Each
+of the page's frame loops (its wrapper, made once) counts its calls in a window of about a second and its calls in the
+current frame. At each window's end (on the next frame) it is **hot** when:
+- the busiest loop's calls a second are over **4 × the screen's rate** (the frames seen in the window, the gate's learnt
+  screen frame, at least 60): the owner's case, 20,000 a second on a fast GPU; or
+- any loop ran **more than once in one frame** (a loop runs once a frame). This second test was needed: on a software
+  GPU each runaway call draws, so frames slow down as it grows; round 107's runaway stayed under 4× the screen's rate a
+  second here while running the layer flush ~285, then thousands of, times a frame.
 
-Over either for **2 s** in a row: the page posts a calm line to the Lab's console and a `frame-runaway` message (the
-Lab keeps the last ten in `ThreeLab.gl.state().runaway` and logs it), **drops the frame gate for good** (the plain
-`requestAnimationFrame` path), lets out what the gate held, and from then on runs each loop at most once a frame (a
-repeat in the same frame is dropped). Normal use: three counters and two compares per frame callback, a few divisions
-a second. `window.__labRunaway` is the checks' view (`state`, `reset`, `bug107(true)`: held frames answer round
-107's `0` again, for the checks only).
+Meanwhile a loop's calls **past 4 in one frame are dropped at once**: without that, a runaway on this machine grew to
+a single frame of minutes before any window could end, and the page stopped answering (the first try of the guard
+tripped too late: 10,000 calls in one frame, and the page never drew again). Hot for **2 s** in a row: the page posts a
+calm line to the Lab's console and a `frame-runaway` message (the Lab keeps the last ten in
+`ThreeLab.gl.state().runaway` and logs it), **drops the frame gate for good** (the plain `requestAnimationFrame` path),
+lets out what the gate held, and from then on runs each loop at most once a frame. Normal use: three counters and two
+compares per frame callback, a few divisions a second; a normal scene never trips it (peak 1 call per loop per frame
+in every run here). `window.__labRunaway` is the checks' view (`state`, `reset`, `bug107(true)`: held frames answer
+round 107's `0` again).
+
+With round 107's answer switched on in the real scene (a diagnostic run, 240 Hz): the busiest loop reached 40 calls a
+frame (capped at 4 run), the guard tripped after **2.2 s**, and the page went straight back to ~160 frames a second with
+4 callbacks a frame, its raw loop and beat helpers running, no graphics context lost. beat108 now checks exactly that
+on every run.
 
 ## 5. The proof: it would have caught round 107's bug
 RESULTS_PROOF
