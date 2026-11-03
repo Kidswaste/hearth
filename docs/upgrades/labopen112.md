@@ -133,7 +133,34 @@ beside the rest), each layer's JS (tens of ms) and the first compiles. So on the
 (≈ 0.1–0.4 s) that ran after the reads.
 
 ## perfguard A/B against HEAD
-PERFGUARD
+`node dev/perfguard.js --ab fdd0147 --lock --only app,labcold --labcold 5` (65 min, load ≤ 3.4), then, after the fix
+below, `--only labcold --labcold 7` again. The heavy profile (40 projects, 1,500 chats, 50 scenes, the Lab not used in
+it); `labcold` presses the Lab 3 s after the first screen, the start still busy.
+
+| metric | base | new | | verdict |
+|---|---:|---:|---|---|
+| **Lab cold start: press → first frame** (run 2, 7 + 7) | 4009 ms | 4164 ms | +155 ms, p 0.55, interval −812 … +1279 | ok |
+| Lab cold start: press → preview on screen (run 2) | 149 ms | 178 ms | +29 ms, p 0.13 | ok |
+| Lab cold start: window CPU (run 2) | 432 ms | 476 ms | +44 ms, p 0.24 | ok |
+| Lab cold start: press → first frame (run 1, 5 + 5, before the fix) | 3286 ms | 4375 ms | +1089 ms, p 0.27 | ok (wrong way: found the bug below) |
+| Project cold open (Hearth's part) | 457 ms | 328 ms | −129 ms, p 0.8 | ok |
+| Project warm open (Hearth's part) | 1304 ms | 1782 ms | +478 ms, p 0.06, interval −711 … +1055 | unsure |
+| Project warm open: window CPU | 1129 ms | 1257 ms | +128 ms, p 0.3 | ok |
+| Project switch | 1033 ms | 888 ms | −144 ms | ok |
+| Lab tool call, end to end / CPU | 25 / 302 ms | 26 / 260 ms | | ok |
+| chats, typing, send, idle, heap (13 rows) | | | | ok (chat list click handlers: better) |
+
+- **labcold, run 1 found a real bug**: the heavy profile's start was already loading the Lab's code when the press came,
+  so tools/three-boot.js had run before lab-intent.js started the page; nobody took it and the Lab loaded a second page
+  beside it. Fixed (three-boot.js also looks for the head page when the Lab takes its page) and checked with the press
+  landing mid-load: the page taken, one preview frame. Run 2 is the fixed code.
+- labcold after the fix: no regression and no gain it can see. Its press → first frame swings 2.5–4.9 s within each
+  side here (software GL, a busy start). In both launches looked into by hand, the start was already loading the Lab's
+  code at the press (once in, once 0.2 s from in): there the head start has little or nothing left to win, and the
+  early load at the mount is what applies.
+- The project warm open's "unsure" doesn't come from this round: a warm open finds the Lab mounted and its page up,
+  and neither change runs then (the early load only at the Lab's mount, the head start only before its code is in).
+  The new side's box was busier in that block (load ≤ 3.04 vs 1.96). Its window CPU is within its allowance.
 
 ## Lab guarantees kept (rounds 89–111)
 The preview page itself (`tools/three-sandbox.html`) is not changed: precompile, round 101's warm gaps, round 107's
@@ -142,12 +169,24 @@ The warm page's adoption is round 37's (`LabBoot.take` / `adopt`); a project's p
 early load is skipped when a page is already loading or ready); round 109's off-screen let-go is unchanged.
 
 ## Checks
-CHECKS
+- `flock /tmp/hearth-run.lock node dev/run-checks.js --exact labboot labstartfast labload94 projopen109 labcompile90
+  modeltex100 labfps89 fps107 lazy unit:boot-test unit:lazymanifest-test` (modelcompile101's own checks are labcompile90
+  and modeltex100; `modelcompile101` is a group): **11/11 passed** (28 min). "Can't tell under load" notes, judged by
+  the checks themselves: labstartfast's cold open, the window's CPU until the scenes were read 162.9 ms (budget 150)
+  with the box 1.66× slower right then; labcompile90 / modeltex100 / labfps89 one long frame each, its time off the
+  preview's CPU (waiting for a CPU or the GPU process).
+- First screen unchanged: 64 scripts, 1696 KB (the same on the base; lab-intent.js is in the `labintent` group, after
+  the first frame). No lazy file moved; `unit:lazymanifest-test` passes.
+- The race (the Lab shown while its code is loading) by hand: the head page taken (`LabBoot.state().taken` 1, `head`
+  true), one preview frame, the scene drawn. A fresh profile (no scene run yet): the head page's fallback query
+  matched the Lab's.
+- RELEASE
 
 ## Files
 - `tools/three.js`: the page's early load at the mount (`labopen.early`), `box.warm`.
 - `lab-intent.js`: the head start on a cold open (`headStart`, `takeHead`, `state().head`, `labopen.head`).
-- `tools/three-boot.js`: takes the head page as its warm page; `skipped = 'other query'` names both queries.
+- `tools/three-boot.js`: takes the head page as its warm page (when it runs, and again when the Lab takes its page);
+  `skipped = 'other query'` names both queries (`state().queries`).
 - `dev/checks/labopen112.js`, `dev/labopen112.js`: the measurement (not a pass / fail check).
 - `docs/windows-test-plan.md` §18: time the first open on the RTX 4080.
 
@@ -157,5 +196,6 @@ No Codex-owned file touched.
 ## For the patch notes
 - **The Lab opens faster.** Its preview starts loading the moment you open the Lab, instead of waiting for the Lab's
   buttons and your scenes to be read first. Your scene starts drawing about 0.15–0.25 s sooner on every open that isn't
-  already warmed up, and up to half a second sooner on the first open of a session after a while without the Lab.
+  already warmed up. On the first open after a while without the Lab, the preview now loads while the Lab itself is
+  still loading, instead of after it.
 - The everyday open, with the Lab used recently, is unchanged: its picture is still there at once.
