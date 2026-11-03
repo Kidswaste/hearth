@@ -220,8 +220,14 @@ const SyncConflicts = (() => {
     };
     q.addEventListener('input', draw);
     draw();
+    // (round 110, syncaudit110) a deleted CHAT isn't in this list: Hearth's Delete moves it to Recently deleted, and sync
+    // moves it there on the other computer too. Said here, with the way there (he looked here and found only an older
+    // version of it, "the version before the last change")
+    const chatsGone = gone.size ? el('div', { class: 'sync-row sync-chats-gone' }, el('div', { class: 'sync-row-main' }, el('b', { text: `Deleted chats (${gone.size})` }),
+      el('span', { class: 'hint', text: 'Chats you delete, on either computer, are in Recently deleted on both. Restore there brings one back on both.' })),
+      el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Recently deleted…', on: { click: () => { dialog.close(); AppUI.trashDialog(); } } }))) : null;
     dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files & previous versions' }),
-      el('p', { class: 'hint', text: 'Kept for 30 days. Restore brings one back here, and sync takes it to your other computer.' }), list.length > 10 ? q : null, rows, // (round 92)
+      el('p', { class: 'hint', text: 'Kept for 30 days. Restore brings one back here, and sync takes it to your other computer.' }), list.length > 10 ? q : null, chatsGone, rows, // (round 92)
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dialog.close() } }))));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);

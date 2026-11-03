@@ -178,6 +178,7 @@ await until(() => document.querySelector('dialog.sync-list[open]'), 4000);
 const hd = document.querySelector('dialog.sync-list[open]');
 audit['many deletions: the list'] = { text: text(hd).slice(0, 300) };
 step('"Review them by name…" lists them, with Keep them / Delete those 42', /Keep them/.test(text(hd)) && /Delete those 42/.test(text(hd)), text(hd).slice(0, 200));
+step('…by name, no paths (a chat not here any more is "A chat", not "The chat “A chat”")', !/chats\/|\.json|“A chat”/.test(text(hd)), text(hd).slice(0, 300));
 const keepB = [...(hd?.querySelectorAll('button') || [])].find((b) => /^Keep them/.test(b.textContent.trim()));
 if (keepB) { await click(keepB); await until(() => called('now', (x) => x[0]?.mass === 'keep'), 3000); }
 step('…"Keep them (bring them back)" asks the engine to keep them', Boolean(called('now', (x) => x[0]?.mass === 'keep')), calls.slice(-1));
@@ -191,6 +192,7 @@ a = await show('this computer\'s own records unreadable', { state: 'offline', er
 step('own records unreadable: "‖ Waiting", nothing changed, tries again by itself (never "offline" or "empty")', a.chip === '‖ Waiting' && /Nothing was changed/.test(a.text) && !/isn't reachable|empty/.test(a.text), a);
 a = await show('a sync error', { state: 'error', error: 'EACCES: permission denied, open \'C:\\Users\\q\\OneDrive\\Hearth\\files\\kv\\boards.json\'' });
 step('error: "⚠ Problem", the reason in plain words, the raw one only under Details', a.chip === '⚠ Problem' && /Last problem/.test(a.text) && !/EACCES/.test(a.text), a);
+step('error: Sync now\'s note reads as one sentence ("…allowed to open the sync folder", not "open The sync folder")', /couldn't finish/.test(a.note) && !/[a-z,] The sync folder/.test(a.note), a.note);
 
 // every alarm state had a way forward on the panel: its own button, or words saying the fix is elsewhere
 const stuck = Object.entries(audit).filter(([, x]) => x.chip && /^⚠/.test(x.chip) && !fixBtns(x).length && !/on (the|your) (Mac|PC|other computer)|tries again by itself/.test(x.text)).map(([k]) => k);

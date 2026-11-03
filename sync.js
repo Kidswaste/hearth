@@ -176,7 +176,7 @@ const Sync = (() => {
     st = { ...st, state: 'syncing' }; paintDot();
     st = await api().now({ mass: o.mass, fresh: o.fresh });
     mountDot();
-    if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'The sync folder' }, retry: () => now() }); // (round 45, errorcalm)
+    if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'the sync folder' }, retry: () => now() }); // (round 45, errorcalm)
     // (round 45, errorcalm) the folder gone: the line says it plainly, the one fix is a click away
     else if (st.state === 'offline' && st.error === 'old-version') toast(line(), { timeout: 9000, action: { label: 'Check for updates…', fn: () => Lazy.load('updater').then(() => Updater.check({ loud: true })) } }); // (round 74, synchard74) · (round 92) + its button
     else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' || st.error === 'emptied' ? `Hearth/files ${st.error} in` : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' || st.error === 'emptied' ? { label: 'Start the cloud copy again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
@@ -254,7 +254,7 @@ const Sync = (() => {
     const kv = /^kv\/(.+)\.json$/.exec(c.rel)?.[1];
     const names = itemNames(c.ours, c.fields);
     const q = (list) => list.map((n) => `“${n}”`).join(', ');
-    if (/^chats\//.test(c.rel)) return `The chat “${c.ours?.title || c.theirs?.title || nameOf(c.rel).replace(/^Chat “|”$/g, '')}”`;
+    if (/^chats\//.test(c.rel)) { const t = c.ours?.title || c.theirs?.title || nameOf(c.rel).replace(/^Chat “|”$/g, ''); return t === 'A chat' ? t : `The chat “${t}”`; } // (round 110) not "The chat “A chat”"
     if (kv === 'three-sketches') return names.length ? `The Lab scene${names.length > 1 ? 's' : ''} ${q(names)}` : 'Lab scenes';
     if (kv === 'boards') return names.length ? `The board ${q(names)}` : 'Mood boards';
     if (c.rel === 'app/config.json') return 'Settings (agents, look)';
@@ -279,7 +279,7 @@ const Sync = (() => {
       const l = list.filter((x) => x.where === where);
       if (!l.length) return null;
       return el('div', { class: 'sync-held-group' }, el('b', { text: `${title} (${l.length})` }),
-        el('div', { class: 'sync-rows' }, l.slice(0, 120).map((x) => el('div', { class: 'sync-row' }, el('div', { class: 'sync-row-main' }, el('span', { text: whatIs({ rel: x.rel }) }), el('span', { class: 'hint', text: `${x.rel}${x.size != null ? ` · ${fmtBytes(x.size)}` : ''}` }))))),
+        el('div', { class: 'sync-rows' }, l.slice(0, 120).map((x) => el('div', { class: 'sync-row' }, el('div', { class: 'sync-row-main', title: x.rel }, el('span', { text: whatIs({ rel: x.rel }) }), x.size != null ? el('span', { class: 'hint', text: fmtBytes(x.size) }) : null)))),
         l.length > 120 ? el('p', { class: 'hint', text: `…and ${l.length - 120} more` }) : null);
     };
     const go = (mass) => { dialog.close(); now({ mass }); };

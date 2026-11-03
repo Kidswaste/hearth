@@ -338,7 +338,7 @@ const AppUIDialogs = (() => {
     };
     q.addEventListener('input', paint);
     dlg.append(el('form', { method: 'dialog', on: { keydown: (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); } } }, el('h2', { text: 'Recently deleted chats' }),
-      el('p', { class: 'hint', text: 'Deleted chats are kept here for 30 days. Deleting them for good moves the files to your Recycle Bin / Trash.' }), q, list,
+      el('p', { class: 'hint', text: `Deleted chats are kept here for 30 days. Deleting them for good moves the files to your Recycle Bin / Trash.${typeof Sync !== 'undefined' && Sync.status().on ? ' With sync on, a chat deleted on either computer is here on both, and Restore brings it back on both.' : ''}` }), q, list, // (round 110, syncaudit110) + with sync on
       el('div', { class: 'dialog-actions' },
         el('button', { type: 'button', class: 'ghost small', text: 'Restore all', on: { click: async () => { for (const c of [...items]) await restore(c); await refreshChats(); paint(); } } }),
         el('button', { type: 'button', class: 'ghost small danger', text: 'Empty…', on: { click: async () => { if (!items.length || !(await Modal.confirm('Empty recently deleted?', `${items.length} chat(s) go to your Recycle Bin / Trash.`, { ok: 'Empty', danger: true }))) return; await forever([...items]); items = await window.hub.listChatTrash(); paint(); } } }),

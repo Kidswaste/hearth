@@ -75,7 +75,9 @@ const ErrorCalmCore = (() => {
     return m ? m[1].trim() : '';
   }
   const ENGINE_NAME = { claude: 'Claude', codex: 'Astra' };
-  const sentence = (s) => { const t = String(s || '').trim().replace(/\s+/g, ' '); return !t ? t : /[.!?…]$/.test(t) ? t : `${t}.`; };
+  // (round 110, syncaudit110) "the …" at a sentence start gets its capital ("the sync folder isn't there…" when ctx.what leads); so
+  // callers give ctx.what as it reads mid-sentence (sync's note said "…allowed to open The sync folder")
+  const sentence = (s) => { let t = String(s || '').trim().replace(/\s+/g, ' '); if (/^the /.test(t)) t = `T${t.slice(1)}`; return !t ? t : /[.!?…]$/.test(t) ? t : `${t}.`; };
   const A = {
     retry: { id: 'retry', label: 'Retry' },
     show: { id: 'show', label: 'Show file' },

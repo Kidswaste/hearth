@@ -6,8 +6,8 @@
 //   2. day to day: a change on the PC reaches the cloud copy; the Mac's change and new title reach this PC (no reload)
 //   3. both at once: a chat (the note's Choose → the panel → Compare… → Keep the Mac's → Undo) and a note (Compare… →
 //      Keep this one → "Use the Mac's instead"); the chip / tooltip agree at each step
-//   4. deleted on one computer: the Mac deletes a chat → it leaves here, Deleted files says so → Restore; this PC deletes
-//      one → it leaves the cloud copy → Deleted files (the synced list both computers read) → Restore
+//   4. deleted on one computer: a chat (Hearth's Delete: Recently deleted on both; Deleted files points there) and a
+//      picture (Deleted files), deleted on the Mac, then on this PC, each put back by Restore and synced back
 //   5. trouble: the cloud folder emptied (Start the cloud copy again from here); the drive unplugged (Offline, the note,
 //      Pick the folder again…) and plugged back; an old laptop not seen for 20 days (Your computers… → Forget it) that
 //      comes back; "Send very long chats in pieces" turned on by click with the Mac reading pieces, then without
@@ -50,7 +50,7 @@ const section = async (name, fn) => {
   const t = Date.now();
   try { await fn(); } catch (err) { step(`${name}: ran to the end`, false, String(err?.stack || err).slice(0, 400)); } finally {
     times[name] = Date.now() - t;
-    document.querySelectorAll('dialog.ka-view, dialog.sync-list, dialog.sync-setup').forEach((d) => d.close());
+    document.querySelectorAll('dialog.ka-view, dialog.sync-list, dialog.sync-setup, dialog.trash-dialog').forEach((d) => d.close());
     document.querySelector('dialog.settings-dialog')?.close();
     SyncPanel?.close?.(); clearToasts(); await wait(200);
   }
@@ -262,69 +262,120 @@ await section('both at once: note', async () => {
 });
 
 // ---------- 4. deleted on one computer ----------
+// a chat: Hearth's Delete moves it to Recently deleted (trash/), and sync moves it there on the other computer too
+const rdDlg = () => document.querySelector('dialog.trash-dialog[open]');
+async function restoreFromRecentlyDeleted(title) {
+  await until(rdDlg, 8000);
+  const row = () => [...(rdDlg()?.querySelectorAll('.download-row') || [])].find((r) => text(r.querySelector('.dl-name')) === title);
+  await until(row, 5000);
+  const hint = text(rdDlg()?.querySelector('form > .hint'));
+  const b = row() && [...row().querySelectorAll('button')].find((x) => x.textContent.trim() === 'Restore');
+  if (b) await click(b);
+  return { found: Boolean(row()) || Boolean(b), hint };
+}
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGO4o6FBEmIY1TCqYfhqAAAyBCwQhvh37QAAAABJRU5ErkJggg==';
+let dataDir = '';
 await section('deleted on the Mac', async () => {
+  await ensure(MACCHAT);
   const rel = `chats/${MACCHAT.id}.json`;
+  await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)); }, 10000);
+  const title = (await chatHere(MACCHAT.id))?.title || MACCHAT.title;
   const body = await window.hub.fs.read(cloudOf(rel));
-  // the Mac's Delete: the chat moves to Hearth's trash/ (Recently deleted), in the cloud copy
+  // the Mac's Delete: the chat moves to Hearth's trash/ (its Recently deleted), in the cloud copy
   await window.hub.fs.write(cloudOf(`trash/${MACCHAT.id}.json`), body);
   await window.hub.fs.trash([cloudOf(rel)]);
   const t0 = Date.now();
   await until(async () => { await syncNow(); H.chats = await window.hub.listChats(); return !H.chats.some((c) => c.id === MACCHAT.id); }, 30000);
-  times['deleted on the Mac → gone here'] = Date.now() - t0;
-  step('deleted on the Mac: the chat leaves this PC\'s chat list', !(H.chats || []).some((c) => c.id === MACCHAT.id), times['deleted on the Mac → gone here']);
+  times['chat deleted on the Mac → gone here'] = Date.now() - t0;
+  step('a chat deleted on the Mac: it leaves this PC\'s chat list', !(H.chats || []).some((c) => c.id === MACCHAT.id), times['chat deleted on the Mac → gone here']);
+  const rd = (await window.hub.listChatTrash()) || [];
+  step('…and is in Recently deleted here, by its title', rd.some((c) => c.id === MACCHAT.id && c.title === title), rd.map((c) => c.title));
   await until(() => chip() === '✓ Synced', 8000);
   step('…the rail stays calm ("✓ Synced")', chip() === '✓ Synced', chip());
+  // where he looks first: the sync panel's Deleted files
   await openPanel();
   await tap(/^Deleted files…$/, 'Deleted files…');
   const dlg = () => [...document.querySelectorAll('dialog.sync-list[open]')].pop();
   await until(dlg, 8000);
-  const row = () => deletedRow(dlg(), /Mac sketchbook/);
+  audit['Deleted files (a chat deleted on the Mac)'] = { rows: [...(dlg()?.querySelectorAll('.sync-row') || [])].map((r) => `${text(r.querySelector('b'))} · ${text(r.querySelector('.hint'))}`) };
+  const go = btn(/^Recently deleted…$/, dlg());
+  step('Deleted files: says deleted chats are in Recently deleted (on both computers), with "Recently deleted…"', Boolean(go) && /Recently deleted on both/.test(text(dlg())), audit['Deleted files (a chat deleted on the Mac)']);
+  step('Deleted files: no paths, every row named', !/chats\/|\.json/.test(text(dlg())) && !audit['Deleted files (a chat deleted on the Mac)'].rows.some((r) => /^ ·/.test(r)), audit['Deleted files (a chat deleted on the Mac)']);
+  if (go) await click(go); else { dlg()?.close(); await AppUI.trashDialog(); }
+  const r = await restoreFromRecentlyDeleted(title);
+  audit['Recently deleted (with sync on)'] = { hint: r.hint };
+  step('Recently deleted: the chat by its title, and says a delete on either computer lands there on both', r.found && /either computer/.test(r.hint), r);
+  await until(async () => { H.chats = await window.hub.listChats(); return H.chats.some((c) => c.id === MACCHAT.id); }, 10000);
+  step('Restore: the chat is back here', (H.chats || []).some((c) => c.id === MACCHAT.id));
+  await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)) && !(await cloudJson(`trash/${MACCHAT.id}.json`)); }, 20000);
+  step('…and on the Mac: back in the cloud copy\'s chats, gone from its Recently deleted', Boolean(await cloudJson(rel)) && !(await cloudJson(`trash/${MACCHAT.id}.json`)));
+  rdDlg()?.close();
+});
+
+await section('a picture deleted on the Mac', async () => {
+  dataDir = (await real.detect()).dataDir;
+  const rel = 'captures/sa110-shot.png';
+  await window.hub.fs.write(`${dataDir}/${rel}`, PNG, { base64: true });
+  await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat(cloudOf(rel))); }, 15000);
+  await window.hub.fs.trash([cloudOf(rel)]);
+  const t0 = Date.now();
+  await until(async () => { await syncNow(); return !(await window.hub.fs.stat(`${dataDir}/${rel}`)); }, 30000);
+  times['picture deleted on the Mac → gone here'] = Date.now() - t0;
+  step('a picture deleted on the Mac: it leaves this PC too', !(await window.hub.fs.stat(`${dataDir}/${rel}`)), times['picture deleted on the Mac → gone here']);
+  await openPanel();
+  await tap(/^Deleted files…$/, 'Deleted files…');
+  const dlg = () => [...document.querySelectorAll('dialog.sync-list[open]')].pop();
+  await until(dlg, 8000);
+  const row = () => deletedRow(dlg(), /sa110-shot\.png/);
   await until(row, 5000);
-  const dText = text(dlg());
-  audit['Deleted files (deleted on the Mac)'] = { rows: dRows(dlg()).map((x) => `${x.name} · ${x.hint}`) };
-  step('Deleted files: the chat by name, "deleted today", kept 30 days; no paths', Boolean(row()) && /30 days/.test(dText) && !/chats\/|\.json/.test(dText), dText.slice(0, 300));
-  if (await restoreRow(dlg(), /Mac sketchbook|^A chat$/)) {
-    await until(async () => { H.chats = await window.hub.listChats(); return H.chats.some((c) => c.id === MACCHAT.id); }, 10000);
-    step('Restore: the chat is back here', (H.chats || []).some((c) => c.id === MACCHAT.id), said(t0).slice(-2));
-    await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)); }, 20000);
-    step('…and sync takes it back to the cloud copy (the Mac gets it again)', Boolean(await cloudJson(rel)));
-    const rd = (await window.hub.listChatTrash().catch(() => null)) || [];
-    audit['Recently deleted after Restore'] = { stillThere: rd.some((c) => c.id === MACCHAT.id) };
-    step('…and it isn\'t also left in Recently deleted', !rd.some((c) => c.id === MACCHAT.id), rd.map((c) => c.title));
+  audit['Deleted files (a picture deleted on the Mac)'] = { row: row() ? `${row().name} · ${row().hint}` : null };
+  step('Deleted files: the picture by name, "deleted or replaced today", kept 30 days', Boolean(row()) && /today/.test(row()?.hint || '') && /30 days/.test(text(dlg())), audit['Deleted files (a picture deleted on the Mac)']);
+  if (await restoreRow(dlg(), /sa110-shot\.png/)) {
+    await until(async () => Boolean(await window.hub.fs.stat(`${dataDir}/${rel}`)), 8000);
+    step('Restore: the picture is back here', Boolean(await window.hub.fs.stat(`${dataDir}/${rel}`)), said(t0).slice(-1));
+    await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat(cloudOf(rel))); }, 20000);
+    step('…and sync takes it back to the Mac (the cloud copy)', Boolean(await window.hub.fs.stat(cloudOf(rel))));
   }
   dlg()?.close();
-  await ensure(MACCHAT);
 });
 
 await section('deleted on this PC', async () => {
+  await ensure(PCCHAT);
   const rel = `chats/${PCCHAT.id}.json`;
   await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)); }, 10000);
-  await ensure(PCCHAT); await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)); }, 10000);
-  const r0 = await window.hub.deleteChat(PCCHAT.id);
+  const title = (await chatHere(PCCHAT.id))?.title || PCCHAT.title;
+  await window.hub.deleteChat(PCCHAT.id);
   H.chats = await window.hub.listChats();
   const t0 = Date.now();
-  await until(async () => { await syncNow(); return !(await cloudJson(rel)); }, 30000);
-  times['deleted here → gone from the cloud copy'] = Date.now() - t0;
-  step('deleted on this PC: it leaves the cloud copy (the Mac\'s copy goes too)', !(await cloudJson(rel)), { r0, ms: times['deleted here → gone from the cloud copy'] });
-  const list = await real.trash();
-  const mine = list.filter((x) => x.rel.replace(/(^|\/)[0-9a-f]{8}-([^/]+)$/, '$1$2') === rel && x.where === 'cloud');
-  step('…its cloud copy waits in the synced Deleted files (the list both computers read)', mine.length >= 1, list.map((x) => `${x.where}:${x.rel}`).slice(0, 8));
+  await until(async () => { await syncNow(); return !(await cloudJson(rel)) && Boolean(await cloudJson(`trash/${PCCHAT.id}.json`)); }, 30000);
+  times['chat deleted here → in the Mac\'s Recently deleted'] = Date.now() - t0;
+  step('a chat deleted on this PC: it leaves the cloud copy\'s chats and is in its Recently deleted (the Mac\'s too)', !(await cloudJson(rel)) && Boolean(await cloudJson(`trash/${PCCHAT.id}.json`)), times['chat deleted here → in the Mac\'s Recently deleted']);
+  await AppUI.trashDialog();
+  const r = await restoreFromRecentlyDeleted(title);
+  step('Recently deleted → Restore: found by its title', r.found, r);
+  await until(async () => { H.chats = await window.hub.listChats(); return H.chats.some((c) => c.id === PCCHAT.id); }, 10000);
+  await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)) && !(await cloudJson(`trash/${PCCHAT.id}.json`)); }, 20000);
+  step('…back here and on the Mac (the cloud copy\'s chats), gone from both Recently deleted', (H.chats || []).some((c) => c.id === PCCHAT.id) && Boolean(await cloudJson(rel)) && !(await cloudJson(`trash/${PCCHAT.id}.json`)));
+  rdDlg()?.close();
+  // a picture deleted here: its cloud copy goes to the synced Deleted files (the list both computers read)
+  const prel = 'captures/sa110-shot.png';
+  if (!(await window.hub.fs.stat(`${dataDir}/${prel}`))) await window.hub.fs.write(`${dataDir}/${prel}`, PNG, { base64: true });
+  await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat(cloudOf(prel))); }, 15000);
+  await window.hub.fs.trash([`${dataDir}/${prel}`]);
+  await until(async () => { await syncNow(); return !(await window.hub.fs.stat(cloudOf(prel))); }, 30000);
+  step('a picture deleted on this PC: it leaves the cloud copy (the Mac\'s goes too)', !(await window.hub.fs.stat(cloudOf(prel))));
   await openPanel();
   await tap(/^Deleted files…$/, 'Deleted files…');
   const dlg = () => [...document.querySelectorAll('dialog.sync-list[open]')].pop();
   await until(dlg, 8000);
-  const row = () => deletedRow(dlg(), /Tour setlist/);
+  const row = () => deletedRow(dlg(), /sa110-shot\.png/);
   await until(row, 5000);
-  audit['Deleted files (deleted on this PC)'] = { rows: dRows(dlg()).map((x) => `${x.name} · ${x.hint}`) };
-  step('Deleted files: the chat by name, and that it was deleted, in plain words', Boolean(row()) && !/chats\/|\.json/.test(`${row()?.name} ${row()?.hint}`), audit['Deleted files (deleted on this PC)']);
-  if (await restoreRow(dlg(), /Tour setlist|^A chat$/)) {
-    await until(async () => { H.chats = await window.hub.listChats(); return H.chats.some((c) => c.id === PCCHAT.id); }, 10000);
-    step('Restore: the chat is back here', (H.chats || []).some((c) => c.id === PCCHAT.id), said(t0).slice(-3));
-    await until(async () => { await syncNow(); return Boolean(await cloudJson(rel)); }, 20000);
-    step('…and in the cloud copy again', Boolean(await cloudJson(rel)));
-    const rd = (await window.hub.listChatTrash().catch(() => null)) || [];
-    audit['Recently deleted after Restore (here)'] = { stillThere: rd.some((c) => c.id === PCCHAT.id) };
-    step('…and it isn\'t also left in Recently deleted', !rd.some((c) => c.id === PCCHAT.id), rd.map((c) => c.title));
+  audit['Deleted files (a picture deleted on this PC)'] = { rows: [...(dlg()?.querySelectorAll('.sync-row') || [])].map((x) => `${text(x.querySelector('b'))} · ${text(x.querySelector('.hint'))}`) };
+  step('Deleted files: the picture, from the list both computers read', Boolean(row()), audit['Deleted files (a picture deleted on this PC)']);
+  if (await restoreRow(dlg(), /sa110-shot\.png/)) {
+    await until(async () => Boolean(await window.hub.fs.stat(`${dataDir}/${prel}`)), 8000);
+    await until(async () => { await syncNow(); return Boolean(await window.hub.fs.stat(cloudOf(prel))); }, 20000);
+    step('Restore: back here and in the cloud copy', Boolean(await window.hub.fs.stat(`${dataDir}/${prel}`)) && Boolean(await window.hub.fs.stat(cloudOf(prel))));
   }
   dlg()?.close();
   await ensure(PCCHAT);
@@ -435,7 +486,11 @@ await section('very long chats in pieces', async () => {
   await until(() => rowP() && !rowP().hidden, 10000);
   const box = () => rowP()?.querySelector('input');
   step('Settings › Sync: "Send very long chats in pieces", off by default', Boolean(box()) && !box().checked, text(rowP()));
+  const tp = Date.now();
   await click(box());
+  await until(() => /in use|waiting for/.test(text(rowP())), 20000);
+  times['pieces: click → Settings says "in use"'] = Date.now() - tp;
+  step('the click: Settings\' line says what it does now, without reopening Settings', /in use/.test(text(rowP())), { line: text(rowP()), ms: times['pieces: click → Settings says "in use"'] });
   await until(() => Sync.status().packs?.on, 8000);
   await syncNow(); await Sync.refresh();
   const h1 = text(rowP());
