@@ -66,7 +66,7 @@ const AUDIT = [
   ['datasafemain.js', 9, 'not-chat', 'main process: data files'],
   ['devreport.js', 3, 'throws', "a bug report: the last tool reply from the end (an old one's tools throw), the last 3 by role"],
   ['director-task.js', 2, 'windowed', 'count; the last three messages read from the end (round 86)'],
-  ['engine-health.js', 2, 'windowed', 'count, the last message'],
+  ['engine-health.js', 4, 'windowed', 'count, the last message; (signin111) after a sign-in: the last two messages (at(-1) / at(-2): role, flags)'],
   ['flows-ui.js', 1, 'windowed', 'the last reply, from the end'],
   ['handoff.js', 14, 'load-all', 'a brief / the whole chat / earlier messages: the chat loaded whole first (round 86)'],
   ['historylean-core.js', 8, 'not-chat', 'pure: the chat it is handed (historylean.js hands a windowed one to the store thread)'],
