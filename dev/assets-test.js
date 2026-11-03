@@ -52,7 +52,8 @@ t('normalize keeps what it understands', () => {
 });
 t('search: words, kinds, tags, favorites, sources, ranking', () => {
   const db = C.empty();
-  const add = (p, h, extra = {}) => C.upsert(db, { p, s: 1, m: 1, h }, extra).item;
+  // (round 109) a fixed time: with Date.now() two equal name hits tied on score were ranked by which landed in a later ms
+  const add = (p, h, extra = {}) => C.upsert(db, { p, s: 1, m: 1, h }, { at: 1000, ...extra }).item;
   const brick = add('/t/Red Brick Wall.png', 'h1', { tg: ['brick', 'wall'] });
   add('/t/brick_sky.hdr', 'h2');
   const font = add('/f/Bold Grotesk.ttf', 'h3');
