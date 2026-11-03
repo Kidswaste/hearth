@@ -180,7 +180,7 @@ function loop(t) {
 requestAnimationFrame(loop);`;
 
   // ---------- the scene ----------
-  async function open({ size = [480, 270], play = true } = {}) {
+  async function open({ size = [192, 108], play = true, particles = 4 } = {}) {
     const info = { steps: [] };
     const c = await ThreeLab.cmd();
     try { c.customSize(size[0], size[1]); c.size('custom'); } catch { /* the default size */ }
@@ -192,6 +192,9 @@ requestAnimationFrame(loop);`;
     await LabGallery.use(item);
     info.demo = Boolean(await until(() => D().report().sketch?.startsWith(item.name), 15000));
     await until(async () => { const v = await pv('return window.__labPace.state().frameTick'); return typeof v === 'number' && v > 1; }, 30000);
+    // (its Particles slider down to 4 thousand, as the owner would on a slow machine: this software GPU has to keep up
+    // with the 60 drawn frames for the frame gate to hold frames between them, which is where round 107's runaway was)
+    try { const bc = (await D().codeOf('Beat burst'))?.code; const nc = bc && bc.replace(/(\n\s*count: \{ value: )([^,]+)(,)/, `$1${particles}$3`); if (nc && nc !== bc) await D().updateLayer('Beat burst', { code: nc }, 1); info.particles = particles; } catch (err) { info.particles = String(err); }
     // the model: its folder copied into the Lab's references, a 🧊 layer under the bloom
     const ref = await D().refs.add(f.model, 'rsbot');
     const key = ref?.key || D().refs.list().find((x) => /rsbot|bot\.gltf/.test(`${x.key} ${x.path || ''}`))?.key || 'rsbot';
@@ -215,6 +218,7 @@ requestAnimationFrame(loop);`;
   async function watch(ms = 6000) {
     const gl0 = S.gl.length; const notes0 = ThreeLab.gl.state().runaway?.length || 0;
     const r0 = await pj('window.__rs109 || null');
+    const gate0 = await pj('window.__labBeat ? window.__labBeat.state() : null');
     await pv('window.__labRunaway && window.__labRunaway.reset(); window.__fps107 && window.__fps107.take(); return 1');
     const d0 = await pj('window.__labPace.state().drawn'); const t0 = performance.now();
     await wait(ms);
@@ -222,11 +226,12 @@ requestAnimationFrame(loop);`;
     const d1 = await pj('window.__labPace.state().drawn');
     const sec = (performance.now() - t0) / 1000;
     const guard = await pj('window.__labRunaway ? window.__labRunaway.state() : null');
+    const gate = await pj('window.__labBeat ? window.__labBeat.state() : null');
     const r1 = await pj('window.__rs109 || null');
     const gls = ThreeLab.gl.state();
     const loops = r0 && r1 ? Object.fromEntries(Object.keys(r1).map((k) => [k, r1[k] - (r0[k] || 0)])) : r1;
     const out = { s: Math.round(sec * 10) / 10, page, drawnPerSec: Math.round(((d1 - d0) / sec) * 10) / 10, perFrame: page && page.framesPerSec ? Math.round((page.rafPerSec / page.framesPerSec) * 10) / 10 : null,
-      guard, loops, gl: S.gl.slice(gl0), glPhase: gls.phase, runawayNotes: (gls.runaway || []).slice(notes0) };
+      guard, gateHeldPerSec: gate && gate0 ? Math.round(((gate.gateHeld - gate0.gateHeld) / sec) * 10) / 10 : null, gateScr: gate ? gate.gateScr : null, loops, gl: S.gl.slice(gl0), glPhase: gls.phase, runawayNotes: (gls.runaway || []).slice(notes0) };
     return out;
   }
   // what is wrong in a watch ([] when fine)
@@ -238,7 +243,7 @@ requestAnimationFrame(loop);`;
     bad(w.perFrame != null && w.perFrame <= B.perFrame, `no runaway: ≤ ${B.perFrame} frame callbacks per page frame (${w.perFrame}: ${w.page.rafPerSec}/s over ${w.page.framesPerSec} frames/s)`);
     bad(w.page.rafPerSec <= B.perSec, `no runaway: ≤ ${B.perSec} frame callbacks a second (${w.page.rafPerSec})`);
     bad(w.guard && !w.guard.tripped && w.guard.trips === 0, `the page's runaway guard never tripped (${JSON.stringify(w.guard)})`);
-    bad(w.guard && w.guard.peakLoopPerSec <= w.guard.limit, `no frame loop over 4× the screen's rate (busiest ${w.guard?.peakLoopPerSec}/s, limit ${w.guard?.limit}/s)`);
+    bad(w.guard && w.guard.peakLoopPerSec <= w.guard.limit && w.guard.peakLoopPerFrame <= 4, `no frame loop over 4× the screen's rate nor run more than 4 times in one frame (busiest ${w.guard?.peakLoopPerSec}/s, limit ${w.guard?.limit}/s; ${w.guard?.peakLoopPerFrame} in a frame)`);
     bad(!w.runawayNotes.length, `no frame-runaway note reached the Lab (${JSON.stringify(w.runawayNotes)})`);
     bad(!w.gl.some((e) => /lost|remaking/.test(e.state)) && !w.glPhase, `no graphics context lost (${JSON.stringify(w.gl)}, phase ${w.glPhase})`);
     bad(w.drawnPerSec > 1, `the preview drew (${w.drawnPerSec} frames a second)`);

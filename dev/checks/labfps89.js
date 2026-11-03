@@ -12,6 +12,8 @@
 //   texture      two 4096² picture references arriving in a running scene (big uploads)
 //   post         a post-processing filter added (bloom), then hidden and shown again
 //   audio        a song loaded and played under an audio-reactive demo scene (analysis, features, the song clock)
+//   real         (round 109, labchecks109) realscene-lib's real scene (dev/checks/realscene-lib.js) playing on a faked
+//                240 Hz screen (the frame gate on): its hitches, and no runaway (RS.problems)
 // Per stretch: p50 / p95 / p99 frame gap; the frames over 2× the frame budget (the preview's cap, Auto 60 → 16.7 ms, or
 // the stretch's own median where this machine can't hold that: a software GPU draws 15–30 frames a second here);
 // "stillMs", the longest time nothing on screen moved; compiles / big uploads in frames on screen.
@@ -40,6 +42,7 @@ const HITCH = Number(window.LF89_HITCH ?? 1);
 const r1 = (x) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 10) / 10);
 const pct = (a, p) => { const s = a.slice().sort((x, y) => x - y); return s.length ? r1(s[Math.min(s.length - 1, Math.floor(s.length * p))]) : null; };
 
+await RS.install(); // (round 109) the switchable fake screen in the preview's page: the real screen's frames until the real stretch
 activate('tool:three');
 await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.scenes && ThreeLab.director, 60000);
 const c = await ThreeLab.cmd(); const D = ThreeLab.director;
@@ -243,6 +246,24 @@ if (want('audio')) await safe('audio', async () => {
   await record('audio:play', async () => { c.play(true); return null; }, { ms: 4000 });
   c.play(false);
 });
+
+// ---------- (round 109, labchecks109) real: realscene-lib's real scene on a 240 Hz screen ----------
+// What the owner's scenes look like (several layers, a raw frame loop + onHit / everyBeats / onBar, a 🧊 model with its
+// picture, ✦ Bloom, a song with ⚡ triggers playing) with the frame gate on (the fake 240 Hz screen in the page for this
+// stretch only): its hitches judged as every stretch's, and no runaway (RS.problems: frame callbacks per page frame and
+// a second, the page's guard never tripped, no graphics context lost)
+if (want('real')) await safe('real', async () => {
+  const info = await RS.open();
+  step('real: the scene is up (5 layers, the model loaded, the song analysed)', info.layers.length >= 5 && info.model?.loaded && info.song, info);
+  step('real: the fake screen is in the page (switchable)', info.probe?.switchable === true, info.probe);
+  await RS.hz(240); await wait(3000);
+  let w = null;
+  await record('real', async () => { w = await RS.watch(5000); return null; }, { ms: 5000 });
+  out.real = w;
+  const p = RS.problems(w, 'real');
+  step('real: no runaway, the guard never tripped, no graphics context lost', !p.length, { problems: p, perFrame: w.perFrame, page: w.page, guard: w.guard, loops: w.loops });
+  await RS.hz(0); await RS.close();
+}, 300000);
 
 // ---------- verdicts ----------
 const S = out.stretches;

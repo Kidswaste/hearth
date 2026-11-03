@@ -12,6 +12,9 @@
 //     fires (the song's heard time at each fire − the kick's time)
 //   · a loop A–B crossing its end ~8 times while playing, then 3 seeks to just before B while playing: where the song
 //     was on its clock (the audio clock's fit: heard + the output path) when the page wrapped it, past B (ms)
+// (round 109, labchecks109) then realscene-lib's real scene (several layers and frame loops, a model, ⚡ triggers, a
+// filter, its own song) at 240 Hz: no runaway, no graphics context lost; and the page's runaway guard against round
+// 107's answer (window.__labRunaway.bug107): caught after 2 s, plain frames after, the preview kept.
 // Budgets: the new page wakes ≤ 2.6 frames per drawn one at 240 Hz while the song plays (it was ≈ 4); every timing
 // number the same or better than the page before (p50 / p95 within a small tolerance for scheduling noise: the loop
 // wraps' within 1 ms, the frames' and beats' within 1.5 / 2.5 ms), the loop wraps never early (> −1 ms), every beat
@@ -192,6 +195,36 @@ try {
     for (const legacy of order) out.runs[`${hz} ${legacy ? 'before' : 'after'}`] = await run(hz, legacy);
   }
   await pv('window.__labBeat.legacy(false); window.__fps107.setHz(240); return 1');
+  c.play(false);
+
+  // ---------- (round 109, labchecks109) the real scene, then the guard against round 107's runaway ----------
+  // realscene-lib's scene (several layers, a raw frame loop + onHit / everyBeats / onBar, a 🧊 model with its picture,
+  // ✦ Bloom, its own song with ⚡ triggers) playing on the 240 Hz screen with the gate on: no runaway, no graphics
+  // context lost. Then window.__labRunaway.bug107(true) gives held frames round 107's answer (id 0, queued again each
+  // time): the page's guard must catch it within a few seconds (a 'frame-runaway' note), go back to plain frames, keep
+  // drawing without losing its graphics context, and its frame callbacks come back down.
+  mark('real scene');
+  out.real = { info: await RS.open() };
+  ok(out.real.info.layers.length >= 5 && out.real.info.model?.loaded && out.real.info.song, `the real scene is up (${JSON.stringify(out.real.info).slice(0, 300)})`);
+  await pv('window.__fps107.setHz(240); return 1');
+  await wait(3000);
+  out.real.watch = await RS.watch(8000);
+  console.log('[BEAT108] real scene', JSON.stringify(out.real.watch));
+  for (const x of RS.problems(out.real.watch, 'real scene, 240 Hz, its song playing')) fail.push(x);
+  ok(out.real.watch.perFrame != null && out.real.watch.page.framesPerSec <= 2.6 * out.real.watch.drawnPerSec + 6, `real scene, 240 Hz: the gate rests between drawn frames (${out.real.watch.page?.framesPerSec} page frames a second for ${out.real.watch.drawnPerSec} drawn)`);
+  mark('guard');
+  await pv('window.__labRunaway.bug107(true); return 1');
+  out.real.bug = await RS.watch(7000);
+  await pv('window.__labRunaway.bug107(false); return 1');
+  out.real.after = await RS.watch(3000);
+  console.log('[BEAT108] round 107\'s answer', JSON.stringify(out.real.bug), JSON.stringify(out.real.after));
+  const g = out.real.bug.guard || {};
+  ok(g.tripped && g.trips === 1 && out.real.bug.runawayNotes.length === 1, `the guard caught round 107's runaway (${JSON.stringify(g)}; notes ${JSON.stringify(out.real.bug.runawayNotes)})`);
+  ok(g.info && g.info.forMs >= 2000 && g.info.forMs <= 4500, `… after 2 s over 4× the screen's rate, not before nor much later (${JSON.stringify(g.info)})`);
+  ok(!out.real.bug.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.glPhase, `… and the preview kept its graphics context (${JSON.stringify([out.real.bug.gl, out.real.after.gl])})`);
+  ok(out.real.after.drawnPerSec > 1 && out.real.after.perFrame != null && out.real.after.perFrame <= RS.B.perFrame && out.real.after.guard.peakLoopPerSec <= out.real.after.guard.limit, `… kept drawing on plain frames, its frame callbacks back down (${JSON.stringify({ drawn: out.real.after.drawnPerSec, perFrame: out.real.after.perFrame, guard: out.real.after.guard })})`);
+  await pv('window.__labRunaway.reset(true); return 1');
+  await RS.close();
 
   // ---------- budgets ----------
   const tol = { loop: 1, picture: 1.5, beat: 3, trigger: 4 };
