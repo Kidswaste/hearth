@@ -211,7 +211,7 @@ try {
   out.real.watch = await RS.watch(8000);
   console.log('[BEAT108] real scene', JSON.stringify(out.real.watch));
   for (const x of RS.problems(out.real.watch, 'real scene, 240 Hz, its song playing')) fail.push(x);
-  ok(out.real.watch.perFrame != null && out.real.watch.page.framesPerSec <= 2.6 * out.real.watch.drawnPerSec + 6, `real scene, 240 Hz: the gate rests between drawn frames (${out.real.watch.page?.framesPerSec} page frames a second for ${out.real.watch.drawnPerSec} drawn)`);
+  ok(out.real.watch.perFrame != null && out.real.watch.page.framesPerSec <= 2.6 * 60 + 6 && out.real.watch.gateHeldPerSec > 5, `real scene, 240 Hz: the gate rests between drawn frames (${out.real.watch.page?.framesPerSec} page frames a second, ≤ 2.6 per drawn one of the cap's 60; the gate held ${out.real.watch.gateHeldPerSec} a second)`);
   mark('guard');
   await pv('window.__labRunaway.bug107(true); return 1');
   out.real.bug = await RS.watch(7000);
@@ -222,7 +222,7 @@ try {
   ok(g.tripped && g.trips === 1 && out.real.bug.runawayNotes.length === 1, `the guard caught round 107's runaway (${JSON.stringify(g)}; notes ${JSON.stringify(out.real.bug.runawayNotes)})`);
   ok(g.info && g.info.forMs >= 2000 && g.info.forMs <= 4500, `… after 2 s over 4× the screen's rate, not before nor much later (${JSON.stringify(g.info)})`);
   ok(!out.real.bug.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.glPhase, `… and the preview kept its graphics context (${JSON.stringify([out.real.bug.gl, out.real.after.gl])})`);
-  ok(out.real.after.drawnPerSec > 1 && out.real.after.perFrame != null && out.real.after.perFrame <= RS.B.perFrame && out.real.after.guard.peakLoopPerSec <= out.real.after.guard.limit && out.real.after.guard.peakLoopPerFrame <= 1, `… kept drawing on plain frames, its frame callbacks back down (${JSON.stringify({ drawn: out.real.after.drawnPerSec, perFrame: out.real.after.perFrame, guard: out.real.after.guard })})`);
+  ok(out.real.after.rendersPerSec > 1 && out.real.after.perFrame != null && out.real.after.perFrame <= RS.B.perFrame && out.real.after.guard.peakLoopPerSec <= out.real.after.guard.limit && out.real.after.guard.peakLoopPerFrame <= 1, `… kept drawing on plain frames, its frame callbacks back down (${JSON.stringify({ renders: out.real.after.rendersPerSec, perFrame: out.real.after.perFrame, guard: out.real.after.guard })})`);
   await pv('window.__labRunaway.reset(true); return 1');
   await RS.close();
 

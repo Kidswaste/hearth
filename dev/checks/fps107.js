@@ -215,7 +215,8 @@ try {
   console.log('[FPS107] labReal', JSON.stringify(out.real.watch));
   for (const x of RS.problems(out.real.watch, 'labReal')) out.problems.push(x);
   const w = out.real.watch;
-  if (w.page && !(w.page.framesPerSec <= 2.5 * w.drawnPerSec + 6)) out.problems.push(`labReal: the Lab page wakes ≤ 2.5 frames per drawn one with the real scene playing: ${JSON.stringify({ page: w.page, drawn: w.drawnPerSec })}`);
+  // (the cap draws ≤ 60 a second: ≤ 2.5 page frames per drawn one is ≤ 156 a second; and the gate did hold frames)
+  if (w.page && !(w.page.framesPerSec <= 2.5 * 60 + 6 && w.gateHeldPerSec > 5)) out.problems.push(`labReal: the Lab page wakes ≤ 2.5 frames per drawn one (≤ 156 a second) with the real scene playing, the gate holding frames: ${JSON.stringify({ page: w.page, gateHeldPerSec: w.gateHeldPerSec })}`);
   await RS.close();
 } catch (err) { out.problems.push(`labReal: ${String(err?.stack || err).slice(0, 400)}`); }
 
@@ -249,7 +250,7 @@ else {
   const probeSites = Object.values(S).flatMap((r) => [...(r.window.top || []), ...(r.labPage?.top || [])]).filter((x) => /hxTick|picsSettle|__labHitch|__labPicsSettle/.test(x));
   over('test-only probes (__labHitch, __labPicsSettle) never woke anything', !probeSites.length, probeSites);
 }
-if (out.real?.watch) { const w = out.real.watch; out.states.labReal = { window: { rafPerSec: '-', framesPerSec: '-', timersPerSec: '-', idlePerSec: '-' }, labPage: w.page, labDrawnPerSec: w.drawnPerSec, anims: [] }; }
+if (out.real?.watch) { const w = out.real.watch; out.states.labReal = { window: { rafPerSec: '-', framesPerSec: '-', timersPerSec: '-', idlePerSec: '-' }, labPage: w.page, labDrawnPerSec: '-', anims: [] }; }
 out.table = Object.entries(out.states).map(([k, r]) => `${k}: window ${r.window.rafPerSec} rAF/s (${r.window.framesPerSec} frames) · ${r.window.timersPerSec} timers/s · ${r.window.idlePerSec} idle/s${r.labPage ? ` · lab page ${r.labPage.rafPerSec} rAF/s (${r.labPage.framesPerSec} frames) · ${r.labPage.timersPerSec} timers/s · drawn ${r.labDrawnPerSec}/s` : ''} · ${r.anims.length} endless anims`);
 if (window.FPS107_REPORT) { out.unenforced = out.problems; out.problems = []; }
 return J.done();

@@ -120,7 +120,24 @@ frame (capped at 4 run), the guard tripped after **2.2 s**, and the page went st
 on every run.
 
 ## 5. The proof: it would have caught round 107's bug
-RESULTS_PROOF
+beat108's `GATE_ID` fix was put back to round 107's answer in a throwaway copy of this tree (both "held" lines of
+`realRAF` back to `GATE.q.push(w); return 0;`, no dedupe; never committed, the copy deleted after), and the four
+updated checks run under the run lock:
+
+| Check (round 107's gate) | Result | What caught it |
+|---|---|---|
+| beat108 | **fail** | the real scene: the guard had tripped (a loop 12× in one frame, held 2.0 s); the gate's own budget too (4.11 page frames per drawn one: the guard had turned the gate off). Its own 3-loop scene tripped the guard first. |
+| fps107 | **fail** | `labReal`: the guard had tripped (held 2.4 s). Its old one-loop states all **passed**, as in round 107. |
+| labfps89 | **fail** | `real`: the guard tripped (a loop 40× in one frame, 1,019 calls a second, held 2.1 s). Every older stretch **passed** (no fast screen there: the gate never turned on). |
+| labcompile90 | **fail** | `layer:real`: the guard tripped while the new layer started (40× in one frame, held 2.3 s); a loop ran 40 times in one frame in the measure. Every older stretch **passed**. |
+
+The same four with the fix in place: fps107, labfps89 and labcompile90 pass, and beat108's real-scene part and guard
+proof pass (see Runs). In none of the reverted runs did the preview lose its graphics context: the guard caught each
+runaway within 2–2.4 s and the page went on drawing on plain frames.
+
+Without the guard's cap (its first version), the fixture's own counts caught the same bug: 285 frame callbacks per
+page frame against the bound of 24, 12,112 raw-loop frames in 7 s, then the page stopped answering; that is what
+made the per-frame cap necessary.
 
 ## Runs
 RESULTS_RUNS

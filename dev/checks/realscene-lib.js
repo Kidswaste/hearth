@@ -230,7 +230,7 @@ requestAnimationFrame(loop);`;
     const r1 = await pj('window.__rs109 || null');
     const gls = ThreeLab.gl.state();
     const loops = r0 && r1 ? Object.fromEntries(Object.keys(r1).map((k) => [k, r1[k] - (r0[k] || 0)])) : r1;
-    const out = { s: Math.round(sec * 10) / 10, page, drawnPerSec: Math.round(((d1 - d0) / sec) * 10) / 10, perFrame: page && page.framesPerSec ? Math.round((page.rafPerSec / page.framesPerSec) * 10) / 10 : null,
+    const out = { s: Math.round(sec * 10) / 10, page, rendersPerSec: Math.round(((d1 - d0) / sec) * 10) / 10, // (renders: every layer's, about 5 a drawn frame here) perFrame: page && page.framesPerSec ? Math.round((page.rafPerSec / page.framesPerSec) * 10) / 10 : null,
       guard, gateHeldPerSec: gate && gate0 ? Math.round(((gate.gateHeld - gate0.gateHeld) / sec) * 10) / 10 : null, gateScr: gate ? gate.gateScr : null, loops, gl: S.gl.slice(gl0), glPhase: gls.phase, runawayNotes: (gls.runaway || []).slice(notes0) };
     return out;
   }
@@ -246,7 +246,7 @@ requestAnimationFrame(loop);`;
     bad(w.guard && w.guard.peakLoopPerSec <= w.guard.limit && w.guard.peakLoopPerFrame <= 1 && !w.guard.dropped, `no frame loop over 4× the screen's rate nor run twice in one frame (busiest ${w.guard?.peakLoopPerSec}/s, limit ${w.guard?.limit}/s; ${w.guard?.peakLoopPerFrame} in a frame, ${w.guard?.dropped} dropped)`);
     bad(!w.runawayNotes.length, `no frame-runaway note reached the Lab (${JSON.stringify(w.runawayNotes)})`);
     bad(!w.gl.some((e) => /lost|remaking/.test(e.state)) && !w.glPhase, `no graphics context lost (${JSON.stringify(w.gl)}, phase ${w.glPhase})`);
-    bad(w.drawnPerSec > 1, `the preview drew (${w.drawnPerSec} frames a second)`);
+    bad(w.rendersPerSec > 1, `the preview drew (${w.rendersPerSec} layer renders a second)`);
     const L = w.loops || {};
     bad(L.raf > 0 && L.every > 0 && L.kick > 0, `the scene's frame loops ran: its raw loop, everyBeats, onHit('kick') (${JSON.stringify(L)})`);
     return p;
