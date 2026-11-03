@@ -183,7 +183,23 @@ owns those).
 - The warm-up let go off screen changes no data: the scene and its saves are untouched, only the wait ends.
 
 ## Tested
-(see the end of this file)
+All app runs under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package`.
+- `projopen109` (pc, fresh, menu): passes (242 s), 3 full runs and 3 menu-only runs after the last change.
+  - first open after: 7.5, 9.3 and 9.8 s (before: 9.3 s; 7.5 s with the Lab's code already in);
+  - away: 0.23 s and 2.7 s to ready (before: 90 s and an error); reopen: ready;
+  - menu: 0 misses of 66 in each run.
+- `projopen86`: passes, load-aware ("can't tell: switch_pjbp0_1, a 118 ms task with 52.3 ms of its own CPU; the thread
+  waited 398 ms for a CPU").
+- `projaudit108`: `pc`, `fresh`, `giant` pass; the giant chat's ⋯ › ⇪ Export project… opens its card in 2.2 s with no
+  miss (before this round: 2 of 2 runs opened Notes… instead). `start` failed once ("the Lab group not loaded yet when
+  the switch began": it was already in at the check's first look) and passed on the rerun: a timing race in the
+  check's own precondition, on a start that opens on the Lab; not this round's code (nothing here loads the Lab at a
+  start). Switch right after a start: 4.6–5.8 s and 5.2–7.4 s (round 108: 5–8.8 s).
+- `projaudit108-sync`, `desk89`, `labload94`, `labboot`, `projects`, `lazy`, `unit:boot-test` (3,110 checks),
+  `unit:desk89-test`: pass.
+- `modelcompile101` (its group): see below.
+- `node dev/run-checks.js release`: 305/308 passed; the 3 failures are the known ones (`KNOWN_FAIL`, Codex's), 1
+  opt-in skipped; 0 `/tmp/hearth-*` folders left.
 
 ## For the patch notes
 - Opening a project no longer gets stuck on "Warming shaders" for a minute and a half (and then fails) when you go to
