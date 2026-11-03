@@ -74,6 +74,7 @@ const EngineHealth = (() => {
       toast(`${L}: Hearth now uses ${r[engine]?.version || 'the newest copy'}${r[engine]?.chosen ? ` (${home(r[engine].chosen)})` : ''}.`, { timeout: 5000 });
       return { ok: true };
     }
+    if (action === 'login') return signIn(engine); // (signin111) the doctor, AI setup, Check this computer: one sign-in path
     const r = await window.hub.engineFix(engine, action);
     if (!r?.ok) {
       toast(`Couldn't open a window (${r?.error || 'unknown'}). Run this yourself: ${r?.command || ''}`, { type: 'error', timeout: 0, action: r?.command ? { label: 'Copy', fn: () => copyText(r.command, 'Command copied') } : undefined });
@@ -84,6 +85,114 @@ const EngineHealth = (() => {
     window.Progress?.set(`engine:${engine}`, { title: `⚙ ${verb}`, icon: '⚙', kind: `engine:${action}`, label: `in the ${r.window} window`, hungMs: 20 * 60000 }); // (round 11) estimated from earlier updates
     return r;
   }
+  // ---------- (signin111) Sign in: every path (the chat's button, Ctrl+K "sign in", the doctor, AI setup, Astra) ----------
+  // One answer for every way in → { ok, how: 'window' | 'link' | 'notFound' | 'failed', window, text }; text is the one
+  // line the caller shows (a chat card, a command's reply). What happens:
+  //   · a window opened (PowerShell / Terminal): it may be behind Hearth; "No window?" shows the sign-in link instead
+  //   · no window could be opened: the engine's own sign-in link, in a dialog (Open in browser / Copy link)
+  //   · the engine isn't on this computer: Install (the doctor's fix)
+  // When the sign-in ends (the window's marker file, or the link's engine exiting) the engine is checked again and a
+  // chat whose last message is "isn't signed in" is sent again by itself when that is safe (it was signed in from that
+  // chat, nothing of the reply had started, nothing else is running) and offered Retry otherwise.
+  const signingFrom = new Map(); // engine → { agentId, chatId, at } (the chat a sign-in was started from)
+  async function signIn(engine, { agentId = null } = {}) {
+    const L = LABEL[engine] || engine;
+    if (agentId) signingFrom.set(engine, { agentId, chatId: Native.chatOf?.(agentId)?.id || null, at: Date.now() });
+    const r = await window.hub.engineFix(engine, 'login').catch((err) => ({ ok: false, error: err.message }));
+    if (r?.notFound) {
+      signingFrom.delete(engine);
+      toast(`Hearth couldn't find ${L} on this computer, so there is nothing to sign in yet.`, { type: 'error', timeout: 0, action: { label: `Install ${L}`, fn: () => fix(engine, 'install') } });
+      return { ok: false, how: 'notFound', text: `Hearth couldn't find ${L} on this computer. Install it first (the Install button, or Ctrl+K → doctor), then sign in.` };
+    }
+    if (r?.ok) {
+      window.Progress?.set(`engine:${engine}`, { title: `⚙ Signing in to ${L}`, icon: '⚙', kind: 'engine:login', label: `in the ${r.window} window`, hungMs: 20 * 60000 });
+      if (r.window !== 'test') toast(`A ${r.window} window opened to sign in to ${L}. It may be behind Hearth. Finish there: Hearth notices by itself.`, { timeout: 20000, action: { label: 'No window?', fn: () => linkDialog(engine) } });
+      return { ok: true, how: 'window', window: r.window, text: `A ${r.window} window opened to sign in to ${L} (it may be behind Hearth). Finish there: Hearth notices by itself${agentId ? ' and sends your message again' : ''}.` };
+    }
+    // no window at all: the engine's own link, in Hearth
+    return linkDialog(engine, { why: r?.error || '', command: r?.command || '' });
+  }
+
+  // The dialog with the engine's sign-in link. Its states: asking the engine → the link (Open in browser / Copy link) →
+  // signed in ✓ (closes by itself) / didn't finish (Try again; the command to run in a terminal).
+  let linkUi = null; // { engine, set(state) } while the dialog is open
+  window.hub.onSigninLink?.((ev) => { if (linkUi && ev?.engine === linkUi.engine) linkUi.set(ev); });
+  async function linkDialog(engine, { why = '', command = '' } = {}) {
+    const L = LABEL[engine] || engine;
+    linkUi?.close();
+    const status = el('p', { class: 'modal-text', text: `${why ? `Hearth couldn't open a window (${why}). ` : ''}Asking ${L} for its sign-in link…` });
+    const link = el('input', { class: 'signin-link-url', readOnly: true, value: '', attrs: { 'aria-label': 'Sign-in link' } });
+    const open = el('button', { type: 'button', class: 'primary', text: 'Open in browser', disabled: true });
+    const copy = el('button', { type: 'button', text: 'Copy link', disabled: true });
+    const again = el('button', { type: 'button', text: 'Try again', hidden: true });
+    const close = el('button', { type: 'button', text: 'Cancel' });
+    const cmdLine = el('p', { class: 'hint', hidden: true });
+    const dialog = el('dialog', { class: 'ui-modal signin-link' }, el('h2', { text: `Sign in to ${L}` }), status, link, cmdLine,
+      el('p', { class: 'hint', text: 'You sign in on the page that opens in your browser. Hearth only shows the link: it never sees your password.' }),
+      el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), again, copy, open, close));
+    link.hidden = true;
+    let url = null; let finished = false;
+    const showCommand = (c) => { if (!c) return; cmdLine.hidden = false; cmdLine.replaceChildren('Or run this in a terminal yourself: ', el('code', { text: c }), ' ', el('button', { type: 'button', class: 'small', text: 'Copy command', on: { click: () => copyText(c, 'Command copied') } })); };
+    const ui = linkUi = {
+      engine,
+      set(ev) {
+        if (ev.state === 'link' && ev.url) {
+          url = ev.url; link.value = url; link.hidden = false; open.disabled = false; copy.disabled = false;
+          status.textContent = `Your browser should have opened ${new URL(url).hostname}. If it didn't, press Open in browser (or copy the link into your browser). Hearth notices when you're done.`;
+        }
+        if (ev.state === 'done') {
+          finished = true;
+          close.textContent = 'Close';
+          if (ev.ok) { status.textContent = `Signed in to ${L} ✓`; open.disabled = true; setTimeout(() => ui.close(), 1500); } else { status.textContent = `The sign-in didn't finish (${ev.why || 'stopped'}).`; again.hidden = false; showCommand(command); }
+        }
+      },
+      close() { if (dialog.open) dialog.close(); },
+    };
+    open.addEventListener('click', () => { if (url) window.hub.openExternal(url); });
+    copy.addEventListener('click', () => { if (url) copyText(url, 'Sign-in link copied: paste it into your browser'); });
+    again.addEventListener('click', () => { ui.close(); setTimeout(() => linkDialog(engine, { command }), 50); });
+    close.addEventListener('click', () => ui.close());
+    dialog.addEventListener('close', () => {
+      if (linkUi === ui) linkUi = null;
+      if (!finished) window.hub.signinLinkStop?.(engine); // Cancel: the engine's sign-in stops waiting
+      setTimeout(() => dialog.remove(), 0);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+    const r = await (window.hub.signinLink?.(engine) || Promise.resolve({ ok: false, error: 'this Hearth can\'t ask for the link' })).catch((err) => ({ ok: false, error: err.message }));
+    if (r?.ok && r.url) { ui.set({ state: 'link', url: r.url }); return { ok: true, how: 'link', text: `Sign in to ${L} on the page Hearth opened in your browser (the link is in the dialog). Hearth notices when you're done.` }; }
+    finished = true;
+    close.textContent = 'Close';
+    if (r?.notFound) {
+      status.textContent = `Hearth couldn't find ${L} on this computer. Install it first, then sign in.`;
+      dialog.querySelector('.dialog-actions').prepend(el('button', { type: 'button', text: `Install ${L}`, on: { click: () => { ui.close(); fix(engine, 'install'); } } }));
+      return { ok: false, how: 'notFound', text: `Hearth couldn't find ${L} on this computer. Install it first (Ctrl+K → doctor), then sign in.` };
+    }
+    status.textContent = `${L} didn't give a sign-in link (${r?.error || 'no answer'}).`;
+    again.hidden = false;
+    showCommand(command);
+    return { ok: false, how: 'failed', text: `Hearth couldn't open a sign-in window or get ${L}'s sign-in link${r?.error ? ` (${r.error})` : ''}.${command ? ` Run \`${command}\` in a terminal yourself.` : ' Ctrl+K → doctor shows what Hearth found.'}` };
+  }
+
+  // After a sign-in ended (a window's marker, the link's engine exiting): the chats it stopped
+  function afterSignIn(engine, rep) {
+    const from = signingFrom.get(engine);
+    signingFrom.delete(engine);
+    if (rep?.signedIn === false) return; // still signed out: the notice below says so
+    for (const a of H.agents().filter((x) => x.mode === 'native' && x.engine === engine)) {
+      const chat = Native.chatOf?.(a.id);
+      const m = chat?.messages?.at(-1);
+      if (!m || m.role !== 'error' || !(m.needsLogin || m.net?.kind === 'signedout')) continue;
+      const fromHere = from && from.agentId === a.id && from.chatId === chat.id && Date.now() - from.at < 30 * 60000;
+      // safe to send again by itself: the failed turn wrote nothing (the message before the error is the owner's own), the
+      // engine said it is signed in, nothing is running in that chat, and the sign-in was started from it
+      const safe = fromHere && rep?.signedIn === true && chat.messages.at(-2)?.role === 'user' && !Native.isBusy?.(chat.id);
+      // the offline module's Retry: the same chat and the same engine session (nothing re-sent that the engine has)
+      const again = () => (typeof Offline !== 'undefined' && Offline.retry ? Offline.retry(a.id, chat.id, m) : H.activeChat?.[a.id] === chat.id ? Native.retry?.(a.id) : null);
+      if (safe) { toast(`Signed in to ${LABEL[engine]} ✓ Sending your message again…`, { timeout: 6000 }); again(); } else toast(`Signed in to ${LABEL[engine]} ✓ Press Retry to send your message again${a.name ? ` (${a.name})` : ''}.`, { timeout: 15000, action: { label: 'Retry', fn: again } });
+    }
+  }
+
   // a check after a fix window finished (or gave up after 20 minutes)
   window.hub.onEngineInstalls?.((r) => {
     last = { ...(last || {}), ...r };
@@ -93,6 +202,7 @@ const EngineHealth = (() => {
     const left = problemsOf(r[engine]);
     if (r.fixed.finished || !left.length) window.Progress?.done(`engine:${engine}`, { ok: !left.length });
     const e = r[engine];
+    if (r.fixed.action === 'login') afterSignIn(engine, e); // (signin111) the chats it stopped: sent again, or Retry offered
     if (!left.length) toast(`${LABEL[engine]} ${e.semver || ''} is ready${e.signedIn ? ' and signed in' : ''} ✓`, { timeout: 6000 });
     else if (r.fixed.finished) toast(`${left[0].text}.`, { timeout: 12000, action: { label: left[0].label, fn: () => fix(engine, left[0].action) } });
     for (const id of H.agents().filter((a) => a.mode === 'native' && a.engine === engine).map((a) => a.id)) Native.refresh?.(id, { keepScroll: true });
@@ -305,5 +415,5 @@ const EngineHealth = (() => {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 
-  return { installFfmpeg, check, problems, problemsOf, fix, macFix, notice, report: () => last, runDoctor, testBoth };
+  return { installFfmpeg, check, problems, problemsOf, fix, signIn, linkDialog, macFix, notice, report: () => last, runDoctor, testBoth };
 })();

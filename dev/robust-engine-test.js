@@ -13,7 +13,7 @@ const assert = require('assert');
 process.env.HEARTH_TEST_TERMINAL = '1'; // update / sign-in windows run headless, brew / npm / installers only echo
 const ROOT = path.join(__dirname, '..');
 const dir = require('./tmp-own').mkdtemp('robust-engine-');
-for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'offline-core.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
 const T = engines._test;
@@ -40,7 +40,7 @@ function turn(agent, text, options = {}, onStart) {
   });
 }
 // (the re-check's timer doesn't keep an app alive; here something has to)
-const fixed = (engine, action) => new Promise((resolve) => { const keep = setInterval(() => {}, 500); const done = (v) => { clearInterval(keep); resolve(v); }; const r = engines.fix(engine, action, (rep) => done({ r, rep: rep[engine] })); if (!r.ok) done({ r }); });
+const fixed = (engine, action) => new Promise((resolve) => { const keep = setInterval(() => {}, 500); const done = (v) => { clearInterval(keep); resolve(v); }; let r; engines.fix(engine, action, (rep) => done({ r, rep: rep[engine] })).then((x) => { r = x; if (!x.ok) done({ r: x }); }); }); // (signin111) fix() answers once the window opened
 
 (async () => {
   // ---- versions, the check, kinds and update commands
@@ -93,7 +93,7 @@ const fixed = (engine, action) => new Promise((resolve) => { const keep = setInt
   assert(li.r.ok && li.rep.signedIn === true, JSON.stringify(li));
   const li2 = await fixed('codex', 'login');
   assert(li2.r.ok && li2.rep.signedIn === true, JSON.stringify(li2));
-  assert(engines.login('claude') === true);
+  assert((await engines.login('claude')) === true);
   ok('sign-in runs in its own window (Mac / Windows / Linux), Hearth checks again afterwards: signed in');
 
   // ---- too old for the model: the error names the update, the minimum is learned

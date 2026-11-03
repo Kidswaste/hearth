@@ -14,9 +14,17 @@ const F = require('./fake-common');
   // claudeNoAuth: an older Claude Code whose --help has no `auth` command
   if (argv[0] === '--help') { console.log(['Usage: claude [options] [command] [prompt]', '', 'Commands:', sw.claudeNoAuth ? null : '  auth              Manage authentication', '  mcp               Configure MCP servers', '  update            Check for updates and install'].filter((l) => l !== null).join('\n')); return; }
   if (argv[0] === 'auth' && sw.claudeNoAuth) { console.log('(fake) "auth" taken as a prompt: an old Claude Code'); process.exit(2); }
+  // (signin111) Claude Code 2.1's own words: `auth status` answers JSON (exit code 1 when signed out); `auth login` prints
+  // the sign-in page's link, waits for the browser, then "Login successful." (loginFails: "Login failed: …", exit 1)
   if (argv[0] === 'auth' && argv[1] === 'status') {
-    if (sw.claudeLoggedOut) { console.log('Not logged in. Run claude auth login'); process.exit(1); }
-    console.log('Logged in (fake Claude Max account)'); return;
+    if (sw.claudeLoggedOut) { console.log(JSON.stringify({ loggedIn: false, authMethod: 'none', apiProvider: 'firstParty' }, null, 2)); process.exit(1); }
+    console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', subscriptionType: 'max' }, null, 2)); return;
+  }
+  if (argv[0] === 'auth' && argv[1] === 'login') {
+    process.stdout.write('Opening browser to sign in…\nIf the browser didn\'t open, visit: https://claude.ai/oauth/authorize?code=true&client_id=fake-client&response_type=code&state=fake-state\n');
+    await new Promise((r) => setTimeout(r, Number(sw.loginMs || 600)));
+    if (sw.loginFails) { process.stderr.write('Login failed: OAuth error: access_denied\n'); process.exit(1); }
+    F.setSwitch({ claudeLoggedOut: null, claudeExpired: null }); process.stdout.write('Login successful.\n'); return;
   }
   if (argv[0] === 'auth' || argv[0] === '/login') { F.setSwitch({ claudeLoggedOut: null, claudeExpired: null }); console.log('(fake) signed in'); return; }
   if (argv[0] === 'update') { const to = sw.updateTo || '2.1.400'; F.setSwitch({ claudeVersion: to }); console.log(`Successfully updated from ${version} to version ${to}`); return; }

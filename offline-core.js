@@ -20,7 +20,24 @@ const OfflineCore = (() => {
   //     status: 429 Too Many Requests", "We're currently experiencing high demand…", "You've hit your usage limit. Upgrade
   //     to Pro (…) or try again in 2 hours 13 minutes.", "Your access token could not be refreshed because your refresh
   //     token has expired. Please log out and sign in again.", "Not logged in. Please run codex login"
-  const SIGNED_OUT = /not logged in|(isn't|is not|not) signed in|please run \/login|run \/login|codex login|unauthori[sz]ed|\b401\b|authentication_error|invalid api key|invalid x-api-key|sign in again|log ?in again|log out and sign in|(access|oauth|refresh) token (has )?(expired|is invalid|was revoked|could not be refreshed)|token (has )?expired|credentials? (have |has )?(expired|missing)/i;
+  // (signin111) every way Claude Code / Codex say "you're signed out", read from their own sources (Claude Code 2.1's
+  // cli.js, Codex's codex-rs/login + protocol/error.rs; dev/signin111-test.js has one case per wording). engines.js'
+  // friendlyError uses the same test (needsLogin → the Sign in button), so the chat line and the button never disagree.
+  //   STRONG: the engine's own "sign in again" words, whatever else the line says
+  //   WEAK: HTTP-level words (401, Unauthorized, authentication_error, token expired) that only count when the line isn't
+  //     about something else that signs in (an MCP server / connector, git, a cloud provider, a proxy)
+  const SIGNED_OUT_STRONG = new RegExp([
+    'not logged in', "(isn't|is not|not) signed in", 'please run /login', 'run /login', '\\bcodex login\\b(?! --with)', '\\bclaude (auth )?login\\b',
+    'sign(ing)? in again', 'log ?in again', 'log out and sign in', 'oauth token (has )?(expired|revoked|is invalid)', 'oauth session[^\\n]{0,40}expired',
+    'failed to authenticate', 'could not be refreshed', 'failed to refresh token', 'refresh token (has )?(expired|was revoked|was already used|is invalid)',
+    'does not have access to claude code', 'missing sign-in credentials', 'chatgpt auth is missing', 'token data is not available',
+    'chatgpt login is required',
+  ].join('|'), 'i');
+  const SIGNED_OUT_WEAK = /\bunauthori[sz]ed\b(?!\s+access)|\b(error|status|http|code)\W{0,3}401\b|\b401 unauthori|authentication_error|invalid (api key|x-api-key|bearer token)|(access|auth) token (has )?(expired|is invalid|was revoked)|\btoken (has )?expired\b|token_expired|credentials? (have |has )?(expired|missing)|\blog ?in required|please (log|sign) ?in\b/i;
+  const NOT_THE_ENGINE = /\bmcp\b|connector|\bgh auth\b|github|git (credential|authentication)|bedrock|\baws\b|vertex|azure|gcloud|\b407\b|proxy auth/i;
+  // an API key set in the environment that's wrong: signing in again doesn't help (engines.js says what does)
+  const EXTERNAL_KEY = /fix external api key/i;
+  const signedOut = (text) => { const t = String(text || ''); return !EXTERNAL_KEY.test(t) && (SIGNED_OUT_STRONG.test(t) || (SIGNED_OUT_WEAK.test(t) && !NOT_THE_ENGINE.test(t))); };
   const LIMIT = /usage limit|hit your (usage )?limit|(5-hour|weekly|daily|opus|session|monthly) limit (reached|hit)|limit reached[^.\n]*reset|limit will reset|out of (extra )?usage|insufficient_quota|usage_limit_reached|quota (exceeded|reached)/i;
   const PROXY = /\b407\b|proxy authentication|proxy (error|refused|connect|blocked)|tunnel(l)?ing socket|self[- ]signed certificate|unable to (get|verify) (local issuer|the first) certificate|certificate (has expired|verify failed|chain)|CERT_[A-Z_]+|UNABLE_TO_VERIFY|ERR_TLS|SSL routines|captive portal|blocked by (your )?(network|firewall|administrator)/i;
   const BUSY = /\b529\b|overloaded|\b503\b|service unavailable|\b502\b|bad gateway|internal server error|\bapi error: 5\d\d\b|high demand|server_is_overloaded|(at|over) capacity|temporarily unavailable|\b429\b|rate.?limit|too many requests|slow down/i;
@@ -30,7 +47,7 @@ const OfflineCore = (() => {
   function classify(text, { now = Date.now() } = {}) {
     const t = reasonOf(text);
     if (!t.trim()) return null;
-    if (SIGNED_OUT.test(t) && !LIMIT.test(t)) return { kind: 'signedout' };
+    if (signedOut(t) && !LIMIT.test(t)) return { kind: 'signedout' };
     if (LIMIT.test(t)) { const resetAt = parseReset(t, now); return { kind: 'limit', ...(resetAt ? { resetAt } : {}) }; }
     if (PROXY.test(t)) return { kind: 'proxy' };
     if (BUSY.test(t)) { const after = retryAfter(t); return { kind: 'busy', ...(after ? { retryAfterMs: after } : {}) }; }
@@ -250,6 +267,6 @@ const OfflineCore = (() => {
     return t.length ? Math.min(...t) : null;
   }
 
-  return { classify, parseReset, retryAfter, clock, backoff, MAX_TRIES, probeWait, resendWait, line, stitch, continuePrompt, isContinue, reconcile, nextDue, wakeIn, chatKey, newItem, reached, reasonOf, offsetOf, zoned };
+  return { classify, signedOut, parseReset, retryAfter, clock, backoff, MAX_TRIES, probeWait, resendWait, line, stitch, continuePrompt, isContinue, reconcile, nextDue, wakeIn, chatKey, newItem, reached, reasonOf, offsetOf, zoned };
 })();
 if (typeof module !== 'undefined') module.exports = OfflineCore;

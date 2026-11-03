@@ -17,6 +17,9 @@ const Conn = (() => { try { return require('./connectionsmain'); } catch { retur
 // (round 31, tokensaver) where saved memory goes (system prompt or only relevant messages), shared with chat-memory.js
 const CtxCore = (() => { try { return require('./context-core'); } catch { return null; } })();
 // (round 41, toolslim) opt-in tool sets that sleep until needed (data/tool-wake.json: when each AI last used each set)
+// (signin111) every way the engines say "you're signed out" (offline-core.js: the chat's line uses the same test); a test
+// copy without the file: the round-110 words
+const signedOut = (() => { try { return require('./offline-core').signedOut; } catch { return (t) => /not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token|failed to authenticate|could not be refreshed/i.test(String(t || '')); } })();
 const Wake = (() => { try { const w = require('./toolwake'); w.setFile(path.join(DATA_DIR, 'tool-wake.json')); return w; } catch { return null; } })();
 const conns = (agent) => (Conn ? Conn.enabledFor(agent) : []);
 
@@ -1047,15 +1050,22 @@ const FIXES = [
 function friendlyError(engine, message, { win = IS_WIN, mac = IS_MAC, bin = usedBin[engine], signal = '' } = {}) {
   // (round 32, winpolish) what Windows says (npm's Node missing, a half-removed npm install, a .cmd Windows wouldn't
   // start, the antivirus…) in plain words with the button that fixes it; the raw line stays underneath for /doctor
-  const w = win && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox/i.test(message) ? WinPolish.plainError(message) : null;
+  const w = win && !signedOut(message) && !POLICY_BLOCKED.test(message) && !/sandbox/i.test(message) ? WinPolish.plainError(message) : null;
   if (w) return { message: `${w.text}\n\nFix: ${w.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: w.fix, fixAction: w.action, fixEngine: engine };
   // (round 33, macpolish) what macOS says (Gatekeeper's quarantine, a copy for another kind of Mac, npm's Node missing, a
   // folder its privacy protection guards…): one plain sentence, the button that fixes it, the raw line underneath
-  const m = mac && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox|seatbelt/i.test(message) ? MacPolish.plainError(message, { bin, signal }) : null;
+  const m = mac && !signedOut(message) && !POLICY_BLOCKED.test(message) && !/sandbox|seatbelt/i.test(message) ? MacPolish.plainError(message, { bin, signal }) : null;
   if (m) return { message: `${m.text}\n\nFix: ${m.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: m.fix, fixAction: m.action, fixEngine: engine };
-  // (round 110) also Claude Code's "Failed to authenticate: OAuth session expired and could not be refreshed"
-  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token|failed to authenticate|oauth (session|token)[^\n]*(expired|invalid|revoked)|could not be refreshed/i.test(message)) {
-    return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: 'Press the sign-in button below (or run /astra-login), finish in the window that opens, then Retry.' };
+  // (round 110) also Claude Code's "Failed to authenticate: OAuth session expired and could not be refreshed"; (signin111)
+  // every wording Claude Code / Codex print (offline-core.js signedOut, dev/signin111-test.js)
+  if (signedOut(message)) {
+    const how = engine === 'codex' ? 'Press Sign in below (or Ctrl+K → "sign in", /astra-login)' : 'Press Sign in below (or Ctrl+K → "sign in")';
+    return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: `${how}. Finish in the window or browser page that opens (Hearth never sees your password): Hearth notices when you're done.` };
+  }
+  // an API key set on this computer (ANTHROPIC_API_KEY / OPENAI_API_KEY) that the service refuses: signing in doesn't help
+  if (/fix external api key/i.test(message)) {
+    const fix = `An API key set on this computer (the ${engine === 'codex' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'} environment variable) was refused. Remove it (or fix it) and restart Hearth: then ${ENGINES[engine].label} uses your ${ENGINES[engine].account} sign-in.`;
+    return { message: `${message}\n\nFix: ${fix}`, fix };
   }
   const hit = FIXES.find(([re]) => re.test(message));
   if (!hit) return { message };
@@ -1473,9 +1483,85 @@ function stopAll() {
 // `auth login` falls back to its interactive /login. Hearth checks the engine again when the window's work ends.
 let installsListener = () => {};
 function onInstalls(fn) { installsListener = typeof fn === 'function' ? fn : () => {}; }
-function login(engine) {
+// (signin111) → Promise<boolean> (kept for older callers: Hearth's own sign-in goes through fix(engine, 'login'), which
+// says whether a window opened, couldn't open, or the engine wasn't found)
+async function login(engine) {
   if (!LOCATE[engine]?.()) return false;
-  return fix(engine, 'login', (rep, info) => installsListener(rep, info)).ok;
+  return (await fix(engine, 'login', (rep, info) => installsListener(rep, info))).ok;
+}
+
+// (signin111) the last resort when no window could be opened (or none showed): the engine's own `auth login` / `login`
+// run by Hearth with its output read (installs.js: linkLoginArgs). Only the sign-in page's link is taken from it and
+// shown (Open in browser / Copy link); the engine opens the browser itself too. Hearth never reads a password or a
+// token: the sign-in happens in the browser, the engine keeps its own credentials. When it ends, the engine is checked
+// again (onDone, like a window's marker) and onEvent({ engine, state: 'done', ok, why }) says how it went.
+const linkRuns = {};
+const LINK_WAIT_MS = 30000; // the link should be printed within seconds
+const LINK_MAX_MS = 15 * 60000; // nobody finishing in the browser: stop waiting
+function signInByLink(engine, onEvent = () => {}, onDone = (rep, info) => installsListener(rep, info)) {
+  if (!ENGINES[engine]) return Promise.resolve({ ok: false, error: `No engine ${engine}` });
+  const bin = LOCATE[engine]();
+  const label = ENGINES[engine].label;
+  if (!bin) { log(`${engine} sign-in (link): not found`); return Promise.resolve({ ok: false, notFound: true, error: `${label} wasn't found on this computer` }); }
+  const run = linkRuns[engine];
+  if (run && !run.ended) return run.urlP; // one at a time per engine: the same link again
+  return (async () => {
+    if (engine === 'claude' && !(await Installs.hasAuth(bin, WORKSPACE))) {
+      log(`${engine} sign-in (link): this copy has no \`auth login\``);
+      return { ok: false, old: true, error: `This ${label} is too old to sign in from Hearth (no \`auth login\`): update it, or sign in in a terminal with \`claude\` then /login` };
+    }
+    const args = Installs.linkLoginArgs(engine);
+    let child;
+    try { child = WinPolish.spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); } catch (err) {
+      log(`${engine} sign-in (link): couldn't start (${err.code || err.message})`);
+      return { ok: false, error: `Couldn't start ${label} (${err.code || err.message})` };
+    }
+    const me = { child, ended: false, out: '', url: null };
+    linkRuns[engine] = me;
+    log(`${engine} sign-in (link): ${args.join(' ')} started`);
+    let gotUrl;
+    me.urlP = new Promise((resolve) => { gotUrl = resolve; });
+    const noUrl = setTimeout(() => { if (!me.url) { log(`${engine} sign-in (link): no link after ${LINK_WAIT_MS / 1000} s`); stopLink(engine); } }, LINK_WAIT_MS);
+    const tooLong = setTimeout(() => { if (!me.ended) { log(`${engine} sign-in (link): not finished after ${LINK_MAX_MS / 60000} min, stopped`); stopLink(engine); } }, LINK_MAX_MS);
+    tooLong.unref?.();
+    const read = (c) => {
+      if (me.out.length < 20000) me.out += c; // what the engine prints stays here: only its link and its last line are used
+      if (me.url) return;
+      const url = Installs.loginUrlOf(me.out);
+      if (!url) return;
+      me.url = url;
+      clearTimeout(noUrl);
+      log(`${engine} sign-in (link): link shown (${new URL(url).hostname})`);
+      gotUrl({ ok: true, url });
+      onEvent({ engine, state: 'link', url });
+    };
+    child.stdout?.on('data', read);
+    child.stderr?.on('data', read);
+    const finish = (code, err) => {
+      if (me.ended) return;
+      me.ended = true;
+      clearTimeout(noUrl); clearTimeout(tooLong);
+      const end = err ? { ok: false, why: `${err.code || err.message}` } : me.stopped ? { ok: false, why: 'stopped' } : Installs.loginEnded(code, me.out);
+      log(`${engine} sign-in (link): ended, ${end.ok ? 'signed in' : `not signed in (${end.why})`}`);
+      if (!me.url) gotUrl({ ok: false, error: end.why || `${label} gave no sign-in link` });
+      onEvent({ engine, state: 'done', ok: end.ok, why: end.why });
+      if (me.url) {
+        if (engine === 'claude') claudeBinKey = '';
+        signCache.delete(engine);
+        checkInstalls({ engines: [engine], fresh: false }).then((rep) => onDone(rep, { engine, action: 'login', finished: true, via: 'link', ok: end.ok })).catch(() => {});
+      }
+    };
+    child.on('error', (err) => finish(null, err));
+    child.on('close', (code) => finish(code));
+    return me.urlP;
+  })();
+}
+function stopLink(engine) {
+  const run = linkRuns[engine];
+  if (!run || run.ended) return false;
+  run.stopped = true;
+  try { kill(run.child); } catch { try { run.child.kill(); } catch { /* gone */ } }
+  return true;
 }
 
 // Runs a short command of an engine (version, login status) and returns its output; never throws.
@@ -1590,22 +1676,24 @@ async function checkInstalls(opts = {}) {
 // Runs the update / install / sign-in for one engine in a visible window; when the window's work ends, the engine is
 // checked again (fresh versions) and onDone(report) is called (main.js sends it to the window).
 const fixWatch = {};
-function fix(engine, action = 'update', onDone = (rep, info) => installsListener(rep, info)) {
+// (signin111) → Promise: { ok, window, how, command } once a window opened, { ok: false, error, command, tried } when no
+// way to open one worked, { ok: false, notFound } for a sign-in when the engine isn't on this computer
+async function fix(engine, action = 'update', onDone = (rep, info) => installsListener(rep, info)) {
   if (!ENGINES[engine]) return { ok: false, error: `No engine ${engine}` };
   const bin = LOCATE[engine]();
   const label = ENGINES[engine].label;
   let title; let lines;
   if (action === 'login') {
-    if (!bin) return { ok: false, error: `${label} wasn't found` };
+    if (!bin) { log(`${engine} login: not found`); return { ok: false, notFound: true, error: `${label} wasn't found on this computer` }; }
     title = `Sign in to ${label} for Hearth`; lines = [Installs.loginPlan(engine, bin)];
   } else {
     const plan = Installs.updatePlan(engine, action === 'install' ? null : bin);
     title = `${plan.how === 'install' ? 'Install' : 'Update'} ${label} for Hearth`; lines = [plan.command];
   }
   const marker = path.join(os.tmpdir(), `hearth-fix-${engine}-${crypto.randomUUID().slice(0, 8)}.done`);
-  const r = Installs.runInTerminal({ title, lines, marker, cwd: WORKSPACE, bin });
-  log(`${engine} ${action}: ${lines.join(' ; ')} → ${r.ok ? r.window : r.error}`);
-  if (!r.ok) return { ...r, command: lines.join('\n') };
+  const r = await (Installs.openTerminal || Installs.runInTerminal)({ title, lines, marker, cwd: WORKSPACE, bin });
+  log(`${engine} ${action}: ${lines.join(' ; ')} → ${r.ok ? `${r.window}${r.how ? ` (${r.how})` : ''}` : r.error}`);
+  if (!r.ok) return { ok: false, error: r.error, tried: r.tried || [], command: lines.join('\n') };
   clearInterval(fixWatch[engine]);
   const started = Date.now();
   fixWatch[engine] = setInterval(() => {
@@ -1617,7 +1705,7 @@ function fix(engine, action = 'update', onDone = (rep, info) => installsListener
     checkInstalls({ engines: [engine], fresh: true }).then((rep) => onDone(rep, { engine, action, finished: done })).catch(() => {});
   }, 1500);
   fixWatch[engine].unref?.();
-  return { ok: true, window: r.window, command: lines.join('\n') };
+  return { ok: true, window: r.window, how: r.how || null, command: lines.join('\n') };
 }
 
 function status() {
@@ -1669,7 +1757,7 @@ module.exports = {
   codexSteer: ({ chatId, turnId, text }) => { if (!codexServers) throw new Error('No Astra reply is running.'); return codexServers.steer(chatId, turnId, text); },
   codexAnswer: ({ chatId, token, answers }) => { if (!codexServers) throw new Error('The question is no longer active.'); return codexServers.answer(chatId, token, answers); },
   getCodexUsage,
-  send, stop, stopAll, login, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
+  send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
   _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs },

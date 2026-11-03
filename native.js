@@ -630,8 +630,13 @@ const Native = (() => {
     }
     const login = t.closest('.login-btn');
     if (login) {
-      const opened = await window.hub.login(login.dataset.engine);
-      login.replaceWith(el('span', { class: 'hint', text: opened ? 'Finish signing in in the window that opened (it may be behind Hearth), then press Retry.' : 'Hearth couldn\'t open the sign-in window. Open the doctor (Ctrl+K → doctor) to check the engine.' }));
+      // (signin111) one sign-in for every path (engine-health.js): a window opened / the link in a dialog / not found,
+      // and the chat is sent again by itself once the sign-in ends (when safe)
+      login.disabled = true;
+      const r = await signIn(login.dataset.engine, { agentId });
+      const line = el('span', { class: 'hint signin-said', text: r.text });
+      if (r.how === 'window') line.append(' ', el('button', { type: 'button', class: 'small', text: 'No window?', title: 'Show the sign-in link instead (opens in your browser)', on: { click: (e) => { e.stopPropagation(); signIn(login.dataset.engine, { link: true }); } } }));
+      login.replaceWith(line);
     }
   }
 
@@ -2526,6 +2531,15 @@ const Native = (() => {
     await send(agentId, next.trim(), { fromHistory: true });
   }
 
+  // (signin111) Sign in to an engine from anywhere (the error card, Ctrl+K "sign in", Astra) → { ok, how, text }:
+  // engine-health.js does it (window / link / not found); before it has loaded, it is loaded first
+  async function signIn(engine, { agentId = null, link = false } = {}) {
+    try { if (typeof EngineHealth === 'undefined' || !EngineHealth.signIn) await window.Lazy?.load?.('enginehealth'); } catch { /* the plain way below */ }
+    if (typeof EngineHealth !== 'undefined' && EngineHealth.signIn) return link ? EngineHealth.linkDialog(engine) : EngineHealth.signIn(engine, { agentId });
+    const ok = await window.hub.login(engine).catch(() => false);
+    return { ok, how: ok ? 'window' : 'failed', text: ok ? 'A sign-in window opened (it may be behind Hearth). Finish there, then press Retry.' : 'Hearth couldn\'t open the sign-in window: Ctrl+K → doctor checks the engine.' };
+  }
+
   async function regenerate(agentId) {
     const chat = chats.get(H.activeChat[agentId]);
     if (!chat || pending.has(chat.id)) return;
@@ -2936,7 +2950,7 @@ const Native = (() => {
     markdownOf: async (chatId) => chatMarkdown(await loadFull(chatId)),
     // additive API for chat-*.js / chat commands
     hooks, current, view: (agentId) => views.get(agentId) || null, load: loadChat, save: remember, adopt, isWin: cw,
-    compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote,
+    compact: compactChat, summarizeAndContinue, branch: branchFrom, edit: editMessage, retry: regenerate, quote, signIn,
     secondOpinion, review: (agentId) => send(agentId, REVIEW_PROMPT), chatMarkdown, stats: chatStats, speak, speakMessage, stopSpeaking, isSpeaking: () => Boolean(speaking), plainText, modelMenu, toggleRaw,
     setModel: setChatModel, renameCurrent, stop: stopReply, pendingFor, renderQueue, insertDraft, setStyle, renderStyle,
     toggleThinking, jumpTo, react, toggleMark, REACTIONS, messageMenu, chatMenu, chatMenuItems, lastReplyText, dayLabel,

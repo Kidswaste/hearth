@@ -599,6 +599,8 @@ const Offline = (() => {
 
   return {
     ready, prepare, items: () => items.map((it) => ({ ...it })), isOnline: () => online, pump,
+    // (signin111) engine-health.js after a sign-in: the failed message again, same chat, same engine session
+    retry: (agentId, chatId, m) => retryNow(agentId, chatId, m),
     // astra.js: a failure this module answers in the chat needs no toast of its own
     owns: (ev) => ev?.type === 'error' && KINDS.has(C.classify(ev.message)?.kind),
     _test: { net: (v) => { forced = v; try { if (v == null) localStorage.removeItem('offline.test-net'); else localStorage.setItem('offline.test-net', String(v)); } catch { /* no storage */ } }, scale: (x) => { scale = x; }, power: (state) => { if (state === 'resume') lastWake = now(); }, probeNow, attempts, set: (list) => { items = list; return save(); } },

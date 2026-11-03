@@ -109,6 +109,10 @@ async function hasAuth(bin, cwd) {
 async function signedIn(engine, bin, cwd) {
   if (engine === 'claude' && !(await hasAuth(bin, cwd))) return { ok: null, text: '' };
   const r = await quick(bin, engine === 'codex' ? ['login', 'status'] : ['auth', 'status'], 8000, cwd);
+  // (signin111) Claude Code 2.1's `auth status` answers JSON ({ "loggedIn": false, … }, exit code 1 when signed out):
+  // it was read as "can't tell", so a signed-out Claude Code never showed as signed out in the doctor / AI setup
+  const j = /"loggedIn"\s*:\s*(true|false)/.exec(r.out);
+  if (j) return j[1] === 'true' ? { ok: true, text: `Logged in${(/"authMethod"\s*:\s*"([\w.-]+)"/.exec(r.out) || [])[1] ? ` (${/"authMethod"\s*:\s*"([\w.-]+)"/.exec(r.out)[1]})` : ''}` } : { ok: false, text: 'Not logged in' };
   if (/not (logged|signed) in|no credentials|please (run|log ?in|sign ?in)|login required|logged out/i.test(r.out)) return { ok: false, text: lastLine(r.out) };
   if (r.code === 0) return { ok: true, text: lastLine(r.out) };
   return { ok: null, text: lastLine(r.out) };
@@ -319,38 +323,166 @@ function loginPlan(engine, bin) {
 // Linux: the first terminal emulator found. When the window's work ends it writes `marker`, which watch() waits for.
 // Tests (HEARTH_TEST_SAVE_DIR, set by dev/smoke.js, or HEARTH_TEST_TERMINAL) run the script without a window, keep its
 // output, and only echo what isn't the engine itself (brew / npm / the installers never run in a test).
-function runInTerminal({ title, lines, marker, cwd, bin }) {
+// (signin111) what runs is built by terminalPlan() (pure: dev/signin111-test.js checks the exact Windows / Mac / Linux
+// argv); each way is tried in turn until one starts (Windows: `start`, then PowerShell's Start-Process; Mac: Terminal,
+// then the .command file's own app; Linux: each terminal found), and every attempt is written to data/engine.log.
+const CMD_MAX = 8191; // the longest line cmd.exe takes (its /c string and all)
+// a window title cmd's `start` takes as it is: no quote, no % (cmd expands %NAME% even inside quotes), no ^ & | < >
+const safeTitle = (t) => String(t || '').replace(/[^\w .,:()+-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Hearth';
+const psq = (s) => String(s).replace(/'/g, "''"); // inside a PowerShell '…' string
+const shq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`; // a POSIX shell word
+function psScript({ title, lines, marker }) {
+  return [`$Host.UI.RawUI.WindowTitle = '${psq(title)}'`, `Write-Host '${psq(title)} (Hearth never sees your password)'`, 'Write-Host ""',
+    ...lines, 'Write-Host ""', ...(marker ? [`Set-Content -LiteralPath '${psq(marker)}' -Value done`] : []), "Write-Host 'Done: go back to Hearth. You can close this window.'"].join('\n');
+}
+function shScript({ title, lines, marker }) {
+  return ['#!/bin/sh', 'clear 2>/dev/null', `echo "${String(title).replace(/["$`\\]/g, "'")} (Hearth never sees your password)."`, 'echo',
+    ...lines, 'echo', ...(marker ? [`echo done > ${shq(marker)}`] : []), 'echo "Done: go back to Hearth. You can close this window."', ''].join('\n');
+}
+// Linux terminals Hearth knows, in the order tried, each with how it takes a command
+const LINUX_TERMS = [['x-terminal-emulator', ['-e']], ['gnome-terminal', ['--']], ['konsole', ['-e']], ['xfce4-terminal', ['-x']], ['kitty', []], ['alacritty', ['-e']], ['foot', []], ['xterm', ['-e']]];
+// → { attempts: [{ how, window, cmd, args, opts, settle }], viaFile }. Pure: the platform, the environment, the script
+// and the files are given; `has(file)` says whether a program file exists (Windows: PowerShell's full path), `terms`
+// lists the Linux terminals found on PATH.
+//   Windows: cmd.exe /d /s /c "start "<title>" "<powershell.exe>" -NoProfile -NoExit -ExecutionPolicy Bypass -EncodedCommand <base64>"
+//     · /s + the outer quotes: cmd takes everything between the first and the last quote as the line (as Node's own
+//       shell: true does), so the title's and the program's quotes stay as they are
+//     · the title keeps letters, digits and . , : ( ) + - only (no quote to end it early, no %VAR% cmd would expand)
+//     · <base64> is the UTF-16 script: only A–Z a–z 0–9 + / =, nothing cmd reads; a line that would pass cmd's 8191
+//       characters runs the same script from a .ps1 file instead (-File "<file>")
+//     · ComSpec is used when it names a cmd.exe (no quote, no %); otherwise %SystemRoot%\System32\cmd.exe
+//     · cmd itself is detached (no console of its own, nothing flashes); `start` gives PowerShell a new, visible console
+//   then: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Start-Process -FilePath '<ps>' -ArgumentList '<same arguments>'"
+function terminalPlan({ platform = process.platform, title, script, file, env = process.env, has = () => true, terms = [] } = {}) {
+  if (platform === 'win32') { // winmac-ok: Windows-only branch of the pure builder (the Mac / Linux ones follow)
+    const root = String(env.SystemRoot || env.SYSTEMROOT || env.windir || 'C:\\Windows').replace(/[\\/]+$/, '');
+    const fullPs = `${root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    const ps = has(fullPs) ? fullPs : 'powershell.exe';
+    const spec = String(env.ComSpec || env.COMSPEC || '');
+    const cmd = /(^|[\\/])cmd\.exe$/i.test(spec) && !/["%]/.test(spec) ? spec : `${root}\\System32\\cmd.exe`;
+    const b64 = Buffer.from(script, 'utf16le').toString('base64');
+    const base = '-NoProfile -NoExit -ExecutionPolicy Bypass';
+    const lineOf = (psArgs) => `"start "${safeTitle(title)}" "${ps}" ${psArgs}"`;
+    let psArgs = `${base} -EncodedCommand ${b64}`;
+    let viaFile = false;
+    // cmd.exe counts its whole line: "<cmd>" /d /s /c "start …" (a margin for what Windows adds)
+    if (`"${cmd}" /d /s /c ${lineOf(psArgs)}`.length > CMD_MAX - 64) { psArgs = `${base} -File "${file}"`; viaFile = true; }
+    return {
+      viaFile,
+      attempts: [
+        { how: 'start', window: 'PowerShell', cmd, args: ['/d', '/s', '/c', lineOf(psArgs)], opts: { detached: true, stdio: 'ignore', windowsHide: false, windowsVerbatimArguments: true }, settle: 'exit' },
+        { how: 'Start-Process', window: 'PowerShell', cmd: ps, args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `Start-Process -FilePath '${psq(ps)}' -ArgumentList '${psq(psArgs)}'`], opts: { stdio: 'ignore', windowsHide: true }, settle: 'exit' },
+      ],
+    };
+  }
+  if (platform === 'darwin') {
+    return { viaFile: true, attempts: [
+      { how: 'open -a Terminal', window: 'Terminal', cmd: '/usr/bin/open', args: ['-a', 'Terminal', file], opts: { detached: true, stdio: 'ignore' }, settle: 'exit' },
+      // Terminal renamed / removed: the app the Mac opens .command files with (iTerm…)
+      { how: 'open', window: 'Terminal', cmd: '/usr/bin/open', args: [file], opts: { detached: true, stdio: 'ignore' }, settle: 'exit' },
+    ] };
+  }
+  const inner = `sh ${shq(file)}; echo; echo "Press Enter to close"; read x`;
+  return { viaFile: true, attempts: LINUX_TERMS.filter(([t]) => terms.includes(t)).map(([t, pre]) => (
+    // a terminal stays open as long as its window: it counts as opened when it is still running a moment later
+    { how: t, window: 'terminal', cmd: t, args: [...pre, 'sh', '-c', inner], opts: { detached: true, stdio: 'ignore' }, settle: 'alive' })) };
+}
+
+// the terminal / PowerShell lines go to data/engine.log with the engines' own (what was tried, what happened)
+function tlog(line) { try { fs.appendFileSync(path.join(DATA_DIR, 'engine.log'), `${new Date().toISOString()} terminal: ${line}\n`); } catch { /* best-effort */ } }
+const shown = (a) => `${a.cmd} ${a.args.map((x) => (x.length > 160 ? `${x.slice(0, 120)}…(${x.length} chars)` : x)).join(' ')}`;
+// One attempt: started → { ok }, or it failed to start / ended with an error → { ok: false, error }. settle 'exit': the
+// launcher ends at once (cmd's start, open, Start-Process) and its exit code says; 'alive': still running after aliveMs.
+function tryOne(a, { spawnFn = spawn, waitMs = 8000, aliveMs = 1500 } = {}) {
+  return new Promise((resolve) => {
+    let child;
+    let done = false;
+    const end = (r) => { if (done) return; done = true; clearTimeout(timer); try { child?.unref?.(); } catch { /* gone */ } resolve(r); };
+    const timer = setTimeout(() => end(a.settle === 'alive' ? { ok: true } : { ok: true, slow: true }), a.settle === 'alive' ? aliveMs : waitMs);
+    try { child = spawnFn(a.cmd, a.args, a.opts); } catch (err) { end({ ok: false, error: err.code || err.message }); return; }
+    child.on?.('error', (err) => end({ ok: false, error: err.code || err.message }));
+    child.on?.('exit', (code, signal) => end(code === 0 ? { ok: true } : { ok: false, error: signal ? `stopped (${signal})` : `exit code ${code}` }));
+  });
+}
+async function tryAll(plan, o = {}) {
+  const tried = [];
+  for (const a of plan.attempts) {
+    const r = await tryOne(a, o);
+    tried.push({ how: a.how, ok: r.ok, error: r.error || null });
+    (o.log || tlog)(`${a.how}: ${shown(a)} → ${r.ok ? `opened${r.slow ? ' (still starting)' : ''}` : `failed (${r.error})`}`);
+    if (r.ok) return { ok: true, window: a.window, how: a.how, tried };
+  }
+  return { ok: false, error: tried.length ? `no window opened (${tried.map((t) => `${t.how}: ${t.error}`).join('; ')})` : 'no terminal window found', tried };
+}
+// writes the script (and its file when the plan runs one) → { plan, file } or { headless … } in a test
+function prepare({ title, lines, marker, bin }) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hearth-term-'));
   const headless = Boolean(process.env.HEARTH_TEST_SAVE_DIR || process.env.HEARTH_TEST_TERMINAL);
-  if (headless) lines = lines.map((l) => (bin && l.startsWith(q(bin)) ? l : `echo '(test) would run: ${l.replace(/'/g, '')}'`));
-  if (IS_WIN && !headless) {
-    const ps = [`$Host.UI.RawUI.WindowTitle = '${title.replace(/'/g, "''")}'`, `Write-Host '${title.replace(/'/g, "''")} (Hearth never sees your password)'`, 'Write-Host ""',
-      ...lines, 'Write-Host ""', ...(marker ? [`Set-Content -LiteralPath '${marker.replace(/'/g, "''")}' -Value done`] : []), "Write-Host 'Done: go back to Hearth. You can close this window.'"].join('\n');
-    const b64 = Buffer.from(ps, 'utf16le').toString('base64');
-    // (round 110) through `start`: a detached powershell.exe spawned straight from Hearth could end up with no visible
-    // console ("nothing opens" when pressing Sign in); `start` always gives the new window its own visible console,
-    // brought to the front. The encoded script is plain base64, so it needs no quoting. winmac-ok: Windows-only branch
-    const args = `start "${title.replace(/"/g, "'")}" powershell.exe -NoProfile -NoExit -ExecutionPolicy Bypass -EncodedCommand ${b64}`;
-    try {
-      spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', args], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).on('error', () => {}).unref();
-      return { ok: true, window: 'PowerShell' };
-    } catch (err) { return { ok: false, error: err.message }; }
-  }
-  const sh = ['#!/bin/sh', 'clear 2>/dev/null', `echo "${title.replace(/"/g, "'")} (Hearth never sees your password)."`, 'echo',
-    ...lines, 'echo', ...(marker ? [`echo done > '${marker.replace(/'/g, `'\\''`)}'`] : []), 'echo "Done: go back to Hearth. You can close this window."', ''].join('\n');
-  const file = path.join(tmp, IS_MAC ? 'hearth.command' : 'hearth.sh');
-  fs.writeFileSync(file, sh, { mode: 0o755 });
   if (headless) {
-    const log = fs.openSync(path.join(tmp, 'output.txt'), 'w');
-    spawn('sh', [file], { cwd: cwd || os.tmpdir(), detached: true, stdio: ['ignore', log, log] }).on('error', () => {}).unref();
-    return { ok: true, window: 'test', file, output: path.join(tmp, 'output.txt') };
+    lines = lines.map((l) => (bin && l.startsWith(q(bin)) ? l : `echo '(test) would run: ${l.replace(/'/g, '')}'`));
+    const file = path.join(tmp, 'hearth.sh');
+    fs.writeFileSync(file, shScript({ title, lines, marker }), { mode: 0o755 });
+    return { headless: true, tmp, file };
   }
-  if (IS_MAC) { spawn('open', ['-a', 'Terminal', file], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref(); return { ok: true, window: 'Terminal', file }; }
-  const term = [['x-terminal-emulator', ['-e']], ['gnome-terminal', ['--']], ['konsole', ['-e']], ['xfce4-terminal', ['-x']], ['xterm', ['-e']]]
-    .find(([t]) => pathDirs().some((d) => fs.existsSync(path.join(d, t))));
-  if (!term) return { ok: false, error: 'no terminal window found', file };
-  spawn(term[0], [...term[1], 'sh', '-c', `sh '${file}'; echo; echo "Press Enter to close"; read x`], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-  return { ok: true, window: 'terminal', file };
+  if (IS_WIN) { // winmac-ok: the PowerShell script (Windows-only branch)
+    const script = psScript({ title, lines, marker });
+    const file = path.join(tmp, 'hearth.ps1');
+    const plan = terminalPlan({ platform: 'win32', title, script, file, has: (f) => fs.existsSync(f) });
+    if (plan.viaFile) fs.writeFileSync(file, `\ufeff${script}`); // UTF-8 with its mark: Windows PowerShell 5 reads it right
+    return { plan, file };
+  }
+  const file = path.join(tmp, IS_MAC ? 'hearth.command' : 'hearth.sh');
+  fs.writeFileSync(file, shScript({ title, lines, marker }), { mode: 0o755 });
+  const terms = IS_MAC ? [] : LINUX_TERMS.map(([t]) => t).filter((t) => pathDirs().some((d) => fs.existsSync(path.join(d, t))));
+  return { plan: terminalPlan({ platform: process.platform, title, file, terms }), file };
+}
+function runHeadless(p, cwd) {
+  const log = fs.openSync(path.join(p.tmp, 'output.txt'), 'w');
+  spawn('sh', [p.file], { cwd: cwd || os.tmpdir(), detached: true, stdio: ['ignore', log, log] }).on('error', () => {}).unref();
+  return { ok: true, window: 'test', file: p.file, output: path.join(p.tmp, 'output.txt') };
+}
+// → Promise { ok, window, how, tried, file } once a window opened (or every way failed)
+async function openTerminal(o) {
+  let p;
+  try { p = prepare(o); } catch (err) { tlog(`couldn't prepare the window (${err.message})`); return { ok: false, error: err.message }; }
+  if (p.headless) return runHeadless(p, o.cwd);
+  const r = await tryAll(p.plan, { spawnFn: o.spawnFn });
+  if (!r.ok) tlog(`${o.title}: ${r.error}`);
+  return { ...r, file: p.file };
+}
+// The same, answered at once for the callers that don't wait (ffmpeg, gltfpack, the updater): the attempts go on in
+// the background and are logged; only "no terminal at all" (Linux) is known up front.
+function runInTerminal(o) {
+  let p;
+  try { p = prepare(o); } catch (err) { tlog(`couldn't prepare the window (${err.message})`); return { ok: false, error: err.message }; }
+  if (p.headless) return runHeadless(p, o.cwd);
+  if (!p.plan.attempts.length) { tlog(`${o.title}: no terminal window found`); return { ok: false, error: 'no terminal window found', file: p.file }; }
+  tryAll(p.plan).then((r) => { if (!r.ok) tlog(`${o.title}: ${r.error}`); }).catch(() => {});
+  return { ok: true, window: p.plan.attempts[0].window, file: p.file };
+}
+
+// ---------- (signin111) sign-in without a window: the engine's own link ----------
+// `claude auth login` (Claude Code 2.1+) and `codex login` both work without a terminal: they open the browser
+// themselves, print the page to open ("If the browser didn't open, visit: <url>" / "navigate to this URL to
+// authenticate:\n\n<url>"), wait for the browser to come back to their own localhost page, then print "Login
+// successful." / "Successfully logged in" and exit 0. Hearth only reads that one link from their output (an authorize
+// page: no password, no token in it) and when they end; sign-in happens in the browser. Never `setup-token`: it prints a token.
+const linkLoginArgs = (engine) => (engine === 'codex' ? ['login'] : ['auth', 'login']);
+const LOGIN_HOSTS = /(^|\.)(claude\.ai|claude\.com|anthropic\.com|openai\.com|chatgpt\.com)$/i;
+// only an https page of the engine's own sign-in service is ever shown or opened
+function safeLoginUrl(url) {
+  try { const u = new URL(String(url)); return u.protocol === 'https:' && LOGIN_HOSTS.test(u.hostname) && !u.username && !u.password ? u.href : null; } catch { return null; }
+}
+function loginUrlOf(text) {
+  for (const m of String(text || '').matchAll(/https:\/\/[^\s"'<>`]+/g)) { const u = safeLoginUrl(m[0].replace(/[).,;\]]+$/, '')); if (u) return u; }
+  return null;
+}
+// how a link sign-in ended → { ok, why } (why: the engine's last line, links left out)
+function loginEnded(code, text) {
+  const t = String(text || '');
+  const ok = code === 0 && !/login failed|error/i.test(t.split('\n').filter((l) => l.trim()).pop() || '');
+  const why = t.split('\n').map((l) => l.replace(/https?:\/\/\S+/g, '(link)').trim()).filter(Boolean).pop()?.slice(0, 200) || (code == null ? 'stopped' : `exit code ${code}`);
+  return { ok, why };
 }
 
 // (round 28, firstrun) the documented ffmpeg install (Homebrew on a Mac, winget on Windows): main.js runs it after a
@@ -364,4 +496,4 @@ function ffmpegLines() {
   return ['sudo apt-get install -y ffmpeg || sudo dnf install -y ffmpeg || sudo pacman -S --noconfirm ffmpeg'];
 }
 
-module.exports = { ffmpegLines, MIN, LABEL, KIND_LABEL, data, persist, semverOf, cmp, minFor, meetsMin, binKey, quick, version, signedIn, candidates, find, scanAsync, scanWith, scanState, kindOf, updatePlan, loginPlan, runInTerminal, IS_WIN, IS_MAC };
+module.exports = { ffmpegLines, MIN, LABEL, KIND_LABEL, data, persist, semverOf, cmp, minFor, meetsMin, binKey, quick, version, signedIn, candidates, find, scanAsync, scanWith, scanState, kindOf, updatePlan, loginPlan, runInTerminal, openTerminal, terminalPlan, tryAll, psScript, shScript, safeTitle, CMD_MAX, hasAuth, linkLoginArgs, safeLoginUrl, loginUrlOf, loginEnded, IS_WIN, IS_MAC };

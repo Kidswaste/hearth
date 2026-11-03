@@ -938,7 +938,8 @@ const ChatCmds = (() => {
   });
   R({
     name: 'login', aliases: ['sign-in'], area: 'Agents', desc: 'Sign this agent\'s engine in to your account (opens its own window)',
-    run: async (_a, ctx) => { const ok = await window.hub.login(H.agent(ctx.agentId).engine); return ok ? 'Finish signing in in the window that opened.' : 'Couldn\'t find the engine on this computer.'; },
+    // (signin111) says what happened: a window opened (maybe behind Hearth), the sign-in link instead, or not found
+    run: async (_a, ctx) => (await Native.signIn(H.agent(ctx.agentId).engine, { agentId: ctx.agentId })).text,
   });
 
   // =====================================================================================================
