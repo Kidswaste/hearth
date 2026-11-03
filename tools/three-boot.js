@@ -130,6 +130,7 @@ const LabBoot = (() => {
   // The Lab's preview frame takes the warm page (tools/three.js sandboxFrame): the iframe itself (moved, not
   // reloaded) and, at its first load, adopt(query) says whether it fits and in what state it is.
   function take(parent) {
+    fromHead(); // (round 112)
     if (!w || w.taken || !can() || !parent?.isConnected) return null;
     const frame = w.frame;
     try { parent.moveBefore(frame, null); } catch (err) { st.skipped = `move: ${err.message}`; return null; }
@@ -143,7 +144,7 @@ const LabBoot = (() => {
       adopt(query) {
         removeEventListener('message', onMsg);
         if (w === mine) w = null;
-        if (query !== mine.query) { st.skipped = 'other query'; return null; }
+        if (query !== mine.query) { st.skipped = 'other query'; st.queries = [mine.query, query]; return null; }
         return { n: mine.n, ready: mine.ready, ran: mine.ran && mine.drawn ? 'drawn' : mine.ran, sketch: mine.sketch, times: mine.times };
       },
     };
@@ -180,6 +181,22 @@ const LabBoot = (() => {
     setTimeout(tick, 300);
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', schedule, { once: true }); else schedule();
+  // (round 112, labopen112) a cold open: lab-intent.js started the preview page when the Lab was shown, before this code
+  // was in. It becomes this start's warm page (with no scene run in it): the Lab takes it as it takes the warm page.
+  // Looked for when this file runs and again when the Lab takes its page (the Lab shown while this group was already
+  // loading: this file ran before the page was started)
+  function fromHead() {
+    const h = window.LabIntent?.takeHead?.();
+    if (!h) return;
+    if (w) { try { h.frame.src = 'about:blank'; } catch { /* gone */ } h.host.remove(); return; }
+    started = true;
+    w = { host: h.host, frame: h.frame, n: h.n, query: h.query, sketch: null, layers: [], ready: h.ready, ran: false, drawn: false, taken: false, t0: h.t0, times: {}, head: true };
+    if (h.ready) w.times.ready = Math.round(performance.now() - h.t0);
+    st.times = w.times; st.head = true;
+    addEventListener('message', onMsg);
+    setTimeout(() => { if (w?.head && !w.taken) drop('head unused'); }, 30000);
+  }
+  fromHead();
 
   return { take, used, ran, warm, state: () => ({ ...st, up: Boolean(w), ready: Boolean(w?.ready), drawn: Boolean(w?.drawn), sketch: w?.sketch || null }) };
 })();

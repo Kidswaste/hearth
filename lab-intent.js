@@ -19,7 +19,7 @@ const LabIntent = (() => {
   const G = 'lab'; const SURFACE = 'tool:three'; const DAY = 864e5; const KEEP = 8; const IDLE_AFTER = 40000; const CALM_AFTER = 5000; const QUIET = 3000;
   const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* no storage */ } return null; };
   const json = (k) => { const raw = ls(k); return raw == null ? null : JSON.parse(raw); };
-  const st = { mode: null, why: '', intent: null, intentAt: null, prefetchAt: null, shownAt: null, inWhenShown: null };
+  const st = { mode: null, why: '', intent: null, intentAt: null, prefetchAt: null, shownAt: null, inWhenShown: null, head: null };
   const ready = () => performance.getEntriesByName('hearth:ready')[0]?.startTime || 0;
   const lazyOk = () => Boolean(window.Lazy?.prefetch);
   const isIn = () => !lazyOk() || Lazy.loaded(G);
@@ -106,6 +106,65 @@ const LabIntent = (() => {
     if (isIn()) return;
     try { if ((rows || []).slice(0, 3).some(isLabRow)) go('palette'); } catch { /* a row it can't read */ }
   }
+  // ---------- (round 112, labopen112) the preview page's head start ----------
+  // The Lab shown before its code is in (a cold open: the code loads on the press, ≈ 0.3 s here, more on a busy start):
+  // its preview page (a new process, 1.1 MB of page, three.js: ≈ 0.4 s here before it can run anything) used to start
+  // only once that code was in and the Lab had read its scenes. Now it starts at once, beside the code's load, hidden
+  // behind the app like the warm page (tools/three-boot.js), with no scene in it; the Lab takes it over in place
+  // (LabBoot.take, moveBefore: its 'ready' kept here until then) and runs its scene in it. The page is loaded for the
+  // query the Lab used last (the same three.js version and pixel ratio); one that doesn't fit is let go and the Lab
+  // loads its own, as before (the page let go). Let go after 30 s untaken (the code failed to load). localStorage 'labopen.head' = '0': off.
+  let head = null; // { host, frame, n, query, ready, t0 }
+  function headStart() {
+    if (head || isIn()) return;
+    try { if (ls('labopen.head') === '0' || typeof Element.prototype.moveBefore !== 'function') return; } catch { return; }
+    let last = null; let size = null; let v = null; let fit = true;
+    try { last = store.get('labboot.last', null); size = store.get('labboot.size', null); v = store.get('three.version', null); fit = store.get('three.aspect', 'fit') === 'fit'; } catch { return; }
+    // the query the Lab ran last (another scene than that one: its pixel ratio follows the Lab's frame size, the same
+    // unless it has its own); none yet (never run on this computer): this three.js version (tools/three-data.js
+    // VERSIONS[0] when none was chosen: a default that drifted from it only costs this page) at the screen's pixels
+    let query = typeof last?.query === 'string' && /^\?mode=sketch&v=[\w.]+/.test(last.query) ? last.query : null;
+    if (!query) {
+      if (!fit) return; // (an exact frame size: the Lab's own load)
+      let saver = false; try { saver = H.config?.settings?.gpuPower === 'saver'; } catch { /* no settings */ }
+      query = `?mode=sketch&v=${/^[\w.]+$/.test(String(v || '')) ? v : '0.186.1'}${saver ? '&gpu=low' : ''}`;
+    }
+    const [fw, fh] = Array.isArray(size) && size[0] > 40 && size[1] > 40 ? size : [960, 540];
+    const host = document.createElement('div');
+    host.className = 'lab-boot'; host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = `position:fixed;left:0;top:0;width:${fw}px;height:${fh}px;z-index:-1;opacity:0;pointer-events:none;overflow:hidden;contain:strict`;
+    // the same frame as the Lab's own (tools/three.js sandboxFrame): no allow-same-origin
+    const frame = document.createElement('iframe');
+    frame.className = 'three-frame';
+    frame.setAttribute('sandbox', 'allow-scripts allow-pointer-lock allow-downloads');
+    frame.setAttribute('allow', 'display-capture; microphone; autoplay');
+    frame.style.cssText = 'width:100%;height:100%;border:0';
+    host.append(frame);
+    const n = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const h = head = { host, frame, n, query, ready: null, t0: performance.now(), taken: false };
+    h.onMsg = (e) => { if (e.source === frame.contentWindow && e.data?.source === 'three-sandbox' && e.data.type === 'ready' && (!e.data.n || e.data.n === n)) h.ready = e.data; };
+    addEventListener('message', h.onMsg);
+    document.body.append(host);
+    frame.src = `tools/three-sandbox.html${query}&n=${n}`;
+    st.head = { at: Math.round(h.t0), query };
+    setTimeout(() => { if (head === h && !h.taken) dropHead('not taken'); }, 30000);
+  }
+  function dropHead(why) {
+    const h = head; if (!h) return;
+    head = null; removeEventListener('message', h.onMsg);
+    if (st.head) st.head.dropped = why;
+    if (h.taken) return;
+    try { h.frame.src = 'about:blank'; } catch { /* gone */ }
+    h.host.remove();
+  }
+  // tools/three-boot.js takes it once (as its warm page with no scene): what it is, its 'ready' if it came
+  function takeHead() {
+    const h = head; if (!h || h.taken) return null;
+    h.taken = true; head = null; removeEventListener('message', h.onMsg);
+    if (st.head) st.head.taken = Math.round(performance.now());
+    return { host: h.host, frame: h.frame, n: h.n, query: h.query, ready: h.ready, t0: h.t0 };
+  }
+
   // the Lab on screen: this start used it; the last surface shown is kept for the next start
   function onActivate(e) {
     const on = e.detail?.surfaceId === SURFACE ? '1' : '0';
@@ -113,6 +172,7 @@ const LabIntent = (() => {
     if (on !== '1') return;
     if (st.shownAt == null) { st.shownAt = Math.round(performance.now()); st.inWhenShown = isIn(); }
     if (!hist[hist.length - 1]) { hist[hist.length - 1] = 1; ls('lazy.lab.starts', JSON.stringify(hist)); }
+    headStart(); // (round 112: before the code's load, which holds this thread for a while)
     go('shown');
   }
 
@@ -131,6 +191,6 @@ const LabIntent = (() => {
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', init, { once: true }); else init();
 
-  return { seen, go, state: () => ({ ...st, past: past && past.slice(), loaded: isIn() }) };
+  return { seen, go, takeHead, state: () => ({ ...st, past: past && past.slice(), loaded: isIn() }) };
 })();
 window.LabIntent = LabIntent;
