@@ -1092,7 +1092,7 @@ function createEngine(o) {
       const value = S.toCloud(S.parseJson(text), ctx); // (old paths of another computer written as-is are fixed too)
       const prev = L ? await localText(rel, L).catch(() => null) : null;
       await keepScenesAside(rel, L, value); // (round 103, syncstall103) await
-      await keepStateAside(rel, L, value); // (round 111, syncfix111) value
+      await keepStateAside(rel, L);
       ok = await casWrite(file, lent, await localJsonText(rel, S.fromCloud(value, ctx), L), 'pull'); // (round 103, syncstall103) await
       if (ok) {
         setBase(rel, h, text);
@@ -1129,7 +1129,7 @@ function createEngine(o) {
   async function keepStateAside(rel, L, next) {
     if (!L?.file || L.unavailable || !/^(?:chats|kv)\/[^/]+\.json$/i.test(rel)) return;
     const raw=await fsp.readFile(L.file,'utf8'); S.parseJson(raw);
-    if (Fix.textInside(raw, next, ctx)) return; // (round 111, syncfix111) all of it is in what replaces it: no copy (one per store piled up in Deleted files after a first sync)
+    if (Fix.textInside(raw, next, ctx)) return; // (round 111, syncfix111) next: a first merge (no base) keeping all of it: no copy (one per store piled up in Deleted files after a first sync)
     await atomicWrite(path.join(stateDir,'recovery',...rel.split('/')),raw);
   }
   // (round 43, scenesafe) before what arrives replaces this computer's Lab scenes with a list missing some of them (a
@@ -1175,7 +1175,7 @@ function createEngine(o) {
         // (round 105, merge105) shared: a known common version whose text is gone (none on disk): a count is never added twice
         const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel), shared: Boolean(state.base[rel]) }); // (round 72, sync72)
         const text = canon(r.value);
-        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L, r.value); /* (round 111, syncfix111) r.value */ } }; // (round 103, syncstall103) await
+        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L, state.base[rel] ? undefined : r.value); /* (round 111, syncfix111) two histories joined (no base): r.value */ } }; // (round 103, syncstall103) await
       }
       const { text, hm } = m;
       // this computer first, then the cloud: a cloud write that loses its race leaves the old base, so the next pass

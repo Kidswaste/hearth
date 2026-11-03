@@ -3,13 +3,14 @@
 //   · waits(why, code) / mark(): a file that only WAITS (another program holds it: EBUSY, EPERM on Windows, a store that
 //     can't be read just now: EHELD; or a drive that didn't answer) is marked { waits: true } on its blocked entry, so
 //     every reader of the status (the chip, the panel, first run, /sync status) agrees without knowing the codes.
-//   · inside(old, next): is everything in this computer's version (old) still in the version replacing it (next)? Then
-//     the copy kept in data/sync/recovery ("the version before the last change from your other computer") would be the
-//     only copy of nothing: it isn't made. A first sync of a joined Hearth merges every store and made one per store,
-//     all listed in Deleted files. A value that is ONLY in the old version (a title changed, a message or an item
-//     removed, a count that went down) keeps the copy, as before. Time stamps moving on (updatedAt…) don't count.
-//   · listed(list): Deleted files' recovery copies (from before this round) whose content is all in the current file
-//     get inside: true, so the panel can fold them into one row. Nothing is removed.
+//   · inside(old, next): is everything in this computer's version (old) still in the version replacing it (next)?
+//     When two Hearths are joined, the first merge of each store (no common base: everything of both is kept) made a
+//     copy in data/sync/recovery ("the version before the last change from your other computer") of every store,
+//     all listed in Deleted files, each the only copy of nothing: such a copy isn't made any more. A value that is ONLY
+//     in the old version (a title changed two ways, a count) keeps the copy, as before. Day to day (a base known) the
+//     copy is made as before: it is how the other computer's change is undone. Time stamps (updatedAt…) don't count.
+//   · listed(list): Deleted files' recovery copies whose content is all in the current file get inside: true, so the
+//     panel folds them into one row (each still restorable). Nothing is removed.
 //   · chatTrashAside(): restoring a chat from Deleted files takes its copy out of Recently deleted (data/trash/<id>.json)
 //     into Deleted files (data/sync/trash, kept 30 days): it was left there, here and, through sync, on both computers.
 'use strict';

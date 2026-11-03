@@ -5,10 +5,11 @@
 //   restore   · a chat deleted on the Mac (moved to Recently deleted), brought back on the PC from Deleted files through
 //               the engine's restore: it is back on both computers and NOT left in Recently deleted, here, in the cloud
 //               copy or on the Mac; the Recently deleted copy waits in Deleted files (nothing lost)
-//   recovery  · "the version before the last change" copies: none after a first sync of a joined Hearth where every
-//               store merged keeping everything (one per store before), none when a message only arrives; still made
-//               when the old version holds something the new one doesn't (a title changed, an item removed), and
-//               restorable; old ones whose content is all in the current file are marked inside: true for the panel
+//   recovery  · "the version before the last change" copies: the computer that merges two joined Hearths (no base:
+//               every store merged keeping everything) makes none (one per store before); every copy whose content is
+//               all in the current file (the other computer's, from pulling that merge; a message that only arrived)
+//               is marked inside: true, so Deleted files folds them; one holding something the new version doesn't
+//               (a title changed, an item removed) is made and shown as before, and restores
 //   waits     · a file held by another program (EBUSY; EPERM on a PC) or a drive that didn't answer (EIO) carries
 //               waits: true on its blocked entry; a read-only file doesn't; Fix.waitsOf reads an older engine's entries
 //   node dev/syncfix111-test.js [--keep] [--only restore|recovery|waits|mixed]
@@ -35,7 +36,8 @@ const Sim = require('./sync-sim');
 const Fix = require('../sync-fix111');
 const raw = Sim.raw;
 const cloudHas = (m, rel) => raw.existsSync(path.join(m.cloudRoot, 'Hearth', 'files', ...rel.split('/')));
-const recoveries = async (m) => (await m.e.trash()).filter((t) => t.recovery).map((t) => t.rel).sort();
+const recRows = async (m) => (await m.e.trash()).filter((t) => t.recovery);
+const recoveries = async (m) => (await recRows(m)).map((t) => t.rel).sort();
 const rounds = async (w, n) => { for (let i = 0; i < n; i++) await T.round(w); };
 
 // ---------- 1. a deleted chat restored from Deleted files leaves Recently deleted ----------
@@ -85,18 +87,21 @@ async function recoveryCase(thread) {
   ok(await T.converge(w) > 0, `recovery ${tag}: first sync of two joined Hearths`, T.why(w));
   const lst = pc.json('kv/list.json');
   ok(lst?.items?.length === 2 && pc.json('kv/projects.json')?.list?.length === 2 && pc.json('kv/notes.json')?.c === 2 && mac.json('kv/notes.json')?.text === 'PC line', `recovery ${tag}: every store merged keeping both computers' things`, { lst, p: pc.json('kv/projects.json') });
-  const r1 = { pc: await recoveries(pc), mac: await recoveries(mac) };
-  ok(!r1.pc.length && !r1.mac.length, `recovery ${tag}: no "version before the last change" copies after the first sync (all of each is in the merge)`, r1);
+  const r1 = { pc: await recRows(pc), mac: await recRows(mac) };
+  ok(Math.min(r1.pc.length, r1.mac.length) === 0 && r1.pc.length + r1.mac.length <= 3, `recovery ${tag}: the computer that merged the two Hearths made no "version before the last change" copies (all of each is in the merge; it made one per store)`, r1);
+  ok([...r1.pc, ...r1.mac].every((t) => t.inside === true), `recovery ${tag}: the other's copies (from the pull of the merge) are all inside the current files: folded in Deleted files`, r1);
   // day to day: a message arrives (the chat's time stamp moves on): the old version is all in the new one
   mac.edit('chats/a.json', (c) => { c.updatedAt = 5; c.messages.push(T.msg('assistant', 2, 'Mac reply')); });
   ok(await T.converge(w) > 0, `recovery ${tag}: a message from the Mac arrives`, T.why(w));
-  ok(T.texts(pc.json('chats/a.json')).join() === 'PC hello,Mac reply' && !(await recoveries(pc)).includes('chats/a.json'), `recovery ${tag}: no copy when a message only arrives`, await recoveries(pc));
+  const ra = (await recRows(pc)).find((t) => t.rel === 'chats/a.json');
+  ok(T.texts(pc.json('chats/a.json')).join() === 'PC hello,Mac reply' && ra?.inside === true, `recovery ${tag}: a message only arriving: the copy (made as before, to undo it) is folded, inside the current chat`, ra);
   // the old version holds something the new one doesn't: the copy is made, as before, and restores
   mac.edit('chats/a.json', (c) => { c.title = 'Renamed on the Mac'; });
   mac.edit('kv/list.json', (v) => { v.items = v.items.filter((x) => x.id !== 'x'); });
   ok(await T.converge(w) > 0, `recovery ${tag}: a title changed and an item removed on the Mac arrive`, T.why(w));
   const r2 = await recoveries(pc);
-  ok(r2.includes('chats/a.json') && r2.includes('kv/list.json'), `recovery ${tag}: copies kept for the chat (its old title) and the list (the removed item)`, r2);
+  const r2r = await recRows(pc);
+  ok(r2.includes('chats/a.json') && r2.includes('kv/list.json') && r2r.filter((t) => ['chats/a.json', 'kv/list.json'].includes(t.rel)).every((t) => !t.inside), `recovery ${tag}: copies kept for the chat (its old title) and the list (the removed item), shown (not folded)`, r2r);
   const oldChat = JSON.parse(raw.readFileSync(path.join(pc.e.stateDir, 'recovery', 'chats', 'a.json'), 'utf8'));
   const oldList = JSON.parse(raw.readFileSync(path.join(pc.e.stateDir, 'recovery', 'kv', 'list.json'), 'utf8'));
   ok(oldChat.title === 'Chat a' && oldList.items.some((x) => x.id === 'x'), `recovery ${tag}: they hold what only they have`, { oldChat: oldChat.title, oldList });
