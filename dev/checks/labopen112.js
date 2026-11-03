@@ -89,6 +89,7 @@ const probe = () => {
   }
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) P.loaf.push({ s: Math.round(e.startTime), d: Math.round(e.duration), b: Math.round(e.blockingDuration || 0), r: Math.round(e.renderStart || 0), scripts: (e.scripts || []).map((x) => ({ s: Math.round(x.startTime), d: Math.round(x.duration), c: Math.round(x.pauseDuration || 0), inv: String(x.invoker || '').slice(0, 60), type: x.invokerType, src: String(x.sourceURL || '').replace(/^.*\/(tools\/)?/, '').slice(0, 60), fn: x.sourceFunctionName || '' })) }); }).observe({ type: 'long-animation-frame', buffered: true }); } catch { /* none */ }
   addEventListener('DOMContentLoaded', () => { P.dcl = tn(); });
+  P.got = {}; addEventListener('message', (e) => { const t = e.data?.type; if (e.data?.target === 'three-sandbox' && t && P.got[t] == null) P.got[t] = Math.round(tn()); }, true); // (what the Lab sent: the first of each kind)
 };
 await smoke({ frameScript: { match: '', source: `(${probe.toString()})();` } });
 // the window's own times

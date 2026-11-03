@@ -84,7 +84,7 @@ function phases(R) {
     pageHtml: P?.nav && at(0) >= -50 ? at(P.nav.re) : null, pageDcl: P?.nav && at(0) >= -50 ? at(P.nav.dcl) : null,
     three: res(/^three\.core\.js/) && at(0) >= -50 ? [at(res(/^three\.core\.js/).s), at(res(/^three\.core\.js/).e)] : null,
     ready: r1(msg('ready')[0]?.[1]),
-    ran: msg('ran').map((m) => r1(m[1])), runSent: null,
+    ran: msg('ran').map((m) => r1(m[1])), runGot: P?.got ? at(P.got['run-layers'] ?? P.got['swap-layers']) : null, refsGot: P?.got ? at(P.got.refs ?? P.got['refs-set'] ?? null) : null, got: P?.got ? Object.fromEntries(Object.entries(P.got).map(([k, v]) => [k, at(v)])) : null,
     ctx: ctxAfter.map((c) => [at(c[0]), c[1]]),
     ctxMs: Math.round(ctxAfter.reduce((a, c) => a + c[1], 0)),
     linkWaitMs: prog ? Math.round(prog.ms) : null, linkN: prog?.n ?? null, linkSpan: prog && at(prog.first) >= -5 ? [at(prog.first), at(prog.last)] : null,

@@ -118,11 +118,17 @@ const LabIntent = (() => {
   function headStart() {
     if (head || isIn()) return;
     try { if (ls('labopen.head') === '0' || typeof Element.prototype.moveBefore !== 'function') return; } catch { return; }
-    let last = null; let size = null;
-    try { last = store.get('labboot.last', null); size = store.get('labboot.size', null); } catch { return; }
-    if (typeof last?.query !== 'string' || !/^\?mode=sketch&v=[\w.]+/.test(last.query)) return; // (never opened: the Lab loads its page the usual way)
-    // (another scene than the last one run: its pixel ratio follows the Lab's frame size, the same unless it has its own)
-    const query = last.query;
+    let last = null; let size = null; let v = null; let fit = true;
+    try { last = store.get('labboot.last', null); size = store.get('labboot.size', null); v = store.get('three.version', null); fit = store.get('three.aspect', 'fit') === 'fit'; } catch { return; }
+    // the query the Lab ran last (another scene than that one: its pixel ratio follows the Lab's frame size, the same
+    // unless it has its own); none yet (never run on this computer): this three.js version (tools/three-data.js
+    // VERSIONS[0] when none was chosen: a default that drifted from it only costs this page) at the screen's pixels
+    let query = typeof last?.query === 'string' && /^\?mode=sketch&v=[\w.]+/.test(last.query) ? last.query : null;
+    if (!query) {
+      if (!fit) return; // (an exact frame size: the Lab's own load)
+      let saver = false; try { saver = H.config?.settings?.gpuPower === 'saver'; } catch { /* no settings */ }
+      query = `?mode=sketch&v=${/^[\w.]+$/.test(String(v || '')) ? v : '0.186.1'}${saver ? '&gpu=low' : ''}`;
+    }
     const [fw, fh] = Array.isArray(size) && size[0] > 40 && size[1] > 40 ? size : [960, 540];
     const host = document.createElement('div');
     host.className = 'lab-boot'; host.setAttribute('aria-hidden', 'true');

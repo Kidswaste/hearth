@@ -259,3 +259,22 @@ summary back to the cloud session, or tell Quentin to forward it.
      (`codex login`); the browser page is auth.openai.com.
   Report: which numbers worked, which window opened (cmd's start or Start-Process), and any line of engine.log that
   says `failed` or `no window opened`.
+
+## 18. The Lab's first open on the RTX 4080, timed (round 112, labopen112)
+The test box has no graphics card (software GL): there each layer's WebGL context costs 0.2–0.7 s and the shaders
+seconds, so its numbers can't say how long the first open takes on the PC. This step does.
+1. **Measured** (a throwaway copy of the app, a fresh profile, never your data or scenes): in the repo, with
+   `ELECTRON` set to the PC's electron.exe (the one `dev/smoke.js` uses there),
+   `node dev/labopen112.js --runs 3 --json labopen112-pc.json`. It opens the Lab 6 ways (a plain 2-layer scene and the
+   checks' 5-layer music scene with a model, each cold / code in / warm) and prints a phase table per open and medians.
+   Then the same on the commit before this round, for comparison: a checkout of `fdd0147` in another folder, and
+   `node dev/labopen112.js --runs 3 --app <that folder> --json labopen112-pc-base.json` (run from this round's
+   checkout: the script is new). Paste both "medians" blocks back (and the two JSON files if they fit).
+2. **By hand** (your own scenes, if 1 doesn't run there): quit Hearth, start it, wait 5 s on a chat, click the
+   Lab's button **once**, recording the screen at 60 fps with the phone or Xbox Game Bar (Win+Alt+R). Note: click → the
+   Lab's toolbar → the first picture of the scene → the picture complete (every layer, the song playing). Do it
+   after a start where the Lab was used last time (warm: its picture is ready, about instant) and, when it happens,
+   after a week or two without the Lab (cold).
+Expected on the 4080: cold click → first picture well under 1 s (1.2–2.6 s on the test box, most of it software GL),
+warm about instant; in 1, "page html" (the preview page received) about at the click with this round and 0.1–0.6 s
+later on the base. Report the numbers.
