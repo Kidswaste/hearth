@@ -4917,8 +4917,8 @@ ${code}
             const offScreen = () => document.visibilityState !== 'visible' || previewHost.checkVisibility?.({ visibilityProperty: true }) === false;
             let awayT = 0;
             const away = () => { clearTimeout(awayT); awayT = setTimeout(() => { if (!finished && offScreen()) { workspaceAbandoned += 1; finish(); } }, 0); };
-            addEventListener('hearth:activate', away); document.addEventListener('visibilitychange', away);
-            const finish = err => { if(finished)return;finished=true;clearTimeout(timer);clearTimeout(awayT);removeEventListener('hearth:activate', away);document.removeEventListener('visibilitychange', away); signal?.removeEventListener('abort', abort); workspaceMessage = null; err ? reject(err) : resolve(); };
+            document.addEventListener('hearth:activate', away); document.addEventListener('visibilitychange', away); // (hearth:activate goes to the document, not bubbling to the window)
+            const finish = err => { if(finished)return;finished=true;clearTimeout(timer);clearTimeout(awayT);document.removeEventListener('hearth:activate', away);document.removeEventListener('visibilitychange', away); signal?.removeEventListener('abort', abort); workspaceMessage = null; err ? reject(err) : resolve(); };
             const abort = () => finish(new DOMException('Opening cancelled', 'AbortError'));
             const timer = setTimeout(() => finish(Error('The scene is taking too long to prepare. Retry, or open the editor to inspect it.')), 90000);
             const warm = async () => {

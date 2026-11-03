@@ -1136,7 +1136,7 @@ function lcSceneDone(r, P) {
 // When nothing is on screen yet (the Lab's first scene, its first layer; a switch under the old scene's still picture),
 // the old rule stays: a compile in that frame stops no moving picture, and holding it would only show it later.
 // window.__labWarmGap: state() / mode('auto' | 'on' | 'off') / set({ budget, maxMs }) (checks).
-const WG = { card: false, cards: 0, cardOld: 0, mode: 'auto', budget: 8, maxMs: 6000, capped: 0, stall: false, held: 0, oldRule: 0, gaps: 0, maxGaps: 0, programs: 0, done: 0, late: 0, again: 0, maxHoldMs: 0, maxHoldFrames: 0, last: null, glass: 0, shadows: 0, tex: 0, pending: 0 };
+const WG = { card: false, cardT: 0, cards: 0, cardOld: 0, mode: 'auto', budget: 8, maxMs: 6000, capped: 0, stall: false, held: 0, oldRule: 0, gaps: 0, maxGaps: 0, programs: 0, done: 0, late: 0, again: 0, maxHoldMs: 0, maxHoldFrames: 0, last: null, glass: 0, shadows: 0, tex: 0, pending: 0 };
 // whether a layer other than this one shows a picture (drawn, not under a switch's still picture)
 function wgOthers(EL) {
   if (SWAP.cover?.isConnected && !SWAP.cover.__fading) return false;
@@ -1144,11 +1144,12 @@ function wgOthers(EL) {
   for (const L of layers.values()) if (L !== EL && L.drawnGen === L.gen && !L.props?.pcOf) return true;
   return false;
 }
-// (round 109, projopen109) a stack drawn under a project's loading card (run-layers / swap-layers with card: true): until
-// it has drawn, the old rule (compiled in its first frame). Holding its second and third layers for gaps kept frames
+// (round 109, projopen109) a stack drawn under a project's loading card (run-layers / swap-layers with card: true): the
+// old rule (compiled in its first frame). Holding its second and third layers for gaps kept frames
 // smooth that nobody saw (the card is opaque) and made the open wait: up to 3 s on software GL (projopen109.md)
-function wgCard(on) { WG.card = Boolean(on); if (WG.card) WG.cards += 1; }
-function wgUse(EL) { if (WG.mode === 'auto' && WG.card && stackWait) { WG.cardOld += 1; return false; } return WG.mode === 'on' || (WG.mode === 'auto' && wgOthers(EL)); }
+// It stays on until the Lab's warm-up for that open is done (ready-prep), the next stack without a card, or 20 s.
+function wgCard(on) { realClearTimeout(WG.cardT); WG.card = Boolean(on); if (WG.card) { WG.cards += 1; WG.cardT = realSetTimeout(() => { WG.card = false; }, 20000); } }
+function wgUse(EL) { if (WG.mode === 'auto' && WG.card) { WG.cardOld += 1; return false; } return WG.mode === 'on' || (WG.mode === 'auto' && wgOthers(EL)); }
 // the drawables of a scene (in order), or the scene itself when one holds a light (compile() on it would count it twice)
 function wgList(scene) {
   const list = []; let whole = Boolean(scene.overrideMaterial);
@@ -2674,6 +2675,7 @@ async function rdyMessage(msg) {
     const rv0 = RDY.revealed; RDY.reveal = 1; // (round 59, readylab59) the first of its 2 frames draws what the game hides for now too
     await rdyFrames(2);
     RDY.reveal = 0;
+    wgCard(false); // (round 109, projopen109) the open's warm-up done: layers added from now are held for gaps again
     post({ type: 'ready-prepped', id: msg.id, ms: Math.round(realNow() - t0), assets, ...comp, revealed: RDY.revealed - rv0, gl: rdyDelta(gl0) });
   } else if (msg.type === 'ready-warm') {
     const gl0 = { ...RDY.gl }; const n = Math.max(1, msg.n || 3);
@@ -14134,7 +14136,7 @@ let stackWait = null;
 function waitStack(ids, done, max = 1800) {
   const prev = stackWait;
   const w = { ids: new Set(ids), fired: false };
-  w.fire = () => { if (w.fired) return; w.fired = true; if (stackWait === w) { stackWait = null; WG.card = false; } done(); }; // (round 109: a card's stack drawn)
+  w.fire = () => { if (w.fired) return; w.fired = true; if (stackWait === w) stackWait = null; done(); };
   stackWait = w;
   realSetTimeout(w.fire, max);
   prev?.fire();

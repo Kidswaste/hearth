@@ -97,7 +97,7 @@ try {
     const r = await Promise.race([opening, wait(5000).then(() => 'still running')]);
     const ms = end ? Math.round(end - t0) : null;
     const st = ProjectWorkspace.state();
-    slow[`away_${label}`] = { ms, fired, phase: st.phase, error: st.error || r?.error || null, at: H.activeId };
+    slow[`away_${label}`] = { ms, fired, phase: st.phase, error: st.error || r?.error || null, at: H.activeId, abandoned: ThreeLab.workspace?.state?.().abandoned ?? null, timings: st.timings || null };
     step(`away (${label}): ProjectWorkspace.go('overview') mid-open → the open ends ready within 20 s (not 90 s at "Warming shaders")`, fired && ms != null && ms < 20000 && st.phase === 'ready' && !r?.error, slow[`away_${label}`]);
     // then the scene from the Desk: the Lab on it, the model loaded, both loops' frames moving
     const t1 = now();
