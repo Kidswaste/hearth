@@ -117,6 +117,12 @@ a = await show('a file in use and a read-only one', { blocked: [LOCK, { rel: 'no
 step('in use + read-only: one needs a click, so "⚠ … to fix", both listed with their buttons', /^⚠ \d to fix$/.test(a.chip) && a.buttons.includes('Try again now') && a.buttons.includes('Allow changes'), a);
 await press(/^Allow changes$/, 'Allow changes');
 step('"Allow changes" asks the engine to make it writable', Boolean(called('fix', (x) => x[0] === 'notes-export.md' && x[1] === 'writable')), calls.slice(-2));
+// (round 111, syncfix111) as round 111's engine sends them: it marks a file that only waits itself (waits: true); the
+// window reads that mark first, and an older engine's entries (above, no mark) by their why
+a = await show('marked by the engine: a file in use and a drive that didn\'t answer', { blocked: [{ ...LOCK, waits: true }, { ...LOCK, rel: 'captures/b-roll.mp4', why: 'drive', code: 'EIO', waits: true }] });
+step('engine-marked: "↻ 2 waiting", "Waiting until it\'s free (2)"', /^↻ 2 waiting$/.test(a.chip) && /Waiting until it's free \(2\)/.test(a.text) && !/can't sync/.test(a.tip), a);
+a = await show('the engine\'s mark is read first', { blocked: [{ ...LOCK, waits: false }] });
+step('engine-marked: an entry the engine says doesn\'t wait is one to fix, whatever its why', /^⚠ 1 to fix$/.test(a.chip), a);
 
 // ---------- disk full ----------
 a = await show('disk full here', { state: 'pending', pending: 1, waiting: [{ rel: 'renders/tour-final.mp4', why: 'disk-full' }], blocked: [{ rel: 'renders/tour-final.mp4', why: 'disk-full', where: 'here', code: 'ENOSPC', at: T }] });

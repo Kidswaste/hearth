@@ -74,7 +74,7 @@ const SyncPanel = (() => {
     const old = (st.peersOld || []).map((x) => el('p', { class: 'hint sp-old', text: `Hearth on ${x.name || 'your other computer'} is an older version. Update it there (⬆ Update on that computer) so both keep files the same way; syncing goes on meanwhile.` })); // (round 92) plainer
     // (round 110, syncaudit110) only files another program holds (or a drive that didn't answer): they wait, they aren't
     // broken (the chip says "↻ waiting" then)
-    const waits = list.every((b) => b.why === 'locked' || b.why === 'drive');
+    const waits = list.every((b) => b.waits ?? (b.why === 'locked' || b.why === 'drive')); // (round 111, syncfix111) the engine's mark; an older engine's entries by their why
     return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: waits ? `Waiting until it's free (${list.length})` : `Can't sync (${list.length})` }) : null,
       list.length ? el('span', { class: 'hint', text: waits ? 'It stays as it is on this computer and goes as soon as it\'s free: nothing is lost.' : 'Each stays as it is on this computer: nothing is lost.' }) : null,
       list.length ? el('ul', { class: 'sp-wait' }, ...rows) : null, list.length > 8 ? el('span', { class: 'hint', text: `…and ${list.length - 8} more` }) : null, ...old);
@@ -439,7 +439,7 @@ const SyncPanel = (() => {
     if (st.lastError) L.push(`last problem: ${[st.lastError.op, st.lastError.rel, st.lastError.code].filter(Boolean).join(' ')}: ${st.lastError.message}`);
     if (st.held) L.push(`deletions waiting for a yes: ${st.held.deletes}`);
     if (st.conflicts) L.push(`conflicts: ${st.conflicts}`);
-    for (const b of (st.blocked || []).slice(0, 20)) L.push(`can't sync: ${b.rel} (${b.why}${b.where ? `, ${b.where}` : ''})`);
+    for (const b of (st.blocked || []).slice(0, 20)) L.push(`${b.waits ? 'waits' : 'can\'t sync'}: ${b.rel} (${b.why}${b.where ? `, ${b.where}` : ''})`);
     if (st.longPath) L.push(`folder path too long here for Hearth's own files: ${st.longPath.n} (${st.longPath.over} over; data folder ${st.longPath.data}, cloud ${st.longPath.cloud} characters; ${st.longPath.sample.join(', ')})`); // (round 99, kvrename99)
     for (const w of (st.waiting || []).slice(0, 20)) L.push(`waiting: ${w.rel} (${w.why})`);
     for (const t of (st.transfers || []).slice(0, 10)) L.push(`big file: ${t.op} ${t.rel} ${t.done || 0}/${t.total || 0} bytes${t.moving ? ', moving' : ''}`);

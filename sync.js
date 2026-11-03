@@ -44,7 +44,8 @@ const Sync = (() => {
   // (round 110, syncaudit110) + Hearth's own files this PC's long folder path keeps out (they can't sync here either);
   // a file another program holds (locked) or a drive that didn't answer only waits: Hearth tries again by itself
   const blockedN = () => (st.on && !st.paused ? (st.blocked || []).length + (st.longPath?.n || 0) : 0);
-  const waitN = () => (st.on && !st.paused ? (st.blocked || []).filter((b) => b.why === 'locked' || b.why === 'drive').length : 0);
+  // (round 111, syncfix111) the engine's own mark (waits); an older engine's entries by their why
+  const waitN = () => (st.on && !st.paused ? (st.blocked || []).filter((b) => b.waits ?? (b.why === 'locked' || b.why === 'drive')).length : 0);
   const fixN = () => blockedN() - waitN();
   function peersLine() {
     const p = (st.peers || []).filter((x) => x.lastSeen);

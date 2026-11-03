@@ -201,7 +201,9 @@ const SyncConflicts = (() => {
     const draw = () => {
       const f = q.value.trim().toLowerCase();
       const l = list.filter((t) => !f || t.rel.toLowerCase().includes(f) || nameOf(t.rel).toLowerCase().includes(f)).slice(0, 200);
-      rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
+      // (round 111, syncfix111) versions from before a change whose every part is in the file as it is now (the engine
+      // marks them inside: older Hearths made one per store on a first sync): folded into one row, each still restorable
+      const one = (t) => el('div', { class: 'sync-row' },
         // (round 92, syncpanel92) the name and when in words; the path only on hover (it was the first thing on each row)
         el('div', { class: 'sync-row-main', title: t.disk }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : `deleted or replaced ${dayWord(t.day)}${t.where === 'here' ? ' (this computer\'s copy)' : ''}` /* (round 94, keptaside94) a version a choice replaced (or kept aside) is here too: it said "your other computer deleted it" · (round 110, syncaudit110) "on this computer" was wrong for the commonest one: a chat deleted on the other computer lands here too */ })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
@@ -215,7 +217,11 @@ const SyncConflicts = (() => {
           if (!r.ok) { if (!r.exists) toast(window.calmError ? calmError(r.error, { where: 'sync' }) : r.error, { type: 'error', raw: r.error }); return; } // (round 92) plain words, the raw reason under Details
           e.target.disabled = true; e.target.textContent = 'Restored';
           toast(`Restored ${nameOf(r.rel)}`, { timeout: 2500 });
-        } } }))))
+        } } })));
+      const inside = l.filter((t) => t.recovery && t.inside); const shown = l.filter((t) => !(t.recovery && t.inside));
+      const fold = inside.length ? el('details', { class: 'sync-row sync-inside', style: { display: 'block' }, open: Boolean(f) }, el('summary', { text: `Earlier versions already in what you have now (${inside.length})` }),
+        el('p', { class: 'hint', text: 'Everything in these is still in the current version. They are kept in case you want one back exactly as it was.' }), ...inside.map(one)) : null;
+      rows.replaceChildren(...(l.length ? [...shown.map(one), fold].filter(Boolean)
         : [el('p', { class: 'modal-text', text: 'Nothing deleted lately.' })]));
     };
     q.addEventListener('input', draw);
