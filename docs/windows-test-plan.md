@@ -233,5 +233,5 @@ Only the real PC and Mac with the real cloud drive show these; the checks use a 
 Write results to `C:\Users\quent\agent-hub\dev\windows-test-results.md` (git-ignored if possible) and paste a short
 summary back to the cloud session, or tell Quentin to forward it.
 
-## 16. Sign-in window (round 110)
+## 17. Sign-in window (round 110)
 - In a Claude chat: Ctrl+K → "sign in" (Sign this agent's engine in). A PowerShell window titled "Sign in to Claude Code for Hearth" must appear in front. Report if it doesn't, with the last lines of data/engine.log.
