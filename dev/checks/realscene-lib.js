@@ -43,7 +43,7 @@ const RS = (() => {
     if (window.__fps107) return;
     if (location.protocol === 'about:') return;
     const raw = { st: window.setTimeout, si: window.setInterval, raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame, now: performance.now.bind(performance) };
-    const P = window.__fps107 = { hz: 0, ticks: 0, busy: 0, n: { raf: 0, timeout: 0, interval: 0 }, since: raw.now(), raw, rs: true };
+    const P = window.__fps107 = { hz: 0, ticks: 0, busy: 0, n: { raf: 0, timeout: 0, interval: 0 }, since: raw.now(), raw, rs: true, stalls: 0, stallMs: 0, stallAt: 0 };
     const q = new Map(); let id = 1e9; let realOn = false; let lastReal = -1; let timer = 0; let empty = 0; let lastT = -1;
     const rci = window.clearInterval.bind(window);
     const fire = () => {
@@ -54,14 +54,14 @@ const RS = (() => {
       for (const cb of list) { P.n.raf += 1; try { cb(t); } catch (err) { raw.st.call(window, () => { throw err; }); } }
     };
     const want = () => { if (!realOn) { realOn = true; raw.raf.call(window, real); } };
-    function real() { lastReal = raw.now(); if (q.size || timer) raw.raf.call(window, real); else realOn = false; arm(); }
+    function real() { lastReal = raw.now(); if (P.stallAt) { P.stallMs += lastReal - P.stallAt; P.stallAt = 0; } if (q.size || timer) raw.raf.call(window, real); else realOn = false; arm(); }
     function arm() {
       if (timer || !q.size || !P.hz) return;
       want();
       if (raw.now() - lastReal > 100) return;
       empty = 0;
       timer = raw.si.call(window, () => {
-        if (raw.now() - lastReal > 100) { rci(timer); timer = 0; want(); return; }
+        if (raw.now() - lastReal > 100) { rci(timer); timer = 0; P.stalls += 1; P.stallAt = raw.now(); want(); return; } // (round 110: the real frames stalled, counted: P.load)
         if (!q.size) { empty += 1; if (empty > 3) { rci(timer); timer = 0; } return; }
         empty = 0; fire();
       }, 1000 / P.hz);
@@ -86,6 +86,8 @@ const RS = (() => {
     };
     const fakeRaf = window.requestAnimationFrame;
     P.screen = (ms = 1000) => new Promise((res) => { let n = 0; const t0 = raw.now(); const go = () => { n += 1; if (raw.now() - t0 < ms) fakeRaf(go); else res(Math.round((n * 10000) / (raw.now() - t0)) / 10); }; fakeRaf(go); });
+    // (round 110, beatload110) how often and how long the real frames stalled (> 100 ms: the fake screen waits for them)
+    P.load = () => { const r = { stalls: P.stalls, stallMs: Math.round(P.stallMs) }; P.stalls = 0; P.stallMs = 0; return r; };
     P.take = () => { const ms = raw.now() - P.since; const per = (x) => Math.round((x * 10000) / ms) / 10; const r = { s: Math.round(ms / 100) / 10, framesPerSec: per(P.busy), rafPerSec: per(P.n.raf), timersPerSec: per(P.n.timeout + P.n.interval) }; P.n = { raf: 0, timeout: 0, interval: 0 }; P.busy = 0; P.since = raw.now(); return r; };
   };
   async function install() {

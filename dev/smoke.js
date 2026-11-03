@@ -13,6 +13,7 @@
 //   node dev/smoke.js --fake-meshy --script dev/checks/apps-meshy.js   # app windows against dev/fake-meshy.js (no network)
 //   node dev/smoke.js --fake-assets --script dev/checks/assets.js    # the asset library against dev/fake-assets.js
 //   node dev/smoke.js --fake-ratp --script dev/checks/ratp69.js      # Métro line status against dev/fake-ratp.js (round 69)
+//   node dev/smoke.js --fake-mic --script dev/checks/beatload110.js   # (round 110) the microphone is a looping drum file (Chromium's fake capture)
 //   node dev/smoke.js --pw-chrome --script dev/checks/chrome.js     # Hearth's Chrome: Playwright's Chromium as "Chrome", test pages
 //   node dev/smoke.js --screen 3840x2160 --dpr 2 --script dev/checks/bigscreen.js   # (round 38) a 4K screen at 200 %
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
@@ -120,6 +121,27 @@ function copyApp() {
   return dir;
 }
 
+// (round 110, beatload110) --fake-mic's drum loop: { file, bpm, beats, secs, rate, kicks: [s] in one loop }
+function fakeMicWav(file) {
+  const sr = 48000; const bpm = 125; const beats = 16; const beat = 60 / bpm; const n = Math.round(beats * beat * sr); const x = new Float32Array(n);
+  let s = 3; const rnd = () => { s = (s * 16807) % 2147483647; return s / 1073741823.5 - 1; };
+  const add = (t, len, f) => { const a = Math.round(t * sr); for (let i = 0; i < len * sr && a + i < n; i += 1) x[a + i] += f(i / sr); };
+  const kicks = [];
+  for (let k = 0; k < beats; k += 1) {
+    const t = k * beat; kicks.push(t);
+    add(t, 0.25, (u) => 0.9 * Math.sin(2 * Math.PI * (50 + 110 * Math.exp(-u * 30)) * u) * Math.exp(-u * 14));
+    if (k % 2 === 1) add(t, 0.12, (u) => (0.35 * rnd() + 0.25 * Math.sin(2 * Math.PI * 2200 * u)) * Math.exp(-u * 30));
+    add(t + beat / 2, 0.04, (u) => 0.18 * rnd() * Math.exp(-u * 90));
+  }
+  let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
+  const buf = Buffer.alloc(44 + n * 2);
+  buf.write('RIFF', 0); buf.writeUInt32LE(36 + n * 2, 4); buf.write('WAVE', 8); buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(sr, 24); buf.writeUInt32LE(sr * 2, 28); buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34); buf.write('data', 36); buf.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i += 1) buf.writeInt16LE(Math.round((x[i] / peak) * 0.9 * 32767), 44 + i * 2);
+  fs.writeFileSync(file, buf);
+  return { file, bpm, beats, secs: n / sr, rate: sr, kicks };
+}
+
 async function cdpConnect(dir) {
   const own = encodeURI(`file://${dir.replace(/\\/g, '/')}`).replace(/^file:\/\/([^/])/, 'file:///$1');
   for (let i = 0; i < 60; i++) {
@@ -208,7 +230,14 @@ async function cdpConnect(dir) {
   const screenSize = /^\d{3,5}x\d{3,5}$/.test(opt('--screen', '')) ? opt('--screen') : '1600x1000';
   const dprFlag = Number(opt('--dpr', 0)) > 0 ? [`--force-device-scale-factor=${Number(opt('--dpr'))}`] : [];
   const winTest = process.platform === 'win32';
-  const launchArgs = [dir, '--no-sandbox', ...dprFlag, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
+  // (round 110, beatload110) --fake-mic: the microphone is a drum loop played from a file (Chromium's fake capture device:
+  // getUserMedia answers with it, looping, no permission prompt). 125 BPM, a kick on every beat, a snare on 2 and 4, hats
+  // on the eighths, 16 beats (7.68 s: a whole number of samples, so the loop keeps its tempo). window.SMOKE_FAKE_MIC
+  // says what it plays.
+  let fakeMic = null;
+  if (args.includes('--fake-mic')) fakeMic = fakeMicWav(path.join(runTmp, 'fake-mic.wav'));
+  const micFlags = fakeMic ? ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${fakeMic.file}`, '--use-fake-ui-for-media-stream'] : [];
+  const launchArgs = [dir, '--no-sandbox', ...dprFlag, ...micFlags, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
   // (round 58, ctxloss58) --burn N: N busy CPU processes for the whole run (a loaded computer: dev/checks/ctxloss.js),
   // ended with the run. Only inside the shared run lock: they slow every other agent's checks too
   // (round 65, inspodrop65) --serve-dir DIR: DIR's files over plain http on 127.0.0.1 (a "remote" picture the main
@@ -423,7 +452,7 @@ async function cdpConnect(dir) {
       send('Runtime.evaluate', { expression: `window.__smokeReply && window.__smokeReply(${req.id}, ${JSON.stringify(JSON.stringify(result))})` });
     };
     await send('Runtime.addBinding', { name: '__smoke' });
-    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_TMP = ${JSON.stringify(runTmp)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.SMOKE_BURN = ${JSON.stringify(burners.length)}; window.SMOKE_SERVE = ${JSON.stringify(serveBase)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
+    await send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const w = new Map(); let n = 0; window.__smokeReply = (id, r) => { w.get(id)?.(JSON.parse(r)); w.delete(id); }; window.SMOKE_SAVES = ${JSON.stringify(saveDir)}; window.SMOKE_TMP = ${JSON.stringify(runTmp)}; window.SMOKE_DEV = ${JSON.stringify(__dirname)}; window.SMOKE_BURN = ${JSON.stringify(burners.length)}; window.SMOKE_SERVE = ${JSON.stringify(serveBase)}; window.SMOKE_FAKE_MIC = ${JSON.stringify(fakeMic)}; window.smoke = (req) => new Promise((res) => { const id = ++n; w.set(id, res); window.__smoke(JSON.stringify({ ...req, id })); }); })();` });
     // --mac: the page believes it runs on a Mac (navigator.platform), so ⌘ / ⌥ labels and the ⌘-as-Ctrl key mapping
     // (ui.js) can be checked here; the main process stays Linux
     if (args.includes('--mac')) await send('Page.addScriptToEvaluateOnNewDocument', { source: "Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'MacIntel' });" });
