@@ -583,7 +583,7 @@ const OPS = {
     let prevCloud = null;
     if (prev !== null) {
       const mine = S.parseJson(prev); // a local version that can't be read stops the replacement (as on the main side)
-      if (recovery) atomicText(recovery, prev);
+      if (recovery && !require('./sync-fix111').inside(S.toCloud(mine, ctx), value)) atomicText(recovery, prev); // (round 111, syncfix111) no copy when all of it is in what arrives
       if (aside && Array.isArray(mine) && Array.isArray(value)) sceneAside(aside, mine, value, prev);
       if (prev.length < 16e6) prevCloud = JSON.stringify(S.toCloud(mine, ctx));
     }
@@ -627,7 +627,7 @@ const OPS = {
     const text = JSON.stringify(r.value); const hm = sha(text);
     let localOut = null;
     if (hm !== lh) {
-      if (recovery) atomicText(recovery, localRaw);
+      if (recovery && !require('./sync-fix111').inside(ours, r.value)) atomicText(recovery, localRaw); // (round 111, syncfix111) no copy when all of it is in the merge
       if (aside && Array.isArray(r.value)) sceneAside(aside, S.parseJson(localRaw), r.value, localRaw);
       const pretty = localRaw.length < 2 || /^[[{]\s/.test(localRaw.slice(0, 2));
       const local = S.fromCloud(r.value, ctx);
