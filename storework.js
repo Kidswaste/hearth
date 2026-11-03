@@ -627,7 +627,7 @@ const OPS = {
     const text = JSON.stringify(r.value); const hm = sha(text);
     let localOut = null;
     if (hm !== lh) {
-      if (recovery) atomicText(recovery, localRaw);
+      if (recovery && (baseFile || !require('./sync-fix111').inside(ours, r.value))) atomicText(recovery, localRaw); // (round 111, syncfix111) a first merge (no base) keeping all of it: no copy
       if (aside && Array.isArray(r.value)) sceneAside(aside, S.parseJson(localRaw), r.value, localRaw);
       const pretty = localRaw.length < 2 || /^[[{]\s/.test(localRaw.slice(0, 2));
       const local = S.fromCloud(r.value, ctx);

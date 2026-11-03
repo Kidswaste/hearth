@@ -28,6 +28,7 @@ const SState = require('./sync-state'); // (round 75, syncstate75) sync's own st
 const Own = require('./sync-own'); // (round 99, kvrename99) Hearth's own files (found by their name): never renamed by sync
 const Aside = require('./sync-aside'); // (round 78, guardloss78) a conflict's losing side, kept in Deleted files with a note
 const Stall = require('./sync-stall'); // (round 103, syncstall103) the long loops over every file, in slices that give the event loop a turn
+const Fix = require('./sync-fix111'); // (round 111, syncfix111) files that only wait marked; no recovery copy that holds nothing new; a restored chat leaves Recently deleted
 // (round 43, datasafe) a state / machine file held for a moment (Windows) isn't "none": no new id or empty state over it
 const HELD = Symbol('held');
 
@@ -262,7 +263,7 @@ function createEngine(o) {
   function block(rel, why, x = {}) {
     const list = blockNow || status.blocked || (status.blocked = []);
     if (list.length >= 60 || list.some((b) => b.rel === rel && b.why === why)) return;
-    list.push({ rel, why, where: x.where || 'here', fix: x.fix !== undefined ? x.fix : Hard.BLOCK[why]?.fix ?? null, ...(x.part ? { part: x.part } : {}), ...(x.code ? { code: x.code } : {}), ...(x.to ? { to: x.to } : {}), ...(x.over ? { over: x.over } : {}) /* (round 99, kvrename99) */, at: now() });
+    list.push({ rel, why, where: x.where || 'here', fix: x.fix !== undefined ? x.fix : Hard.BLOCK[why]?.fix ?? null, ...(x.part ? { part: x.part } : {}), ...(x.code ? { code: x.code } : {}), ...(x.to ? { to: x.to } : {}), ...(x.over ? { over: x.over } : {}) /* (round 99, kvrename99) */, ...Fix.mark(why, x.code) /* (round 111, syncfix111) waits: true */, at: now() });
   }
   // an fs error on rel → a blocked entry (true) when it is one the owner can see / fix; the read-only test looks at the
   // files themselves (Windows refuses to replace or delete a read-only file: EPERM, like a file in use)
@@ -1125,9 +1126,10 @@ function createEngine(o) {
   }
   // One last local version per store/chat, outside the cloud mirror. Failure to
   // save this copy stops the replacement. Also offered by Sync → Deleted files.
-  async function keepStateAside(rel, L) {
+  async function keepStateAside(rel, L, next) {
     if (!L?.file || L.unavailable || !/^(?:chats|kv)\/[^/]+\.json$/i.test(rel)) return;
     const raw=await fsp.readFile(L.file,'utf8'); S.parseJson(raw);
+    if (Fix.textInside(raw, next, ctx)) return; // (round 111, syncfix111) next: a first merge (no base) keeping all of it: no copy (one per store piled up in Deleted files after a first sync)
     await atomicWrite(path.join(stateDir,'recovery',...rel.split('/')),raw);
   }
   // (round 43, scenesafe) before what arrives replaces this computer's Lab scenes with a list missing some of them (a
@@ -1173,7 +1175,7 @@ function createEngine(o) {
         // (round 105, merge105) shared: a known common version whose text is gone (none on disk): a count is never added twice
         const r = S.merge3(base, ours, theirs, { counters: S.isCounterRel(rel), keepAll: rebased.has(rel), shared: Boolean(state.base[rel]) }); // (round 72, sync72)
         const text = canon(r.value);
-        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L); } }; // (round 103, syncstall103) await
+        m = { text, hm: sha(text), local: () => localJsonText(rel, S.fromCloud(r.value, ctx), L), conflicts: r.conflicts, theirsText, ours, aside: async () => { await keepScenesAside(rel, L, r.value); await keepStateAside(rel, L, state.base[rel] ? undefined : r.value); /* (round 111, syncfix111) two histories joined (no base): r.value */ } }; // (round 103, syncstall103) await
       }
       const { text, hm } = m;
       // this computer first, then the cloud: a cloud write that loses its race leaves the old base, so the next pass
@@ -2115,7 +2117,8 @@ function createEngine(o) {
     }
     await fsp.rm(src, { force: true });
     if (S.isJsonRel(rel)) pulledAt.set(rel, Date.now()); // (round 96, checkfix96) an ack for a read from before this is ignored
-    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash', ...(S.isJsonRel(rel) && !pulledPrev.has(rel) ? { guard: false } : {}) }]); // (round 96, checkfix96) guard: false: no base kept (big / unreadable / new here)
+    const tr = await Fix.chatTrashAside(rel, { localPathOf, stateDir, day: day(now()), rand, move: renameRetry }).catch((err) => { log('restore: recently deleted', rel, err.message); return null; }); // (round 111, syncfix111) a restored chat leaves Recently deleted (moved to Deleted files; sync follows on the other computer)
+    o.onPulled?.([{ rel, kind: kindOf(rel), from: 'trash', ...(S.isJsonRel(rel) && !pulledPrev.has(rel) ? { guard: false } : {}) }, ...(tr ? [{ rel: tr, kind: 'file-deleted', from: 'trash' }] : [])]); // (round 96, checkfix96) guard: false: no base kept (big / unreadable / new here) · (round 111, syncfix111) + tr
     return { ok: true, rel };
   }
 
@@ -2215,7 +2218,7 @@ function createEngine(o) {
   return {
     pass, stop: () => { stopping = true; lane.q.length = 0; }, status: publicStatus,
     laneIdle, freeable: afterLoad(freeable), free: wrote(afterLoad(free)), /* (round 73, syncmedia73) */ fix: wrote(afterLoad(fix)), woke: (ms) => { excuse(ms); needFull = 'wake'; if (running) again = true; }, /* (round 74, synchard74) */ set: (patch) => { needFull = 'set'; return Object.assign(o, patch); }, option: (k) => o[k], machine: () => ({ ...machine }),
-    conflicts: async () => (await listConflicts()).filter((c) => !settling.has(c.id)), /* (round 95, aside95) */ aside: wrote(afterLoad(asideDo)), /* (round 78, guardloss78) */ resolve: wrote(afterLoad(resolve)), resolveAll: wrote(afterLoad(resolveAll)), preview, incoming, trash: listTrash, restore: wrote(afterLoad(restore)), guardWrite, relOfLocal, /* (round 75) after the state is read */
+    conflicts: async () => (await listConflicts()).filter((c) => !settling.has(c.id)), /* (round 95, aside95) */ aside: wrote(afterLoad(asideDo)), /* (round 78, guardloss78) */ resolve: wrote(afterLoad(resolve)), resolveAll: wrote(afterLoad(resolveAll)), preview, incoming, trash: () => listTrash().then((l) => Fix.listed(l, { stateDir, localPathOf, ctx: () => ctx })), /* (round 111, syncfix111) inside: true */ restore: wrote(afterLoad(restore)), guardWrite, relOfLocal, /* (round 75) after the state is read */
     scope: () => ({ ...scopeStats, need: needFull }), // (round 79) tests / the main side: the last pass's look
     ackPulled: (rels, since) => { if (!rels) { pulledPrev.clear(); pulledAt.clear(); guardOurs.clear(); } else for (const r of rels) if (!(since > 0) || !((pulledAt.get(r) || 0) > since)) { pulledPrev.delete(r); pulledAt.delete(r); guardOurs.delete(r); } }, // (round 78) + guardOurs // (round 77, storeack77) since: when the reader began reading
     hasPulled: (rel) => pulledPrev.has(rel),
