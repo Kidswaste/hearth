@@ -77,7 +77,7 @@ try {
     slow.first = split;
     slow.firstPageBusy = (pg.loafs || []).filter((x) => x.ms >= 100).map((x) => `${off != null ? rel(off + x.at) : x.at}+${x.ms}${x.block ? ` (block ${x.block})` : ''}: ${x.s.join(' | ')}`).slice(0, 30);
     slow.firstHostBusy = hostLoafs.filter((x) => x.at >= t0 && x.ms >= 100).map((x) => `${rel(x.at)}+${x.ms}: ${x.s.join(' | ')}`).slice(0, 30);
-    slow.firstPage = { wg: pg.wg && { held: pg.wg.held, oldRule: pg.wg.oldRule, maxHoldMs: pg.wg.maxHoldMs, gaps: pg.wg.gaps, programs: pg.wg.programs }, lc: pg.lc && { ahead: pg.lc.ahead, scenes: pg.lc.scenes }, gl: pg.gl, models: (pg.models || []).map((m) => ({ name: m.name, loaded: m.loaded, error: m.error })) };
+    slow.firstPage = { wg: pg.wg && { held: pg.wg.held, oldRule: pg.wg.oldRule, cards: pg.wg.cards, cardOld: pg.wg.cardOld, maxHoldMs: pg.wg.maxHoldMs, gaps: pg.wg.gaps, programs: pg.wg.programs }, lc: pg.lc && { ahead: pg.lc.ahead, scenes: pg.lc.scenes }, gl: pg.gl, models: (pg.models || []).map((m) => ({ name: m.name, loaded: m.loaded, error: m.error })) };
     slow.labIntent = window.LabIntent?.state?.() ?? null;
     step('the first open: every piece of its time measured (slow steps)', split.total > 0 && split.labCode && split.pageStart, { total: split.total });
   });
