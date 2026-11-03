@@ -495,10 +495,13 @@ const ClickWatch = (() => {
   addEventListener('pointerdown', (e) => {
     if (e.button !== 0 || !e.isPrimary) { press = null; return; }
     const t = e.target?.closest?.('button, [role=menuitem]');
-    const hit = rowAt(e.clientX, e.clientY);
-    if (t && t.closest(WHERE)) { press = { b: t, t: performance.now(), id: ++n, at: spot(t) }; return; }
+    if (t && t.closest(WHERE)) { press = { b: t, t: performance.now(), id: ++n, at: t.closest('#menu, #menu-fly, #menu-fly2') ? spot(t) : null }; return; } // (a menu row's place: the menu is laid out already)
     press = null;
-    if (hit && !(e.target instanceof Node && hit.contains(e.target))) keep('blocked', { b: hit, t: performance.now() }, { got: say(e.target) });
+    // (only when a press went to a dialog or its backdrop: looking for the row under it reads the page's layout, which
+    // a press anywhere else mustn't pay for — the Lab's rail button is pressed with the window's layout dirty)
+    if (!(e.target instanceof HTMLDialogElement)) return;
+    const hit = rowAt(e.clientX, e.clientY);
+    if (hit && !hit.contains(e.target)) keep('blocked', { b: hit, t: performance.now() }, { got: say(e.target) });
   }, { capture: true, passive: true });
   addEventListener('click', (e) => {
     const p = press; if (!p) return; press = null;
