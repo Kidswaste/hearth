@@ -13,9 +13,8 @@
 // Ctrl/⌘+K, the Lab shown. A history it can't read counts as "calm" (it behaves as for someone who uses the Lab).
 // The warm preview page (tools/three-boot.js) follows the Lab's code as before. Tests: localStorage 'lazy.lab.mode'
 // = now | calm | idle | none forces a mode; LabIntent.state() says what happened.
-// (round 109, projopen109) also on intent: a project's row among the first rows of Ctrl/⌘+K, and a project to import
-// (projbundle.js: its card shows; the import starts the Lab and the project then opens in it). Every project open
-// loads the Lab and runs the project's scene, so these wait for it as a Lab line does.
+// (round 109, projopen109) also on intent: a project to import (projbundle.js: its card shows; the import starts the Lab
+// and the project then opens in it), through LabIntent.go('import').
 const LabIntent = (() => {
   const G = 'lab'; const SURFACE = 'tool:three'; const DAY = 864e5; const KEEP = 8; const IDLE_AFTER = 40000; const CALM_AFTER = 5000; const QUIET = 3000;
   const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* no storage */ } return null; };
@@ -96,9 +95,6 @@ const LabIntent = (() => {
   // Ctrl/⌘+K (appui.js paletteRender, something typed): a Lab line among the first three rows
   function isLabRow(it) {
     const id = String(it?.id || '');
-    // (round 109, projopen109) a project's row: opening a project runs its scene (project-workspace.js open loads the Lab
-    // and prepares the scene), so it waits for the Lab's code like a Lab line does
-    if ((it?.kind || '') === 'Project') return true;
     const cmd = id.startsWith('p:/') ? id.slice(3) : it?.cmdName;
     if (cmd && Lazy.groupOf(cmd) === G) return true;
     const label = id.startsWith('p:') ? id.slice(2) : id.startsWith('tl:') ? id.slice(3) : String(it?.label || '');

@@ -30,7 +30,8 @@ fs.mkdirSync(SAVES, { recursive: true });
 const steps = []; const problems = [];
 function run(script, label, extra = []) {
   const tmp = path.join(BASE, label); fs.mkdirSync(tmp, { recursive: true });
-  const r = spawnSync('node', [path.join(ROOT, 'dev', 'smoke.js'), '--check-timeout', '600000', '--save-dir', SAVES, '--tmp', path.join(tmp, 't'), ...extra, '--lib', path.join(ROOT, 'dev', 'projaudit108-lib.js'), '--script', path.join(ROOT, 'dev', script), '--shot', path.join(tmp, 'shot.png')],
+  const app = (() => { const i = argv.indexOf('--app'); return i >= 0 ? ['--app', argv[i + 1]] : []; })(); // (round 109) another checkout's app, this checkout's dev/
+  const r = spawnSync('node', [path.join(ROOT, 'dev', 'smoke.js'), ...app, '--check-timeout', '600000', '--save-dir', SAVES, '--tmp', path.join(tmp, 't'), ...extra, '--lib', path.join(ROOT, 'dev', 'projaudit108-lib.js'), '--script', path.join(ROOT, 'dev', script), '--shot', path.join(tmp, 'shot.png')],
     { cwd: ROOT, encoding: 'utf8', timeout: 1500000, maxBuffer: 64 << 20, env: { ...process.env, TMPDIR: tmp, HEARTH_THREE_DIR: process.env.HEARTH_THREE_DIR || '/opt/cdn-cache/three@0.186.1/package' } });
   const text = `${r.stdout || ''}${r.stderr || ''}`;
   const line = text.split('\n').reverse().find((l) => l.startsWith('{"steps"'));
