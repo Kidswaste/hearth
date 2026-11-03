@@ -157,7 +157,8 @@ try {
   const FPS = ThreeFrames.status().fps || 30; const fT = (n) => n / FPS;
   // (the footage's own sound: a 60 Hz thump every 0.5 s, softer than the scene's song: the ⚡ kick's bar lower, so the beat
   // rig's onHit('kick') runs on it as realscene-lib asks)
-  await toPage({ type: 'triggers-set', cfg: { kick: { on: true, lo: 40, hi: 120, thr: 0.25, gap: 200, fade: 120 } } });
+  const KICK = { kick: { on: true, lo: 40, hi: 120, thr: 0.25, gap: 200, fade: 120 } };
+  await toPage({ type: 'triggers-set', cfg: KICK });
   // the parts (the Lab's own format, tools/three-frames.js sendCuts): six half-second parts with a second removed
   // between each, three frames held 0.25 s between them; looped (3.75 s a turn: ≈ 16 cuts and 8 holds a stretch)
   const HOLD = 0.25;
@@ -170,6 +171,7 @@ try {
     c.play(false); await wait(300);
     await pv(`window.__labBeat.legacy110(${legacy}); window.__fps107.setHz(${hz}); window.__labPace.reset(); return 1`);
     await toPage({ type: 'media-cuts', parts: PARTS }); await toPage({ type: 'media', cmd: 'loop', value: true });
+    await toPage({ type: 'triggers-set', cfg: KICK }); // (again each stretch: the Lab sends the footage's own ⚡ settings once its analysis is in)
     c.seek(0); await wait(300); c.play(true);
     await wait(2600);
     await pv('window.__labBeat.log(true); window.__fps107.load && window.__fps107.load(); window.__bl110.vf = []; window.__bl110.on = true; return 1');

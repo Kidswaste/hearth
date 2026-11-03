@@ -3788,7 +3788,7 @@ const TRIG_NAMES = ['kick', 'bass', 'snare', 'hats', 'hit'];
 let trigCfg = null;
 const trigState = Object.fromEntries(TRIG_NAMES.map((n) => [n, { at: -1e9, armed: true, e: 0 }]));
 let trigWatch = false; let trigFired = [];
-const TRIGLOG = { on: false, list: [], arr: [] }; // (checks, beat108: window.__labBeat.log)
+const TRIGLOG = { on: false, list: [], arr: [], upd: 0, updOff: 0, gap: 0 }; // (checks, beat108: window.__labBeat.log)
 // (checks, beatload110) live sound: when each analysis frame arrived from the Lab window and the ⚡ kick band's level in
 // it ([page ms, level 0..1]): a kick's reaction time is its fire − the first frame over the bar that carried it
 function trigArrive() {
@@ -3812,7 +3812,7 @@ function runTriggers(now, hz) {
     else if (s.armed && s.e >= c.thr && now - s.at >= c.gap) {
       s.at = now; s.armed = false;
       if (trigWatch) trigFired.push(n);
-      if (TRIGLOG.on && TRIGLOG.list.length < 2000) TRIGLOG.list.push([n, now, mediaEl && !liveKind ? AV.core.read(AV.S, now / 1000) : null]); // (checks, beat108)
+      if (TRIGLOG.on && TRIGLOG.list.length < 2000) TRIGLOG.list.push([n, now, mediaEl && !liveKind ? AV.core.read(AV.S, now / 1000) : null, FR.inRaf ? FR.t : null, FR.inRaf && capT === FR.t ? 1 : 0, Math.round(TRIGLOG.gap * 100) / 100]); // (checks, beat108; beatload110: the frame's time, a drawn frame or not, ms since the read before)
       if (n === 'kick' && liveKind) liveTempo(now / 1000);
     }
   }
@@ -3861,6 +3861,7 @@ function update() {
   const now = realNow();
   if (now - lastUpdate < 8) return;
   const dt = Math.min(0.1, (now - lastUpdate) / 1000);
+  if (TRIGLOG.on) { TRIGLOG.upd += 1; if (!(FR.inRaf && capT === FR.t)) TRIGLOG.updOff += 1; TRIGLOG.gap = now - lastUpdate; } // (checks, beatload110: the sound read outside a drawn frame)
   lastUpdate = now;
   if (!mediaEl && !liveKind) {
     // No file loaded: a soft 120 bpm demo pulse so audio-reactive sketches still move.
@@ -4444,7 +4445,7 @@ window.__labBeat = {
   // (beatload110) legacy110(true): live sound and footage keep the frame gate off, a held frame ends in the page's frames
   // only, as before round 110 (an A/B in one run)
   legacy110(on) { GATE.legacy110 = Boolean(on); return GATE.legacy110; },
-  log(on) { EDGE.log = on ? [] : null; TRIGLOG.on = Boolean(on); TRIGLOG.list = []; TRIGLOG.arr = []; CAPLOG.on = Boolean(on); CAPLOG.n = 0; CAPLOG.gn = 0; CAPLOG.en = 0; return Boolean(on); },
+  log(on) { EDGE.log = on ? [] : null; TRIGLOG.on = Boolean(on); TRIGLOG.list = []; TRIGLOG.arr = []; TRIGLOG.upd = 0; TRIGLOG.updOff = 0; CAPLOG.on = Boolean(on); CAPLOG.n = 0; CAPLOG.gn = 0; CAPLOG.en = 0; return Boolean(on); },
   // (beatload110) each drawn frame's ms after the cap's slot for it, each frame-gate timer's ms after it was due
   slots: () => ({ t: Array.from(CAPLOG.t.subarray(0, CAPLOG.n), (x) => Math.round(x * 100) / 100), late: Array.from(CAPLOG.late.subarray(0, CAPLOG.n), (x) => Math.round(x * 100) / 100), gate: Array.from(CAPLOG.gate.subarray(0, CAPLOG.gn), (x) => Math.round(x * 100) / 100), edge: Array.from(CAPLOG.edge.subarray(0, CAPLOG.en), (x) => Math.round(x * 100) / 100) }),
   edges: () => EDGE.log || [],
@@ -4461,7 +4462,7 @@ window.__labBeat = {
   trigs: () => TRIGLOG.list,
   beats: () => (beatMap?.beats?.length ? beatMap.beats : analysis?.beats || []), // (beatload110: the beat list the beat helpers count on: barInfo's)
   arrivals: () => TRIGLOG.arr.map((x) => [Math.round(x[0] * 100) / 100, Math.round(x[1] * 1000) / 1000]), // (beatload110)
-  state: () => ({ parts: fparts ? fparts.length : 0, fpart, legacy110: GATE.legacy110, legacy: EDGE.legacy, timer: Boolean(EDGE.timer), fine: EDGE.fine, arms: EDGE.arms, wakes: EDGE.wakes, looks: EDGE.looks, slack: Math.round(EDGE.slack * 10) / 10, gateHeld: GATE.held, gateScr: Math.round(GATE.scr * 100) / 100, cap: fpsCap }),
+  state: () => ({ upd: TRIGLOG.upd, updOff: TRIGLOG.updOff, parts: fparts ? fparts.length : 0, fpart, legacy110: GATE.legacy110, legacy: EDGE.legacy, timer: Boolean(EDGE.timer), fine: EDGE.fine, arms: EDGE.arms, wakes: EDGE.wakes, looks: EDGE.looks, slack: Math.round(EDGE.slack * 10) / 10, gateHeld: GATE.held, gateScr: Math.round(GATE.scr * 100) / 100, cap: fpsCap }),
 };
 const applyLoop = () => { if (mediaEl) mediaEl.loop = loopOn && !region && !trim; };
 function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, loop = false, volume = 1, analysis: a, region: rg = null, rate = 1, trim: tr = null }) {

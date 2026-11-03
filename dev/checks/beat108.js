@@ -197,6 +197,7 @@ try {
     R.trigger = stats(tr.map((x) => { let best = NaN; for (const k of kicks) if (!(Math.abs(x[2] - k) >= Math.abs(best))) best = x[2] - k; return best * 1000; }));
     R.triggerVals = tr.map((x) => { let best = NaN; for (const k of kicks) if (!(Math.abs(x[2] - k) >= Math.abs(best))) best = x[2] - k; return r2(best * 1000); });
     R.triggerFrames = tr.map((x) => frameOf(x[1])); // (beatload110: each fire's delay after its drawn frame's cap slot)
+    R.triggerAt = tr.map((x) => [x[4], x[5], x[3] != null ? r2(x[1] - x[3]) : null]); // (beatload110: [in a drawn frame, ms since the sound was read before, ms into its frame])
     await pv('window.__b108.on = false; return 1');
     mark('loop');
     // ---- a loop crossing its end, then seeks to just before it ----
@@ -320,7 +321,23 @@ try {
     };
     sameEv('everyBeats callbacks after their beat, p95', 0.95, b.beatLates?.every, b.beatFrames?.every, a.beatLates?.every, a.beatFrames?.every, tol.beat);
     sameEv('onHit(\'beat\') callbacks after their beat, p95', 0.95, b.beatLates?.hit, b.beatFrames?.hit, a.beatLates?.hit, a.beatFrames?.hit, tol.beat);
-    sameEv('the ⚡ kick trigger after its kick, p50', 0.5, b.triggerVals, b.triggerFrames, a.triggerVals, a.triggerFrames, tol.trigger, -Infinity); // (a fire's figure is against the kick heard: no bound, compared with before only)
+    // the ⚡ fires: decided where the scene reads the sound, in drawn frames only, with the gate or without (round 110's
+    // diagnostic run: 0 reads outside a drawn frame in all four stretches, ≈ 64 a second, 16 ms apart, every fire in a
+    // drawn frame). That cadence is judged with no allowance; the fires' p50 against the kicks moves with where the
+    // analyser's onsets fall against those frames: 3.5 ms between two stretches of the same code at 60 Hz on a calm
+    // box, 13 ms under the burn. Over its tolerance while the box's real frames stalled in either stretch: can't tell
+    const reads = (R) => ({ n: R.state?.upd, off: R.state?.updOff });
+    ok(reads(a).off === 0 && reads(b).off === 0 && reads(a).n > 0 && Math.abs(reads(a).n - reads(b).n) <= 0.15 * reads(b).n, `${hz} Hz: the sound read in drawn frames only, as often with the gate as without (before ${JSON.stringify(reads(b))}, after ${JSON.stringify(reads(a))})`);
+    ok((a.triggerAt || []).every((x) => x[0] === 1), `${hz} Hz: every ⚡ fire in a drawn frame (${JSON.stringify((a.triggerAt || []).filter((x) => x[0] !== 1))})`);
+    {
+      const x = b.trigger.p50; const y = a.trigger.p50; const line = `${hz} Hz: the ⚡ kick trigger after its kick, p50 the same or better (before ${x}, after ${y}, ± ${tol.trigger} ms)`;
+      const st = `the real frames stalled ${b.load?.stalls} and ${a.load?.stalls} times (${b.load?.stallMs} and ${a.load?.stallMs} ms)`;
+      if (x == null || y == null) ok(false, `${line}: not measured`);
+      else if (y > x + tol.trigger) {
+        if ((b.load?.stalls || 0) + (a.load?.stalls || 0) >= 5) out.cantTell.push(`${line}: CAN'T TELL, ${r2(y - x - tol.trigger)} ms over while the box was busy (${st}); the fires' cadence was the same`);
+        else ok(false, `${line}: ${r2(y - x - tol.trigger)} ms over on a calm box (${st})`);
+      }
+    }
     ok(a.everyBeat.missed === 0 && a.everyBeat.phaseOffMs <= 1, `${hz} Hz: every beat called back once, with its phase (${JSON.stringify(a.everyBeat)})`);
     ok(!a.everyBeat.back.length, `${hz} Hz: no beat called back for a beat before the last one (${JSON.stringify(a.everyBeat.back)})`);
     ok(a.trigger.n >= 6, `${hz} Hz: the ⚡ kick trigger fired (${a.trigger.n})`);
