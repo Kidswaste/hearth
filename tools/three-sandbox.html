@@ -771,7 +771,6 @@ function capOk(t) {
   // into 50 on a 100 Hz screen, or 48 on a 144 Hz screen.
   const period = 1000 / fpsCap;
   if (capNext < 0 || t >= capNext - .5) {
-    if (CAPLOG.on && capNext >= 0 && CAPLOG.n < 4000) { CAPLOG.t[CAPLOG.n] = t; CAPLOG.late[CAPLOG.n++] = t - capNext; } // (checks, beatload110: how late each drawn frame came after its slot)
     capT = t;
     capNext = capNext < 0 || t - capNext > period * 2 ? t + period : capNext + period;
     return true;
@@ -13847,7 +13846,9 @@ function installRunGuards() {
     if (o.L && layerMix(o.L) <= 0) { e.lt = -1; sched(e.run); return; }
     // parked (the Lab isn't on screen): nothing draws until it is again (a recording / an offline render goes on)
     if (parked && !SQ.off && !fullRes()) { e.lt = -1; parkQ.push(e.run); return; }
+    const due0 = capNext; const capT0 = capT; // (checks, beatload110: CAPLOG below; capOk stays self-contained: dev/project-desk-test.js runs it alone)
     if (!SQ.off && !capOk(t)) { sched(e.run); return; }
+    if (CAPLOG.on && capT !== capT0 && capT === t && due0 >= 0 && CAPLOG.n < 4000) { CAPLOG.t[CAPLOG.n] = t; CAPLOG.late[CAPLOG.n++] = t - due0; } // (how late each drawn frame came after the cap's slot for it)
     // (labpace) f60: this frame's length in 60 fps frames (a cap's skipped frames count; a pause starts again at 1)
     globalThis.f60 = PACE.core.f60(e.lt < 0 ? -1 : t - e.lt); e.lt = t;
     if (o.L) o.L.dzRun = frameTick; // (round 44, idlecpu: it ran this frame; see "dozing")
