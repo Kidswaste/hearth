@@ -149,8 +149,16 @@ that sit in the engine:
 
 ## Runs
 
-- `syncaudit110` and `syncaudit110-states`: failed on the base (as the "before" columns say), pass after the fixes.
-- The checks named in the brief, the unit tests and `release`: see the end of this file.
+- `syncaudit110` and `syncaudit110-states`: failed on the base (as the "before" columns say), pass after the fixes
+  (three times in a row for the states, twice for the walk).
+- `syncpanel92` failed on this round's base ("click: not visible": the vanishing Forget question above); it passes now.
+- All passed, in one run: `syncaudit110`, `syncaudit110-states`, `syncpanel92`, `keptaside94`, `sync72`, `sync`,
+  `devices90`, `packs89`, `kvrename99`, `guardloss78`, `firstrun`, `lazy`.
+- Unit tests and scans: `unit:boot-test` (first screen 1694 / 1696 KB), `unit:lazymanifest-test`,
+  `unit:errorcalm-test`, `unit:errorcalm-scan`, `unit:datasafe-scan`, `unit:winmac-test`, `unit:twocomputers-test`,
+  `unit:storeack-scan`, `unit:chatsafe-scan`.
+- `node dev/run-checks.js release`: 305 / 308 passed, no ✖; the 3 are the known failures listed in tests106 (Codex's),
+  1 opt-in skipped.
 
 ## For the patch notes
 
