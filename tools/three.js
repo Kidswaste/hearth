@@ -3427,6 +3427,7 @@ const ThreeLab = (() => {
       workspaceMessage?.(msg);
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
       if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
+      if (msg.type === 'frame-runaway') { glp.runaway.push({ ...msg, at: Date.now() }); if (glp.runaway.length > 10) glp.runaway.shift(); console.warn('[Lab] the preview\'s frames ran away; it went back to plain frames', JSON.stringify(msg)); return; } // (round 109, labchecks109) the page's runaway guard
       if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); return; } // (round 52, presentready)
       if (msg.type === 'stack-drawn' && glp.phase === 'remaking') glBack('new page');
       if (msg.type === 'obs-frame') { window.InteropObs?.frame(msg); return; } // (round 25, interop) a frame for OBS's Browser Source
@@ -3940,7 +3941,7 @@ const ThreeLab = (() => {
     // they were); none back within a few seconds: sandboxFrame makes the page again and run({ again, quiet }) runs the
     // scene in it (the song re-sent at its place; nothing saved: no history snapshot, no thumbnail). No banner while it
     // works itself out; one calm note after (glrecover.js). The banner only when even a new page can't draw.
-    const glp = { phase: null, at: 0, stuck: 0, waits: [], log: [] };
+    const glp = { phase: null, at: 0, stuck: 0, waits: [], log: [], runaway: [] }; // (round 109) runaway: the page's frame-runaway notes
     const glEvent = (state, how = null) => { glp.log.push({ state, how, at: Date.now() }); if (glp.log.length > 20) glp.log.shift(); dispatchEvent(new CustomEvent('hearth:lab-gl', { detail: { state, how } })); };
     function glPreview(msg) {
       if (msg.type === 'gpu-lost') {
@@ -3968,7 +3969,7 @@ const ThreeLab = (() => {
     }
     // a picture asked for while the GPU is away waits for it (≤ ms): 🎲 variations, ◧ before / after, the director
     const glWait = (ms = 8000) => (!glp.phase ? Promise.resolve(true) : new Promise((r) => { glp.waits.push(r); setTimeout(() => r(false), ms); }));
-    api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl }) };
+    api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl, runaway: glp.runaway.slice() }) };
     previewHost.append(stall);
     api.healthHost = { host: previewHost, send: (m) => box.send(m), sceneId: () => current?.id || null }; // (round 80, laberrors80) a paused layer's note + ▶ Resume
     // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on

@@ -469,7 +469,7 @@ async function cdpConnect(dir) {
     if (scriptFile) {
       const body = fs.readFileSync(scriptFile, 'utf8');
       // LF → labframes-lib (which itself uses J, so the helpers already added count as users too)
-      const AUTO = [[/\bRAIL\.\w/, /\bconst RAIL =/, 'checks/rail-lib.js'], [/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js'], [/\bBS\.run\(/, /\bconst BS =/, 'checks/bigscreen-lib.js']];
+      const AUTO = [[/\bRAIL\.\w/, /\bconst RAIL =/, 'checks/rail-lib.js'], [/\bLF\.\w|=\s*LF;/, /\bconst LF =/, 'checks/labframes-lib.js'], [/\bJ\.\w|=\s*J;/, /\bconst J =/, 'checks/journey-lib.js'], [/\bM\.\w+\(|=\s*M;/, /\bconst M =/, 'checks/smooth-lib.js'], [/\bdecodeFrameCode\b/, /function decodeFrameCode/, 'editor-frames.js'], [/\bSQL\.\w|=\s*SQL;/, /\bconst SQL =/, 'checks/sequence-lib.js'], [/\bBS\.run\(/, /\bconst BS =/, 'checks/bigscreen-lib.js'], [/\bRS\.\w/, /\bconst RS =/, 'checks/realscene-lib.js']];
       for (const [uses, defines, lib] of AUTO) {
         const f = path.join(__dirname, lib);
         const users = [body, ...libFiles.map((x) => fs.readFileSync(x, 'utf8'))].join('\n');
