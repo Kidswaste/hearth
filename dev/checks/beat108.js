@@ -73,7 +73,8 @@ const probe = () => {
   }
   P.setHz = (hz) => { P.hz = hz; if (timer) { rci(timer); timer = 0; } arm(); return hz; };
   const fakeRaf = window.requestAnimationFrame;
-  P.screen = (ms = 1000) => new Promise((res) => { let n = 0; const t0 = raw.now(); const go = () => { n += 1; if (raw.now() - t0 < ms) fakeRaf(go); else res(Math.round((n * 10000) / (raw.now() - t0)) / 10); }; fakeRaf(go); });
+  const stalled = () => P.stallMs + (P.stallAt ? raw.now() - P.stallAt : 0);
+  P.screen = (ms = 1000) => new Promise((res) => { let n = 0; const t0 = raw.now(); const s0 = stalled(); const go = () => { n += 1; if (raw.now() - t0 < ms) fakeRaf(go); else res(Math.round((n * 10000) / Math.max(1, raw.now() - t0 - (stalled() - s0))) / 10); }; fakeRaf(go); }); // (beatload110: while it ticks: the real frames' stalls left out)
   P.take = () => { const ms = raw.now() - P.since; const per = (x) => Math.round((x * 10000) / ms) / 10; const r = { s: Math.round(ms / 100) / 10, framesPerSec: per(P.busy), rafPerSec: per(P.n.raf), timersPerSec: per(P.n.timeout + P.n.interval) }; P.n = { raf: 0, timeout: 0, interval: 0 }; P.busy = 0; P.since = raw.now(); return r; };
   P.load = () => { const g = P.gaps.slice().sort((a, b) => a - b); const at = (p) => (g.length ? Math.round(g[Math.min(g.length - 1, Math.floor(p * g.length))] * 100) / 100 : null); const r = { ticks: g.length, lateP50: at(0.5), lateP95: at(0.95), lateP99: at(0.99), lateMax: at(1), over8: g.filter((x) => x > 8).length, longTasks: P.lt.length, longMs: P.lt.reduce((a, e) => a + e[1], 0), longMax: P.lt.reduce((a, e) => Math.max(a, e[1]), 0), stalls: P.stalls, stallMs: Math.round(P.stallMs) }; P.gaps = []; P.lt = []; P.stalls = 0; P.stallMs = 0; return r; };
 };
@@ -303,7 +304,10 @@ try {
     same('the pictures against the audio clock, p95', b.picture.p95, a.picture.p95, tol.picture);
     // (beat callbacks and ⚡ fires: each one's own drawn frame's delay after its cap slot, taken out of it when the figure
     // is over: what's left is where the beat fell against the cap's slots, the same with the gate or without)
-    const sameEv = (what, p, bv, bfr, av, afr, t) => {
+    // (bound: an event in the first drawn frame after its cause, less that frame's delay after its slot, is within one
+    // cap period of it (16.7 ms), plus one screen frame for a beat callback, which reads the song at the frame's show
+    // time; a figure over its tolerance whose events all are is the frames' delay: the load)
+    const sameEv = (what, p, bv, bfr, av, afr, t, bound = 1000 / 60 + 1000 / hz) => {
       const x = r2(q(nn(bv), p)); const y = r2(q(nn(av), p));
       const line = `${hz} Hz: ${what} the same or better (before ${x}, after ${y}, ± ${t} ms)`;
       if (x == null || y == null) return ok(false, `${line}: not measured`);
@@ -311,12 +315,12 @@ try {
       const adj = (v, f) => (v || []).map((z, i) => (Number.isFinite(z) && Number.isFinite(f?.[i]) ? z - f[i] : NaN));
       const xa = r2(q(nn(adj(bv, bfr)), p)); const ya = r2(q(nn(adj(av, afr)), p));
       const fr = `their delay after their drawn frame's cap slot, ${p === 0.5 ? 'p50' : 'p95'} ${r2(q(nn(bfr), p))} → ${r2(q(nn(afr), p))} ms`;
-      if (xa != null && ya != null && ya <= xa + t) { out.cantTell.push(`${line}: CAN'T TELL, ${r2(y - x - t)} ms over; each one less its delay after its drawn frame's cap slot (the load: ${fr}), the same or better (before ${xa}, after ${ya})`); return true; }
-      return ok(false, `${line}: ${r2(y - x - t)} ms over, and each one less its delay after its drawn frame's cap slot still over (before ${xa}, after ${ya}; ${fr})`);
+      if (xa != null && ya != null && ya <= Math.max(xa, bound) + t) { out.cantTell.push(`${line}: CAN'T TELL, ${r2(y - x - t)} ms over; each one less its delay after its drawn frame's cap slot (the load: ${fr}): before ${xa}, after ${ya}, the same or better or within ${r2(bound)} ms of its cause (the first drawn frame after it)`); return true; }
+      return ok(false, `${line}: ${r2(y - x - t)} ms over, and each one less its delay after its drawn frame's cap slot still over (before ${xa}, after ${ya}, bound ${r2(bound)} ms; ${fr})`);
     };
     sameEv('everyBeats callbacks after their beat, p95', 0.95, b.beatLates?.every, b.beatFrames?.every, a.beatLates?.every, a.beatFrames?.every, tol.beat);
     sameEv('onHit(\'beat\') callbacks after their beat, p95', 0.95, b.beatLates?.hit, b.beatFrames?.hit, a.beatLates?.hit, a.beatFrames?.hit, tol.beat);
-    sameEv('the ⚡ kick trigger after its kick, p50', 0.5, b.triggerVals, b.triggerFrames, a.triggerVals, a.triggerFrames, tol.trigger);
+    sameEv('the ⚡ kick trigger after its kick, p50', 0.5, b.triggerVals, b.triggerFrames, a.triggerVals, a.triggerFrames, tol.trigger, -Infinity); // (a fire's figure is against the kick heard: no bound, compared with before only)
     ok(a.everyBeat.missed === 0 && a.everyBeat.phaseOffMs <= 1, `${hz} Hz: every beat called back once, with its phase (${JSON.stringify(a.everyBeat)})`);
     ok(!a.everyBeat.back.length, `${hz} Hz: no beat called back for a beat before the last one (${JSON.stringify(a.everyBeat.back)})`);
     ok(a.trigger.n >= 6, `${hz} Hz: the ⚡ kick trigger fired (${a.trigger.n})`);

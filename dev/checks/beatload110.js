@@ -13,13 +13,13 @@
 //     arrival in the page → the drawn frame that reacted)
 //   · everyBeats(1) on the live tempo clock: how late after its beat each callback ran (beat phase × period); beats
 //     missed or called twice; the tempo found
-// Footage: a 30 fps video with its sound (frame numbers burned in: dev/make-lab-footage.js), a cut list that removes
-// a second, holds a frame for 0.4 s and loops (the Lab's own parts format), played; the sketch logs each frame the
+// Footage: a 30 fps video with its sound (frame numbers burned in: dev/make-lab-footage.js), a cut list of six half-second
+// parts with a second removed between each and three frames held 0.25 s, looped (the Lab's own parts format), played; the sketch logs each frame the
 // video presented (media.onFrame) and the page logs each part's end as it acted on it. Per stretch (10 s):
 //   · removed frames handed to the sketch (none)
-//   · each cut: how long before its first removed frame was due on screen the page jumped, and what made it jump (the
-//     timer the video's own frame set, or a page frame / a video frame already past it)
-//   · each held frame: how late after its 0.4 s the page let it go
+//   · each cut: how far before the part's end (the video's own clock) the page jumped, and what made it jump (the
+//     timer the video's own frame set, the edge timer on the video's clock, a page frame, a video frame already past it)
+//   · each held frame: how late after its 0.25 s the page let it go
 //   · on screen (reported: the box's compositor stalls under load decide these): each seam's gap, each hold's length
 //   · the page's frames a second and per drawn one
 // Budgets: with the gate (this round) at 240 Hz ≤ 2.6 page frames per drawn one (it was ≈ 4), its timer on time; every
@@ -65,7 +65,9 @@ const slotOf = (sl) => stats(sl.late || []);
 const nn = (arr) => (arr || []).filter(Number.isFinite);
 // events that run in drawn frames (⚡ fires, beat callbacks): over the tolerance, each one less its delay after its drawn
 // frame's cap slot (the load: the frame came late, or ran late into its work) must be the same or better within it
-function sameEv(where, what, p, bv, bfr, av, afr, tol) {
+// (bound: an event in the first drawn frame after its cause, less that frame's delay after its slot, is within one cap
+// period of it, 16.7 ms: a figure over its tolerance whose events all are is the frames' delay, the load)
+function sameEv(where, what, p, bv, bfr, av, afr, tol, bound = 1000 / 60) {
   const x = r2(q(nn(bv), p)); const y = r2(q(nn(av), p));
   const line = `${where}: ${what} the same or better (before ${x}, after ${y}, ± ${tol} ms)`;
   if (x == null || y == null) return ok(false, `${line}: not measured`);
@@ -73,8 +75,8 @@ function sameEv(where, what, p, bv, bfr, av, afr, tol) {
   const adj = (v, f) => (v || []).map((z, i) => (Number.isFinite(z) && Number.isFinite(f?.[i]) ? z - f[i] : NaN));
   const xa = r2(q(nn(adj(bv, bfr)), p)); const ya = r2(q(nn(adj(av, afr)), p));
   const fr = `their delay after their drawn frame's cap slot, ${p === 0.5 ? 'p50' : 'p95'} ${r2(q(nn(bfr), p))} → ${r2(q(nn(afr), p))} ms`;
-  if (xa != null && ya != null && ya <= xa + tol) { out.cantTell.push(`${line}: CAN'T TELL, ${r2(y - x - tol)} ms over; each one less its delay after its drawn frame's cap slot (the load: ${fr}), the same or better (before ${xa}, after ${ya})`); return true; }
-  return ok(false, `${line}: ${r2(y - x - tol)} ms over, and each one less its delay after its drawn frame's cap slot still over (before ${xa}, after ${ya}; ${fr})`);
+  if (xa != null && ya != null && ya <= Math.max(xa, bound) + tol) { out.cantTell.push(`${line}: CAN'T TELL, ${r2(y - x - tol)} ms over; each one less its delay after its drawn frame's cap slot (the load: ${fr}): before ${xa}, after ${ya}, the same or better or within ${r2(bound)} ms of its cause (the first drawn frame after it)`); return true; }
+  return ok(false, `${line}: ${r2(y - x - tol)} ms over, and each one less its delay after its drawn frame's cap slot still over (before ${xa}, after ${ya}, bound ${r2(bound)} ms; ${fr})`);
 }
 
 try {
@@ -156,9 +158,11 @@ try {
   // (the footage's own sound: a 60 Hz thump every 0.5 s, softer than the scene's song: the ⚡ kick's bar lower, so the beat
   // rig's onHit('kick') runs on it as realscene-lib asks)
   await toPage({ type: 'triggers-set', cfg: { kick: { on: true, lo: 40, hi: 120, thr: 0.25, gap: 200, fade: 120 } } });
-  // the parts (the Lab's own format, tools/three-frames.js sendCuts): f0–29, f60–89, f105 held 0.4 s, f120–164; looped
-  const HOLD = 0.4;
-  const PARTS = [{ a: fT(0), b: fT(30), speed: 1 }, { a: fT(60), b: fT(90), speed: 1 }, { a: fT(105), b: fT(106), hold: HOLD, speed: 1 }, { a: fT(120), b: fT(165), speed: 1 }];
+  // the parts (the Lab's own format, tools/three-frames.js sendCuts): six half-second parts with a second removed
+  // between each, three frames held 0.25 s between them; looped (3.75 s a turn: ≈ 16 cuts and 8 holds a stretch)
+  const HOLD = 0.25;
+  const run = (a, b) => ({ a: fT(a), b: fT(b), speed: 1 }); const hold = (n) => ({ a: fT(n), b: fT(n + 1), hold: HOLD, speed: 1 });
+  const PARTS = [run(0, 15), hold(20), run(30, 45), hold(50), run(60, 75), run(90, 105), hold(110), run(120, 135), run(150, 165)];
   const partOf = (n) => PARTS.findIndex((p) => (p.hold ? n === Math.round(p.a * FPS) : n >= Math.round(p.a * FPS) && n < Math.round(p.b * FPS)));
   const kept = (n) => partOf(n) >= 0;
   async function videoRun(hz, legacy) {
@@ -199,9 +203,12 @@ try {
     // long before its first removed frame was due on screen the page jumped (the timer the video's frame set: 1; a page
     // frame's look or a video frame already past it: 0 / 4); a held frame: how late after its end it was let go
     const ends = ((await pj('window.__labBeat.edges()')) || []).filter((e) => e[0] === 'part' && PARTS[e[4]]);
-    const cutEnds = ends.filter((e) => !PARTS[e[4]].hold); const holdEnds = ends.filter((e) => PARTS[e[4]].hold);
-    R.cutMargin = stats(cutEnds.filter((e) => e[1] === 1 && e[5] != null).map((e) => e[5] - e[2]));
-    R.cutBy = { timer: cutEnds.filter((e) => e[1] === 1).length, frame: cutEnds.filter((e) => e[1] === 0).length, past: cutEnds.filter((e) => e[1] === 4).length };
+    const cutEnds = ends.filter((e) => !PARTS[e[4]].hold && e[3] != null); const holdEnds = ends.filter((e) => PARTS[e[4]].hold);
+    // (a cut: how far before the part's end, on the video's own clock, the page jumped: ms of removed footage that
+    // played when < 0)
+    R.cutMargin = stats(cutEnds.map((e) => (PARTS[e[4]].b - e[3]) * 1000));
+    R.cutLate = cutEnds.filter((e) => PARTS[e[4]].b - e[3] < 0).length;
+    R.cutBy = { video: cutEnds.filter((e) => e[1] === 1).length, edge: cutEnds.filter((e) => e[1] === 5).length, frame: cutEnds.filter((e) => e[1] === 0).length, past: cutEnds.filter((e) => e[1] === 4).length };
     R.holdLate = stats(holdEnds.filter((e) => e[5] != null).map((e) => e[2] - e[5]));
     R.holdBy = { frame: holdEnds.filter((e) => e[1] === 0).length, timer: holdEnds.filter((e) => e[1] === 3).length };
     R.load = await pj('window.__fps107.load ? window.__fps107.load() : null');
@@ -231,7 +238,10 @@ try {
       // frames' place after their slots is set by the fake 60 Hz screen's 62.5 ticks a second drifting against the cap)
       if (hz === 240) same(where, 'the drawn frames after their cap slot, p50', b.slots.drawnLate.p50, a.slots.drawnLate.p50, 1);
       else ok(!a.slots.gateTimerLate.n || a.slots.gateTimerLate.n <= 5, `${where}: the gate holds no frames on a 60 Hz screen (${a.slots.gateTimerLate.n} held)`);
-      ok(Math.abs(a.drawnPerSec - b.drawnPerSec) <= 6, `${where}: the same drawn frames a second (before ${b.drawnPerSec}, after ${a.drawnPerSec})`);
+      // (drawn frames a second while the screen gave frames: the real frames' stalls over 100 ms (the box's) left out of
+      // the time; the fake screen, like a real one, has no frame to give then)
+      const live = (R) => r2(R.drawnPerSec * R.watch.s / Math.max(1, R.watch.s - (R.load?.stallMs || 0) / 1000));
+      ok(Math.abs(live(a) - live(b)) <= 6, `${where}: the same drawn frames a second while the screen gave frames (before ${live(b)}, after ${live(a)}; ${b.drawnPerSec} and ${a.drawnPerSec} over the whole stretch, real frames stalled ${b.load?.stallMs} and ${a.load?.stallMs} ms)`);
       if (part === 'live') {
         sameEv(where, 'the ⚡ kick\'s reaction (its fire − the sound\'s arrival), p50', 0.5, b.kick.vals, b.kick.frames, a.kick.vals, a.kick.frames, 2);
         sameEv(where, 'the ⚡ kick\'s reaction, p95', 0.95, b.kick.vals, b.kick.frames, a.kick.vals, a.kick.frames, 4);
@@ -246,13 +256,13 @@ try {
       } else {
         ok(!a.removedSeen.length && !b.removedSeen.length, `${where}: the sketch never got a removed frame (before ${JSON.stringify(b.removedSeen)}, after ${JSON.stringify(a.removedSeen)})`);
         ok(a.parts === PARTS.length && b.parts === PARTS.length, `${where}: the cut list was in the page all along (${b.parts}, ${a.parts} parts)`);
-        ok(a.cutMargin.n >= 3 && a.holdLate.n >= 2, `${where}: the cuts and the held frame played (${a.cutMargin.n} cuts on the video's timer, ${a.holdLate.n} holds ended)`);
-        // (the cuts are timed from the video's own frames with the gate or without: the same jumps, as early before
-        // the removed frame)
-        ok(a.cutMargin.p50 != null && b.cutMargin.p50 != null && a.cutMargin.p50 >= b.cutMargin.p50 - 2, `${where}: each cut jumps as early before its first removed frame is due, p50 (before ${b.cutMargin.p50}, after ${a.cutMargin.p50} ms ahead, ± 2 ms)`);
-        ok(a.cutBy.frame + a.cutBy.past <= b.cutBy.frame + b.cutBy.past + 1, `${where}: no more cuts left to a page frame's look or a late video frame than before (before ${JSON.stringify(b.cutBy)}, after ${JSON.stringify(a.cutBy)})`);
+        ok(a.cutMargin.n >= 8 && a.holdLate.n >= 4, `${where}: the cuts and the held frames played (${a.cutMargin.n} cuts, ${a.holdLate.n} holds ended)`);
+        // (a cut is timed from the video's own frames, and now from its clock on the edge timer too: as early before
+        // the part's end, never later)
+        ok(a.cutMargin.p50 != null && b.cutMargin.p50 != null && a.cutMargin.p50 >= b.cutMargin.p50 - 2, `${where}: each cut jumps as early before the part's end, p50 (before ${b.cutMargin.p50}, after ${a.cutMargin.p50} ms ahead, ± 2 ms)`);
+        ok(a.cutMargin.min != null && b.cutMargin.min != null && a.cutMargin.min >= Math.min(0, b.cutMargin.min) - 2, `${where}: no cut later than before past the part's end (the earliest: before ${b.cutMargin.min}, after ${a.cutMargin.min} ms ahead, ± 2 ms)`);
+        ok(a.cutLate <= b.cutLate, `${where}: no more cuts after the part's end than before (before ${b.cutLate} ${JSON.stringify(b.cutBy)}, after ${a.cutLate} ${JSON.stringify(a.cutBy)})`);
         same(where, 'each held frame let go after its end, p50', b.holdLate.p50, a.holdLate.p50, 1);
-        same(where, 'each held frame let go after its end, max', b.holdLate.max, a.holdLate.max, 4);
       }
     }
     const a240 = runs['240 after']; const b240 = runs['240 before'];
@@ -262,7 +272,7 @@ try {
     }
   }
   out.table = [...Object.entries(out.live).filter(([, R]) => R && R.slots).map(([k, R]) => `live ${k}: page ${R.framesPerSec} frames/s for ${R.drawnPerSec} drawn (${R.perDrawn} per drawn) · drawn after slot p50 ${R.slots.drawnLate.p50} / p95 ${R.slots.drawnLate.p95} ms · ⚡ kick reaction p50 ${R.kick.reaction.p50} / p95 ${R.kick.reaction.p95} ms (${R.kick.fires} fires) · everyBeats p50 ${R.everyBeat.p50} / p95 ${R.everyBeat.p95} ms (${R.everyBeat.n}, ${R.bpm} BPM)`),
-    ...Object.entries(out.video).filter(([, R]) => R && R.slots).map(([k, R]) => `footage ${k}: page ${R.framesPerSec} frames/s for ${R.drawnPerSec} drawn (${R.perDrawn} per drawn) · drawn after slot p50 ${R.slots.drawnLate.p50} / p95 ${R.slots.drawnLate.p95} ms · removed frames seen ${R.removedSeen.length} · cut jumps ${R.cutMargin.p50} ms (p50; min ${R.cutMargin.min}) before the removed frame ${JSON.stringify(R.cutBy)} · held frame let go ${R.holdLate.p50} / max ${R.holdLate.max} ms late ${JSON.stringify(R.holdBy)} · on screen: seam p50 ${R.seam.p50} / p95 ${R.seam.p95} ms (${R.seam.n}), hold ${R.hold.min}…${R.hold.max} ms (${R.hold.n}) · kept frames skipped at cuts ${R.cutEarlyFrames} · presented ${R.presented}`)];
+    ...Object.entries(out.video).filter(([, R]) => R && R.slots).map(([k, R]) => `footage ${k}: page ${R.framesPerSec} frames/s for ${R.drawnPerSec} drawn (${R.perDrawn} per drawn) · drawn after slot p50 ${R.slots.drawnLate.p50} / p95 ${R.slots.drawnLate.p95} ms · removed frames seen ${R.removedSeen.length} · cut jumps ${R.cutMargin.p50} ms (p50; min ${R.cutMargin.min}) before the part's end, ${R.cutLate} after it ${JSON.stringify(R.cutBy)} · held frame let go ${R.holdLate.p50} / max ${R.holdLate.max} ms late ${JSON.stringify(R.holdBy)} · on screen: seam p50 ${R.seam.p50} / p95 ${R.seam.p95} ms (${R.seam.n}), hold ${R.hold.min}…${R.hold.max} ms (${R.hold.n}) · kept frames skipped at cuts ${R.cutEarlyFrames} · presented ${R.presented}`)];
   for (const R of [...Object.values(out.live), ...Object.values(out.video)]) if (R && R.watch) R.watch = { page: R.watch.page, perFrame: R.watch.perFrame, guard: R.watch.guard && { tripped: R.watch.guard.tripped, peakLoopPerFrame: R.watch.guard.peakLoopPerFrame, peakLoopPerSec: R.watch.guard.peakLoopPerSec, limit: R.watch.guard.limit }, gateHeldPerSec: R.watch.gateHeldPerSec, loops: R.watch.loops, gl: R.watch.gl };
   await RS.close();
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }

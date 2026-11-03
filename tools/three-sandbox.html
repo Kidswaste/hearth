@@ -4343,7 +4343,7 @@ function mediaTick() {
 // the song's edges, looked at from a frame (src 0) or from the edge timer (1: its wake, 2: a fine look)
 function mediaEdge(src) {
   const t = mediaEl.currentTime;
-  if (fparts && !(region && loopOn) && recUntil == null) { partTick(t); prevT = mediaEl.currentTime; return; }
+  if (fparts && !(region && loopOn) && recUntil == null) { partTick(t, src); prevT = mediaEl.currentTime; edgeArm(src === 0); return; } // (round 110: and the next part's end on the edge timer)
   if (recUntil != null && t >= recUntil) {
     recUntil = null;
     stopRecording();
@@ -4381,7 +4381,11 @@ realRAF(mediaTick);
 // EDGE.slack follows how late the wake timer has come (3–20 ms: Windows' timers can be coarse).
 const EDGE = { timer: 0, due: 0, fine: false, fineAt: 0, mc: null, legacy: false, log: null, looks: 0, arms: 0, wakes: 0, slack: 3 };
 function edgeNext() {
-  if (EDGE.legacy || !mediaEl || mediaEl.paused || recUntil != null || (fparts && !(region && loopOn))) return Infinity; // (round 110: footage's cut list gives way to a loop (mediaEdge): its loop points on the timer too)
+  if (EDGE.legacy || !mediaEl || mediaEl.paused || recUntil != null) return Infinity;
+  // (round 110, beatload110) footage playing its cut list: the jump before the part's first removed frame, from the
+  // video's own clock (partLead before it, as partFrame jumps): the page's frames looked for it there too (partTick),
+  // which the frame gate now holds between drawn ones; with a loop on, the cut list gives way to it (mediaEdge)
+  if (fparts && !(region && loopOn)) { const p = fparts[fpart]; return GATE.legacy110 || !p || p.hold ? Infinity : p.b - (partLead() / 1000) * (mediaEl.playbackRate || 1); }
   if (region && loopOn) return region.b;
   if (trim) return trim.b;
   return Infinity;
@@ -4552,7 +4556,7 @@ function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }
   if (cmd === 'region') { region = value; applyLoop(); }
   if (cmd === 'trim') { trim = value && value.b > value.a ? value : null; applyLoop(); }
   if (cmd === 'pause') { mediaEl.pause(); if (frameStop && fclock && isVideo) stopOnFrame(req); }
-  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); avJump(!mediaEl.paused, mediaEl.currentTime); if (fparts && isVideo) fpart = partAt(value); if (ack) ackSeek(); else sendState(); }
+  if (cmd === 'seek') { if (fclock && isVideo) { fwant = req != null ? { req, at: performance.now() } : fwant; fholdUntil = 0; } mediaEl.currentTime = Math.max(0, Math.min(value, (mediaEl.duration || value) - (fclock && isVideo ? 0.0005 : 0.01))); avJump(!mediaEl.paused, mediaEl.currentTime); if (fparts && isVideo) { fpart = partAt(value); partRate(fpart); } if (ack) ackSeek(); else sendState(); }
   if (cmd === 'loop') { loopOn = Boolean(value); applyLoop(); }
   if (cmd === 'volume') gainNode.gain.value = value;
   if (cmd === 'rate') { mediaEl.defaultPlaybackRate = value; mediaEl.playbackRate = value * (fparts?.[fpart]?.speed || 1); sendState(); }
@@ -4791,9 +4795,13 @@ function watchFrames(m) {
     // (capturefix2) a removed frame the decoder showed anyway (the jump's timer fired late: a busy machine, or a frame
     // due right at the cut) is not handed on: the sketch, the texture and the frame number keep the last kept frame,
     // and the jump happens now (labframes: "the sketch never sees a removed frame", f24 slipped through 3 runs of 3)
-    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && !fparts[fpart]?.hold && partAt(meta.mediaTime) < 0) {
+    // (round 110, beatload110) …nor one presented after a cut into a held frame (decoded before the jump: the hold's
+    // part was already the current one, and the frame went to the sketch: f90 of a cut f60–89 → a frame held at f105,
+    // under load). The hold stands
+    if (fparts && !m.paused && recUntil == null && !(region && loopOn) && fclock && partAt(meta.mediaTime) < 0) {
       // (round 110, beatload110) played into removed frames with no part to end (a seek there while playing): the next
       // part now, from the video's own frame (the page's frames may be held by the frame gate: up to a drawn frame later)
+      if (fparts[fpart]?.hold) { /* the hold goes on */ } else
       if (!GATE.legacy110 && (!fparts[fpart] || meta.mediaTime < fparts[fpart].a - 0.05)) partTick(meta.mediaTime); else
       partFrame(meta.mediaTime, meta);
       m.requestVideoFrameCallback(cb);
@@ -4821,6 +4829,17 @@ function stopOnFrame(req) {
 const partAt = (t) => (fparts ? fparts.findIndex((p) => t >= p.a - 1e-4 && t < p.b - 1e-4) : -1);
 // the next part after source time t (in play order), or -1
 const partAfter = (t) => (fparts ? fparts.findIndex((p) => p.a >= t - 1e-4) : -1);
+// (round 110, beatload110) a seek or a new cut list puts the footage in a part without entering it: its speed now. A held
+// frame plays at rate 0 (its clock stands still): stopped on one and sent elsewhere (a click on the timeline, a new
+// cut list), the footage kept rate 0 and played frozen. Into a held frame, the hold starts there (enterPart)
+function partRate(i) {
+  const p = fparts?.[i]; if (!p || !mediaEl) return;
+  if (p.hold) { enterPart(i); return; }
+  fholdUntil = 0;
+  const base = mediaEl.defaultPlaybackRate || 1; const want = base * (p.speed || 1);
+  if (mediaEl.playbackRate !== want) { try { mediaEl.playbackRate = want; } catch { mediaEl.playbackRate = base; } }
+  mediaEl.muted = Boolean(p.mute);
+}
 function enterPart(i) {
   const p = fparts[i]; fpart = i;
   if (partEnd.timer) { realClearTimeout(partEnd.timer); partEnd.timer = 0; }
@@ -4832,6 +4851,7 @@ function enterPart(i) {
   if (p.hold) { fholdUntil = performance.now() + (p.hold * 1000) / base; mediaEl.currentTime = fMid(fFrameAt(p.a)); holdArm(i); return; }
   fholdUntil = 0;
   mediaEl.currentTime = fMid(fFrameAt(p.a));
+  if (!GATE.legacy110) { edgeStop(); edgeArm(); } // (round 110: this part's end on the edge timer)
 }
 function partEnd() {
   if (fpart + 1 < fparts.length) { enterPart(fpart + 1); sendState(); return; }
@@ -4848,14 +4868,17 @@ function partFrame(mt, meta) {
   if (mt >= p.b - 1e-4) { partNote(4, null); partEnd(); return; }
   const rate = mediaEl.playbackRate || 1;
   const due = (meta?.expectedDisplayTime ?? performance.now()) + ((p.b - mt) / rate) * 1000;
-  // how late this page's timers fire (a busy machine): jump that much earlier
-  const lead = (600 / (fclock?.fps || 30)) / rate + Math.min(120, partLate * 1.5);
+  const lead = partLead();
   const i = fpart; const want = Math.max(0, due - lead - performance.now()); const at = performance.now() + want;
   partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; partLate = partLate * 0.7 + Math.max(0, performance.now() - at) * 0.3; if (fpart === i && mediaEl && !mediaEl.paused) { partNote(1, due); partEnd(); } }, want);
 }
 let partLate = 0;
+// how long before a part's first removed frame is due the page jumps (ms): 0.6 of a frame, plus how late this page's
+// timers fire (a busy machine): that much earlier
+const partLead = () => (600 / (fclock?.fps || 30)) / (mediaEl?.playbackRate || 1) + Math.min(120, partLate * 1.5);
 // (checks, beatload110) while window.__labBeat.log is on, each part's end as it is acted on: ['part', how (0 a page
-// frame, 1 the timer from the video's frame, 3 a held frame's timer, 4 a video frame already past it), page ms, the
+// frame, 1 the timer from the video's frame, 3 a held frame's timer, 4 a video frame already past it, 5 the edge timer
+// on the video's clock), page ms, the
 // element's time, the part, when it was due (page ms: the first removed frame's display, the held frame's end)]
 function partNote(src, due) { if (EDGE.log) { EDGE.log.push(['part', src, realNow(), mediaEl?.currentTime ?? null, fpart, due]); if (EDGE.log.length > 400) EDGE.log.shift(); } }
 // (round 110, beatload110) a held frame ends on a timer of its own (the video's clock stands still there, so no video
@@ -4863,11 +4886,18 @@ function partNote(src, due) { if (EDGE.log) { EDGE.log.push(['part', src, realNo
 // ones; within about a millisecond now, the frames still look too (partTick). Shares partEnd's timer: one part at a time
 function holdArm(i) {
   if (GATE.legacy110) return;
-  const ms = Math.max(0, fholdUntil - performance.now());
-  partEnd.timer = realSetTimeout(() => { partEnd.timer = 0; if (fpart === i && fparts?.[i]?.hold && mediaEl && !mediaEl.paused && performance.now() >= fholdUntil - 1) { partNote(3, fholdUntil); partEnd(); } }, ms);
+  // (a wake 4 ms early, then looks ≈ 1 ms apart: a timer comes 1–2 ms late on a busy machine)
+  const look = () => {
+    partEnd.timer = 0;
+    if (fpart !== i || !fparts?.[i]?.hold || !mediaEl || mediaEl.paused) return;
+    const left = fholdUntil - performance.now();
+    if (left > 0.3) { partEnd.timer = realSetTimeout(look, left > 6 ? left - 4 : 1); return; }
+    partNote(3, fholdUntil); partEnd();
+  };
+  partEnd.timer = realSetTimeout(look, Math.max(0, fholdUntil - performance.now() - 4));
 }
 // per animation frame: holds, seeks into removed parts while playing, and a safety net for missed callbacks
-function partTick(t) {
+function partTick(t, src = 0) {
   if (fpart < 0 || !fparts[fpart] || (t < fparts[fpart].a - 0.05 && !fparts[fpart].hold)) {
     const i = partAt(t); const j = i >= 0 ? i : partAfter(t);
     if (j < 0) { if (loopOn) enterPart(0); else partEnd(); return; }
@@ -4876,7 +4906,12 @@ function partTick(t) {
   }
   const p = fparts[fpart];
   if (p.hold) { if (!mediaEl.seeking && Math.abs(mediaEl.currentTime - fMid(fFrameAt(p.a))) > 0.5 / (fclock?.fps || 30)) mediaEl.currentTime = fMid(fFrameAt(p.a)); if (performance.now() >= fholdUntil) { partNote(0, fholdUntil); partEnd(); } return; }
-  if (t >= p.b - 1e-4) { partNote(0, null); partEnd(); }
+  if (t >= p.b - 1e-4) { partNote(0, null); partEnd(); return; }
+  // (round 110, beatload110) the edge timer (src 1 / 2): partLead before the end on the video's own clock, the same
+  // lead partFrame's timer aims for from the frame on screen. Whichever comes first jumps: the video's frames come
+  // seldom on a busy machine (≈ 5 a second here), and a timer set from an old one came after the end; the page's
+  // frames then caught the cut after the end (16.7 ms apart with the frame gate)
+  if (src > 0 && t >= p.b - (partLead() / 1000) * (mediaEl.playbackRate || 1) - 1e-4) { partNote(5, null); partEnd(); }
 }
 
 // ---------- recording ----------
@@ -16182,7 +16217,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'av-devices') avDevices(); // (round 77, labaudio77: the Lab window heard a device change)
   if (msg.type === 'media-map') beatMap = msg;
   if (msg.type === 'media-clock') { fclock = msg.clock ? { fps: msg.clock.fps || 30, times: msg.clock.times || null, frames: msg.clock.frames || 0, exact: Boolean(msg.clock.exact) } : null; if (mediaEl && fclock) fpres.frame = fFrameAt(fpres.time || mediaEl.currentTime); }
-  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
+  if (msg.type === 'media-cuts') { fparts = msg.parts?.length ? msg.parts : null; fpart = fparts && mediaEl ? partAt(mediaEl.currentTime) : -1; if (fpart >= 0) partRate(fpart); if (!fparts && mediaEl) { mediaEl.playbackRate = mediaEl.defaultPlaybackRate || 1; mediaEl.muted = false; fholdUntil = 0; } }
   if (msg.type === 'media-analysis' && mediaEl) analysis = { ...msg.analysis, name: analysis?.name };
   if (msg.type === 'record') { if (msg.cmd === 'start') startRecording(msg); else stopRecording(msg.recordId); }
   if (msg.type === 'shader') shader?.set(msg.code);
