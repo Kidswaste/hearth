@@ -140,7 +140,36 @@ page frame against the bound of 24, 12,112 raw-loop frames in 7 s, then the page
 made the per-frame cap necessary.
 
 ## Runs
-RESULTS_RUNS
+All under the run lock (SwiftShader, 4 shared CPUs, other streams' runs between ours: load average 2–4).
+
+**The real scene, as measured in the checks (fix in place, 240 Hz fake screen):**
+
+| Where | Page frames / s | Frame callbacks / s | Per page frame | Busiest loop / s (limit) | Busiest loop per frame | Gate holds / s | Guard | GL lost |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| beat108, song playing | 58.6 | 234 | 4 | 92 (1,600) | 1 | 27.5 | never tripped | no |
+| labfps89 `real` | 94.3 | 377 | 4 | 102 (2,353) | 1 | – | never tripped | no |
+| labcompile90 `layer:real` (a layer starting) | 71.1 | 286 | 4 | 114 (3,333) | 1 | – | never tripped | no |
+| beat108, `bug107(true)` (round 107's answer) | 76.4 | 483 | 6.3 | 657 | **40** (4 run, 1,047 dropped) | – | **tripped after 2.2 s** | no |
+| … the 3 s after | 110.2 | 441 | 4 | 111 | 1 | 0 (gate off) | (tripped: plain frames) | no |
+
+In every check the scene's own loops ran (its raw loop ~28 a second, `everyBeats`, `onHit('kick')` 1–2 a second, the
+bar, the snare).
+
+**Final runs (this tree):**
+- `beat108 fps107 labfps89 labcompile90`: fps107, labfps89, labcompile90 **pass** (labfps89 / labcompile90 note one
+  late frame each as "can't tell under load", as they do under load). beat108: everything this round added passes
+  (the real scene, the gate's rest, the guard's proof); in 4 of 5 runs here one or two of **its own round-108 A/B
+  comparisons** were out of their tolerance (a different one each time: the loop wrap's p95 at 240 Hz, a beat
+  callback's p95 at 60 Hz, the ⚡ kick's p50), and one run had none out. The same check on the base commit (before this round, `3543227`), 3 runs back to back
+  under the same lock: 2 of 3 failed the same way (60 Hz `everyBeats` p95 23.8 vs 17.5 ms; 240 Hz a beat callback
+  487.9 ms late), 1 passed. Those comparisons pit a p95 over ~17 beats, which can be anywhere inside one drawn frame
+  (16.7 ms), against a 1–4 ms tolerance: flaky on this loaded box before this round, not changed by it (the guard counts
+  the same in both halves of the A/B; at 60 Hz the gate is off). Not loosened here (beat108's own budgets); noted for
+  its owner.
+- `labpace labboot gpuload84 labaudio77 perfectloop lazy unit:boot-test`: 7 / 7 pass.
+- `release`: **305 / 308 passed** (the 3 known Codex failures, KNOWN_FAIL), 1 opt-in skipped, 0 temp folders left.
+- `unit:boot-test` passes.
+- The proof run (round 107's answer put back in a throwaway copy): 0 / 4 pass, as above.
 
 ## For Codex
 No Codex-owned file was edited.
