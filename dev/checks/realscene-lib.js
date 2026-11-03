@@ -230,7 +230,7 @@ requestAnimationFrame(loop);`;
     const r1 = await pj('window.__rs109 || null');
     const gls = ThreeLab.gl.state();
     const loops = r0 && r1 ? Object.fromEntries(Object.keys(r1).map((k) => [k, r1[k] - (r0[k] || 0)])) : r1;
-    const out = { s: Math.round(sec * 10) / 10, page, rendersPerSec: Math.round(((d1 - d0) / sec) * 10) / 10, // (renders: every layer's, about 5 a drawn frame here) perFrame: page && page.framesPerSec ? Math.round((page.rafPerSec / page.framesPerSec) * 10) / 10 : null,
+    const out = { s: Math.round(sec * 10) / 10, page, rendersPerSec: Math.round(((d1 - d0) / sec) * 10) / 10, /* (renders: every layer's, about 5 a drawn frame here) */ perFrame: page && page.framesPerSec ? Math.round((page.rafPerSec / page.framesPerSec) * 10) / 10 : null,
       guard, gateHeldPerSec: gate && gate0 ? Math.round(((gate.gateHeld - gate0.gateHeld) / sec) * 10) / 10 : null, gateScr: gate ? gate.gateScr : null, loops, gl: S.gl.slice(gl0), glPhase: gls.phase, runawayNotes: (gls.runaway || []).slice(notes0) };
     return out;
   }
