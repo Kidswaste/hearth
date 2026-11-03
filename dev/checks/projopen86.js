@@ -56,7 +56,7 @@ const OPTS = before.opts || {};
 // first run are 50–90 ms pieces here: see docs/upgrades/projopen86.md) or in the export (the window prepares the body),
 // and a main-process block over 60 ms. A shared 4-CPU box adds 5–20 ms to a task now and then
 const BUDGET = Object.assign({ aim: 50, task: 60, open: 100, mainBlock: 60 }, OPTS.budget || {}, window.PO_BUDGET || {});
-const out = { budget: BUDGET, lab_first: before.labFirst || null, over50: [], problems: [] };
+const out = { budget: BUDGET, lab_first: before.labFirst || null, over50: [], problems: [], cantTell: [] };
 const need = (ok, what) => { if (!ok) out.problems.push(what); return ok; };
 // (a task of the scene's own page, a sandboxed frame of another origin, says so: 'cross-origin-descendant'; it's the
 // scene's code and GL, apart from Hearth's: reported as sceneLong, not held to the budget)
@@ -105,15 +105,28 @@ async function prof(fn) {
   return [res, { longTasks, self: top(self, 10), incl: top(incl, 14) }];
 }
 // one measured step: fn() resolves when the thing is usable; then 1.5 s for what it left behind (deferred work counts)
+// (round 109, projopen109) load-aware, as desk89 (round 88/89) and chatwindow86 (round 104): each step runs under a light
+// trace of the window's tasks, and a task over its budget is judged by its own CPU time and the thread's wait for a CPU
+// (dev/trace-stats.js longTasks, given the tasks the page's observer saw): over on CPU (or off the CPU longer than the
+// thread waited for one) fails as before; over only because the box was busy is "can't tell" (out.cantTell), not a
+// failure. No budget changed. Without a trace (an old smoke.js): the wall time, as before. window.PO_NOTRACE = 1: off
 async function step(name, fn, { settle = 1500, taskBudget = BUDGET.task } = {}) {
   await lag(`before-${name}`); await frame();
+  const traced = !window.PO_NOTRACE && !OPTS.prof && !window.PO_PROF && await smoke({ trace: 'start', tasks: true }).then((r) => !r?.error).catch(() => false);
+  performance.mark(`po86:${name}`);
   const t = performance.now();
   const [res, profile] = await prof(async () => { const r = await fn(t); await wait(settle); return r; });
   const l = await lag(name);
   const s = { ...(res && typeof res === 'object' ? res : {}), windowLong: longsSince(t).slice(0, 8), sceneLong: sceneSince(t).slice(0, 4), who: whoSince(t), frames: loafSince(t), main: mainOf(l), ...(profile ? { profile } : {}) };
+  const observed = longs.filter((x) => x.at >= t && !sceneTask(x) && x.ms > taskBudget).map((x) => ({ at: r0(x.at - t), ms: x.ms }));
+  const lt = traced ? await smoke({ trace: 'stop', tasks: { min: 0, budget: taskBudget, mark: `po86:${name}`, observed } }).catch(() => null) : null;
+  if (lt && observed.length) s.trace = { verdict: lt.verdict, why: lt.why || '', cpu: (lt.tasks || []).slice(0, 4).map((x) => `${x.ms}ms (cpu ${x.cpuMs})`) };
   out[name] = s;
   if ((s.windowLong[0] || 0) > BUDGET.aim) out.over50.push(`${name} ${s.windowLong.filter((x) => x > BUDGET.aim).join('+')}`);
-  if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
+  if ((s.windowLong[0] || 0) > taskBudget) {
+    if (lt?.verdict === 'load') out.cantTell.push(`${name}: a ${s.windowLong[0]} ms window task over the ${taskBudget} ms budget, but the box, not the app: ${lt.why}`);
+    else out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})${lt?.why ? `: ${lt.why}` : ''}`);
+  }
   if (blocksOver(l, BUDGET.mainBlock).length) out.problems.push(`${name} held the main process: ${s.main.blocks.join('; ')}`);
   return s;
 }

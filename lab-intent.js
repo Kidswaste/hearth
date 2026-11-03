@@ -13,6 +13,8 @@
 // Ctrl/⌘+K, the Lab shown. A history it can't read counts as "calm" (it behaves as for someone who uses the Lab).
 // The warm preview page (tools/three-boot.js) follows the Lab's code as before. Tests: localStorage 'lazy.lab.mode'
 // = now | calm | idle | none forces a mode; LabIntent.state() says what happened.
+// (round 109, projopen109) also on intent: a project to import (projbundle.js: its card shows; the import starts the Lab
+// and the project then opens in it), through LabIntent.go('import').
 const LabIntent = (() => {
   const G = 'lab'; const SURFACE = 'tool:three'; const DAY = 864e5; const KEEP = 8; const IDLE_AFTER = 40000; const CALM_AFTER = 5000; const QUIET = 3000;
   const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* no storage */ } return null; };

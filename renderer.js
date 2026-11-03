@@ -466,6 +466,54 @@ function showMenuFly(row, it, ctx, level = 1) {
 function hideMenuFly2() { clearTimeout(menuFly2Timer); const f = $('menu-fly2'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
 function hideMenuFly() { clearTimeout(menuFlyTimer); hideMenuFly2(); const f = $('menu-fly'); if (f) { f.hidden = true; topLayer(f, false); if (f.parentElement !== document.body) document.body.append(f); } }
 
+// (round 109, projopen109) a press on a menu row or a Desk button whose click never reached it, caught as it happens.
+// Round 108 saw a Desk ⋯ row "do nothing" 3 times in ~10 runs and couldn't reproduce it. Each primary press inside
+// #menu / #menu-fly / the Desk (.pj-home) is followed to its click; a miss is kept (the last 20) with what explains it:
+//   replaced  the pressed node left the page before the click (the menu or the Desk was drawn again under the press)
+//   elsewhere the click landed on another node than the press (the node moved under the pointer)
+//   blocked   the pointer was on a row or Desk button, but the press went to something else: a modal dialog made the
+//             page inert, or something drawn over it took the press
+//   noclick   the press and release came, the click never did
+// Read with ClickWatch.misses() (checks, the bug card); nothing is sent anywhere, nothing changes what a click does.
+const ClickWatch = (() => {
+  const misses = []; let press = null; let n = 0;
+  const WHERE = '#menu, #menu-fly, #menu-fly2, .pj-home';
+  const rowAt = (x, y) => {
+    for (const b of document.querySelectorAll('#menu > button, #menu-fly > button, #menu-fly2 > button, .pj-home .pj-p-actions > button')) {
+      if (b.closest('[hidden]')) continue;
+      const r = b.getBoundingClientRect();
+      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return b;
+    }
+    return null;
+  };
+  const say = (node) => (node?.nodeType === 1 ? `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ''}${typeof node.className === 'string' && node.className ? `.${node.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}${node.textContent ? ` "${node.textContent.trim().slice(0, 28)}"` : ''}` : String(node?.nodeName || node));
+  const scene = () => ({ dialogs: [...document.getElementsByTagName('dialog')].filter((d) => d.open).map((d) => `${d.className || d.id || 'dialog'}${d.matches(':modal') ? ' (modal)' : ''}${d.checkVisibility?.() === false ? ' (not drawn)' : ''} "${(d.querySelector('h2, h3')?.textContent || d.getAttribute('aria-label') || '').trim().slice(0, 40)}"`).slice(0, 4), menu: menuState ? $('menu')?.hidden === false : false, at: typeof H !== 'undefined' ? H.activeId : null });
+  // where the pressed node and its menu were at the press, and how far they moved by the miss
+  const spot = (b) => { const m = b?.closest?.('#menu, #menu-fly, #menu-fly2'); return { y: Math.round(b?.getBoundingClientRect?.().top ?? 0), mt: m ? Math.round(m.getBoundingClientRect().top) : null, ms: m ? Math.round(m.scrollTop) : null }; };
+  const moved = (p) => { if (!p.at || !p.b.isConnected) return {}; const n = spot(p.b); return { moved: { y: n.y - p.at.y, menuTop: n.mt != null && p.at.mt != null ? n.mt - p.at.mt : null, menuScroll: n.ms != null && p.at.ms != null ? n.ms - p.at.ms : null } }; };
+  const keep = (why, p, extra = {}) => { misses.push({ why, row: say(p.b), ms: Math.round(performance.now() - p.t), ...moved(p), ...extra, ...scene(), when: Math.round(p.t) }); if (misses.length > 20) misses.shift(); };
+  addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !e.isPrimary) { press = null; return; }
+    const t = e.target?.closest?.('button, [role=menuitem]');
+    if (t && t.closest(WHERE)) { press = { b: t, t: performance.now(), id: ++n, at: t.closest('#menu, #menu-fly, #menu-fly2') ? spot(t) : null }; return; } // (a menu row's place: the menu is laid out already)
+    press = null;
+    // (only when a press went to a dialog or its backdrop: looking for the row under it reads the page's layout, which
+    // a press anywhere else mustn't pay for — the Lab's rail button is pressed with the window's layout dirty)
+    if (!(e.target instanceof HTMLDialogElement)) return;
+    const hit = rowAt(e.clientX, e.clientY);
+    if (hit && !hit.contains(e.target)) keep('blocked', { b: hit, t: performance.now() }, { got: say(e.target) });
+  }, { capture: true, passive: true });
+  addEventListener('click', (e) => {
+    const p = press; if (!p) return; press = null;
+    if (e.target instanceof Node && p.b.contains(e.target)) return;
+    keep(p.b.isConnected ? 'elsewhere' : 'replaced', p, { got: say(e.target) });
+  }, { capture: true });
+  addEventListener('pointerup', () => { const p = press; if (!p) return; setTimeout(() => { if (press === p) { press = null; keep(p.b.isConnected ? 'noclick' : 'replaced', p); } }, 0); }, { capture: true, passive: true });
+  addEventListener('pointercancel', () => { press = null; }, { capture: true, passive: true });
+  return { misses: () => misses.slice(), clear: () => { misses.length = 0; } };
+})();
+window.ClickWatch = ClickWatch;
+
 // the menu's keys (capture: while it's open, arrows and letters belong to it, not to the Lab or the chat)
 addEventListener('keydown', (e) => {
   const menu = $('menu');

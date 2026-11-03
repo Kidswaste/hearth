@@ -249,7 +249,7 @@ html[data-skin~="forge"] .palette-item.sel > :first-child { translate: 4px 0; }
 html[data-skin~="forge"] .toast { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); padding-left: 14px; animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] .toast.error { border-color: color-mix(in srgb, var(--r-ultima) 55%, transparent); background: color-mix(in srgb, var(--r-ultima) 8%, #121619); }
 html[data-skin~="forge"] .toast button { color: var(--r-rare); }
-html[data-skin~="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: fh-scan var(--dur-med, .18s) var(--ease-out, ease-out); }
+html[data-skin~="forge"] #menu { border-radius: 0; clip-path: var(--cut-sm); background: #121619; border: 1px solid var(--line-hi); animation: hx-fade var(--dur-med, .18s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] #menu button { border-radius: 0; }
 html[data-skin~="forge"] #menu button:hover { background: linear-gradient(90deg, #48ddff1a, transparent); color: var(--cyan); }
 html[data-skin~="forge"] .find-bar, html[data-skin~="forge"] .notes-panel, html[data-skin~="forge"] .slash-menu { border-radius: 0; clip-path: var(--cut); background: #111518; border: 1px solid var(--line-hi); }

@@ -2552,7 +2552,9 @@ function rdyReveal(scene) {
   RDY.revealed += hid.length;
   return () => { for (const o of hid) o.visible = false; };
 }
-function rdyFrames(n) { return new Promise((res) => { let k = 0; const go = () => { if (++k >= n) res(); else realRAF(go); }; realRAF(go); }); }
+// (round 109, projopen109) n frames, or (a page that draws none: its Lab off screen, the window hidden) a timer's worth
+// of them: a ready-prep / ready-warm waited forever there, and an opening project sat at "Warming shaders" for 90 s
+function rdyFrames(n) { return new Promise((res) => { let k = 0; let done = false; const end = () => { if (!done) { done = true; realClearTimeout(cap); res(); } }; const go = () => { if (done) return; if (++k >= n) end(); else realRAF(go); }; const cap = realSetTimeout(() => { RDY.noFrames = (RDY.noFrames || 0) + 1; end(); }, 1500 + n * 250); realRAF(go); }); }
 async function rdyAssets(id) {
   const t0 = realNow();
   const left = () => {
