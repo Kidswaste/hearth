@@ -121,7 +121,10 @@ const AppUIDialogs = (() => {
       // cloud folder. Used only while BOTH computers have it on (Hearth checks); else everything syncs as before.
       const pkIn = el('input', { type: 'checkbox' }); const pkHint = el('span', { class: 'hint inline' });
       const pkRow = el('label', { class: 'check sync-packs', title: 'A very long chat (thousands of messages) sends only its newest part each time, instead of the whole chat. Turn it on on both computers.' }, pkIn, 'Send very long chats in pieces (both computers need this update)', pkHint);
-      const pkShow = (p) => { pkIn.checked = Boolean(p?.on); pkHint.textContent = !p?.on ? '' : p.gate?.ok ? ' On: in use.' : p.gate?.why === 'older' || p.gate?.why === 'alone' || p.gate?.why === 'unreadable' ? ' On here: waiting for your other computer to have it on too (until then everything syncs as before).' : ''; };
+      // (round 110, syncaudit110) the computer it waits for by name (an old laptop, not the Mac he just set up, may be the
+      // one), its own notes unreadable said, and the line follows the next sync (it stayed empty after the click)
+      const pkShow = (p) => { pkIn.checked = Boolean(p?.on); const g = p?.gate || {}; pkHint.textContent = !p?.on ? '' : g.ok ? ' On: in use.' : g.why === 'older' || g.why === 'alone' || g.why === 'unreadable' ? ` On here: waiting for ${g.why === 'older' && g.who ? g.who : 'your other computer'} to have it on too (until then everything syncs as before).` : g.why === 'state' ? ' On here, but its notes on this computer can\'t be read right now: everything syncs as before meanwhile.' : ' On: starting with the next sync.'; };
+      const pkLive = () => { if (Sync.status().packs) pkShow(Sync.status().packs); }; const pkMade = Date.now(); pkLive.gone = () => !pkRow.isConnected && Date.now() - pkMade > 10000; Sync.listen?.(pkLive);
       pkIn.addEventListener('change', () => window.hub.sync.packs?.(pkIn.checked).then(pkShow).catch(() => {}));
       window.hub.sync.status?.().then((st) => { pkRow.hidden = !st?.on; pkShow(st?.packs); }).catch(() => { pkRow.hidden = true; });
       (syncSec.querySelector('label.check')?.after ? syncSec.querySelector('label.check').after(pkRow) : syncSec.append(pkRow));
@@ -335,7 +338,7 @@ const AppUIDialogs = (() => {
     };
     q.addEventListener('input', paint);
     dlg.append(el('form', { method: 'dialog', on: { keydown: (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); } } }, el('h2', { text: 'Recently deleted chats' }),
-      el('p', { class: 'hint', text: 'Deleted chats are kept here for 30 days. Deleting them for good moves the files to your Recycle Bin / Trash.' }), q, list,
+      el('p', { class: 'hint', text: `Deleted chats are kept here for 30 days. Deleting them for good moves the files to your Recycle Bin / Trash.${typeof Sync !== 'undefined' && Sync.status().on ? ' With sync on, a chat deleted on either computer is here on both, and Restore brings it back on both.' : ''}` }), q, list, // (round 110, syncaudit110) + with sync on
       el('div', { class: 'dialog-actions' },
         el('button', { type: 'button', class: 'ghost small', text: 'Restore all', on: { click: async () => { for (const c of [...items]) await restore(c); await refreshChats(); paint(); } } }),
         el('button', { type: 'button', class: 'ghost small danger', text: 'Empty…', on: { click: async () => { if (!items.length || !(await Modal.confirm('Empty recently deleted?', `${items.length} chat(s) go to your Recycle Bin / Trash.`, { ok: 'Empty', danger: true }))) return; await forever([...items]); items = await window.hub.listChatTrash(); paint(); } } }),

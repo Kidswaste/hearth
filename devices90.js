@@ -69,9 +69,12 @@ const Devices90 = (() => {
       el('span', { class: 'sc-title', text: 'Your computers' }), state);
     const d = el('details', { class: 'sc-fold dv-fold', dataset: { fold: 'devices' } }, sum,
       el('section', { class: 'settings-section dv-sec' }, el('h3', { text: 'Your computers' }), list, gone, el('h4', { class: 'dv-h', text: 'Very long chats\' pieces' }), space));
-    let busy = false;
+    // (round 110, syncaudit110) one paint at a time (opening the fold while the first one ran started a second: the list
+    // was rebuilt under a "Forget this computer…" question just asked, and the question vanished); a fresh one asked for
+    // meanwhile runs right after. A question still open is carried to the same computer's new row.
+    let busy = false; let again = false;
     async function paint(fresh) {
-      if (busy && !fresh) return;
+      if (busy) { if (fresh) again = true; return; }
       busy = true;
       try {
         const st = await api()?.status?.().catch(() => null);
@@ -83,11 +86,14 @@ const Devices90 = (() => {
           const others = r.computers.filter((c) => !c.me);
           const stale = others.filter((c) => c.stale).length;
           state.textContent = `${r.computers.length} computer${r.computers.length === 1 ? '' : 's'}${stale ? ` · ${stale} not seen for a week` : ''}`;
+          const ask = list.querySelector('.dv-confirm'); const askFor = ask?.closest('.dv-row')?.dataset.file;
           list.replaceChildren(...r.computers.map((c) => computerRow(c, paint)));
+          const to = askFor && [...list.querySelectorAll('.dv-row')].find((x) => x.dataset.file === askFor && x.querySelector('.dv-forget'));
+          if (to) to.append(ask);
           gone.replaceChildren(...(r.forgotten.length ? [el('p', { class: 'hint dv-forgotten', text: `Forgotten: ${r.forgotten.slice(0, 5).map((f) => `${f.name} (${f.back ? `came back ${ago(f.backAt)}` : `forgotten ${ago(f.at)}`})`).join(' · ')}` })] : []));
         }
         await paintSpace();
-      } finally { busy = false; }
+      } finally { busy = false; if (again) { again = false; paint(true); } }
     }
     async function paintSpace() {
       const s = await api().packSpace?.().catch(() => null);

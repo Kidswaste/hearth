@@ -191,6 +191,10 @@ const SyncConflicts = (() => {
     // ones (the other computer lists it), both with the same short prefix: listed once here
     const twin = (t) => t.where === 'cloud' && /(^|\/)[0-9a-f]{8}-[^/]+$/.test(String(t.rel)) && all.some((x) => x.where === 'here' && x.day === t.day && x.rel === t.rel);
     const list = all.filter((t) => !twin(t)).map((t) => ({ ...t, rel: String(t.rel).replace(/(^|\/)[0-9a-f]{6,8}-([^/]+)$/, '$1$2'), disk: t.rel }));
+    // (round 110, syncaudit110) a deleted chat is no longer in the chat list, so it read "A chat": its title from Recently
+    // deleted (the app's own trash, which a chat deleted on either computer reaches)
+    const gone = new Map(((await window.hub.listChatTrash?.().catch(() => null)) || []).map((c) => [c.id, c.title]));
+    const nameOf = (rel) => { const id = /^chats\/(.+)\.json$/.exec(rel)?.[1]; return id && !(H.chats || []).some((c) => c.id === id) && gone.get(id) ? `Chat “${gone.get(id)}”` : Sync._conflicts.nameOf(rel); };
     const dialog = el('dialog', { class: 'ui-modal sync-list' });
     const q = el('input', { type: 'search', placeholder: 'Filter…', class: 'sync-filter' });
     const rows = el('div', { class: 'sync-rows' });
@@ -199,9 +203,13 @@ const SyncConflicts = (() => {
       const l = list.filter((t) => !f || t.rel.toLowerCase().includes(f) || nameOf(t.rel).toLowerCase().includes(f)).slice(0, 200);
       rows.replaceChildren(...(l.length ? l.map((t) => el('div', { class: 'sync-row' },
         // (round 92, syncpanel92) the name and when in words; the path only on hover (it was the first thing on each row)
-        el('div', { class: 'sync-row-main', title: t.disk }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : t.where === 'here' ? `replaced or deleted on this computer ${dayWord(t.day)}` : `deleted or replaced ${dayWord(t.day)}` /* (round 94, keptaside94) a version a choice replaced (or kept aside) is here too: it said "your other computer deleted it" */ })),
+        el('div', { class: 'sync-row-main', title: t.disk }, el('b', { text: nameOf(t.rel) }), el('span', { class: 'hint', text: t.recovery ? 'the version before the last change from your other computer' : `deleted or replaced ${dayWord(t.day)}${t.where === 'here' ? ' (this computer\'s copy)' : ''}` /* (round 94, keptaside94) a version a choice replaced (or kept aside) is here too: it said "your other computer deleted it" · (round 110, syncaudit110) "on this computer" was wrong for the commonest one: a chat deleted on the other computer lands here too */ })),
         el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Restore', on: { click: async (e) => {
-          let r = await api().restore(t.id);
+          // (round 110, syncaudit110) a deleted chat that is in Recently deleted: put back the app's own way (from there), so
+          // it isn't left in Recently deleted too (on both computers: sync then takes that copy away); this version stays here
+          const cid = /^chats\/(.+)\.json$/.exec(t.rel)?.[1];
+          let r = cid && !t.recovery && gone.has(cid) && !(await window.hub.getChat(cid).catch(() => null)) && await window.hub.restoreChat(cid).catch(() => false) ? { ok: true, rel: t.rel } : await api().restore(t.id);
+          if (cid && r.ok) { try { H.chats = await window.hub.listChats(); Panel.render(); } catch { /* the chat list isn't up */ } }
           // (round 19) undoing a conflict choice: the version in place goes to the trash, this one comes back
           if (!r.ok && r.exists && await Modal.confirm('Put this version back?', `${nameOf(t.rel)} is there now. Put this version back? The one in place goes to Deleted files (it can come back too).`, { ok: 'Put it back' })) r = await api().restore(t.id, { replace: true });
           if (!r.ok) { if (!r.exists) toast(window.calmError ? calmError(r.error, { where: 'sync' }) : r.error, { type: 'error', raw: r.error }); return; } // (round 92) plain words, the raw reason under Details
@@ -212,8 +220,14 @@ const SyncConflicts = (() => {
     };
     q.addEventListener('input', draw);
     draw();
+    // (round 110, syncaudit110) a deleted CHAT isn't in this list: Hearth's Delete moves it to Recently deleted, and sync
+    // moves it there on the other computer too. Said here, with the way there (he looked here and found only an older
+    // version of it, "the version before the last change")
+    const chatsGone = gone.size ? el('div', { class: 'sync-row sync-chats-gone' }, el('div', { class: 'sync-row-main' }, el('b', { text: `Deleted chats (${gone.size})` }),
+      el('span', { class: 'hint', text: 'Chats you delete, on either computer, are in Recently deleted on both. Restore there brings one back on both.' })),
+      el('div', { class: 'sync-row-acts' }, el('button', { type: 'button', class: 'ghost small', text: 'Recently deleted…', on: { click: () => { dialog.close(); AppUI.trashDialog(); } } }))) : null;
     dialog.append(el('form', { method: 'dialog' }, el('h2', { text: 'Deleted files & previous versions' }),
-      el('p', { class: 'hint', text: 'Kept for 30 days. Restore brings one back here, and sync takes it to your other computer.' }), list.length > 10 ? q : null, rows, // (round 92)
+      el('p', { class: 'hint', text: 'Kept for 30 days. Restore brings one back here, and sync takes it to your other computer.' }), list.length > 10 ? q : null, chatsGone, rows, // (round 92)
       el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'primary', text: 'Done', on: { click: () => dialog.close() } }))));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);

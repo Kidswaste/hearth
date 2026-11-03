@@ -54,14 +54,14 @@ const SyncPanel = (() => {
     'bad-name': () => ({ text: 'This computer can\'t use its name.', fix: 'Rename it' }),
     drive: () => ({ text: 'The drive didn\'t answer for it (disconnected or asleep). Hearth tries again by itself.', fix: 'Try again now' }),
     denied: (b) => ({ text: `macOS didn't let Hearth change it${b.where === 'cloud' ? ' in the cloud folder' : ''}. In System Settings › Privacy & Security › Files and Folders (or Full Disk Access), allow Hearth, then try again.`, fix: 'Try again now' }),
-    'newer-app': () => ({ text: `It was last saved by a newer Hearth on your ${OTHER}. Update Hearth here (⬆ Update) to sync it; nothing is lost meanwhile.` }),
+    'newer-app': () => ({ text: `It was last saved by a newer Hearth on your ${OTHER}. Update Hearth here to sync it; nothing is lost meanwhile.`, fix: 'Check for updates…' }), // (round 110, syncaudit110) + the button (it pointed at a ⬆ Update that shows only once an update is known)
     'secret-cloud': () => ({ text: 'A key or password file an older version put in your cloud copy. Keys never sync now.', fix: 'Remove from the cloud' }),
     // (round 99, kvrename99) one of Hearth's own files (a project, a board, a Lab preset, a chat…): Hearth finds it by its
     // name, so it is never renamed; what is too long is the folder path on the PC. No button here: the fix is on the PC.
     'win-long-app': (b) => ({ text: `One of Hearth's own files: Hearth finds it by this name, so it isn't renamed. The folder Hearth uses on your ${OTHER} is ${b.over ? `${b.over} character${b.over === 1 ? '' : 's'} ` : ''}too long for it. On the ${OTHER}, move Hearth's folder or the cloud folder somewhere shorter (this panel there says which, once Hearth is up to date there). Meanwhile it stays as it is on this ${HERE}; nothing is lost.` }),
     'win-name-app': (b) => ({ text: `One of Hearth's own files, and “${clip(b.part, 30)}” is a name Windows can't use. Hearth finds it by this name, so it isn't renamed: it stays on this ${HERE}; nothing is lost.` }),
   };
-  const FIX = { 'win-chars': 'rename', 'win-ending': 'rename', 'win-reserved': 'rename', 'win-long': 'rename', 'too-long': 'rename', 'bad-name': 'rename', 'read-only': 'writable', 'secret-cloud': 'unsecret', locked: 'retry', drive: 'retry', denied: 'retry', 'disk-full': 'space' };
+  const FIX = { 'newer-app': 'update', 'win-chars': 'rename', 'win-ending': 'rename', 'win-reserved': 'rename', 'win-long': 'rename', 'too-long': 'rename', 'bad-name': 'rename', 'read-only': 'writable', 'secret-cloud': 'unsecret', locked: 'retry', drive: 'retry', denied: 'retry', 'disk-full': 'space' };
   function blockedSec(st) {
     const list = st.blocked || [];
     if (!list.length && !(st.peersOld || []).length) return null;
@@ -72,8 +72,11 @@ const SyncPanel = (() => {
       return el('li', { class: 'sp-blk', dataset: { why: b.why } }, el('div', { class: 'sp-tr-top' }, el('span', { class: 'sp-name', text: Sync.nameOf(b.rel), title: b.rel }), btn), el('span', { class: 'hint', text: w.text }));
     });
     const old = (st.peersOld || []).map((x) => el('p', { class: 'hint sp-old', text: `Hearth on ${x.name || 'your other computer'} is an older version. Update it there (⬆ Update on that computer) so both keep files the same way; syncing goes on meanwhile.` })); // (round 92) plainer
-    return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: `Can't sync (${list.length})` }) : null,
-      list.length ? el('span', { class: 'hint', text: 'Each stays as it is on this computer: nothing is lost.' }) : null,
+    // (round 110, syncaudit110) only files another program holds (or a drive that didn't answer): they wait, they aren't
+    // broken (the chip says "↻ waiting" then)
+    const waits = list.every((b) => b.why === 'locked' || b.why === 'drive');
+    return el('div', { class: 'sp-sec sp-blocked' }, list.length ? el('b', { text: waits ? `Waiting until it's free (${list.length})` : `Can't sync (${list.length})` }) : null,
+      list.length ? el('span', { class: 'hint', text: waits ? 'It stays as it is on this computer and goes as soon as it\'s free: nothing is lost.' : 'Each stays as it is on this computer: nothing is lost.' }) : null,
       list.length ? el('ul', { class: 'sp-wait' }, ...rows) : null, list.length > 8 ? el('span', { class: 'hint', text: `…and ${list.length - 8} more` }) : null, ...old);
   }
   // (round 99, kvrename99) on a PC whose folders' path is too long for some of Hearth's own files (a long project or board
@@ -93,7 +96,8 @@ const SyncPanel = (() => {
   }
   async function fixOne(b, how, label, button) {
     if (busy) return;
-    if (how === 'space') { openFree(); return; }
+    if (how === 'space') { openFree(true); return; }
+    if (how === 'update') { close(); window.Lazy.load('updater').then(() => Updater.check({ loud: true })).catch(() => {}); return; } // (round 110, syncaudit110)
     busy = true; if (button) button.disabled = true;
     try {
       if (how === 'retry') { await Sync.now({ quiet: true }); return; }
@@ -263,8 +267,9 @@ const SyncPanel = (() => {
   // ---------- (round 73, syncmedia73) Free up space on this computer ----------
   // the list first (big synced files whose cloud drive copy also takes room here), then one click; never anything not
   // synced (the engine checks each file again right before), and a plain "can't" when the cloud drive can't do it
-  async function openFree() {
-    mode = 'free'; freeList = null; freeDone = null; sig = ''; render();
+  let freeFull = false; // (round 110, syncaudit110) opened from "the disk is full"
+  async function openFree(full = false) {
+    mode = 'free'; freeList = null; freeDone = null; freeFull = full === true; sig = ''; render();
     freeList = await api().freeable().catch((err) => ({ items: [], bytes: 0, can: false, why: String(err?.message || err) }));
     sig = ''; render();
   }
@@ -302,6 +307,8 @@ const SyncPanel = (() => {
       parts.push(el('div', { class: 'sp-foot' }, go, back));
       return parts;
     }
+    // (round 110, syncaudit110) from "the disk is full", with nothing Hearth can free: the other ways (it was a dead end)
+    if (freeFull && freeList && (!freeList.can || !freeList.items?.length || freeDone)) parts.push(el('p', { class: 'hint sp-free-other', text: `To make room another way: empty the ${WIN ? 'Recycle Bin' : 'Trash'}, or move big files you don't need here to another disk. Sync goes on by itself once there is room.` }));
     parts.push(el('div', { class: 'sp-foot' }, back));
     return parts;
   }

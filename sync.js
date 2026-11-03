@@ -23,12 +23,12 @@ const Sync = (() => {
     const bits = []; let fault = false;
     if (s === 'pending' && st.pending) bits.push(`${st.pending} file${st.pending === 1 ? '' : 's'} on the way${st.cloudOnly?.length ? ` (${st.cloudOnly.length} only in the cloud for now)` : ''}`);
     if (st.conflicts) { fault = true; bits.push(`${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'} to choose`); }
-    if (blockedN()) { fault = true; bits.push(`${blockedN()} file${blockedN() === 1 ? '' : 's'} can't sync (see why in the sync panel)`); }
+    if (fixN()) { fault = true; bits.push(`${blockedN()} file${blockedN() === 1 ? '' : 's'} can't sync (see why in the sync panel)`); } else if (waitN()) bits.push(`${waitN()} file${waitN() === 1 ? ' waits' : 's wait'} (in use or the drive didn't answer; Hearth tries again by itself)`); // (round 110, syncaudit110) a file held a moment waits, it isn't a fault
     if (asideN()) bits.push(`${asideN()} version${asideN() === 1 ? '' : 's'} kept aside to compare`); // (round 78, guardloss78)
     if (st.skippedBig?.length) bits.push(`${st.skippedBig.length} big video${st.skippedBig.length === 1 ? '' : 's'} kept on this computer`);
     if (st.unreadable?.length) { fault = true; bits.push(`${st.unreadable.length} unreadable file${st.unreadable.length === 1 ? '' : 's'} skipped`); }
     if (s === 'error') return `Sync couldn't finish with ${where()}: ${st.error ? calmError(st.error, { where: 'sync', what: 'the sync folder' }).replace(/\.$/, '') : 'something went wrong'}.`; // (round 45, errorcalm) the raw reason: Sync now's note has it under Details
-    const head = s !== 'synced' && s !== 'conflict' ? 'Syncing with' : fault ? 'Synced with' : 'Everything is synced with';
+    const head = s !== 'synced' && s !== 'conflict' ? 'Syncing with' : fault || waitN() ? 'Synced with' : 'Everything is synced with';
     return `${head} ${where()} (checked ${ago(st.at)})${bits.length ? `${fault ? ', but' : ':'} ${bits.join(', ')}.` : '.'}`;
   }
   // (round 74, synchard74) why sync is paused by itself, in plain words: the folder moved / unmounted, emptied by the
@@ -41,12 +41,16 @@ const Sync = (() => {
     return `Offline: ${where()} isn't reachable (the drive isn't connected, or the folder moved). Everything keeps working here and catches up when it's back.`;
   }
   // (round 74, synchard74) files sync can't move for a reason the owner can fix (the panel lists them, with a button)
-  const blockedN = () => (st.on && !st.paused ? (st.blocked || []).length : 0);
+  // (round 110, syncaudit110) + Hearth's own files this PC's long folder path keeps out (they can't sync here either);
+  // a file another program holds (locked) or a drive that didn't answer only waits: Hearth tries again by itself
+  const blockedN = () => (st.on && !st.paused ? (st.blocked || []).length + (st.longPath?.n || 0) : 0);
+  const waitN = () => (st.on && !st.paused ? (st.blocked || []).filter((b) => b.why === 'locked' || b.why === 'drive').length : 0);
+  const fixN = () => blockedN() - waitN();
   function peersLine() {
     const p = (st.peers || []).filter((x) => x.lastSeen);
     return p.length ? p.map((x) => `${x.name} (${x.platform === 'darwin' ? 'Mac' : x.platform === 'win32' ? 'Windows' : x.platform}) last synced ${ago(x.lastOk || x.lastSeen)}`).join(' · ') : '';
   }
-  const dotState = () => (!st.on ? 'off' : st.paused || (st.state === 'offline' && st.error === 'held') ? 'paused' : st.state === 'offline' && st.error ? 'conflict' : (st.state === 'synced' || st.state === 'pending') && (st.blocked || []).length ? 'conflict' : st.state === 'pending' || st.state === 'starting' || st.state === 'idle' ? 'syncing' : st.state === 'held' || st.state === 'error' ? 'conflict' : st.state); // (round 74) a file that can't sync: looked at like a conflict
+  const dotState = () => (!st.on ? 'off' : st.paused || (st.state === 'offline' && st.error === 'held') ? 'paused' : st.state === 'offline' && st.error ? 'conflict' : (st.state === 'synced' || st.state === 'pending') && fixN() ? 'conflict' : st.state === 'synced' && waitN() ? 'syncing' : st.state === 'pending' || st.state === 'starting' || st.state === 'idle' ? 'syncing' : st.state === 'held' || st.state === 'error' ? 'conflict' : st.state); // (round 74) a file that can't sync: looked at like a conflict
   // (round 72, sync72) the indicator in words: "Synced 2 min ago" · "12 waiting" · "1 conflict — choose" (its chip shows
   // ✓ / ↻ 12 / ⚠ 1; the words are its name, its tooltip and the panel's title). Worked out when a status arrives or the
   // pointer comes over it: no timer of its own.
@@ -58,7 +62,7 @@ const Sync = (() => {
     if (s === 'held') return `${n(st.held?.deletes || 0, 'deletion')} wait for your yes`;
     if (s === 'conflict') return `${n(st.conflicts, 'conflict')} — choose`;
     if (s === 'error') return 'Sync hit a problem — see why';
-    if (blockedN() && (s === 'pending' || s === 'synced')) return `${n(blockedN(), 'file')} can't sync — see why`; // (round 74)
+    if (blockedN() && (s === 'pending' || s === 'synced')) return fixN() ? `${n(blockedN(), 'file')} can't sync — see why` : `${n(waitN(), 'file')} wait${waitN() === 1 ? 's' : ''} — Hearth tries again by itself`; // (round 74) · (round 110) waits
     if (s === 'pending' && st.pending) return `${st.pending} waiting`;
     if (s === 'synced') return `Synced ${ago(st.lastOk || st.at)}${asideN() ? ` · ${asideN()} kept aside — compare` : ''}`; // (round 78, guardloss78)
     return 'Syncing…';
@@ -66,12 +70,12 @@ const Sync = (() => {
   // (round 78, guardloss78) versions sync kept aside in the last day (one side of a conflict it settled by itself)
   const asideN = () => (st.aside || []).filter((n) => Date.now() - n.at < 864e5).length;
   const chipOf = () => {
-    const s = dotState(); const n = st.pending > 99 ? '99+' : st.pending;
+    const s = dotState(); const k = (st.pending || 0) + waitN(); const n = k > 99 ? '99+' : k; // (round 110) + files that wait
     if (st.state === 'offline' && !st.paused) return st.error === 'held' ? '‖ Waiting' : st.error === 'old-version' ? '⚠ Update' : st.error ? '⚠ Folder' : '○ Offline'; // (round 92, syncpanel92) the chip says what the panel says
     if (s === 'paused') return '‖ Paused';
-    if (blockedN() && !st.conflicts && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} to fix`; // (round 74, synchard74) (short: the rail is narrow; its name says "can't sync — see why")
+    if (fixN() && !st.conflicts && (st.state === 'synced' || st.state === 'pending')) return `⚠ ${blockedN()} to fix`; // (round 74, synchard74) (short: the rail is narrow; its name says "can't sync — see why")
     if (s === 'conflict') return st.conflicts ? `⚠ ${st.conflicts} conflict${st.conflicts === 1 ? '' : 's'}` : st.state === 'held' ? '⚠ Review' : '⚠ Problem';
-    if (s === 'syncing') return st.state === 'pending' && st.pending ? `↻ ${n} waiting` : '↻ Syncing';
+    if (s === 'syncing') return (st.state === 'pending' || st.state === 'synced') && k ? `↻ ${n} waiting` : '↻ Syncing';
     return asideN() ? `◐ ${asideN()} to compare` : '✓ Synced'; // (round 94, keptaside94) a version kept aside shows in the rail too
   };
   const glyphOf = () => chipOf().slice(0, 1);
@@ -133,7 +137,7 @@ const Sync = (() => {
       out.push({ label: 'Keep them (bring them back)', action: () => now({ mass: 'keep' }) });
     }
     if (st.state === 'offline' && (st.error === 'missing' || st.error === 'emptied')) out.push({ label: 'Start the cloud copy again from here', action: () => now({ fresh: true }) }); // (round 74) + emptied
-    if (blockedN()) out.push({ label: `${blockedN()} file${blockedN() === 1 ? '' : 's'} can't sync — see why…`, action: () => panel() }); // (round 74, synchard74)
+    if (blockedN()) out.push({ label: `${fixN() ? `${blockedN()} file${blockedN() === 1 ? '' : 's'} can't sync` : `${waitN()} file${waitN() === 1 ? ' waits' : 's wait'}`} — see why…`, action: () => panel() }); // (round 74, synchard74) · (round 110) waits
     out.push({ label: 'Sync now', action: () => now() });
     if (st.conflicts) out.push({ label: `Conflicts…`, hint: String(st.conflicts), action: () => conflicts() });
     if (st.conflicts) out.push({ label: 'Settle all conflicts for me', action: async () => { const r = await api().resolveAll('auto'); if (r?.ok) toast(`Settled ${r.done} conflict${r.done === 1 ? '' : 's'}${r.failed ? ` (${r.failed} need you)` : ''}. Undo from Deleted files.`, { timeout: 5000, action: { label: 'Deleted files', fn: () => trash() } }); refresh(); } });
@@ -172,7 +176,7 @@ const Sync = (() => {
     st = { ...st, state: 'syncing' }; paintDot();
     st = await api().now({ mass: o.mass, fresh: o.fresh });
     mountDot();
-    if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'The sync folder' }, retry: () => now() }); // (round 45, errorcalm)
+    if (st.state === 'error' && st.error) toast(`Sync couldn't finish with ${where()}`, { type: 'error', timeout: 9000, raw: st.error, calm: { where: 'sync', what: 'the sync folder' }, retry: () => now() }); // (round 45, errorcalm)
     // (round 45, errorcalm) the folder gone: the line says it plainly, the one fix is a click away
     else if (st.state === 'offline' && st.error === 'old-version') toast(line(), { timeout: 9000, action: { label: 'Check for updates…', fn: () => Lazy.load('updater').then(() => Updater.check({ loud: true })) } }); // (round 74, synchard74) · (round 92) + its button
     else if (st.state === 'offline' && st.error !== 'held') toast(line(), { timeout: 9000, raw: `${st.error === 'missing' || st.error === 'emptied' ? `Hearth/files ${st.error} in` : 'Not reachable:'} ${st.root || where()}`, action: st.error === 'missing' || st.error === 'emptied' ? { label: 'Start the cloud copy again from here', fn: () => now({ fresh: true }) } : { label: 'Pick the folder again…', fn: () => setup({ change: true }) } });
@@ -212,7 +216,7 @@ const Sync = (() => {
           ? `Found Hearth in ${p.label}${machines(p.hearth) ? `, from ${machines(p.hearth)}` : ''}. Use it: this computer's chats, scenes, boards and notes are merged with it, nothing is overwritten.`
           : `Keep your chats, scenes, sketches, boards, video projects, notes, memory, prompts, captures and settings in sync through ${p.label}, on your Mac and your PC.` }),
         el('p', { class: 'hint', title: p.root, text: `Hearth keeps working from this computer (fast, offline too) and copies changes to a “Hearth” folder in ${p.label}, and back. Each computer keeps its own AI programs and window sizes.` }))
-      : el('p', { class: 'modal-text', text: 'No cloud drive found on this computer (iCloud Drive, Google Drive, Dropbox or OneDrive desktop app). Install one, or choose a folder that a cloud drive syncs.' });
+      : el('p', { class: 'modal-text', text: change && st.on ? `${where()} isn't on this computer right now (not connected, or its folder moved). Once it's back, sync catches up by itself; or choose the folder where it is now.` : 'No cloud drive found on this computer (iCloud Drive, Google Drive, Dropbox or OneDrive desktop app). Install one, or choose a folder that a cloud drive syncs.' }); // (round 110, syncaudit110) "Pick the folder again…" with the drive away
     const actions = el('div', { class: 'dialog-actions' },
       el('button', { type: 'button', class: 'ghost', text: p ? 'Other drive…' : 'Choose a folder…', on: { click: (e) => {
         if (!p) { close(); chooseFolder(); return; }
@@ -220,8 +224,8 @@ const Sync = (() => {
       } } }),
       el('span', { class: 'spacer' }),
       el('button', { type: 'button', text: 'Cancel', on: { click: close } }),
-      p ? el('button', { type: 'button', class: 'primary', text: p.hearth ? 'Use this Hearth' : change ? `Switch to ${p.label}` : 'Turn on sync', on: { click: () => turnOn(p.root) } }) : null);
-    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: p?.hearth ? 'Use this Hearth?' : 'Sync Hearth' }), body, actions));
+      p ? el('button', { type: 'button', class: 'primary', text: p.hearth ? 'Use this Hearth' : change ? (p.root === st.root ? `Use ${p.label} again` : `Switch to ${p.label}`) : 'Turn on sync', on: { click: () => turnOn(p.root) } }) : null);
+    dialog.append(el('form', { method: 'dialog' }, el('h2', { text: p?.hearth ? 'Use this Hearth?' : change && st.on ? 'Pick the folder again' : 'Sync Hearth' }), body, actions));
     dialog.addEventListener('close', () => setTimeout(() => dialog.remove(), 0));
     document.body.append(dialog);
     dialog.showModal();
@@ -250,7 +254,7 @@ const Sync = (() => {
     const kv = /^kv\/(.+)\.json$/.exec(c.rel)?.[1];
     const names = itemNames(c.ours, c.fields);
     const q = (list) => list.map((n) => `“${n}”`).join(', ');
-    if (/^chats\//.test(c.rel)) return `The chat “${c.ours?.title || c.theirs?.title || nameOf(c.rel).replace(/^Chat “|”$/g, '')}”`;
+    if (/^chats\//.test(c.rel)) { const t = c.ours?.title || c.theirs?.title || nameOf(c.rel).replace(/^Chat “|”$/g, ''); return t === 'A chat' ? t : `The chat “${t}”`; } // (round 110) not "The chat “A chat”"
     if (kv === 'three-sketches') return names.length ? `The Lab scene${names.length > 1 ? 's' : ''} ${q(names)}` : 'Lab scenes';
     if (kv === 'boards') return names.length ? `The board ${q(names)}` : 'Mood boards';
     if (c.rel === 'app/config.json') return 'Settings (agents, look)';
@@ -275,7 +279,7 @@ const Sync = (() => {
       const l = list.filter((x) => x.where === where);
       if (!l.length) return null;
       return el('div', { class: 'sync-held-group' }, el('b', { text: `${title} (${l.length})` }),
-        el('div', { class: 'sync-rows' }, l.slice(0, 120).map((x) => el('div', { class: 'sync-row' }, el('div', { class: 'sync-row-main' }, el('span', { text: whatIs({ rel: x.rel }) }), el('span', { class: 'hint', text: `${x.rel}${x.size != null ? ` · ${fmtBytes(x.size)}` : ''}` }))))),
+        el('div', { class: 'sync-rows' }, l.slice(0, 120).map((x) => el('div', { class: 'sync-row' }, el('div', { class: 'sync-row-main', title: x.rel }, el('span', { text: whatIs({ rel: x.rel }) }), x.size != null ? el('span', { class: 'hint', text: fmtBytes(x.size) }) : null)))),
         l.length > 120 ? el('p', { class: 'hint', text: `…and ${l.length - 120} more` }) : null);
     };
     const go = (mass) => { dialog.close(); now({ mass }); };
