@@ -51,17 +51,18 @@ changed for sure is the import (−0.1 to −0.2 s: the code that `labReady` wai
 first frame instead of gaps: nobody sees the frames behind the opaque card). Measured worse: **15.7 s**, one page
 frame of 5.4 s compiling the whole scene with its hidden variants at once (40 compiles instead of 12). The gaps stay.
 
-The switch right after a start (projaudit108 `start`): see "Tested" (same piece list: the Lab's code + the page; the
-Ctrl/⌘+K project row now starts the Lab's code as soon as it shows among the first rows, before Enter).
+The switch right after a start (projaudit108 `start`) has the same pieces (the Lab's code + the page): 4.6–7.4 s
+here (round 108: 5–8.8 s), unchanged by this round.
 
-### What changed (the Lab's code on intent, `lab-intent.js`, `projbundle.js`)
-Every project open loads the Lab and runs the project's scene (`project-workspace.js` open), so a project about to open
-is intent, like a Lab line:
-- **a project's row among the first three rows of Ctrl/⌘+K** (`isLabRow`: kind "Project");
-- **a project to import**: the import card showing (`projbundle.js` importProject, `LabIntent.go('import')`). The
-  import itself starts the Lab when the project has scenes and opens the project in it, so the code loads while you
-  read the card. Cancel leaves it loaded (as a hover on the Lab's button does).
-- Hovering or focusing a project card already did this (labload94).
+### What changed (the Lab's code on intent, `projbundle.js`)
+Every project open loads the Lab and runs the project's scene (`project-workspace.js` open), and an import with scenes
+starts the Lab itself, so a project about to be imported is intent, like a Lab line: **the import card showing**
+(`projbundle.js` importProject → `LabIntent.go('import')`) loads the Lab's code while you read the card. Cancel leaves
+it loaded (as a hover on the Lab's button does). Hovering or focusing a project card already did this (labload94).
+
+Tried and taken back: a project's row among the first rows of Ctrl/⌘+K as intent. With it, projaudit108's "switch
+right after a start" failed once in 5 runs (the open was cancelled right after it saved the project it left; the Lab
+stayed on the old scene). Not explained, so not kept; see "Tested" for the runs without it.
 
 ## 2. The 90 s hang at "Warming shaders"
 
@@ -167,7 +168,7 @@ owns those).
 - New: `dev/checks/projopen109.js` (the driver), `dev/projopen109-src.js`, `dev/projopen109-dst.js`,
   `dev/projopen109-menu.js` (its app runs; helpers from `dev/projaudit108-lib.js`).
 - Changed: `tools/three.js` (prepare: the warm-up let go off screen), `tools/three-sandbox.html` (`rdyFrames` ends),
-  `lab-intent.js` (project rows), `projbundle.js` (import intent), `desk-paint.js` (`held`), `projects-home.js` (one
+  `lab-intent.js` (a note), `projbundle.js` (import intent), `desk-paint.js` (`held`), `projects-home.js` (one
   marked line), `renderer.js` (`ClickWatch`), `polish.css` / `forge-skin.css` (`#menu` fades in), `dev/checks/projopen86.js` (load-aware), `dev/run-checks.js` (the
   `projopen109` group).
 
@@ -197,7 +198,11 @@ All app runs under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cach
   start). Switch right after a start: 4.6–5.8 s and 5.2–7.4 s (round 108: 5–8.8 s).
 - `projaudit108-sync`, `desk89`, `labload94`, `labboot`, `projects`, `lazy`, `unit:boot-test` (3,110 checks),
   `unit:desk89-test`: pass.
-- `modelcompile101` (its group): see below.
+- `modelcompile101` (its group, 18 checks): 17 passed; `labstartfast` failed once at 153.6 ms (budget 150) on the cold
+  open's window CPU. ClickWatch read the rail's and the Desk's buttons' places at every press (a layout read at the
+  rail button's press, with the window's layout dirty); it now reads layout only for a press that went to a dialog
+  (the "blocked" case) and a menu row's place. `labstartfast` then passed, with `projopen109` and `desk89`.
+  labcompile90, modeltex100 and labfps89 passed with "can't tell under load" frames (the preview's own CPU 0–17 ms).
 - `node dev/run-checks.js release`: 305/308 passed; the 3 failures are the known ones (`KNOWN_FAIL`, Codex's), 1
   opt-in skipped; 0 `/tmp/hearth-*` folders left.
 
@@ -209,4 +214,4 @@ All app runs under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cach
 - Menus no longer slide while they open, so a quick click on a menu row can't land on the row above it (for example
   "Export project…" opening "Notes…" instead).
 - Importing a project: Hearth starts loading the Lab while you look at the import card, so the import itself is a
-  little quicker. Picking a project in Ctrl/⌘+K does the same.
+  little quicker.
