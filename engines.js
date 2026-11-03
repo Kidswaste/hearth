@@ -1053,7 +1053,8 @@ function friendlyError(engine, message, { win = IS_WIN, mac = IS_MAC, bin = used
   // folder its privacy protection guards…): one plain sentence, the button that fixes it, the raw line underneath
   const m = mac && !/not logged in|unauthori[sz]ed|\b401\b/i.test(message) && !POLICY_BLOCKED.test(message) && !/sandbox|seatbelt/i.test(message) ? MacPolish.plainError(message, { bin, signal }) : null;
   if (m) return { message: `${m.text}\n\nFix: ${m.fix}\n\n(${String(message).split('\n')[0].slice(0, 200)})`, fix: m.fix, fixAction: m.action, fixEngine: engine };
-  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token/i.test(message)) {
+  // (round 110) also Claude Code's "Failed to authenticate: OAuth session expired and could not be refreshed"
+  if (/not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token|failed to authenticate|oauth (session|token)[^\n]*(expired|invalid|revoked)|could not be refreshed/i.test(message)) {
     return { message: `${ENGINES[engine].label} isn't signed in to your ${ENGINES[engine].account} account.`, needsLogin: true, fix: 'Press the sign-in button below (or run /astra-login), finish in the window that opens, then Retry.' };
   }
   const hit = FIXES.find(([re]) => re.test(message));

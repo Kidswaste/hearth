@@ -106,6 +106,9 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   ok('parser: streamed message deltas, shell/plan items, retries, cumulative→delta tokens, per-turn fallback');
   assert(/Fix:/.test(T.friendlyError('codex', "The 'x' model is not supported when using Codex with a ChatGPT account.").message));
   assert(T.friendlyError('codex', 'Error: not logged in').needsLogin);
+  // (round 110) Claude Code's expired sign-in
+  assert(T.friendlyError('claude', 'Failed to authenticate: OAuth session expired and could not be refreshed').needsLogin);
+  assert(!T.friendlyError('claude', 'Failed to read file: ENOENT').needsLogin);
   assert(/limit/.test(T.friendlyError('codex', "You've hit your usage limit").fix));
   assert(T.LOST_SESSION.test('Error: no rollout found for thread id 1') && T.LOST_SESSION.test('No conversation found with session ID: x'));
   ok('errors come with fixes (model, limits, login, lost sessions)');
