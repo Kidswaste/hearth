@@ -192,10 +192,11 @@ All app runs under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cach
 - `projopen86`: passes, load-aware ("can't tell: switch_pjbp0_1, a 118 ms task with 52.3 ms of its own CPU; the thread
   waited 398 ms for a CPU").
 - `projaudit108`: `pc`, `fresh`, `giant` pass; the giant chat's ⋯ › ⇪ Export project… opens its card in 2.2 s with no
-  miss (before this round: 2 of 2 runs opened Notes… instead). `start` failed once ("the Lab group not loaded yet when
-  the switch began": it was already in at the check's first look) and passed on the rerun: a timing race in the
-  check's own precondition, on a start that opens on the Lab; not this round's code (nothing here loads the Lab at a
-  start). Switch right after a start: 4.6–5.8 s and 5.2–7.4 s (round 108: 5–8.8 s).
+  miss (before this round: 2 of 2 runs opened Notes… instead). `start`, with the Ctrl/⌘+K project-row intent: 3 of 5
+  runs passed; one failed its own precondition ("the Lab group not loaded yet when the switch began": it was already
+  in at the check's first look), one had the open cancelled (above). Without that intent (the final code): passed;
+  the base passed its one run. Switch right after a start: 4.6–7.4 s (round 108: 5–8.8 s). More runs were stopped
+  waiting for the shared lock: worth running `projaudit108 --only start` a few times at merge.
 - `projaudit108-sync`, `desk89`, `labload94`, `labboot`, `projects`, `lazy`, `unit:boot-test` (3,110 checks),
   `unit:desk89-test`: pass.
 - `modelcompile101` (its group, 18 checks): 17 passed; `labstartfast` failed once at 153.6 ms (budget 150) on the cold
