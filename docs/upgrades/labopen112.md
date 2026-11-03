@@ -180,7 +180,8 @@ early load is skipped when a page is already loading or ready); round 109's off-
 - The race (the Lab shown while its code is loading) by hand: the head page taken (`LabBoot.state().taken` 1, `head`
   true), one preview frame, the scene drawn. A fresh profile (no scene run yet): the head page's fallback query
   matched the Lab's.
-- RELEASE
+- `flock /tmp/hearth-run.lock node dev/run-checks.js release` (after the fix): **307/310 passed**, the 3 known failures
+  (Codex's stale tests: playback-volume, quest-chat-service, questguide-flp), 1 opt-in skipped, no ✖ line (35 min).
 
 ## Files
 - `tools/three.js`: the page's early load at the mount (`labopen.early`), `box.warm`.
