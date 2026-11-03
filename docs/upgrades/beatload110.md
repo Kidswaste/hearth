@@ -143,22 +143,23 @@ Lab found the tempo every time (124–126.6 BPM).
 ### Proof: `dev/checks/beatload110.js`, live part
 labchecks109's real scene (Backdrop shader, Beat burst particles, 🧊 model with its 1024² picture, the beat rig's raw loop
 + `onHit` ×3 + `everyBeats` + `onBar`, ✦ Bloom) plus a probe layer, live sound on. 8 s per stretch. On this box the
-real scene draws only 22–38 of its 60 frames a second, and its real frames stall 29–55 times a stretch: the raw
+real scene draws only 22–42 of its 60 frames a second, and its real frames stall 29–61 times a stretch: the raw
 figures carry those delays, the same with the gate or without; "less frame delay" takes each event's own frame's delay
 after its slot out.
 
-| F1 (calm box) | 240 before | 240 after | 60 after | 60 before |
+| H2 (calm box, final code) | 240 before | 240 after | 60 after | 60 before |
 |---|---:|---:|---:|---:|
-| Page frames a second (per drawn one) | 129.2 (3.80) | **65.9 (2.17)** | 36.0 (1.19) | 40.3 (1.20) |
-| Drawn after their slot, p50 (ms) | 2.1 | 2.1 | 14.6 | 14.7 |
-| Gate timer late, p95 (ms) | – | 0.63 | – | – |
-| ⚡ kick reaction (fire − the sound's arrival), p50 / p95 (ms) | 8.3 / 93.8 | 17.2 / 130.9 | 18.7 / 107.7 | 11.9 / 105.3 |
-| … less frame delay, p50 / p95 | 4.7 / 14.1 | **3.4 / 13.0** | −6.4 / 14.4 | −22.9 / 12.7 |
-| everyBeats after its live beat, p50 / p95 (ms) | 10.3 / 161.9 | 34.9 / 105.9 | 15.6 / 92.6 | 15.9 / 94.3 |
-| … less frame delay, p50 / p95 | −22.1 / 14.4 | **0.5 / 12.5** | −7.2 / 10.2 | −8.9 / 8.3 |
-| Kicks fired / live beats called back | 18 / 17 | 20 / 16 | 18 / 18 | 21 / 17 |
+| Page frames a second (per drawn one) | 143.6 (3.81) | **83.3 (2.09)** | 42.6 (1.19) | 39.7 (1.19) |
+| Drawn after their slot, p50 (ms) | 2.1 | 2.2 | 14.7 | 14.7 |
+| Gate timer late, p95 (ms) | – | 0.7 | – | – |
+| Real frames stalled (times, s of the 8) | 48, 2.8 | 51, 2.9 | 57, 1.6 | 53, 2.0 |
+| ⚡ kick reaction (fire − the sound's arrival), p50 / p95 (ms) | 12.3 / 78.5 | 11.9 / 74.6 | 12.8 / 53.8 | 12.2 / 47.0 |
+| … less frame delay, p50 / p95 | 1.6 / 21.8 | **1.0 / 11.6** | −8.3 / 1.1 | −9.3 / 9.2 |
+| everyBeats after its live beat, p50 / p95 (ms) | 8.5 / 197.2 | 12.1 / 88.7 | 14.1 / 51.3 | 13.8 / 54.7 |
+| … less frame delay, p50 / p95 | −2.1 / 15.1 | **−8.3 / 14.4** | −11.4 / 12.9 | −13.0 / 3.4 |
+| Kicks fired / live beats called back (none skipped, twice or back) | 20 / 17 | 22 / 17 | 22 / 17 | 22 / 17 |
 
-| F7 (under the burn) | 240 before | 240 after | 60 after | 60 before |
+| F7 (under the burn; the ⚡ reaction then counted from the first crossing after a re-arm) | 240 before | 240 after | 60 after | 60 before |
 |---|---:|---:|---:|---:|
 | Page frames a second (per drawn one) | 82.2 (3.80) | **59.7 (2.49)** | 26.5 (1.20) | 26.1 (1.20) |
 | Real frames stalled (times, s of the 8) | 29, 4.9 | 32, 4.8 | 36, 4.0 | 35, 4.1 |
@@ -168,11 +169,11 @@ after its slot out.
 | … less frame delay, p50 / p95 | −36.8 / 13.3 | **−34.7 / 13.9** | −72.0 / 3.8 | −72.6 / 14.3 |
 | Live beats skipped / twice / counted back | 0 | 3 | 1 | 1 |
 
-- **Frames:** 3.8 → 2.2 page frames per drawn one at 240 Hz (the same as a song's since round 108). Nothing to save at
-  60 Hz (the gate never holds there).
-- **Timing:** every event less its frame's delay is the same or better, within one cap period of its cause: the ⚡
-  reacts in the first drawn frame after the sound arrives, a beat callback in the first after its beat, with the gate
-  or without. The raw p50 / p95 differences are the frames' delays (the box), as the 60 Hz A/A pairs show.
+- **Frames:** 3.8 → 2.1–2.5 page frames per drawn one at 240 Hz (a song's since round 108: 2.2–2.4). Nothing to save
+  at 60 Hz.
+- **Timing:** in every "after" stretch, each event less its frame's delay is the same or better than before, or within
+  one cap period of its cause: the ⚡ reacts in the first drawn frame after the sound arrives, a beat callback in the
+  first after its beat, with the gate or without. The raw p50 / p95 differences are the frames' delays (the box), as the 60 Hz A/A pairs show.
 
 ## 3. Video footage under the frame gate
 
@@ -209,14 +210,14 @@ The same real scene; a 30 fps video with its sound (frame numbers burned in), a 
 a second removed between each and three frames held 0.25 s, looped: ≈ 16 cuts and 8 holds in each 10 s stretch. "Cut
 ahead" is how far before the part's end, on the video's own clock, the page jumped (negative: removed footage played).
 
-| F1 (calm box) | 240 before | 240 after | 60 after | 60 before |
+| H2 (calm box, final code) | 240 before | 240 after | 60 after | 60 before |
 |---|---:|---:|---:|---:|
-| Page frames a second (per drawn one) | 111.6 (3.84) | **64.0 (2.20)** | 32.3 (1.20) | 33.0 (1.20) |
+| Page frames a second (per drawn one) | 111.2 (3.76) | **71.8 (2.26)** | 32.9 (1.20) | 36.4 (1.19) |
 | Removed frames handed to the sketch | 0 | 0 | 0 | 0 |
-| Cut ahead of the part's end, p50 / min (ms) | −28.7 / −98 | **19.6 / 19.3** | **19.3 / 19.0** | −4.7 / −74 |
-| Cuts after the part's end (of ≈ 16) | 15 | **0** | **0** | 13 |
-| … made by: the video's frame / the edge timer / a page frame / a late video frame | 2 / – / 7 / 6 | 0 / 16 / 0 / 0 | 0 / 16 / 0 / 0 | 6 / – / 8 / 2 |
-| Held frame let go after its end, p50 / max (ms) | 11 / 113 | **0.3 / 3.6** | **0.2 / 9.8** | 59.1 / 82 |
+| Cut ahead of the part's end, p50 / min (ms) | −4.7 / −71.3 | **19.3 / −4.7** | **21.1 / 18.3** | −4.7 / −28.7 |
+| Cuts after the part's end | 15 of 16 | **2 of 16** | **0 of 16** | 12 of 15 |
+| … made by: the video's frame / the edge timer / a page frame / a late video frame | 4 / – / 8 / 4 | 0 / 14 / 2 / 0 | 0 / 16 / 0 / 0 | 7 / – / 8 / 0 |
+| Held frame let go after its end, p50 / max (ms) | 5.2 / 86 | **0.9 / 5.1** | **0.6 / 12.8** | 34.2 / 66.7 |
 
 | F7 (under the burn) | 240 before | 240 after | 60 after | 60 before |
 |---|---:|---:|---:|---:|
@@ -227,13 +228,26 @@ ahead" is how far before the part's end, on the video's own clock, the page jump
 | … made by: the video's frame / the edge timer / a page frame / a late video frame | 9 / – / 2 / 3 | 1 / 14 / 1 / 0 | 1 / 14 / 1 / 0 | 5 / – / 6 / 2 |
 | Held frame let go after its end, p50 / max (ms) | 46.1 / 170 | **0 / 5.8** | **0.5 / 5.4** | 84.5 / 241 |
 
-- **Frames:** 3.8 → 2.2 page frames per drawn one at 240 Hz.
-- **Cuts:** before, on this box, most cuts came after the part's end (by up to 98 ms of removed footage, its sound
-  included), at 240 Hz as at 60: the video's frames were too few to time them and the page's frames caught them late.
-  Now every cut jumps ≈ 19–20 ms ahead of the part's end, from the video's clock, at both rates.
-- **Held frames** end within a millisecond or so of their length, instead of up to a drawn frame late (60 Hz: 59 ms p50
-  here, with the box's late frames).
+- **Frames:** 3.8 → 2.3 page frames per drawn one at 240 Hz.
+- **Cuts:** before, on this box, most cuts came after the part's end (12–15 of 16, by up to 71–122 ms of removed
+  footage, its sound included), at 240 Hz as at 60: the video's frames were too few to time them and the page's frames
+  caught them late. Now cuts jump ≈ 19–21 ms ahead of the part's end from the video's clock, at both rates; 0–2 of 16
+  still came after it (by at most 4.7 ms calm, 53 ms under the burn: the edge timer's wake itself late on a box that
+  busy).
+- **Held frames** end within about a millisecond of their length (p50; max 5–13 ms), instead of up to a drawn frame and
+  more late (p50 5–85 ms here, with the box's late frames).
 - Still never a removed frame in the sketch.
+
+## Files
+- `tools/three-sandbox.html`: `gateMs` (live sound, footage); footage: `edgeNext` / `mediaEdge` / `partTick(t, src)` /
+  `partLead` (a part's end on the edge timer), `holdArm`, `partRate`, `watchFrames` (removed frames during a hold, a
+  stale part), `enterPart`; checks only: `CAPLOG` (in `rafStep`, `gateOpen`, `edgeWake`), `TRIGLOG` (reads, fires,
+  `trigArrive` for live arrivals), `partNote`, `window.__labBeat` (`legacy110`, `slots`, `beats`, `cross` /
+  `crossings`, `arrivals`, `state`).
+- `dev/smoke.js`: `--fake-mic` (`fakeMicWav`, `window.SMOKE_FAKE_MIC`).
+- `dev/checks/beatload110.js` (new; group `beatload110` in `dev/run-checks.js`), `dev/checks/beat108.js` (judging,
+  instrumentation), `dev/checks/realscene-lib.js` (its fake screen counts the real frames' stalls: `P.load()`).
+- `docs/windows-test-plan.md` §16.
 
 ## Runs
 All under the run lock; "burn" as above.
@@ -269,14 +283,26 @@ beat108's own figures in the last runs (240 Hz), page frames per drawn one befor
   Live: 2.08 page frames per drawn one at 240 Hz after (3.71 before), every event less its frame's delay the same or
   better; footage: 16 cuts 21.3 ms ahead (p50) after, 1 after the end, vs 14 of 16 after the end before; held frames
   0.4 / 2.5 ms late (p50 / max) vs 3.2 / 49.9.
-- H1 (calm, final code): (H1)
+- H1 (calm) ✖ on one line: the ⚡ reaction's p95 at 240 Hz after, 32.9 ms less its frame's delay: the reaction was
+  counted from the first analysis frame over the bar since the trigger re-armed, and the kick band hovered at the bar
+  (dipped under it, back over): the drawn frame that read it under rightly didn't fire. Now counted from the analysis
+  frame that brought the band over the bar for that fire.
+- **H2 (calm, final code): ✓** (the tables above), two can't-tell lines: 240 Hz everyBeats p50 8.5 → 12.1 (less frame
+  delay −2.1 → −8.3), 60 Hz ⚡ reaction p95 47.0 → 53.8 (9.2 → 1.1).
 
 **The others** (F5, F6; this round's app code): `fps107` ✓, `labfps89` ✓ (one 233 ms frame "can't tell under load":
 172.8 ms waiting for a CPU), `labcompile90` ✓ (one 167 ms frame, can't tell, the same way), `labaudio77` ✓,
 `perfectloop` ✓, `labpace` ✓, `gpuload84` ✓, `labframes` ✓, `labframes-more` ✓ (footage: frame-exact steps, cuts, the
 sketch never sees a removed frame, at 60 Hz on the real screen).
 
-**`release`**: (REL)
+**`release`** (full output read for ✖): **303 / 308 passed**, the 3 known Codex failures (KNOWN_FAIL), 1 opt-in
+skipped, 0 temp folders left, `unit:boot-test` ✓. Two ✖:
+- `unit:project-desk-test`: **mine.** It runs `capOk` from the preview page on its own, and this round's drawn-frame log
+  was inside it (`CAPLOG is not defined`). The log moved to `capOk`'s caller (`rafStep`); `capOk` is as it was. Run
+  again: ✓ (H1, with the other unit tests that slice the preview page: labaudio77, labpace, framebar, labfps72,
+  perfectloop, labadapt, playchurn81, scene-recording, labshadow91, physics, boot-test: all ✓).
+- `unit:liveset64-test`: "no underrun while the heavy preset loaded and switched (0 → 1)": the Sound desk's Python host
+  (Codex's, untouched here) had one audio underrun on the loaded box. Run again alone under the lock: ✓ (H1).
 
 ## For Codex
 No Codex-owned file was edited.
