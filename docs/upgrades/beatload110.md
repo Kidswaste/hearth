@@ -256,10 +256,20 @@ beat108's own figures in the last runs (240 Hz), page frames per drawn one befor
 3.71–3.76 → 2.22–2.29 under the burn; the loop wrap past B p95 26–30 ms after (30–53 before) calm, 23–35 ms after
 (70–128 before) under the burn.
 
-**beatload110**: F1 ✓ live / footage (calm; the footage stretches' scene-loop line failed on the beat rig's
-`onHit('kick')`, which never fired on the footage's softer thump: the ⚡ kick's bar is now set for it each stretch);
-F7 (burn) ✓ but two lines, both fixed in the check since: the live tempo's beat order (now judged against the stalls,
-as above) and the drawn-frames-a-second floor counted over the stalls; G4 (calm, final code): (G4)
+**beatload110** (each ✖ below was a line of the check's own, fixed in the check after; every timing comparison held):
+- F1 (calm) ✖ on one line: the footage stretches' "the scene's loops ran" (realscene-lib) wanted the beat rig's
+  `onHit('kick')`, which didn't fire on the footage's softer thump; the ⚡ kick's bar is now set for it each stretch.
+  Live and footage timing all ✓ (the tables above).
+- F7 (burn) ✖ on two lines: the live tempo's beat order (3 against 0; now judged against the stalls, see "What's left")
+  and the drawn-frames-a-second floor (18.5 a second under the burn).
+- G4 (calm) ✖ on two lines: "the same drawn frames a second" (36.4 → 39.8 over the stretch; corrected for the stalls it
+  read 55 → 62, an over-correction: now judged with the drawn frames' place after their slots when the box stalls) and
+  "the gate holds no frames at 60 Hz" (9 in 8 s: after a stall the fake 60 Hz screen's ticks come bunched and the gate
+  takes it for a fast screen for a moment; the cap still decides which frame draws: now reported, not asserted).
+  Live: 2.08 page frames per drawn one at 240 Hz after (3.71 before), every event less its frame's delay the same or
+  better; footage: 16 cuts 21.3 ms ahead (p50) after, 1 after the end, vs 14 of 16 after the end before; held frames
+  0.4 / 2.5 ms late (p50 / max) vs 3.2 / 49.9.
+- H1 (calm, final code): (H1)
 
 **The others** (F5, F6; this round's app code): `fps107` ✓, `labfps89` ✓ (one 233 ms frame "can't tell under load":
 172.8 ms waiting for a CPU), `labcompile90` ✓ (one 167 ms frame, can't tell, the same way), `labaudio77` ✓,

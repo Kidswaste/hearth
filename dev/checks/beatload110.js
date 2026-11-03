@@ -9,8 +9,8 @@
 // worklet) and sent to the preview ('af' frames). The microphone is Chromium's fake capture device playing a drum loop
 // from a file (smoke.js --fake-mic: 125 BPM, a kick on every beat). Per stretch (8 s):
 //   · the page's frames a second and per drawn one; each drawn frame's time after its cap slot
-//   · the ⚡ kick trigger's reaction: its fire − the arrival of the first analysis frame over its bar (the sound's
-//     arrival in the page → the drawn frame that reacted)
+//   · the ⚡ kick trigger's reaction: its fire − the arrival of the analysis frame that brought the band over its bar
+//     (the sound's arrival in the page → the drawn frame that reacted)
 //   · everyBeats(1) on the live tempo clock: how late after its beat each callback ran (beat phase × period); beats
 //     missed or called twice; the tempo found
 // Footage: a 30 fps video with its sound (frame numbers burned in: dev/make-lab-footage.js), a cut list of six half-second
@@ -113,16 +113,18 @@ try {
     R.drawnPerSec = r2(sl.t.length / w.s);
     R.perDrawn = r2(w.page.framesPerSec / Math.max(1, R.drawnPerSec));
     R.slots = { drawnLate: slotOf(sl), gateTimerLate: stats(sl.gate) };
-    // the ⚡ kick's reaction: each fire − the first analysis frame over the bar since the one before it under the bar
+    // the ⚡ kick's reaction: each fire − the arrival of the analysis frame that first brought the band over the bar for
+    // it (the start of the run of frames over the bar that the fire read the last of: a band hovering at the bar dips
+    // under it and back, and a drawn frame that read it under fired rightly on the next)
     const fires = ((await pj('window.__labBeat.trigs()')) || []).filter((x) => x[0] === 'kick').map((x) => x[1]);
     const arr = (await pj('window.__labBeat.arrivals()')) || [];
     const thr = 0.5;
     const react = []; const reactAt = [];
     for (const f of fires) {
       let k = -1; for (let i = 0; i < arr.length && arr[i][0] <= f + 0.01; i += 1) k = i;
-      let j = k; while (j > 0 && arr[j - 1][1] >= thr * 0.93) j -= 1; // (back to the first frame of this rise)
-      while (j <= k && j >= 0 && arr[j][1] < thr) j += 1;
-      if (j >= 0 && j <= k) { react.push(f - arr[j][0]); reactAt.push(f); }
+      if (k < 0 || arr[k][1] < thr) continue;
+      let j = k; while (j > 0 && arr[j - 1][1] >= thr) j -= 1;
+      react.push(f - arr[j][0]); reactAt.push(f);
     }
     // (each event's drawn frame: how late it came after its cap slot: the load, measured in the very frames)
     const frameOf = (now) => { let k = -1; for (let i = 0; i < sl.t.length && sl.t[i] <= now + 0.01; i += 1) k = i; return k < 0 || now - sl.t[k] > 100 ? null : r2(now - (sl.t[k] - sl.late[k])); }; // (its delay after its drawn frame's cap slot)
