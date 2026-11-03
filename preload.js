@@ -81,6 +81,9 @@ contextBridge.exposeInMainWorld('hub', {
   engineDoctor: call('engine:doctor'),
   engineInstalls: call('engine:installs'),
   engineFix: call('engine:fix'),
+  signinLink: call('engine:signinLink'), // (signin111) the engine's own sign-in link, shown in Hearth when no window opened
+  signinLinkStop: call('engine:signinLinkStop'),
+  onSigninLink: on('engine:signin-link'),
   macFix: call('mac:fix'), // (round 33, macpolish) { target, action, dry } → the exact command, then run after a click
   macVolumes: call('mac:volumes'), // (round 33) which disks ignore case, the boot disk's name (the chats' folder checks)
   ffmpegStatus: call('tools:ffmpeg'),

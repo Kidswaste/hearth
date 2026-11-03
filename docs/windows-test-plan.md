@@ -235,3 +235,27 @@ summary back to the cloud session, or tell Quentin to forward it.
 
 ## 17. Sign-in window (round 110)
 - In a Claude chat: Ctrl+K → "sign in" (Sign this agent's engine in). A PowerShell window titled "Sign in to Claude Code for Hearth" must appear in front. Report if it doesn't, with the last lines of data/engine.log.
+- (round 111, signin111) Each way to sign in, on the PC (Claude Code signed in already is fine: closing the window
+  without finishing changes nothing). After each one, open `data\engine.log` and copy the lines that start with
+  `terminal:` and `claude login` / `claude sign-in (link)`.
+  1. **Ctrl+K → "sign in"** in a Claude chat. The command's reply must say "A PowerShell window opened to sign in to
+     Claude Code (it may be behind Hearth)". The window must be **in front**, titled "Sign in to Claude Code for Hearth".
+     In engine.log: `terminal: start: C:\WINDOWS\system32\cmd.exe /d /s /c "start "Sign in to Claude Code for Hearth" "C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe" … → opened`.
+     If the log says `start: … failed` followed by `Start-Process: … opened`, the fallback worked: report both lines.
+  2. **The chat's Sign in button**: in PowerShell run `& "$env:APPDATA\npm\claude.cmd" auth logout` (or the copy
+     /doctor names) to sign out, send "hi" in a Claude chat, press **Sign in to Claude Code** under "isn't signed in".
+     Finish in the browser. Expected: the card said "A PowerShell window opened…"; once the browser says you're in and
+     the window prints "Done: go back to Hearth", Hearth shows "Signed in to Claude Code ✓ Sending your message again…"
+     **by itself** (no Retry press) and "hi" is answered once.
+  3. **No window?** Do 2 again but press **No window?** next to the card's line. A dialog "Sign in to Claude Code" must
+     show a claude.ai (or claude.com) link within a few seconds, with **Open in browser** and **Copy link**; the
+     browser probably opened by itself. Finish in the browser: the dialog says "Signed in to Claude Code ✓" and closes,
+     and the message goes out again. Press Cancel instead on a second try: no PowerShell or claude process is left in
+     Task Manager.
+  4. **/doctor** with Claude Code signed out: the card must say "not signed in" (before round 111 it said nothing,
+     Claude Code's `auth status` answers JSON); its Sign in button goes through the same window as 1.
+  5. **⋯ AI setup → Check this computer**: the "Not signed in to Claude Code" line's button does the same.
+  6. **Astra**: Ctrl+K → "Astra: sign in with ChatGPT" (or /astra-login) opens the same kind of window for Codex
+     (`codex login`); the browser page is auth.openai.com.
+  Report: which numbers worked, which window opened (cmd's start or Start-Process), and any line of engine.log that
+  says `failed` or `no window opened`.

@@ -475,7 +475,7 @@ const Astra = (() => {
       ok(p) && !compact ? el('button', { type: 'button', class: 'msg-act', text: 'Copy', title: 'Copy this part', on: { click: (e) => { e.stopPropagation(); copyText(answerOf(p), 'Copied'); } } }) : null);
     const body = el('div', { class: `body${compact ? ' collab-scroll' : ''}` });
     if (p.status === 'error') body.append(el('div', { class: 'collab-error', text: p.error || 'No answer' }),
-      p.needsLogin ? el('button', { type: 'button', class: 'primary small', text: 'Sign in', on: { click: () => window.hub.login(p.needsLogin) } }) : null);
+      p.needsLogin ? el('button', { type: 'button', class: 'primary small', text: 'Sign in', on: { click: () => (Native.signIn ? Native.signIn(p.needsLogin) : window.hub.login(p.needsLogin)) } }) : null); // signin111: Native.signIn says what happened
     else if (p.text) body.innerHTML = renderMarkdown(p.text);
     else if (p.status === 'running') body.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
     const extra = [
@@ -734,7 +734,7 @@ function toggleFold(hostId, m) {
       if (H.engineStatus) for (const e of ['codex', 'claude']) if (doctorCache.r[e]) H.engineStatus[e] = doctorCache.r[e].found;
       if (!c.found) node.textContent = '⚠ Codex wasn\'t found on this computer. Install the Codex (ChatGPT) app or set its path in Settings → Engines, then run /astra-doctor.';
       else if (c.loggedIn === false) {
-        node.replaceChildren('⚠ Codex isn\'t signed in. ', el('a', { href: '#', text: 'Sign in with ChatGPT', on: { click: (e) => { e.preventDefault(); window.hub.login('codex'); } } }));
+        node.replaceChildren('⚠ Codex isn\'t signed in. ', el('a', { href: '#', text: 'Sign in with ChatGPT', on: { click: (e) => { e.preventDefault(); if (Native.signIn) Native.signIn('codex'); else window.hub.login('codex'); } } })); // signin111
       } else node.textContent = `✓ ${c.version || 'Codex'} · signed in`;
     } catch { node.textContent = ''; }
   }
@@ -1482,7 +1482,7 @@ function toggleFold(hostId, m) {
       return `${report}\n\n**Test message**: ${r.ok ? `✓ \"${cap(clean(r.text), 60)}\" in ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ` · ${fmt(r.usage.input)} in · ${fmt(r.usage.output)} out` : ''}` : `✗ ${r.error}`}`;
     } });
   R({ name: 'astra-login', area: 'Astra', desc: 'Sign Codex in with your ChatGPT account (opens its own window)',
-    run: async () => { const okv = await window.hub.login('codex'); doctorCache = null; return okv ? 'Finish signing in in the window that opened, then run /astra-doctor.' : 'Codex wasn\'t found: run /astra-doctor.'; } });
+    run: async (_a, ctx) => { if (Native.signIn) { const r = await Native.signIn('codex', { agentId: ctx?.agentId }); doctorCache = null; return r.text; } const okv = await window.hub.login('codex'); doctorCache = null; return okv ? 'Finish signing in in the window that opened, then run /astra-doctor.' : 'Codex wasn\'t found: run /astra-doctor.'; } }); // signin111: Native.signIn
   R({ name: 'astra-settings', area: 'Astra', desc: 'Open Astra\'s agent settings', run: () => { const a = astra(); if (a) Manager.open(a.id); else Manager.open(); } });
   R({ name: 'director-engine', area: 'Astra', args: '[three|video] [claude|astra]', desc: 'Run a docked director (Three / Video) on Claude or on Astra: same chat, same scene, the task state handed over',
     complete: (a) => {
@@ -1828,7 +1828,7 @@ function toggleFold(hostId, m) {
     if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
     AppUI.addAction('Astra: diagnostics (doctor)', () => Commands.exec('/astra-doctor', astra()?.id || H.claudeAgent()?.id));
     AppUI.addAction('Astra: new chat', () => Commands.exec('/astra-new'));
-    AppUI.addAction('Astra: sign in with ChatGPT', () => window.hub.login('codex'));
+    AppUI.addAction('Astra: sign in with ChatGPT', () => (Native.signIn ? Native.signIn('codex') : window.hub.login('codex'))); // signin111
     AppUI.addAction('Collab: Duo mode on / off', () => { const id = H.activeId; if (H.agent(id)?.mode === 'native') setMode(id, { mode: getMode(id).mode === 'duo' ? 'solo' : 'duo' }); }, 'Ctrl+Alt+D');
     AppUI.addAction('Collab: second opinion on the last reply', () => { if (H.agent(H.activeId)?.mode === 'native') Native.secondOpinion(H.activeId); }, 'Ctrl+Alt+O');
     AppUI.addAction('Astra: next model for this chat', () => dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM', ctrlKey: true, altKey: true })), 'Ctrl+Alt+M');

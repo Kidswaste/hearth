@@ -507,6 +507,10 @@ ipcMain.handle('pick-folder', async (_e, current, title) => {
 ipcMain.handle('engine:stop', (_e, chatId) => engines.stop(chatId));
 ipcMain.handle('engine:stopAll', () => engines.stopAll());
 ipcMain.handle('engine:login', (_e, engine) => { engines.setEnginePaths(settings().enginePaths); return engines.login(engine); });
+// (signin111) sign-in without a window: the engine's own `auth login` / `login`, its sign-in link shown in Hearth (Open in
+// browser / Copy link); 'engine:signin-link' says when the link is there and how it ended (never a password or token)
+ipcMain.handle('engine:signinLink', (_e, engine) => { engines.setEnginePaths(settings().enginePaths); return engines.signInByLink(String(engine), (ev) => send('engine:signin-link', ev)); });
+ipcMain.handle('engine:signinLinkStop', (_e, engine) => engines.stopLink(String(engine)));
 // Every Claude Code / Codex copy, the one in use, too old? signed in? (engine-health.js at startup, /doctor), and the
 // update / install / sign-in run in a visible window; the check after it comes back as 'engine:installs'.
 ipcMain.handle('engine:installs', (_e, opts) => { engines.setEnginePaths(settings().enginePaths); return opts?.engines ? engines.checkInstalls(opts) : engineChecks().check(opts || {}); });

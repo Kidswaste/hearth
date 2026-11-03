@@ -503,7 +503,7 @@ const serverFor = (servers, tool) => servers[{ three: 'three', video: 'video', a
 //                                  or the Wi-Fi dropped; asked to continue, it writes the rest (repeating its last words)
 const SWITCHES = ['windows', 'claudeNoAuth', 'claudeVersion', 'codexVersion', 'claudeNeeds', 'codexNeeds', 'claudeLoggedOut', 'codexLoggedOut', 'claudeNetwork', 'codexNetwork', 'claudeMcpMissing', 'codexMcpCancel', 'updateTo',
   'claudeBusy', 'codexBusy', 'claudeRate', 'claudeLimit', 'codexLimit', 'limitForm', 'limitAt', 'claudeExpired', 'claudeProxy', 'claudeCut', 'seenLog',
-  'claudeRateEvent', 'claudeUsageText']; // (round 48, usagelimits) a rate_limit_event with each reply; what `claude -p /usage` prints
+  'claudeRateEvent', 'claudeUsageText', 'loginFails', 'loginMs']; // (signin111) loginFails: `auth login` / `login` end with "Login failed" (exit 1); loginMs: how long they wait for the browser · (round 48, usagelimits) a rate_limit_event with each reply; what `claude -p /usage` prints
 const kvFile = () => path.join(process.cwd(), '..', 'kv', 'fake-switches.json');
 function switches() {
   const env = {};

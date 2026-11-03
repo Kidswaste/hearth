@@ -15,7 +15,13 @@ const F = require('./fake-common');
     if (sw.codexLoggedOut) { console.error('Not logged in'); process.exit(1); }
     console.error('Logged in using ChatGPT (fake)'); return;
   }
-  if (argv[0] === 'login') { F.setSwitch({ codexLoggedOut: null }); console.log('(fake) signed in'); return; }
+  // (signin111) Codex's own words: the local login server, the link, then "Successfully logged in"
+  if (argv[0] === 'login') {
+    process.stderr.write('Starting local login server on http://localhost:1455.\nIf your browser did not open, navigate to this URL to authenticate:\n\nhttps://auth.openai.com/oauth/authorize?response_type=code&client_id=fake&state=fake-state\n\nOn a remote or headless machine? Use `codex login --device-auth` instead.\n');
+    await new Promise((r) => setTimeout(r, Number(sw.loginMs || 600)));
+    if (sw.loginFails) { process.stderr.write('Error logging in: login callback state mismatch\n'); process.exit(1); }
+    F.setSwitch({ codexLoggedOut: null }); process.stderr.write('Successfully logged in\n'); return;
+  }
   const resume = argv.indexOf('resume');
   const threadId = resume >= 0 ? argv[resume + 1] : F.uuid();
   const prompt = await F.readStdin();
