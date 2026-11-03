@@ -246,37 +246,6 @@ if (want('layer')) await safe('layer', async () => {
   } else step('layer:model', false, 'no ThreeModels');
 });
 
-// ---------- (round 109, labchecks109) layer:real: a new layer started in realscene-lib's real scene, 240 Hz ----------
-// The owner's kind of scene (several layers and frame loops, a 🧊 model with its picture, ✦ Bloom, a song with ⚡
-// triggers playing) on a faked 240 Hz screen (the frame gate on), and a new layer started in it: the same rules as the
-// other layer:* stretches (0 compiles inside frames on screen, programs made in the gaps after frames), and no runaway
-// while it starts (RS.problems: frame callbacks per page frame and a second, the guard never tripped, no graphics
-// context lost)
-if (want('layer') || want('real')) await safe('layer:real', async () => {
-  const info = await RS.open();
-  step('layer:real: the scene is up (5 layers, the model loaded, the song analysed)', info.layers.length >= 5 && info.model?.loaded && info.song, info);
-  step('layer:real: the fake screen is in the page (switchable)', info.probe?.switchable === true, info.probe);
-  await sbx(`return window.__labWarmGap ? window.__labWarmGap.mode(${JSON.stringify(String(window.LC90_WG || 'auto'))}) : 'none'`);
-  await RS.hz(240); await wait(3000);
-  const w0 = await wgState(); let drew = null; let w = null;
-  await record('layer:real', async () => {
-    const watching = RS.watch(6000);
-    await D.addLayer({ name: 'Plain layer', code: LAYER_PLAIN }, 0);
-    drew = await until(async () => { const v = await sbx(drewOf('Plain layer')); const j = typeof v === 'string' ? JSON.parse(v) : null; return j && j.frames > 0 && j.warm ? j : null; }, 20000, 100);
-    w = await watching;
-    return { layer: 'Plain layer' };
-  }, { ms: 6000 });
-  const w1 = await wgState();
-  out.stretches['layer:real'].wg = w1 && { mode: String(window.LC90_WG || 'auto'), held: w1.held - (w0?.held || 0), oldRule: w1.oldRule - (w0?.oldRule || 0), gaps: w1.gaps - (w0?.gaps || 0), programs: w1.programs - (w0?.programs || 0), again: w1.again - (w0?.again || 0), late: w1.late - (w0?.late || 0), hold: w1.last };
-  out.stretches['layer:real'].drew = drew || null;
-  out.real = w;
-  const p = RS.problems(w, 'layer:real');
-  step('layer:real: no runaway while the layer starts, the guard never tripped, no graphics context lost', !p.length, { problems: p, perFrame: w?.perFrame, page: w?.page, guard: w?.guard, loops: w?.loops });
-  await D.removeLayer('Plain layer').catch(() => {});
-  await RS.hz(0); await RS.close();
-  await wait(800);
-}, 300000);
-
 // ---------- two 4096² pictures arriving in a running scene ----------
 const png = async (n, hue) => { const cv = new OffscreenCanvas(n, n); const g = cv.getContext('2d'); for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) { g.fillStyle = `hsl(${(hue + x * 11 + y * 7) % 360} 50% ${(x + y) % 2 ? 30 : 45}%)`; g.fillRect((x * n) / 32, (y * n) / 32, n / 32, n / 32); } return new Uint8Array(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer()); };
 if (want('texture')) await safe('texture', async () => {
@@ -405,6 +374,37 @@ gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(fb); r.resetState
   const after = await sbx(texel);
   out.stretches.reload.pixel = { before, after };
 });
+
+// ---------- (round 109, labchecks109) layer:real: a new layer started in realscene-lib's real scene, 240 Hz ----------
+// The owner's kind of scene (several layers and frame loops, a 🧊 model with its picture, ✦ Bloom, a song with ⚡
+// triggers playing) on a faked 240 Hz screen (the frame gate on), and a new layer started in it: the same rules as the
+// other layer:* stretches (0 compiles inside frames on screen, programs made in the gaps after frames), and no runaway
+// while it starts (RS.problems: frame callbacks per page frame and a second, the guard never tripped, no graphics
+// context lost)
+if (want('layer') || want('real')) await safe('layer:real', async () => {
+  const info = await RS.open();
+  step('layer:real: the scene is up (5 layers, the model loaded, the song analysed)', info.layers.length >= 5 && info.model?.loaded && info.song, info);
+  step('layer:real: the fake screen is in the page (switchable)', info.probe?.switchable === true, info.probe);
+  await sbx(`return window.__labWarmGap ? window.__labWarmGap.mode(${JSON.stringify(String(window.LC90_WG || 'auto'))}) : 'none'`);
+  await RS.hz(240); await wait(3000);
+  const w0 = await wgState(); let drew = null; let w = null;
+  await record('layer:real', async () => {
+    const watching = RS.watch(6000);
+    await D.addLayer({ name: 'Plain layer', code: LAYER_PLAIN }, 0);
+    drew = await until(async () => { const v = await sbx(drewOf('Plain layer')); const j = typeof v === 'string' ? JSON.parse(v) : null; return j && j.frames > 0 && j.warm ? j : null; }, 20000, 100);
+    w = await watching;
+    return { layer: 'Plain layer' };
+  }, { ms: 6000 });
+  const w1 = await wgState();
+  out.stretches['layer:real'].wg = w1 && { mode: String(window.LC90_WG || 'auto'), held: w1.held - (w0?.held || 0), oldRule: w1.oldRule - (w0?.oldRule || 0), gaps: w1.gaps - (w0?.gaps || 0), programs: w1.programs - (w0?.programs || 0), again: w1.again - (w0?.again || 0), late: w1.late - (w0?.late || 0), hold: w1.last };
+  out.stretches['layer:real'].drew = drew || null;
+  out.real = w;
+  const p = RS.problems(w, 'layer:real');
+  step('layer:real: no runaway while the layer starts, the guard never tripped, no graphics context lost', !p.length, { problems: p, perFrame: w?.perFrame, page: w?.page, guard: w?.guard, loops: w?.loops });
+  await D.removeLayer('Plain layer').catch(() => {});
+  await RS.hz(0); await RS.close();
+  await wait(800);
+}, 300000);
 
 // ---------- verdicts ----------
 const S = out.stretches;

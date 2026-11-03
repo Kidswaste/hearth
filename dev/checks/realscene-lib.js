@@ -243,7 +243,7 @@ requestAnimationFrame(loop);`;
     bad(w.perFrame != null && w.perFrame <= B.perFrame, `no runaway: ≤ ${B.perFrame} frame callbacks per page frame (${w.perFrame}: ${w.page.rafPerSec}/s over ${w.page.framesPerSec} frames/s)`);
     bad(w.page.rafPerSec <= B.perSec, `no runaway: ≤ ${B.perSec} frame callbacks a second (${w.page.rafPerSec})`);
     bad(w.guard && !w.guard.tripped && w.guard.trips === 0, `the page's runaway guard never tripped (${JSON.stringify(w.guard)})`);
-    bad(w.guard && w.guard.peakLoopPerSec <= w.guard.limit && w.guard.peakLoopPerFrame <= 4, `no frame loop over 4× the screen's rate nor run more than 4 times in one frame (busiest ${w.guard?.peakLoopPerSec}/s, limit ${w.guard?.limit}/s; ${w.guard?.peakLoopPerFrame} in a frame)`);
+    bad(w.guard && w.guard.peakLoopPerSec <= w.guard.limit && w.guard.peakLoopPerFrame <= 1 && !w.guard.dropped, `no frame loop over 4× the screen's rate nor run twice in one frame (busiest ${w.guard?.peakLoopPerSec}/s, limit ${w.guard?.limit}/s; ${w.guard?.peakLoopPerFrame} in a frame, ${w.guard?.dropped} dropped)`);
     bad(!w.runawayNotes.length, `no frame-runaway note reached the Lab (${JSON.stringify(w.runawayNotes)})`);
     bad(!w.gl.some((e) => /lost|remaking/.test(e.state)) && !w.glPhase, `no graphics context lost (${JSON.stringify(w.gl)}, phase ${w.glPhase})`);
     bad(w.drawnPerSec > 1, `the preview drew (${w.drawnPerSec} frames a second)`);

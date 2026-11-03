@@ -222,7 +222,7 @@ try {
   ok(g.tripped && g.trips === 1 && out.real.bug.runawayNotes.length === 1, `the guard caught round 107's runaway (${JSON.stringify(g)}; notes ${JSON.stringify(out.real.bug.runawayNotes)})`);
   ok(g.info && g.info.forMs >= 2000 && g.info.forMs <= 4500, `… after 2 s over 4× the screen's rate, not before nor much later (${JSON.stringify(g.info)})`);
   ok(!out.real.bug.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.gl.some((e) => /lost|remaking/.test(e.state)) && !out.real.after.glPhase, `… and the preview kept its graphics context (${JSON.stringify([out.real.bug.gl, out.real.after.gl])})`);
-  ok(out.real.after.drawnPerSec > 1 && out.real.after.perFrame != null && out.real.after.perFrame <= RS.B.perFrame && out.real.after.guard.peakLoopPerSec <= out.real.after.guard.limit, `… kept drawing on plain frames, its frame callbacks back down (${JSON.stringify({ drawn: out.real.after.drawnPerSec, perFrame: out.real.after.perFrame, guard: out.real.after.guard })})`);
+  ok(out.real.after.drawnPerSec > 1 && out.real.after.perFrame != null && out.real.after.perFrame <= RS.B.perFrame && out.real.after.guard.peakLoopPerSec <= out.real.after.guard.limit && out.real.after.guard.peakLoopPerFrame <= 1, `… kept drawing on plain frames, its frame callbacks back down (${JSON.stringify({ drawn: out.real.after.drawnPerSec, perFrame: out.real.after.perFrame, guard: out.real.after.guard })})`);
   await pv('window.__labRunaway.reset(true); return 1');
   await RS.close();
 
