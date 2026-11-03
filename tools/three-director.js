@@ -40,7 +40,9 @@ const ThreeDirector = (() => {
     ? `${s.fps} fps${s.worstFrameMs > 40 ? ` (worst ${s.worstFrameMs} ms)` : ''} · render ${s.renderMs} ms · ${s.drawCalls} draws · ${fmtK(s.triangles)} tris${s.points ? ` · ${fmtK(s.points)} pts` : ''}${s.textures ? ` · ${s.textures} tex` : ''}`
     : String(s || ''));
   const frameLine = (f) => (f ? `${f.id === 'fit' ? 'fit' : f.id} ${f.width}×${f.height}` : '');
-  const musicLine = (m) => (m && typeof m === 'object' ? `${String(m.file || '').split(/[\\/]/).pop()} · ${Math.round((m.bpm || 0) * 10) / 10} bpm · ${(m.time || 0).toFixed(1)}/${Math.round(m.duration || 0)} s${m.playing ? ' · playing' : ''}` : String(m || ''));
+  // (round 112, eyes112) the Lab's report has no bpm (its grid has it): the line said "0 bpm" for every song
+  let bpmNow = () => 0;
+  const musicLine = (m) => (m && typeof m === 'object' ? `${String(m.file || '').split(/[\\/]/).pop()} · ${Math.round((m.bpm || bpmNow() || 0) * 10) / 10} bpm · ${(m.time || 0).toFixed(1)}/${Math.round(m.duration || 0)} s${m.playing ? ' · playing' : ''}` : String(m || ''));
   // One line per slider: "punch = 1.2 · Bass punch [0–3] (Music) ♪bass" — what the model needs, a third of the JSON.
   function sliderLine(c) {
     const v = typeof c.value === 'string' ? c.value : JSON.stringify(c.value);
@@ -209,7 +211,7 @@ const ThreeDirector = (() => {
   // a handover to the other engine, an error or a stop) and after KEEP_TURNS replies. Calls that name no chat (tests,
   // /director try) keep the old rule: within one reply, reset whenever the user sends a director a message.
   const KEEP_TURNS = 8;
-  const bucketNew = (session = null, chat = null) => ({ session, chat, turn: 0, seen: new Map(), lastSig: null, pics: 0 });
+  const bucketNew = (session = null, chat = null) => ({ session, chat, turn: 0, seen: new Map(), lastSig: null, pics: 0, prev: null }); // (round 112: prev, the chat's last look, for compare)
   let loose = bucketNew();
   const chatBuckets = new Map(); // chatId → bucket
   const crewBuckets = new Map(); // (round 22, labcrew) each crew helper keeps its own "already said" state
@@ -328,7 +330,14 @@ const ThreeDirector = (() => {
     const name = String(at).toLowerCase();
     const after = (list) => (list || []).find((t) => t > (info.time || 0) + 0.05) ?? (list || [])[0] ?? null;
     if (name === 'drop') return after(info.drops);
-    if (info.hits?.[name]) return after(info.hits[name].first);
+    if (info.hits?.[name]?.first?.length) return after(info.hits[name].first);
+    // (round 112, eyes112) no hand-placed markers: the hits the analysis found in the song (at: "kick" answered "Can't
+    // go to" on every song whose kicks the owner hadn't kept as markers), and the beats
+    try {
+      const a = d.media.analysis;
+      const found = name === 'beat' ? a?.beats : name === 'hit' ? a?.onsets?.kick : a?.onsets?.[name];
+      if (found?.length) return after(found.map((o) => (typeof o === 'number' ? o : o.t)));
+    } catch { /* backstage: no analysis */ }
     try { const cue = (d.timeline().cues || []).find((c) => String(c.name || '').toLowerCase() === name); if (cue) return cue.time ?? cue.t ?? null; } catch { /* no timeline */ }
     return null;
   }
@@ -343,7 +352,6 @@ const ThreeDirector = (() => {
   const AUTO_MS = 1500; // (round 74, labcalls74) how long an automatic picture may hold an answer (at least; more on a slow page, ≤ 4 s)…
   const BUILD_MS = 6000; // …after the change has drawn (or failed): at most this long (the preview's own building cap)
   const SHOT_Q = 0.72;
-  let prevShot = null; // the last picture the director got (canvas), for compare
   const loadImg = async (url) => { const img = new Image(); img.src = url; await img.decode(); return img; };
   // region [x, y, w, h] in 0..1 of the frame, then scaled to fit `max` px; returns a canvas.
   function frameCanvas(img, { max = 1024, region = null } = {}) {
@@ -359,8 +367,7 @@ const ThreeDirector = (() => {
     return c;
   }
   // Tiles canvases in a row (or a grid past 4) with small labels; the whole sheet fits `max`.
-  function tile(canvases, labels, max) {
-    const cols = Math.min(4, canvases.length); const rows = Math.ceil(canvases.length / cols);
+  function tile(canvases, labels, max, cols = Math.min(4, canvases.length)) { const rows = Math.ceil(canvases.length / cols);
     const cw = Math.max(...canvases.map((c) => c.width)); const ch = Math.max(...canvases.map((c) => c.height));
     const scale = Math.min(1, max / Math.max(cw * cols, ch * rows));
     const w = Math.round(cw * scale); const h = Math.round(ch * scale);
@@ -449,12 +456,92 @@ const ThreeDirector = (() => {
     } catch { return null; }
     const sig = signature(img); const key = AUTO_KEY(d);
     if (args.shot !== true && B.lastSig?.key === key && sigDiff(sig, B.lastSig.sig) < 0.004) { if (value && typeof value === 'object') value.picture = 'no visible change'; savedNotes.shots += 1; return null; }
-    B.lastSig = { key, sig }; prevShot = c; B.pics += 1; savedNotes.autoShots = (savedNotes.autoShots || 0) + 1;
+    B.lastSig = { key, sig }; keepLook(d, B, c, 'after your change'); B.pics += 1; savedNotes.autoShots = (savedNotes.autoShots || 0) + 1;
     // (round 74) the preview's own small JPEG at this size goes out as it is (no second encode), as a screenshot's does
     const asIs = /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
     return [{ data: asIs ? url.split(',')[1] : await jpeg(c, 0.75), mime: 'image/jpeg' }];
   }
   const withPic = (value, images) => ({ ok: true, value, ...(images ? { images } : {}) });
+  // (round 112, eyes112) the previous look, for compare: per chat (B.prev) and per scene. It was one picture for the
+  // whole Lab, so a chat's "before" could be another chat's look, of another scene (or a collaboration's).
+  const prevBySketch = new Map(); // sketchId → { c, at, how, sketchId }
+  const sketchOf = (d) => { try { return d.codeOf().sketchId || null; } catch { return null; } };
+  function keepLook(d, B, c, how = '') {
+    const p = { c, at: Date.now(), how, sketchId: sketchOf(d) };
+    B.prev = p;
+    if (p.sketchId) { prevBySketch.delete(p.sketchId); prevBySketch.set(p.sketchId, p); if (prevBySketch.size > 24) prevBySketch.delete(prevBySketch.keys().next().value); }
+  }
+  function lookBefore(d, B) {
+    const sk = sketchOf(d);
+    if (B.prev && (!sk || B.prev.sketchId === sk)) return { ...B.prev, mine: true };
+    const p = sk ? prevBySketch.get(sk) : null;
+    return p ? { ...p, mine: false } : null;
+  }
+  const agoText = (ms) => (ms < 90000 ? `${Math.max(1, Math.round(ms / 1000))} s ago` : `${Math.round(ms / 60000)} min ago`);
+
+  // (round 112, eyes112) a scene that moves with the music, caught at a random frame, can mislead: the flash of a kick,
+  // a burst, a ring's pulse are there in one picture and gone in the next. While the song plays, a picture of a scene
+  // that reacts to sound is taken on the music: right after the next kick (or beat), so its sound-reactive parts are
+  // mid-hit, and two looks are at the same moment of a beat (compare means something). on: 'now' takes it at once.
+  const REACTS = /\baudio\s*\.|\bonHit\s*\(|\beveryBeats\s*\(|\bonBar\s*\(|\bonBeat\s*\(|\bbeatPulse\s*\(/;
+  function reactsToSound(d) {
+    try {
+      return d.layers().layers.some((L) => {
+        if (L.visible === false) return false;
+        try { return REACTS.test(d.codeOf(L.id ?? L.name).code || ''); } catch { return false; }
+      });
+    } catch { return false; }
+  }
+  // In the preview page (its own song clock and ⚡ triggers): resolves at the next kick's rising edge (the owner's kick
+  // markers or the ⚡ kick band), snare, beat or bar line; 'auto' takes the kick, or the beat when no kick shows within
+  // a beat. 'null' when nothing plays. Under the page's 4 s limit for an eval.
+  const MOMENT_JS = (want, cap) => `const A = globalThis.audio;
+if (!A || !A.loaded || !A.playing) return 'null';
+const want = ${JSON.stringify(want)}; const cap = ${Math.round(cap)}; const t0 = performance.now();
+const tr = (k) => { try { return Number(A.trigger(k)) || 0; } catch { return 0; } };
+const sb = () => { try { const s = A.since('beat'); return Number.isFinite(s) ? s : null; } catch { return null; } };
+const period = A.bpm > 0 ? 60000 / A.bpm : 500;
+const at = (kind) => JSON.stringify({ kind, t: Math.round(A.time * 100) / 100, bar: A.bar, beat: A.beatInBar, bpb: A.beatsPerBar, bpm: Math.round(A.bpm * 10) / 10, ms: Math.round(performance.now() - t0) });
+return await new Promise((res) => {
+  let pk = tr('kick'); let ps = tr('snare'); let pb = sb(); let kicks = pk > 0.05;
+  const tick = () => {
+    const el = performance.now() - t0; const k = tr('kick'); const s = tr('snare'); const b = sb();
+    if (k > 0.05) kicks = true;
+    const wrap = b != null && pb != null && b < pb - 0.03;
+    if ((want === 'kick' || want === 'auto') && k > 0.75 && k > pk + 0.2) return res(at('kick'));
+    if (want === 'snare' && s > 0.75 && s > ps + 0.2) return res(at('snare'));
+    if (want === 'beat' && wrap) return res(at('beat'));
+    if (want === 'bar' && wrap && A.beatInBar === 1) return res(at('bar'));
+    if (want === 'auto' && !kicks && el > period * 1.05 && (wrap || b == null)) return res(at(b == null ? null : 'beat'));
+    if (el > cap || !A.playing) return res(at(null));
+    pk = k; ps = s; if (b != null) pb = b;
+    setTimeout(tick, 6);
+  };
+  tick();
+});`;
+  // the page's song reaching time t (or stopping)
+  const UNTIL_JS = (t, cap) => `const A = globalThis.audio; const T = ${Number(t)}; const t0 = performance.now();
+return await new Promise((res) => { const tick = () => { if (!A.playing || A.time >= T - 0.004 || performance.now() - t0 > ${Math.round(cap)}) return res(JSON.stringify({ t: Math.round(A.time * 100) / 100, bar: A.bar, beat: A.beatInBar, ph: Math.round(A.beatPhase * 100) / 100 })); setTimeout(tick, 4); }; tick(); });`;
+  const momentStat = { asked: 0, hit: 0, ms: 0, last: null };
+  async function pageJson(d, js, ms) {
+    if (!d.evalInSketch) return null;
+    try {
+      const r = await Promise.race([d.evalInSketch(js), sleep(ms).then(() => null)]);
+      return r?.ok && typeof r.value === 'string' ? JSON.parse(r.value) : null;
+    } catch { return null; }
+  }
+  async function onTheMusic(d, want) {
+    momentStat.asked += 1;
+    const cap = want === 'bar' ? 3400 : 2400;
+    const v = await pageJson(d, MOMENT_JS(want, cap), cap + 900);
+    momentStat.last = v;
+    if (v?.kind) { momentStat.hit += 1; momentStat.ms += v.ms || 0; }
+    return v;
+  }
+  const momentText = (m) => (m?.kind ? `on ${m.kind === 'bar' ? 'the bar line' : `a ${m.kind}`} (${m.t.toFixed(1)} s${m.bar > 0 ? `, bar ${m.bar} beat ${m.beat}` : ''})` : '');
+  // the song is playing on screen (backstage the scene's clock is silent and set by the call)
+  const songPlays = (d) => { try { return !d.backstage && Boolean(d.media?.loaded && d.media.info().playing); } catch { return false; } };
+
   async function screenshot(d, args, B = bucketOf(d)) {
     const asked = Boolean(args.size || args.region || args.compare || Number(args.frames) >= 2 || args.force);
     const later = !asked && B.pics > 0;
@@ -469,21 +556,42 @@ const ThreeDirector = (() => {
     // shaders (modelcompile101). Right after an Apply or a model added, it showed the stand-ins.
     const settle = await picsSettled(d);
     const n = Math.max(0, Math.min(8, Math.round(Number(args.frames) || 0)));
+    // (round 112, eyes112) on the music: the song playing on screen, a scene that reacts to it (or on: named), no seek
+    const on = String(args.on || '').toLowerCase();
+    const musical = at == null && on !== 'now' && Boolean(d.evalInSketch) && songPlays(d) && (Boolean(on) || reactsToSound(d));
     if (n >= 2) {
-      const gap = Math.max(0.1, Math.min(5, Number(args.gap) || 0.5));
-      const shots = []; const labels = [];
-      const t0 = d.media.loaded ? d.media.info().time : null;
-      for (let i = 0; i < n; i += 1) {
-        const url = await grab(d, max, args.region);
-        if (url) { shots.push(frameCanvas(await loadImg(url), { max, region: args.region })); labels.push(t0 != null ? `${i + 1} · ${(d.media.info().time || 0).toFixed(2)} s` : `${i + 1} · +${(i * gap).toFixed(1)} s`); }
-        if (i < n - 1) await sleep(gap * 1000);
+      // (round 112, eyes112) the song playing: a strip over one bar from its next bar line (when no gap is given), the
+      // frames on the beats (4) or eighths (8), each labelled with its beat; laid out 2 across up to 4 frames (each
+      // frame 384 px wide at the default size, not the old row of four at 192)
+      const shots = []; const labels = []; let head = '';
+      const bar = musical && !args.gap ? await onTheMusic(d, 'bar') : null;
+      if (bar?.kind) {
+        const gapS = ((60 / (bar.bpm || 120)) * (bar.bpb || 4)) / n;
+        for (let i = 0; i < n; i += 1) {
+          const p = i ? await pageJson(d, UNTIL_JS(bar.t + i * gapS, Math.min(3500, gapS * 1000 + 1500)), 4500) : { t: bar.t, beat: bar.beat, ph: 0 };
+          const url = await grab(d, max, args.region);
+          if (url) { shots.push(frameCanvas(await loadImg(url), { max, region: args.region })); labels.push(p ? `${i + 1} · beat ${Math.round((p.beat + (p.ph || 0)) * 4) / 4} · ${p.t.toFixed(2)} s` : `${i + 1}`); }
+        }
+        head = `${shots.length} frames over bar ${bar.bar} of the song (${bar.bpm} bpm), from its first beat`;
+      } else {
+        const gap = Math.max(0.1, Math.min(5, Number(args.gap) || 0.5));
+        const t0 = d.media.loaded ? d.media.info().time : null;
+        const start = performance.now();
+        for (let i = 0; i < n; i += 1) {
+          if (i) await sleep(Math.max(0, start + i * gap * 1000 - performance.now())); // (a steady clock: a picture's own time no longer adds to the gap)
+          const url = await grab(d, max, args.region);
+          if (url) { shots.push(frameCanvas(await loadImg(url), { max, region: args.region })); labels.push(t0 != null ? `${i + 1} · ${(d.media.info().time || 0).toFixed(2)} s` : `${i + 1} · +${((performance.now() - start) / 1000).toFixed(1)} s`); }
+        }
+        head = `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart`;
       }
       if (!shots.length) return { ok: false, error: 'No image: the sketch is not rendering (check three_console).' };
-      const sheet = tile(shots, labels, Math.min(1600, Math.round(max * 1.5)));
-      prevShot = shots.at(-1);
+      const cols = shots.length <= 4 ? 2 : shots.length <= 6 ? 3 : 4;
+      const sheet = tile(shots, labels, Math.min(1600, Math.round(max * 1.5)), cols);
+      keepLook(d, B, shots.at(-1), 'the last frame of a strip');
       B.pics += 1;
-      return { ok: true, images: [{ data: await jpeg(sheet, SHOT_Q), mime: 'image/jpeg' }], value: `${shots.length} frames of "${d.codeOf().sketch}" ${gap} s apart, left to right${shots.length > 4 ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
+      return { ok: true, images: [{ data: await jpeg(sheet, SHOT_Q), mime: 'image/jpeg' }], value: `${head}, left to right${shots.length > cols ? ', then the next row' : ''} (${sheet.width}×${sheet.height}).` };
     }
+    const moment = musical ? await onTheMusic(d, ['kick', 'snare', 'beat', 'bar'].includes(on) ? on : 'auto') : null;
     const url = await grab(d, max, args.region);
     if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
     const img = await loadImg(url);
@@ -498,9 +606,15 @@ const ThreeDirector = (() => {
     }
     B.lastSig = { key: sigKey, sig };
     let out = c; let note = '';
-    if (args.compare && prevShot) { out = tile([prevShot, c], ['before', 'now'], Math.min(1600, max * 2)); note = ' Left: the previous screenshot, right: now.'; } else if (args.compare) note = ' (No earlier screenshot to compare with yet.)';
+    const when = momentText(moment);
+    if (when) note += ` Taken ${when}.`;
+    else if (moment) note += ' Taken mid-motion (the song plays; no beat came in time).';
+    if (args.compare) {
+      const p = lookBefore(d, B);
+      if (p) { out = tile([p.c, c], ['before', 'now'], Math.min(1600, max * 2)); note += ` Left: ${p.mine ? 'your previous look' : 'the last look at this scene'} (${agoText(Date.now() - p.at)}${p.how ? `, ${p.how}` : ''}), right: now.`; } else note += ' (No earlier screenshot of this scene to compare with yet.)';
+    }
     if (later) note += ' A later picture in this reply: small; size: small|medium for detail.';
-    prevShot = c;
+    keepLook(d, B, c, when);
     B.pics += 1;
     // the preview's own small JPEG at the right size goes out as it is (no second encode)
     const asIs = out === c && !args.region && /^data:image\/jpeg/.test(url) && img.width === c.width && img.height === c.height;
@@ -526,6 +640,31 @@ const ThreeDirector = (() => {
       if (v?.busy) settleStat.capped += 1;
       return v;
     } catch { return null; }
+  }
+
+  // (round 112, eyes112) what the layer list didn't say about what's on screen: the scene's errors (a layer that threw
+  // draws nothing, yet was listed like the others), its 🧊 models (loading, loaded, failed) and pictures still going up
+  // to the graphics card (blurry stand-ins on screen), and whether the song plays (moving parts change from frame to
+  // frame). One short line each, only what applies (≈ 10–40 tokens).
+  const MODEL_RE = /\blab3d\.model\s*\(|\b(?:GLTF|OBJ|FBX|USDZ|PLY|STL)Loader\b/;
+  async function sceneNow(d, r) {
+    const out = {};
+    try {
+      const errs = d.report?.()?.errors || [];
+      out.errors = errs.length ? errs.slice(0, 3).map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 160)}`).concat(errs.length > 3 ? [`… ${errs.length - 3} more (three_console)`] : []) : 'none';
+    } catch { /* backstage without a report */ }
+    let models = false;
+    try { models = (r.layers || []).some((L) => L.visible !== false && MODEL_RE.test((() => { try { return d.codeOf(L.id ?? L.name).code || ''; } catch { return ''; } })())); } catch { /* none */ }
+    if (models) {
+      const v = await pageJson(d, `return JSON.stringify({ m: (globalThis.lab3d?.list?.() || []).map((x) => ({ name: x.name, layer: x.layer, loaded: x.loaded, error: x.error ? String(x.error).slice(0, 140) : null, p: x.progress })), busy: Boolean(window.__labPicsSettle?.busy?.()) })`, 1500);
+      if (v) {
+        const nameOf = (id) => (r.layers || []).find((L) => L.id === id)?.name;
+        const ms = (v.m || []).map((x) => `${x.name || 'model'}${nameOf(x.layer) ? ` (${nameOf(x.layer)})` : ''} ${x.error ? `failed: ${x.error}` : x.loaded ? 'loaded' : `loading${x.p ? ` ${Math.round(x.p * 100)} %` : ''}`}`);
+        out.models = `${ms.length ? ms.join('; ') : 'none loaded by lab3d'}${v.busy ? ' · pictures still going up (blurry stand-ins may show)' : (v.m || []).some((x) => x.loaded) ? ' · textures sharp' : ''}`;
+      }
+    }
+    if (songPlays(d) && reactsToSound(d)) out.motion = 'the song plays and the scene reacts to it: three_screenshot waits for the next kick or beat (on: "now" for any moment)';
+    return out;
   }
 
   // ---------- reading / searching code ----------
@@ -788,6 +927,7 @@ const ThreeDirector = (() => {
   async function handle(tool, args, d, ctx = {}) {
     if (!d.codeOf) return null; // an older Lab without the hooks: its own handler answers
     const B = bucketOf(d, ctx);
+    bpmNow = () => { try { const i = d.media?.info?.(); return i?.grid?.bpm || i?.bpm || 0; } catch { return 0; } };
     if (tool === 'three_edit_code') {
       const edits = Array.isArray(args.edits) ? args.edits : [];
       if (!edits.length) return { ok: false, error: 'No edits given.' };
@@ -987,7 +1127,7 @@ const ThreeDirector = (() => {
       // (report: 'full', as three_add_layer has): since the lean text below (round 37) their layer lookups threw
       // ("v?.layers?.find is not a function") and a layer they had just added wasn't found
       if (args.report === 'full') return { ok: true, value: r };
-      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, ...(r.picked ? { picked: r.picked } : {}), note: r.note }; // (round 92) picked: the object the owner picked in the scene editor
+      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, ...(r.picked ? { picked: r.picked } : {}), ...(await sceneNow(d, r)), note: r.note }; // (round 92) picked: the object the owner picked in the scene editor
       const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
       return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };
     }
@@ -1049,6 +1189,7 @@ const ThreeDirector = (() => {
     onHistory(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     newTurn, seen, saved: () => JSON.parse(JSON.stringify(savedNotes)),
     settled: () => ({ ...settleStat }), // (round 102, labchat102) screenshots that waited for textures
+    moments: () => ({ ...momentStat }), // (round 112, eyes112) screenshots taken on the music (asked, on a hit, ms waited, the last)
     // (round 28, lookmatch) the small-picture path, for pictures made outside a tool call (a reference for the director)
     pictures: { frameCanvas, tile, jpeg, loadImg },
     // tools/three.js: every preview message (onBox), and its director's waits after a run (settle)
