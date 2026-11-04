@@ -269,23 +269,30 @@ function create(opts = {}) {
     if (behind) {
       const incoming = lines(await git(['diff', '--name-only', from, remoteRef]));
       const added = lines(await git(['diff', '--name-only', '--diff-filter=A', from, remoteRef]));
+      const removedR = dirtyR.out ? lines(await git(['diff', '--name-only', '--diff-filter=D', from, remoteRef])) : [];
       const tracked = new Set(lines(await git(['ls-files', '--', ...added.slice(0, 400)])));
       plan = {
         collide: added.filter((f) => !C.OWN.test(f) && !tracked.has(f) && fs.existsSync(path.join(DIR, f))),
         tooLong: PLAT === 'win32' && (await git(['config', '--bool', 'core.longpaths'])).out !== 'true' ? C.tooLong(DIR, incoming, PLAT) : [],
         data: incoming.filter((f) => C.OWN.test(f)),
         diverged: aheadN > 0,
+        // (round 122, updatesafe122) files edited here that the update removes (round 116 removed ~340): said before
+        // the update, kept in kept-from-updates/ after it, never in the way
+        removedEdits: dirtyR.out ? (() => { const rm = new Set(removedR); return lines(dirtyR).map((l) => l.slice(3)).filter((f) => rm.has(f)); })() : [],
         // (round 60) no shared history and nothing made here: main is simply taken (git reset --keep, edits kept)
         ...(unrelated ? { unrelated: true, take: aheadN === 0 } : {}),
       };
     }
     const last = C.readState(DIR, 'last');
     // an update finished (or not) as Hearth restarted: said once, in the same words as any other
+    // (round 122, updatesafe122) what this version's first start tidied after an older Hearth's update: said once
+    const tidied = C.readState(DIR, 'tidied')?.note || null;
+    if (tidied) C.writeState(DIR, 'tidied', null);
     let swapped = C.readState(DIR, 'swapped');
     if (swapped) {
       C.writeState(DIR, 'swapped', null);
       if (swapped.ok) {
-        const n = [swapped.kept?.length ? `Your own edits to ${swapped.kept.join(', ')} clashed with the update: kept in the stash "${swapped.stash?.name}".` : '',
+        const n = [swapped.kept?.length ? C.keptNote(swapped, swapped.stash?.name) : '', // (round 122, updatesafe122) removed vs clashed, the kept-from-updates folder
           swapped.own?.length && swapped.stash ? C.ownNote(swapped.own, swapped.stash.name) : '',
           swapped.keptFiles ? `You had added ${swapped.keptFiles.files.join(', ')} by hand: the update's file is in place, yours is kept in the stash "${swapped.keptFiles.name}".` : ''].filter(Boolean).join(' ');
         swapped = { ...swapped, note: `Finished as Hearth restarted.${n ? ` ${n}` : ''}` };
@@ -295,7 +302,7 @@ function create(opts = {}) {
       }
     }
     return {
-      notes, plan, swapped,
+      notes, plan, swapped, ...(tidied ? { tidied } : {}),
       ok: true, head: head.out.slice(0, 7), remote: remote.out.slice(0, 7), branch: pre.branch,
       behind, ahead: aheadN, commits, ...(stale ? { stale: true } : {}),
       dirty: dirtyR.out ? dirtyR.out.split('\n').length : 0, dir: DIR,
@@ -397,7 +404,9 @@ function create(opts = {}) {
     try {
       const head = parse(await git(['show', `HEAD:${CONFIG}`]));
       const brought = [];
-      for (const [h] of list) {
+      const tidied = [];
+      for (const [h, m] of list) {
+        tidied.push(...(await tidyLeft(h, m)));
         for (const f of lines(await git(['diff', '--name-only', `${h}^1`, h]))) {
           if (f === CONFIG) { brought.push(...(await configFrom(h, head, own?.config || undefined))); continue; }
           if (brought.includes(f) || C.OWN.test(f)) continue;
@@ -410,8 +419,50 @@ function create(opts = {}) {
         done.add(h);
       }
       C.writeState(DIR, 'ownback', { at: Date.now(), shas: [...done].slice(-40), brought });
-      return { ok: true, brought };
+      return { ok: true, brought, ...(tidied.length ? { tidied } : {}) };
     } finally { busy = false; }
+  }
+  // (round 122, updatesafe122) what an update run by an OLDER Hearth left behind, tidied at this version's first start
+  // (the update from round ≤ 121 is run by that round's own updater; this one only runs after it):
+  //  - a file the update removed, still in the folder with the owner's edit (untracked, the stash's exact content)
+  //  - a file left with git's conflict marks ("Updated upstream" / "Stashed changes"): one removed file in the same
+  //    stash made the old `checkout HEAD -- …` fail for every file, so a clashing edit stayed half-applied
+  // The owner's version goes into kept-from-updates/ (a marked file is kept there too, as it was), then the removed file
+  // goes / the marked one is the update's again. Nothing else is touched; the stash stays. Said once (status().tidied).
+  // → [files tidied]
+  const MARKS = /^<{7} Updated upstream\r?$[\s\S]*^>{7} Stashed changes\r?$/m;
+  async function tidyLeft(h, name) {
+    const [, from = '', to = ''] = /\(([0-9a-f]*) → ([0-9a-f]*)\)/.exec(name || '') || [];
+    const removed = []; const marked = [];
+    for (const f of lines(await git(['diff', '--name-only', `${h}^1`, h]))) {
+      if (C.OWN.test(f) || C.OWNER_FILES.includes(f)) continue;
+      const mine = await sha(`${h}:${f}`);
+      if (!mine || !fs.existsSync(path.join(DIR, f))) continue;
+      if (!(await sha(`HEAD:${f}`))) {
+        if ((await git(['ls-files', '--error-unmatch', '--', f])).ok) continue; // tracked again (added by hand): not ours
+        if ((await git(['hash-object', '--', f])).out === mine) removed.push(f);
+        continue;
+      }
+      let text = ''; try { text = readRetry(fs, path.join(DIR, f)); } catch { continue; }
+      if (MARKS.test(text) && !MARKS.test((await git(['show', `HEAD:${f}`])).out)) marked.push(f);
+    }
+    if (!removed.length && !marked.length) return [];
+    const aside = await C.runStepsAsync(C.keepAside(DIR, { sha: h, name }, [...removed, ...marked], from, to), git);
+    if (!aside.dir) return [];
+    const abs = path.join(DIR, ...aside.dir.split('/'));
+    const done = [];
+    for (const f of removed.filter((x) => aside.files.includes(x))) {
+      try { fs.unlinkSync(path.join(DIR, f)); C.rmEmptyDirs(DIR, f); done.push(f); } catch (err) { console.warn(`update: ${f} not removed`, err.code || err.message); }
+    }
+    for (const f of marked.filter((x) => aside.files.includes(x))) {
+      try { fs.copyFileSync(path.join(DIR, f), path.join(abs, `${f}.as-the-update-left-it.txt`)); } catch { continue; } // never put back without that copy
+      if ((await git(['checkout', 'HEAD', '--', f])).ok) done.push(f);
+    }
+    if (done.length) {
+      const note = C.keptNote({ kept: done, aside: { ...aside, removed: removed.filter((x) => done.includes(x)) } }, name);
+      try { C.writeState(DIR, 'tidied', { at: Date.now(), files: done, dir: aside.dir, note: `Hearth tidied what an earlier update left. ${note}` }); } catch { /* the folder's README says it */ }
+    }
+    return done;
   }
   // (round 55, configsafe) theme.css from commit `rev` into the owner's data/theme.css, only while that one is the
   // repo's own (missing, HEAD's or the stash's base): an owner's CSS is never written over → true when it came
@@ -592,11 +643,13 @@ function create(opts = {}) {
     const kept = back.kept;
     const notes = [];
     if (j.edits && back.ok) notes.push(`Your own edits (${s.dirty || 'some'} file${s.dirty === 1 ? '' : 's'}) were put aside and are back in place.`);
-    if (kept.length) notes.push(`Your own edits to ${kept.join(', ')} clashed with the update: the file${kept.length === 1 ? ' has' : 's have'} the new version, and your edits are kept in the stash "${j.edits.name}" (\`git stash list\`).`);
+    // (round 122, updatesafe122) a file the update removed is said as removed (not "has the new version"), and the
+    // folder holding the owner's versions (kept-from-updates/…) is named; the stash stays as before
+    if (kept.length) notes.push(C.keptNote(back, j.edits.name));
     if (back.own?.length && !back.ok) notes.push(C.ownNote(back.own, j.edits.name));
     if (j.files) notes.push(`You had added ${j.files.files.join(', ')} by hand, and the update brings a file with the same name: the update's file is in place, yours is kept in the stash "${j.files.name}".`);
     return { ok: true, changed: files.length, restart: needsRestartIn(DIR, files), from: j.from.slice(0, 7), to: after.slice(0, 7), files: files.slice(0, 200),
-      kept, own: back.own || [], stashes: [j.edits && !back.ok ? j.edits : null, j.files || null].filter(Boolean).map((x) => x.name), note: notes.join(' ') };
+      kept, own: back.own || [], stashes: [j.edits && !back.ok ? j.edits : null, j.files || null].filter(Boolean).map((x) => x.name), note: notes.join(' '), ...(back.aside ? { aside: back.aside } : {}) };
   }
   // an update that didn't go in: the partial files put back (only the update's own), the stashes back, journal closed
   async function undo(j) {
@@ -631,7 +684,7 @@ function create(opts = {}) {
       C.writeState(DIR, 'last', null);
       C.writeState(DIR, 'wentBack', { from: head, to: last.from, at: Date.now() });
       return { ok: true, back: true, changed: files.length, restart: needsRestartIn(DIR, files), from: head.slice(0, 7), to: last.from.slice(0, 7), files: files.slice(0, 200),
-        note: put.kept.length ? `Your edits to ${put.kept.join(', ')} are kept in the stash "${st.name}".` : '' };
+        note: put.kept.length ? (put.aside ? C.keptNote(put, st.name) : `Your edits to ${put.kept.join(', ')} are kept in the stash "${st.name}".`) : '' }; // (round 122, updatesafe122) a file that version doesn't have: kept-from-updates/
     } finally { busy = false; }
   }
 
