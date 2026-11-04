@@ -1,7 +1,7 @@
 // Projects (round 23): a project made by hand (/project new: the chat comes along), from a make (automatically: same
 // name, mark and color, its rooms in one group), from a suggestion (names + links, no tokens); Home's cards with covers
 // and "continue where you left off"; Search everything across chats / scenes / boards / commands with type filters and
-// keys; the chats list grouped by project (collapsible, not repeated under agents, ⏷ only one project, grouping off);
+// keys; the chats list (round 120: the open project's chats only, since round 116; ⏷ only one project, grouping off);
 // the Lab's sketch picker grouped by project; Ctrl/⌘+Shift+K; then the data on disk.
 //   node dev/smoke.js --fake-engines --script dev/checks/projects.js --check-timeout 400000 --shot /tmp/hearth-projects/end.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,11 +43,13 @@ step(roomIds.length === 2 && roomIds.every((id) => mp.items.some((x) => x.ref ==
 function C_count(p) { return ProjectsCore.countText(p); }
 await until(() => mp.items.some((x) => x.type === 'scene'), 15000);
 step(mp.items.some((x) => x.type === 'scene'), 'the Lab room\'s scene joined it (chat-scenes link event)', C_count(mp));
-Panel.render();
+// (round 120, projperf120) the chats list is the open project's since round 116 (projchats116): no project / make groups
+// in it (Projects' and makes' groups came back after a lazy load until round 120)
+ProjChats.setScope(mp.id); Panel.render();
 await wait(200);
-const pg = document.querySelector(`#chat-groups .pj-group[data-project="${mp.id}"]`);
-step(pg && pg.querySelectorAll('.item').length === 2 && !document.querySelector(`#chat-groups .mk-group:not(.pj-group)[data-make="${make.id}"]`), 'the chats list: one group for the make\'s project (no second make group)', pg?.textContent.slice(0, 80));
-step(pg && pg.querySelector('.mk-st') && pg.dataset.make === make.id, 'the group keeps the make\'s status (its progress paints there)');
+const mpRows = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
+step(roomIds.every((id) => mpRows.filter((k) => k === id).length === 1) && !document.querySelector('#chat-groups .pj-group, #chat-groups .mk-group'), 'the chats list with the make\'s project open: its rooms, once each, no project or make group', mpRows);
+step(document.querySelector('#panel .pc-bar .pc-name')?.textContent === mp.name, 'the bar above the list names the make\'s project');
 
 // ---- 3. a suggestion (names, links, timing; no tokens) ----
 const sc = [mkChat('Stoop Ronin · characters', claude.id, 3600e3), mkChat('stoop ronin website', claude.id, 7200e3), mkChat('Stoop Ronin script')];
@@ -133,13 +135,10 @@ const eMsg = await say('/everything katana');
 step(/Stoop Ronin intro/.test(eMsg), '/everything <words> answers in a chat (code source)', eMsg.split('\n')[0]);
 
 // ---- 6. the chats list ----
-Panel.render(); await wait(100);
-const rg = document.querySelector(`#chat-groups .pj-group[data-project="${ronin.id}"]`);
-step(rg && rg.querySelectorAll('.item').length === 3, 'the chats list groups the project\'s chats under its name and mark', rg?.querySelector('.group-name')?.textContent);
-step(!sc.some((id) => document.querySelector(`#chat-groups .group[data-id="${claude.id}"] .item[data-key="${id}"]`)), 'they aren\'t repeated under their agent');
-rg.querySelector('.group-toggle').click(); await wait(80);
-step(document.querySelector(`#chat-groups .pj-group[data-project="${ronin.id}"]`).querySelectorAll('.item').length === 0, 'the group collapses');
-document.querySelector(`#chat-groups .pj-group[data-project="${ronin.id}"] .group-toggle`).click(); await wait(80);
+// (round 120, projperf120) one project's chats under their AI (round 116), no project groups
+ProjChats.setScope(ronin.id); Panel.render(); await wait(100);
+const rRows = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
+step(sc.every((id) => rRows.filter((k) => k === id).length === 1) && rRows.every((id) => ronin.items.some((x) => x.type === 'chat' && x.ref === id)) && !document.querySelector('#chat-groups .pj-group'), 'the chats list with the project open: just its chats, once each, no project group', rRows);
 await say(`/project filter ${ronin.name}`);
 await wait(80);
 const shown = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
@@ -151,8 +150,9 @@ await wait(80);
 step(!document.querySelector('#chat-groups .pj-group'), 'Group by project off: agents only');
 await say('/project group on');
 await wait(80);
-step(Boolean(document.querySelector('#chat-groups .pj-group')), '…and back on');
+step(!document.querySelector('#chat-groups .pj-group'), '…and on: still one project\'s list, no groups (round 120: round 116\'s list)'); // (round 120, projperf120)
 // the chat's right-click menu has Project ›
+ProjChats.setScope(Projects.ofItem('chat', c2)[0]?.id); Panel.render(); await wait(80); // (round 120, projperf120) its project's list
 const row = document.querySelector(`#chat-groups .item[data-key="${c2}"]`);
 row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
 await wait(80);
