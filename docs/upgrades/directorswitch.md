@@ -65,8 +65,10 @@ The switcher puts these together behind one visible button. The in-place switch 
   link, routed Lab call, draft with the scene line, nothing sent, no brief), back to Claude (messages intact), the busy
   dot and the "new reply" dot / row, Continue (brief once: first message yes, second no), Alt+Shift+A both ways, the
   keys sheet, Ctrl/⌘+K, the ✦ row, signed out and not installed (EngineHealth stubbed: no terminal opens).
-- Ran: `directorswitch director-dock labchat92 labchat102 eyes112 labload94 lazy handoff unit:handoff-test
-  unit:winmac-test unit:boot-test unit:lazymanifest-test`, then `release`.
+- **Ran (12/12 passed):** `directorswitch director-dock labchat92 labchat102 eyes112 labload94 lazy handoff
+  unit:handoff-test unit:winmac-test unit:boot-test unit:lazymanifest-test`.
+- **Skipped:** `node dev/run-checks.js release` was started and then stopped at the owner's request (skip the remaining
+  tests), so it has no result.
 
 ## Left / notes
 - The in-place paths (astra.js `/director-engine`, `Astra.switchDirector`, offline.js "Ask Astra instead") flip the
