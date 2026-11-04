@@ -70,7 +70,7 @@ const ParityProbe = (() => {
       else if (r?.need === 'install') { fixBtn.hidden = false; fixBtn.textContent = 'Install Codex…'; fixBtn.onclick = () => { dialog.close(); EngineHealth.fix('codex', 'install'); }; } // a visible window, never silent
       else if (r?.need === 'doctor') { fixBtn.hidden = false; fixBtn.textContent = 'Open the doctor'; fixBtn.onclick = () => { dialog.close(); Commands.exec('/doctor', H.activeId); }; }
       status.textContent = r?.ok ? 'Astra works like Claude on this computer ✓' : r?.need ? (r.line || r.steps?.[0]?.text || 'Codex isn\'t ready.') : 'Something didn\'t pass. "Copy report for Claude" and paste it to Claude to get it fixed.';
-    }).catch((err) => { status.textContent = `The check couldn't run (${err.message}).`; });
+    }).catch((err) => { status.textContent = `The check couldn't run: ${(window.calmError ? calmError(err) : 'something went wrong')}.`; });
     return null;
   }
 

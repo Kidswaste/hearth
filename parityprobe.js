@@ -233,13 +233,20 @@ function report({ head, steps, version, mode, threads = [], requests = [], items
 }
 
 let running = null;
+// (round 122) the Trash only where there is one (WinPolish / MacPolish trashCheck): else the folder stays, listed as left
+async function toTrash(p) {
+  const check = process.platform === 'win32' ? require('./winpolish').trashCheck(p, { platform: 'win32' })
+    : process.platform === 'darwin' ? require('./macpolish').trashCheck(p, { platform: 'darwin' }) : { ok: true };
+  if (!check.ok) throw new Error(check.why || 'no Trash on this disk');
+  await require('electron').shell.trashItem(check.path || p);
+}
 function register(ipcMain, { engines, readConfig, send = () => {}, trash, settings } = {}) {
   ipcMain.handle('parityprobe:run', async () => {
     if (running) return { ok: false, busy: true, line: 'The check is already running.' };
     try {
       if (settings) engines.setEnginePaths(settings().enginePaths);
       const astra = (readConfig?.().agents || []).find((a) => a.mode === 'native' && a.engine === 'codex');
-      running = run({ engines, trash: trash || ((p) => require('electron').shell.trashItem(p)), model: astra?.model || null, onStep: (s) => send('parityprobe:step', s) });
+      running = run({ engines, trash: trash || toTrash, model: astra?.model || null, onStep: (s) => send('parityprobe:step', s) });
       return await running;
     } finally { running = null; }
   });
