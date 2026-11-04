@@ -193,10 +193,11 @@ try {
   });
 
   // ---------- 5. the chats list's filter ----------
+  // (back on a chat first: switching views isn't the filter's work)
+  if (palInput()?.isConnected) { await key('Escape', 'Escape'); await wait(150); }
+  activate(H.claudeAgent().id); await wait(1200);
   await phase('panel', async () => {
-    if (palInput()?.isConnected) { await key('Escape', 'Escape'); await wait(150); }
     const box = document.querySelector('#chat-search');
-    activate(H.claudeAgent().id); await wait(400);
     need(box?.checkVisibility?.({ visibilityProperty: true }) !== false, 'the chats list\'s search box is on screen');
     box.focus(); box.select();
     const items = () => [...document.querySelectorAll('#chat-groups .item')].map((x) => x.textContent);

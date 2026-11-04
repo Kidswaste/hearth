@@ -30,12 +30,12 @@ it is made up, from a fixed seed. No real data is ever used.
 | **`?word` in Ctrl/⌘+K**: results after a key | 120 ms wait, then the whole-text search: **230–450 ms of the store thread for each key** (2,200 chats parsed or scanned). Every save waited behind it | **Title rows at once**: 33–67 ms painted, about 1 ms of the window's work. **Message rows** in 110–130 ms painted. The store thread takes **3–10 ms an ask** |
 | `?word` before the index exists (first use ever, no kept index) | 308 ms to the first rows, then 0.2–0.45 s a key | First message row in **0.43–0.45 s** (the most recent chats are read first). The other rows fill in as the 2,200 chats are read: 13–15 s, in asks of ≤ 45 ms, never blocking the window |
 | One letter (`?k`) | nothing | the chats whose title starts with it |
-| **The first Ctrl/⌘+K** (Find anything loads) | one **128 ms** window task (98 ms of CPU) | 61–70 ms, of which 48–50 ms is CPU. The box was busy, so the check reports "can't tell". The index is now built in slices of 8 ms |
+| **The first Ctrl/⌘+K** (Find anything loads) | one **128 ms** window task (98 ms of CPU) | **no task over 50 ms**. The work is spread over three tasks: its code, the fixed rows, then the menus and chats. Its indexes are built in slices of 8 ms |
 | Each later Ctrl/⌘+K | one **92 ms** task: every opening indexed the 2,200 chats again | none over 50 ms. The chats are indexed once per chats list |
 | Ctrl/⌘+K, typing a title (1, 2, 5 letters) | 13 / 6 / 4 ms of the window's work | 8 / 7 / 6 ms (3–8 ms) |
 | **Alt+F in the 63 MB chat**, typing "tunne" | **1,366 ms** and 312 ms window tasks: 557 marks at once, 23,000 for one letter | **no task over 50 ms**. About 200 marks near where you are; the rest are marked when you step to them |
 | **Recall card** (the index ready) | its search: **300–420 ms of the store thread** for a common word on 2,200 chats. Each ask could hold the thread 250 ms | its search: **14–22 ms**, same results. Asks are capped at 40 ms. The card answered in 95–132 ms |
-| Chats list filter (1, 2, 5 letters) | 39 / 40 / 44 ms | 53 / 51 / 53 ms. Both include the frame the list draws in. No task over 50 ms either way |
+| Chats list filter (1, 2, 5 letters) | 39 / 40 / 44 ms | 37–53 ms for the first letters, 5–7 ms once the list stops changing. Both include the frame the list draws in. No task over 50 ms either way |
 | Find in this project (Clink, 1, 2, 5 letters) | 113 / 63 / 88 ms | 143 / 87 / 93 ms. Its own ask takes 12 ms; the rest is waiting on the store thread's background slices and the frame. Not changed this round |
 | The main process | ≤ 0.6 ms per find call, no busy stretch | the same: 0.1–0.6 ms per call, no busy stretch, at most 14–45 ms of loop delay in any phase |
 
@@ -169,8 +169,19 @@ fixture in the unit test has a realistic vocabulary, and there each find takes p
   - the thread's time;
   - recall's results against round 112's;
   - the window's rows: the newest words win, and a failed ask is said.
-- `BIGPROFILE70=1 search113`: pass.
-- The required checks and the release run: see below.
+- `BIGPROFILE70=1 search113`: pass. It reported no window task over 50 ms in any phase it judges and no "can't tell".
+  Opening a project with Enter is reported only: 64–102 ms tasks, from the project's own open path, which warmopen113
+  is working on.
+- Required checks, run under the lock:
+  - `unit:search113-test`, `appsearch`, `recall`, `lazy`: pass.
+  - `chatwindow86` (`CHATWINDOW86=1`): passed when run again. It reported one "can't tell under load" on its edit
+    step (a 61 ms task with 29 ms of CPU). The first run failed on its "top" step: a 154 ms task with 11 ms of CPU and
+    143 ms off the CPU. That step scrolls up, which this round doesn't touch, and the run happened while the box was
+    busy.
+  - **`projsearch81` (`BIGPROFILE70=1`) fails**, and it fails the same way on round 112's code (`98f439f`, run by hand on
+    the same box): "Clink card: something else is under the mouse at 0,0 (the node was redrawn)", then "timed out:
+    Clink open". This happens in the Projects home before any search runs, so it is a known failure that predates this
+    round. Find in this project itself is measured by `search113` (Clink's Desk: "sohne" found, no long task).
 
 ## Caveats
 - Alt+F still folds case only, not accents. The window's marks and the store thread's find (chatwin-core `findHit`) would
