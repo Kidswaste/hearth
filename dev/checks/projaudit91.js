@@ -170,9 +170,11 @@ await section('6. move things in and out; drops on the Desk', async () => {
   step('＋ Add › A chat › a chat puts it in the project', inOk && Projects.get(pb.id).items.some((x) => x.ref === other.id), Projects.get(pb.id).items.map((x) => x.id));
   // out: its row in Project files › right-click › Take out of …
   const outRow = await fileRow(/Other chat for the desk/);
-  if (outRow) { await click(outRow, { right: true }); await pickMenu(/^Take out of/); }
-  await wait(300);
-  step('…its row in Project files › right-click › Take out of … takes it out (the chat itself stays)', Boolean(outRow) && !Projects.get(pb.id).items.some((x) => x.ref === other.id) && H.chats.some((c) => c.id === other.id), { row: Boolean(outRow), items: Projects.get(pb.id).items.map((x) => x.id) });
+  // (round 116, projchats116) a chat has exactly one project: its menu has no "Take out of …" (Move to project… instead)
+  let noTakeOut = false;
+  if (outRow) { await click(outRow, { right: true }); await wait(150); noTakeOut = ![...document.querySelectorAll('#menu .menu-item, #menu button')].some((n) => /^Take out of/.test(n.textContent.trim())); hideMenu?.(); }
+  await wait(200);
+  step('…its row in Project files › right-click has no "Take out of …" for a chat (one project per chat): it stays in the project', Boolean(outRow) && noTakeOut && Projects.get(pb.id).items.some((x) => x.ref === other.id), { row: Boolean(outRow), noTakeOut, items: Projects.get(pb.id).items.map((x) => x.id) });
   // a file dropped from the computer on the Desk
   const f = `${await window.hub.attachmentsDir()}/pa91-dropped.txt`;
   await window.hub.fs.write(f, 'dropped on the desk');

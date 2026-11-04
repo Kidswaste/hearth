@@ -65,6 +65,7 @@ const AUDIT = [
   ['datasafe.js', 2, 'not-chat', 'counts shown in the Data safety dialog'],
   ['datasafemain.js', 9, 'not-chat', 'main process: data files'],
   ['devreport.js', 3, 'throws', "a bug report: the last tool reply from the end (an old one's tools throw), the last 3 by role"],
+  ['director-switch.js', 5, 'windowed', 'whether a chat has any message yet (a window holds the recent ones); a carry-over loads the origin whole first (Native.loadWhole)'],
   ['director-task.js', 2, 'windowed', 'count; the last three messages read from the end (round 86)'],
   ['engine-health.js', 4, 'windowed', 'count, the last message; (signin111) after a sign-in: the last two messages (at(-1) / at(-2): role, flags)'],
   ['flows-ui.js', 1, 'windowed', 'the last reply, from the end'],
