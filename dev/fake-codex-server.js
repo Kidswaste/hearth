@@ -3,18 +3,25 @@
 const fs = require('fs');
 const readline = require('readline');
 const crypto = require('crypto');
-if (process.argv.includes('--version')) { console.log('codex-cli 0.162.0'); process.exit(0); }
+if (process.argv.includes('--version')) { console.log(`codex-cli ${process.env.FAKE_SERVER_VERSION || '0.162.0'}`); process.exit(0); }
+// (round 120, astraprobe120) `codex login status`, like the real CLI: FAKE_CODEX_LOGGED_OUT=1 → signed out
+if (process.argv[2] === 'login' && process.argv[3] === 'status') {
+  if (process.env.FAKE_CODEX_LOGGED_OUT) { console.error('Not logged in'); process.exit(1); }
+  console.error('Logged in using ChatGPT (fake)'); process.exit(0);
+}
 const dir = process.env.HEARTH_SERVER_TEST_DIR;
 const trace = (value) => { if (dir) fs.appendFileSync(`${dir}/trace.jsonl`, JSON.stringify({ pid: process.pid, ...value }) + '\n'); };
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');
 const notify = (method, params) => send({ method, params });
 const reply = (id, result) => send({ id, result });
 const threads = new Map(); let initialized = false; let active = null; let timer;
+const waiting = new Map(); let asked = 0; // (round 120, astraprobe120) this server's own requests (approvals) → their answer
 trace({ start: true, args: process.argv.slice(2) });
 const rl = readline.createInterface({ input: process.stdin });
 rl.on('close', () => process.exit(0));
 rl.on('line', (line) => {
   const m = JSON.parse(line); trace(m);
+  if (!m.method && m.id != null) { const w = waiting.get(m.id); waiting.delete(m.id); w?.(m.result || {}); return; } // (round 120, astraprobe120) Hearth's answer
   if (m.method === 'initialize') { reply(m.id, { userAgent: 'fake' }); return; }
   if (m.method === 'initialized') { initialized = true; return; }
   if (!initialized) { send({ id: m.id, error: { message: 'Not initialized' } }); return; }
@@ -40,8 +47,11 @@ rl.on('line', (line) => {
   if (m.method === 'account/rateLimits/read') { reply(m.id, { rateLimits: { primary: { usedPercent: 23, windowDurationMins: 10080, resetsAt: 1900000000 } } }); return; }
   if (m.method === 'thread/start' || m.method === 'thread/resume') {
     if (m.params.threadId === 'missing') { send({ id: m.id, error: { message: 'thread not found' } }); return; }
+    // (round 120, astraprobe120) FAKE_SERVER_NO_DEV=1: a server that refuses the field (Hearth retries the older way)
+    if (process.env.FAKE_SERVER_NO_DEV && m.params.developerInstructions) { send({ id: m.id, error: { message: 'Invalid request: unknown field `developerInstructions`' } }); return; }
     const id = m.params.threadId || crypto.randomUUID();
     if (!threads.has(id)) threads.set(id, { n: 0 });
+    Object.assign(threads.get(id), { instructions: m.params.developerInstructions || m.params.baseInstructions || '', approvalPolicy: m.params.approvalPolicy, cwd: m.params.cwd }); // (round 120, astraprobe120)
     if (id === 'with-baseline') {
       threads.get(id).n = 7;
       notify('thread/tokenUsage/updated', { threadId: id, turnId: 'prior', tokenUsage: { total: { inputTokens: 700, outputTokens: 140, cachedInputTokens: 350, reasoningOutputTokens: 35 } } });
@@ -58,6 +68,7 @@ rl.on('line', (line) => {
   active = meta;
   if (text === 'BADJSON') { process.stdout.write('{broken json\n'); return; }
   if (text === 'NOACK') return;
+  if (/check phrase|`[^`]+` with exactly this content/.test(text)) { probe(m, text); return; } // (round 120, astraprobe120)
   // Notifications may arrive before the RPC result (a real race seen in streaming clients).
   notify('turn/started', { threadId, turn: { id: turnId, status: 'inProgress' } });
   reply(m.id, { turn: { id: turnId, status: 'inProgress' } });
@@ -95,3 +106,37 @@ rl.on('line', (line) => {
     }, 15);
   }, 180);
 });
+
+// (round 120, astraprobe120) Hearth's "Check Astra works like Claude" (parityprobe.js), the way a model would do it:
+// "the check phrase" → the phrase from this thread's instructions; "Create the file `<path>` with exactly this content:
+// `<text>`" → an apply_patch file change for each, asking first when the thread's approval policy is "untrusted".
+// FAKE_SERVER_APPROVAL=bare: approval requests with no item/started before them (a shape Hearth can't read the files of)
+async function probe(m, text) {
+  const { threadId } = m.params; const t = threads.get(threadId) || {};
+  const turnId = crypto.randomUUID(); const meta = { threadId, turnId };
+  notify('turn/started', { threadId, turn: { id: turnId, status: 'inProgress' } });
+  reply(m.id, { turn: { id: turnId, status: 'inProgress' } });
+  let answer = '';
+  if (/check phrase/.test(text)) answer = (/check phrase is: (\S+)/.exec(t.instructions) || [])[1] || 'I have no check phrase.';
+  const done = [];
+  for (const [, file, content] of text.matchAll(/Create the file `([^`]+)` with exactly this content: `([^`]*)`/g)) {
+    const itemId = `patch-${++asked}`;
+    const item = { id: itemId, type: 'fileChange', changes: [{ path: file, kind: { type: 'add' }, diff: `${content}\n` }], status: 'inProgress' };
+    if (process.env.FAKE_SERVER_APPROVAL !== 'bare') notify('item/started', { ...meta, item });
+    let ok = true;
+    if (t.approvalPolicy === 'untrusted') {
+      const id = `approve-${asked}`;
+      const answered = new Promise((res) => waiting.set(id, res));
+      send({ id, method: 'item/fileChange/requestApproval', params: { ...meta, itemId, reason: null, grantRoot: null } });
+      ok = (await answered).decision === 'accept';
+    }
+    if (ok) { fs.mkdirSync(require('path').dirname(file), { recursive: true }); fs.writeFileSync(file, `${content}\n`); }
+    notify('item/completed', { ...meta, item: { ...item, status: ok ? 'completed' : 'declined' } });
+    done.push(`${file}: ${ok ? 'created' : 'refused'}`);
+  }
+  if (done.length) answer = done.join('\n');
+  notify('item/agentMessage/delta', { ...meta, itemId: 'm', delta: answer });
+  notify('item/completed', { ...meta, item: { id: 'm', type: 'agentMessage', text: answer } });
+  notify('thread/tokenUsage/updated', { ...meta, tokenUsage: { total: { inputTokens: 100, outputTokens: 10 }, last: { inputTokens: 100 } } });
+  notify('turn/completed', { threadId, turn: { id: turnId, status: 'completed' } });
+}

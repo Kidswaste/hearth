@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('hub', {
   createShortcuts: call('shortcuts:create'),
   restartApp: call('app:restart'),
   askOnce: call('engine:once'),
+  parityProbe: { run: call('parityprobe:run'), onStep: on('parityprobe:step') }, // (round 120, astraprobe120) Check Astra works like Claude (parityprobe.js)
   captureWindow: call('window:capture'),
   setOnTop: call('window:onTop'),
   exportData: call('data:export'),

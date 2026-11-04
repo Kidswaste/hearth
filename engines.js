@@ -1835,6 +1835,8 @@ module.exports = {
   getCodexUsage,
   send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
+  // (round 120, astraprobe120) "Check Astra works like Claude" (parityprobe.js): the plan a chat gets, how its prompt goes in
+  codexProbe: { plan: codexServerPlan, devOk: codexDevOk, min: CODEX_DEV_MIN, useBin: (bin) => { usedBin.codex = bin; } },
   // for tests (dev/astra-engine-test.js)
   _test: { dataLocksOf, lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
