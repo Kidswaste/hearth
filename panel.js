@@ -152,11 +152,13 @@ const Panel = (() => {
   }
   // the search: titles lowercased once per title (not per letter typed), #tags and folders from the chat's meta
   const lower = new Map(); // chat id -> [title, its lowercase]
-  function low(c) { const e = lower.get(c.id); if (e && e[0] === c.title) return e[1]; const l = String(c.title || '').toLowerCase(); lower.set(c.id, [c.title, l]); return l; }
+  // (round 113, search113) accents and case don't matter ("cafe" finds Café), and every word counts in any order
+  const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  function low(c) { const e = lower.get(c.id); if (e && e[0] === c.title) return e[1]; const l = fold(c.title); lower.set(c.id, [c.title, l]); return l; }
   function hit(c, q) {
-    if (!q || low(c).includes(q)) return true;
+    if (!q || low(c).includes(q) || (q.includes(' ') && q.split(' ').every((w) => low(c).includes(w)))) return true;
     const m = metaOf(c.id);
-    return (q.startsWith('#') && (m.tags || []).some((t) => `#${t}`.startsWith(q))) || (m.folder || '').toLowerCase().includes(q);
+    return (q.startsWith('#') && (m.tags || []).some((t) => `#${t}`.startsWith(q))) || fold(m.folder).includes(q);
   }
   const matches = (i, q) => !q || i.title.toLowerCase().includes(q) || (q.startsWith('#') && (i.tags || []).some((t) => `#${t}`.startsWith(q))) || (i.folder || '').toLowerCase().includes(q);
   // while typing, the next letter only looks through the last letter's matches
@@ -642,7 +644,7 @@ const Panel = (() => {
     if (frameReq) { cancelAnimationFrame(frameReq); frameReq = 0; }
     wire(root);
     const hadFocus = root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-    const q = filter.toLowerCase();
+    const q = fold(filter).replace(/\s+/g, ' ');
     // the last letter's matches are reused only while typing narrows the same search over the same chats
     if (!typing || !inc || inc.chats !== H.chats || inc.view !== view || !q.startsWith(inc.q)) inc = null;
     typing = false;

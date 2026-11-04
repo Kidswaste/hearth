@@ -530,6 +530,19 @@ function recallSync({ q = '', limit } = {}) {
   const byId = new Map(all.map((c) => [c.id, c]));
   return q ? { ...recallLocal.search(q, { textOf: (id, k) => byId.get(id)?.messages?.[k]?.text || '', limit }), left: 0 } : { left: 0, ...recallLocal.size() };
 }
+// (round 113, search113) find as you type in every chat's messages (storework.js op chatfind); without a thread (Node
+// tools): the same over the chats read here
+let chatFindLocal = null;
+function chatFind(o = {}) {
+  const msg = { op: 'chatfind', dir: CHATS_DIR, kv: KV_DIR, q: String(o.q || ''), budgetMs: Math.min(60, o.budgetMs || 30), limit: Math.min(50, o.limit || 20) };
+  if (thread()) return ask(msg);
+  const R = require('./recall-core');
+  chatFindLocal ||= R.createIndex();
+  const all = allChats();
+  for (const c of all) chatFindLocal.add(c.id, c);
+  const byId = new Map(all.map((c) => [c.id, c]));
+  return { ...chatFindLocal.find(msg.q, { textOf: (id, k) => byId.get(id)?.messages?.[k]?.text ?? '', limit: msg.limit }), left: 0, unread: [] };
+}
 // (round 81, projsearch81) Find in this project (projfind-core.js): on the store thread, after the saves asked before it;
 // here only without a thread (Node tests / tools)
 let findLocal = null;
@@ -812,6 +825,7 @@ module.exports = {
   listChats, warm,
   searchChats,
   recall,
+  chatFind, // (round 113, search113)
   projFind, // (round 81, projsearch81)
   getChat: (id) => readJson(chatPath(id), null),
   getChatFresh, openChat, openPart, saveChatDelta, chatWin, // (round 82, bigchat82; chatWin: round 86, chatwindow86)

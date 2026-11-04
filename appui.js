@@ -192,14 +192,13 @@ const AppUI = (() => {
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
     const close = () => box.remove();
     const run = (it) => { close(); it.run(); };
-    const debounced = debounce(() => paletteRender(), 120);
     list.addEventListener('click', (e) => { const r = e.target.closest('.palette-item'); const it = r && pal.shown[r.__i]; if (it) run(it); });
     list.addEventListener('mousemove', (e) => { const r = e.target.closest('.palette-item'); if (r && r.__i !== pal.sel) { pal.sel = r.__i; paletteMark(); } }, { passive: true });
     input.addEventListener('input', () => {
       // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
       if (input.value.startsWith('/') && window.Lazy?.isIn && !Lazy.isIn('cmdbar')) { const t = input.value; close(); Lazy.load('cmdbar').then(() => CmdBar.open(t)).catch(() => {}); return; } // (round 29: it loads after the first screen)
       if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
-      pal.sel = 0; if (input.value.startsWith('?')) debounced(); else paletteRender();
+      pal.sel = 0; paletteRender();
     });
     const step = (d) => { pal.sel = Math.max(0, Math.min(pal.sel + d, pal.shown.length - 1)); paletteMark(); pal.scrollFrame ||= requestAnimationFrame(() => { pal.scrollFrame = 0; pal.selEl?.scrollIntoView({ block: 'nearest' }); }); };
     input.addEventListener('keydown', (e) => {
@@ -221,10 +220,9 @@ const AppUI = (() => {
   async function paletteRender() {
     const { input, list } = pal;
     const q = input.value.trim();
-    if (q.startsWith('?')) {
-      const hits = await window.hub.searchChatText(q.slice(1));
-      pal.shown = hits.map((h) => ({ kind: `${H.agent(h.agentId)?.name || h.agentId} · ${h.count} match${h.count === 1 ? '' : 'es'}`, label: h.title, detail: h.snippet, run: () => Native.open(h.agentId, h.id) }));
-    } else {
+    // (round 113, search113) "?words": every project's chats, titles at once, messages as they're found (chatfind.js, lazy)
+    if (q.startsWith('?')) pal.shown = window.ChatFind ? ChatFind.rows(q.slice(1), () => pal.box.isConnected && pal.input.value.trim() === q && paletteRender()) : (Lazy.load('chatfind').then(() => pal.box.isConnected && paletteRender(), () => {}), [{ kind: 'Messages', label: 'Looking in your messages…', run() {} }]);
+    else {
       // (each item's text is lower-cased once per opening, not on every keystroke)
       const ql = q.toLowerCase();
       // (round 18, tidy) nothing typed: a short list, not a thousand rows: ↻ Again, your agents and tools (with their
@@ -269,7 +267,7 @@ const AppUI = (() => {
     p.input.focus();
     const n = ++palFresh;
     // (round 37, appsearch) the first opening loads Find anything; what's typed by then is searched in it
-    if (window.Lazy && !Lazy.isIn('appsearch')) Lazy.load('appsearch').then(() => { AppSearch.warm(); if (!p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }).catch(() => {});
+    if (window.Lazy && !Lazy.isIn('appsearch')) Lazy.load('appsearch').then(() => setTimeout(() => { AppSearch.warm(); if (!p.box.isConnected) return; p.items = paletteItems(); paletteRender(); })).catch(() => {}); // (round 113: its rows in the task after its code)
     if (!p.items.length) { p.items = paletteItems(); paletteRender(); return; } // the first opening: all at once
     paletteRender();
     setTimeout(() => { if (n !== palFresh || !p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }, 0);
@@ -317,43 +315,9 @@ const AppUI = (() => {
   window.hub.onFindResult((r) => findResultHandler?.(r));
 
   // ---------- shortcuts help ----------
-  const SHORTCUTS = [
-    ['Ctrl+K', 'Find anything: settings, AI setup, menus, chats and their messages, “how do I…”'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
-    ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
-    ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
-    ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],
-    ['Enter / Shift+Enter', 'Send / new line in a chat'], ['/', 'Chat commands (at the start of the message box; /help lists them)'], ['Esc', 'Stop the reply being written'],
-    ['Alt+T / Alt+R', 'In a chat box: open / close thinking · read the last reply aloud'], ['Alt+B / Alt+P / Alt+M', 'In a chat box: bookmark / pin / menu of the last reply'],
-    ['Alt+F', 'Find in this chat'], ['Alt+↑ / Alt+↓', 'Messages you sent before (in the chat box)'], ['Ctrl+Shift+U', 'Token & usage dashboard'],
-    ['Ctrl+V (image)', 'Attach a screenshot to a native chat'], ['Ctrl+Enter', 'Run code in Three.js Lab and shader playground'],
-    ['Ctrl+/ (in code)', 'Toggle comment'], ['Ctrl+D (in code)', 'Duplicate line'], ['Ctrl+Alt+H', 'Show/hide the hub from anywhere (configurable)'],
-    ['Ctrl+Shift+S', 'Snapshot the window into the chat you\'re using'], ['Ctrl+Shift+T', 'Keep Hearth on top of other windows'],
-    ['Ctrl+Shift+L', 'Appearance: looks, textures, glow, motion (/theme, /appearance in any chat)'],
-  ];
-  // Keys inside the Three.js Lab sketch (when you're not typing).
-  const LAB_SHORTCUTS = [
-    ['Space', 'Play / pause'], ['← →', 'Nudge 10 ms (Alt 1 ms, Shift a grid step)'], ['[ ]', 'Loop start / end at the playhead'],
-    ['K S H', 'Kick / snare / hit marker at the playhead'], ['C', 'Drop a hot cue'], ['1…9', 'Jump to cue 1…9'],
-    ['A', 'Show / hide every animated curve'], ['W', 'Write: record slider / knob moves as curves while it plays'], ['N', 'Note with a screenshot'], ['F', 'Freeze the picture (Shift+F: Focus)'], ['P', 'Present: fullscreen preview'], ['R / Shift+R', 'Shuffle the sliders / the shuffle before'], ['Shift+1…5', 'Frame size: Fit, 9:16, 16:9, 4:5, 1:1'], ['T / Shift+T', 'Tap tempo / this tap is the 1'],
-    ['X / Shift+X', 'FX picker: effects & layers / everything'], ['Shift+A / B / C', 'Recall slider slot A, B, C'], ['Alt+1…9', 'Hide / show layer 1…9 (Shift: solo)'],
-    ['Ctrl+S / Ctrl+Shift+S', 'Save the sliders into the code / as a look (in the Lab)'], ['Alt+N', 'Code ⇄ nodes (in the Lab code view)'], ['O / `', 'Your sketches / console'], ['?', 'Every Lab key'],
-    ['Shift+drag (lane)', 'Select points'], ['Ctrl+drag (lane)', 'Draw points'], ['Alt+drag (selection)', 'Stretch the swing'],
-    ['Ctrl+C / V / D / A', 'Copy, paste at playhead, duplicate, select all points'], ['Delete', 'Delete selected points / marker'], ['Ctrl+Z', 'Undo grid, marker, cue or curve change'],
-  ];
-  function shortcutsHelp() {
-    Modal.confirm('Keyboard shortcuts', '').then(() => {});
-    const dlg = document.querySelector('dialog.ui-modal:last-of-type');
-    const mac = /Mac/.test(navigator.platform);
-    // (round 31, winmac) the global hotkey is the Control key on a Mac (⌃⌥H), not ⌘
-    // (round 49) through WinMac.keyLabel: ⇧⌘U / Ctrl+Shift+U, ⌃Tab on the Mac (⌘Tab is the system's)
-    const keyText = (k) => (typeof WinMac !== 'undefined' && WinMac.keyLabel ? WinMac.keyLabel(k, { mac }) : mac && k === 'Ctrl+Alt+H' ? '⌃⌥H' : mac ? k.replace(/Ctrl\+/g, '⌘').replace(/Ctrl /g, '⌘ ').replace(/Alt\+/g, '⌥') : k);
-    const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: keyText(k) })), el('td', { text: d })));
-    dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'shortcut-cols' },
-      el('div', {}, el('h4', { text: 'Everywhere' }), el('table', { class: 'shortcut-table' }, rows(SHORTCUTS))),
-      el('div', {}, el('h4', { text: 'Three.js Lab' }), el('table', { class: 'shortcut-table' }, rows(LAB_SHORTCUTS)))));
-    dlg.classList.add('wide');
-    dlg.querySelector('.dialog-actions button[type=button]')?.remove();
-  }
+  // (round 113, search113) the printable table of keys is in appui-dialogs.js (lazy 'appdialogs'): cold code off the
+  // first screen, room for search's own lines
+  const shortcutsHelp = dialog('shortcutsHelp');
 
   // ---------- window snapshot → chat ----------
   // Ctrl+Shift+S: a picture of the window goes into the chat you're using (the docked director in a tool,

@@ -364,6 +364,93 @@ function adoptValue(head, msgs) {
   if (!placed) value.messages = msgs;
   return value;
 }
+// (round 30) recall's catch-up (round 113, search113: shared with chatfind): the chats that changed since they were
+// indexed, read within the budget; maxAge: how old a look at the folder may be (0: a fresh one). A chat that can't be
+// read is dropped from the index and named in recallBad (file → its title), never silently missing from a find
+const recallBad = new Map();
+function recallCatch(dir, t0, budgetMs, maxAge) {
+  recallIdx ||= recallLoad(dir);
+  const live = new Set(); let left = 0; let added = 0;
+  const soft = budgetMs * 0.7;
+  const fresh = !recallList || recallList.dir !== dir || Date.now() - recallList.at > maxAge;
+  // (round 113, search113) the most recently changed chats first: a find while the index is still being read finds them first
+  if (fresh) recallList = { dir, at: Date.now(), list: chats(dir).sort((a, b) => (b.e.sum?.updatedAt || 0) - (a.e.sum?.updatedAt || 0)) };
+  for (const { file, e } of recallList.list) {
+    live.add(file);
+    if (recallIdx.has(file, recallSrc(e))) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
+    if (performance.now() - t0 > (e.size >= FIND_BIG ? soft : budgetMs)) { left += 1; continue; }
+    // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed a slice at a time; what it was stays found until then
+    if (e.size >= FIND_BIG) {
+      const sig = `${e.size}:${e.mtimeMs}`;
+      let j = recallJobs.get(file);
+      if (j && j.sig !== sig) { recallIdx.abort(j.b); recallJobs.delete(file); j = null; }
+      if (!j) {
+        const b = recallIdx.begin(file, recallSrc(e)); const els = [];
+        j = { sig, b, els, r: BC().reader(fs, file, { chunk: 512 * 1024, onMessage: (m, k, s, x) => { recallIdx.msg(b, m, k); els.push(s, x); } }) };
+        recallJobs.set(file, j);
+      }
+      const state = j.r.step(() => performance.now() - t0 > soft);
+      if (state === 'more') { left += 1; continue; }
+      recallJobs.delete(file);
+      if (state === 'done') { recallIdx.end(j.b, j.r.head || {}); spans.set(file, { sig, els: j.els }); added += 1; continue; }
+      recallIdx.abort(j.b);
+      if (state === 'changed') { left += 1; continue; }
+    }
+    const chat = readChat(file);
+    if (chat) { recallIdx.add(file, chat, recallSrc(e)); added += 1; recallBad.delete(file); } else { live.delete(file); recallBad.set(file, { id: e.sum?.id || path.basename(file, '.json'), title: e.sum?.unreadable ? null : e.sum?.title || null }); }
+  }
+  for (const [file, j] of recallJobs) if (!live.has(file)) { recallIdx.abort(j.b); recallJobs.delete(file); }
+  recallKeep.changed += added;
+  if (added && !left) recallIdx.trim?.(); // (round 34, lightweight) caught up: its lists cut to size
+  if (!left && (recallKeep.changed >= 25 || (!recallKeep.had && recallKeep.changed > 0))) recallSave(); // (round 83) kept for the next start
+  // (round 113) a look reused (≤ maxAge) may not hold a chat saved since (write() put it in the index): kept unless it's gone
+  for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file) && (fresh || !stat(file) || recallBad.has(file))) recallIdx.drop(file);
+  for (const file of recallBad.keys()) if (fresh && !live.has(file) && !stat(file)) recallBad.delete(file);
+  return { left, added, fresh };
+}
+// (round 113, search113) message k's text for a snippet: kept texts, a long chat's one message by its bytes, a giant
+// chat's by its offsets for this version of the file (bigCut, chatwindow86's: never parsed whole), else the chat read
+// (once per call: reread). undefined: it couldn't be read just now
+function msgText(file, k, reread) {
+  const e = index.get(file);
+  if (e?.texts) return e.texts[k] ?? '';
+  const one = msgAt(file, k, e); if (one !== undefined) return one?.text ?? '';
+  if (e && e.size >= BIG) {
+    const c = bigCut(file);
+    if (c.error || k * 2 + 1 >= c.els.length) return undefined;
+    let fd = null;
+    try {
+      fd = fs.openSync(file, 'r'); if (bigSig(fs.fstatSync(fd)) !== c.sig) return undefined;
+      const b = Buffer.allocUnsafe(c.els[k * 2 + 1] - c.els[k * 2]); fs.readSync(fd, b, 0, b.length, c.els[k * 2]);
+      return JSON.parse(b.toString('utf8'))?.text ?? '';
+    } catch { return undefined; } finally { if (fd !== null) fs.closeSync(fd); }
+  }
+  if (!reread.has(file)) reread.set(file, readChat(file));
+  const c = reread.get(file);
+  return c ? c.messages?.[k]?.text ?? '' : undefined;
+}
+// (round 113) chat id → its project ({ id, name }) as Projects.ofItem finds it: the first project not archived whose items
+// hold the chat. Read here, kept while the file stays the same; null map: the store couldn't be read (said, never "none")
+const projKeep = { sig: '', map: null, n: 0 };
+const findTexts = new Map(); let findTextsT = null; // (round 113) chatfind's snippets' texts read lately (400 at most, 5 minutes)
+function projectsOf(file) {
+  const st = stat(file);
+  if (!st) return { map: new Map(), n: 0 }; // (no projects yet)
+  const sig = bigSig(st);
+  if (projKeep.sig === sig && projKeep.map) return projKeep;
+  let v;
+  try { v = JSON.parse(SS.readRetry(dfs, file)); } catch { return { map: null, n: 0 }; }
+  const list = Array.isArray(v?.list) ? v.list : Array.isArray(v) ? v : null;
+  if (!list) return { map: null, n: 0 };
+  const map = new Map(); let n = 0;
+  for (const p of list) {
+    if (!p || typeof p !== 'object' || p.status === 'archived') continue;
+    n += 1;
+    for (const x of Array.isArray(p.items) ? p.items : []) if (x?.type === 'chat' && x.ref != null && !map.has(String(x.ref))) map.set(String(x.ref), { id: p.id, name: String(p.name || 'Project') });
+  }
+  Object.assign(projKeep, { sig, map, n });
+  return projKeep;
+}
 const OPS = {
   write({ file, value, prev, chatDir, sent, removed, doubt, blind, chatVer }) {
     // (round 43, datasafe) a save built on a failed read: merged with the file (throws when it's still held: nothing is
@@ -952,53 +1039,48 @@ const OPS = {
   // (round 30) recall: the index is built only when asked (an idle moment, or a question), never at startup; nothing on disk
   recall({ dir, q, budgetMs = 12, limit }) {
     const t0 = performance.now();
-    recallIdx ||= recallLoad(dir);
-    const live = new Set(); let left = 0; let added = 0;
-    const soft = budgetMs * 0.7;
     // a question looks at the folder as it is now; a background slice may reuse the last look (≤ 2 s)
-    const fresh = q || !recallList || recallList.dir !== dir || Date.now() - recallList.at > 2000;
-    if (fresh) recallList = { dir, at: Date.now(), list: chats(dir) };
-    for (const { file, e } of recallList.list) {
-      live.add(file);
-      if (recallIdx.has(file, recallSrc(e))) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
-      if (performance.now() - t0 > (e.size >= FIND_BIG ? soft : budgetMs)) { left += 1; continue; }
-      // (round 82, bigchat82) a long chat (≥ 128 KB): read and indexed a slice at a time; what it was stays found until then
-      if (e.size >= FIND_BIG) {
-        const sig = `${e.size}:${e.mtimeMs}`;
-        let j = recallJobs.get(file);
-        if (j && j.sig !== sig) { recallIdx.abort(j.b); recallJobs.delete(file); j = null; }
-        if (!j) {
-          const b = recallIdx.begin(file, recallSrc(e)); const els = [];
-          j = { sig, b, els, r: BC().reader(fs, file, { chunk: 512 * 1024, onMessage: (m, k, s, x) => { recallIdx.msg(b, m, k); els.push(s, x); } }) };
-          recallJobs.set(file, j);
-        }
-        const state = j.r.step(() => performance.now() - t0 > soft);
-        if (state === 'more') { left += 1; continue; }
-        recallJobs.delete(file);
-        if (state === 'done') { recallIdx.end(j.b, j.r.head || {}); spans.set(file, { sig, els: j.els }); added += 1; continue; }
-        recallIdx.abort(j.b);
-        if (state === 'changed') { left += 1; continue; }
-      }
-      const chat = readChat(file);
-      if (chat) { recallIdx.add(file, chat, recallSrc(e)); added += 1; } else live.delete(file);
-    }
-    for (const [file, j] of recallJobs) if (!live.has(file)) { recallIdx.abort(j.b); recallJobs.delete(file); }
-    recallKeep.changed += added;
-    if (added && !left) recallIdx.trim?.(); // (round 34, lightweight) caught up: its lists cut to size
-    if (!left && (recallKeep.changed >= 25 || (!recallKeep.had && recallKeep.changed > 0))) recallSave(); // (round 83) kept for the next start
-    for (const file of recallIdx.keys()) if (file.startsWith(dir) && !live.has(file)) recallIdx.drop(file);
+    const { left } = recallCatch(dir, t0, budgetMs, q ? 0 : 2000);
     const size = recallIdx.size();
     if (!q) return { left, ...size, ms: Math.round(performance.now() - t0) };
     const reread = new Map();
-    const textOf = (file, k) => {
-      const e = index.get(file);
-      if (e?.texts) return e.texts[k] || '';
-      const one = msgAt(file, k, e); if (one !== undefined) return one?.text || ''; // (round 82) a long chat: that one message read
-      if (!reread.has(file)) reread.set(file, readChat(file));
-      return reread.get(file)?.messages?.[k]?.text || '';
-    };
+    const textOf = (file, k) => msgText(file, k, reread) || '';
     const res = recallIdx.search(q, { textOf, limit });
     return { ...res, left, ms: Math.round(performance.now() - t0) };
+  },
+  // (round 113, search113) find as you type in every chat's messages, every project's (Ctrl/⌘+K "?word", Find anything's
+  // "In a chat" rows): recall's index caught up within the budget (the chats that changed; a long one a slice at a time,
+  // a giant one by its bytes), then recall-core find (prefixes, accents, every word, one row per chat with the message
+  // to land on). Each row says its project (kv/projects.json read here, kept by size + time). What's still being read
+  // (left > 0): the window asks again and the rows fill in. A chat that can't be read is named (unread); a projects
+  // store that can't be read says so (projects: null), never "in no project". .prev copies are never rows.
+  chatfind({ dir, kv, q, budgetMs = 30, limit = 20 }) {
+    const t0 = performance.now();
+    const { left } = recallCatch(dir, t0, budgetMs * 0.6, 3000); // (the rest of the budget: the find itself)
+    const t1 = performance.now(); let tt = 0;
+    const reread = new Map();
+    // (the texts read lately are kept: one more letter typed asks for mostly the same best messages again)
+    const textOf = (file, k) => {
+      const e = index.get(file); const key = `${file}|${e ? `${e.size}:${e.mtimeMs}` : ''}|${k}`;
+      if (findTexts.has(key)) { const t = findTexts.get(key); findTexts.delete(key); findTexts.set(key, t); return t; }
+      const a = performance.now(); const t = msgText(file, k, reread); tt += performance.now() - a;
+      if (t !== undefined) { findTexts.set(key, String(t).slice(0, 4000)); if (findTexts.size > 400) findTexts.delete(findTexts.keys().next().value); }
+      return t;
+    };
+    clearTimeout(findTextsT); findTextsT = setTimeout(() => findTexts.clear(), 5 * 60000); findTextsT.unref?.();
+    const res = recallIdx.find(q, { textOf, limit: limit + 4, skip: (file) => file.endsWith('.prev.json') || recallBad.has(file) });
+    const proj = kv ? projectsOf(path.join(kv, 'projects.json')) : { map: new Map() };
+    const seen = new Set(); const hits = [];
+    for (const h of res.hits) {
+      if (seen.has(h.chatId) || !stat(h.key)) continue; // (a chat deleted since the folder was looked at: not a row)
+      seen.add(h.chatId);
+      const p = proj.map?.get(h.chatId) || null;
+      delete h.key;
+      hits.push({ ...h, project: p });
+      if (hits.length >= limit) break;
+    }
+    const unread = [...recallBad.values()].slice(0, 8);
+    return { words: res.words, hits, total: res.total, left, unread, projects: proj.map ? proj.n : null, messages: res.messages, chats: res.chats, ms: Math.round(performance.now() - t0), parts: { catchUp: Math.round(t1 - t0), find: Math.round(performance.now() - t1 - tt), texts: Math.round(tt) } };
   },
   // (round 75, syncstate75) a store saved by what changed (usage.js → store.js mergeKV): read here (with its .prev copy
   // when damaged, as the main side did), the changes applied, written as write() does. The main process only passes
@@ -1051,7 +1133,7 @@ const OPS = {
     try { if (!gcFn) { require('v8').setFlagsFromString('--expose_gc'); gcFn = require('vm').runInNewContext('gc'); } gcFn(); gcFn(); } catch { /* no gc: reads higher */ }
     const h = require('v8').getHeapStatistics();
     const snapshot = snap ? require('v8').writeHeapSnapshot(String(snap)) : undefined; // (a by-constructor diff)
-    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, find: findIdx ? 1 : 0, findChars: findIdx ? findIdx.size().chars : 0, winCalc: winCalc.chat ? 1 : 0 } };
+    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, findTexts: findTexts.size, find: findIdx ? 1 : 0, findChars: findIdx ? findIdx.size().chars : 0, winCalc: winCalc.chat ? 1 : 0 } };
   },
 };
 let gcFn = null; // (round 91, longrun91) _mem's gc, made on its first (test-only) use

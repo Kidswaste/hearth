@@ -64,15 +64,28 @@ const ChatUX = (() => {
     for (const m of list.querySelectorAll('mark.find-hit')) { parents.add(m.parentNode); m.replaceWith(document.createTextNode(m.textContent)); }
     for (const p of parents) p?.normalize();
   }
-  function markAll(list, q) {
+  const lowText = new WeakMap();
+  function markAll(list, q, near) {
     const hits = [];
     if (!q) return hits;
     const needle = q.toLowerCase();
     const nodes = [];
+    // (round 113, search113) a common word in the drawn part of a long chat: every match was marked at once (557 marks in
+    // 27 messages of 40 KB: 1.1–1.2 s of the window; "t": 23,000). The messages nearest where you are are marked, about
+    // 200 marks in all; the other messages with it are stand-ins (their index), marked when you step to them
+    const ix = (r) => Number(r.dataset?.index ?? -1);
+    const has = []; let total = 0; const end = list.lastElementChild;
+    // (each message's lowered text kept while it is the same node: a key re-read 40 drawn messages of 40 KB; never the
+    // last one, a reply may be streaming into it)
+    for (const r of list.children) { let t = lowText.get(r); if (t == null) { t = r.textContent.toLowerCase(); if (r !== end) lowText.set(r, t); } let n = 0; for (let i = t.indexOf(needle); i >= 0 && n < 400; i = t.indexOf(needle, i + needle.length)) n += 1; if (n) has.push([r, n]); }
+    if (near == null) near = ix(has[has.length - 1]?.[0] || {});
+    const roots = [];
+    for (const [r, n] of has.sort((a, b) => Math.abs(ix(a[0]) - near) - Math.abs(ix(b[0]) - near))) {
+      if (!roots.length || ix(r) < 0 || total + n <= 200) { roots.push(r); total += n; } else hits.push({ index: ix(r) });
+    }
     // (round 35, streamrender) only the messages whose text has it are walked: in a 1,200-message chat every text node
     // was tested (two closest() each), ≈ 250 ms a search here
-    for (const root of list.children) {
-      if (!root.textContent.toLowerCase().includes(needle)) continue;
+    for (const root of roots) {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: (n) => (n.parentElement.closest('.msg .body, .msg .thinking-text') && !n.parentElement.closest('.code-acts, .copy-code, .code-label, .note-acts') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
       });
@@ -82,7 +95,7 @@ const ChatUX = (() => {
       const text = node.nodeValue;
       const lower = text.toLowerCase();
       let i = lower.indexOf(needle);
-      if (i < 0) continue;
+      if (i < 0 || hits.length > 600) continue; // (one message alone with thousands: its first 600)
       const frag = document.createDocumentFragment();
       let from = 0;
       while (i >= 0) {
@@ -130,12 +143,13 @@ const ChatUX = (() => {
     if (!f || !v) return 0;
     clearMarks(v.list);
     const q = f.input.value.trim();
-    f.hits = markAll(v.list, q);
+    if (q !== f.q) { f.q = q; f.near = undefined; }
+    f.hits = markAll(v.list, q, f.near);
     // (round 72, chatwindow72) the resting messages of a long chat count too: one stand-in each, in message order (the
     // message is woken when you reach it, then its own matches are marked)
     const rest = q && typeof ChatRest !== 'undefined' ? ChatRest.restingHits(agentId, q, () => finds.get(agentId) === f && run(agentId, { jump: f.at < 0 })) : [];
     const at = (h) => (h.nodeType ? Number(h.closest('.msg')?.dataset.index ?? 1e9) : h.index);
-    if (rest.length) f.hits = [...f.hits, ...rest.map((index) => ({ index }))].sort((a, b) => at(a) - at(b));
+    if (rest.length || f.hits.some((h) => !h.nodeType)) f.hits = [...f.hits, ...rest.map((index) => ({ index }))].sort((a, b) => at(a) - at(b));
     f.at = -1;
     f.count.textContent = f.input.value.trim() ? (f.hits.length ? `${f.hits.length} found` : 'none') : '';
     if (f.hits.length && jump) step(agentId, 1, true);
@@ -148,9 +162,10 @@ const ChatUX = (() => {
     // start from the latest messages: what you look for is usually recent
     f.at = fromStart ? f.hits.length - 1 : (f.at + dir + f.hits.length) % f.hits.length;
     const hit = f.hits[f.at];
-    if (!hit.nodeType) { // (round 72) a resting message: woken, then its first match
+    if (!hit.nodeType) { // (round 72) a resting message: woken, then its first match (round 113: or a drawn one not marked yet)
       f.count.textContent = `${f.at + 1} / ${f.hits.length}`;
-      ChatRest.wakeAt(agentId, hit.index).then((ok) => {
+      f.near = hit.index;
+      (typeof ChatRest !== 'undefined' ? ChatRest.wakeAt(agentId, hit.index) : Promise.resolve(true)).then((ok) => {
         if (!ok || finds.get(agentId) !== f) return;
         run(agentId, { jump: false });
         const i = f.hits.findIndex((h) => h.nodeType && h.closest('.msg')?.dataset.index === String(hit.index));
