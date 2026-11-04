@@ -80,7 +80,20 @@ What didn't change:
   - `dev/bigchat84-fixture.js` adds that sentence to #40 and writes `fixture-114.txt`.
   - `dev/run-checks.js` makes the fixture again when that file is missing, so an older fixture is replaced once.
 - The new group is `findaccents114` in `dev/run-checks.js`, and the unit test is listed in UNIT.
-- Results of the required runs are listed at the end of this file.
+- Required runs, under the lock:
+  - The unit checks passed: `findaccents114-test`, `boot-test` (first screen within budget), `chatwin-scan`,
+    `chatwindow86-test`, `search113-test`, `store-thread-test`, `lazymanifest-test`, `recall-test` and
+    `findmem92-test`.
+  - `chatwindow72`, `search113` (`BIGPROFILE70=1`), `recall` and `lazy` passed.
+  - `chatwindow86` (`CHATWINDOW86=1`) passed on the third run, and **findAccents passed in all three**: found, the mark
+    was exactly "L’Église Saint-Zéphyrin84", the count was "1 / 1", no window task went over 50 ms and its verdict was
+    ok. The first two runs failed on steps this round doesn't touch:
+    - "open" and "top": 275 ms and 308 ms tasks with 4–15 ms of CPU and the rest off the CPU;
+    - "send": 107 ms of the main process writing token stats (store.js).
+  - `node dev/run-checks.js release`: **308/312, one ✖**, `unit:bigchat82-test` ("projfind: built in 20 slices"). This
+    is a flaky slice count in Find in this project's build, which this round doesn't touch. Run by hand, it failed 1 of
+    3 times here and 1 of 4 times on round 113's code. The other three are known failures (KNOWN_FAIL), and one opt-in
+    check was skipped.
 
 ## Caveats
 - Folding follows recall: NFD with the accents U+0300–U+036F removed, and the ligatures recall knows. Compatibility forms
