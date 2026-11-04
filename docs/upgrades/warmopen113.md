@@ -158,8 +158,31 @@ rows ok:
 
 The Lab's park and timeline looks moving after a frame changed neither the still scene's draws nor idle CPU.
 
+## After the merge with search113: a tab chosen during a chat's project switch was undone
+Merged on top of search113 (`45531fc`), search113's `desk` phase failed 3 of 3 for the coordinator, and 3 of 4 here.
+Typing into the Desk's Find box never ran a query because, by then, the window had gone back to the project's chat
+(`H.activeId` 'tool:projectchat', the box unfocused, its text typed nowhere).
+
+- **Cause (not this round's changes):** with this round's three app files put back to search113's version, it still
+  failed (1 of 2). `project-workspace.js` `conversation()` (what `Projects.openChat` uses, and search113's Enter on a
+  chat row) opened the other project with `open(p.id, 'chat', …)` and then, once that open was done, called
+  `go('chat')` again unconditionally. The open draws the chat before it says ready, so the check (or the owner) clicked
+  **Desk** in that window. The trailing `go('chat')` then took the window back to the chat. `open()`'s own `go` already
+  respects a newer choice (its route ticket); this second call didn't. Timing decides it, which is why it passed on
+  search113's worktree and now fails on the restarted, faster box.
+- **Fix (one marked line in Codex's `project-workspace.js`):** `conversation()` notes the route before the open. If
+  another tab was chosen meanwhile (the route moved past the open's own), or the project changed, it stops there. The
+  open already landed on that chat (it was given `chatId`). With no choice in between it runs as before.
+- **Checks:** `search113` passed 3 of 3 after the fix (`BIGPROFILE70=1`); `projopen109`, `desk89`, `labload94` and
+  `projects` pass.
+
 ## For Codex
-No Codex-owned file touched. One idea left for you (`project-workspace.js` `loading()`): the loading card's
+- `project-workspace.js` `conversation()`, one line marked `(round 113, warmopen113)`: `const r0=route` before
+  `await open(p.id,'chat',…)`, then `if(route!==r0+1||get()!==p)return;`. Why: when the chat's project was switched
+  to, a tab picked while it opened (the Desk) was undone by the trailing `go('chat')` (search113's Desk phase, 3 of 4
+  runs). Nothing else changed.
+
+One idea left for you (`project-workspace.js` `loading()`): the loading card's
 `showModal()` restyles every element of the window to make it inert (12–21 ms here) and again at `close()` (≈ 15–20
 ms of style in the next frame). A card that blocks clicks and keys without being modal would save both, but changes how
 the card holds focus and Esc, so it's yours to weigh.

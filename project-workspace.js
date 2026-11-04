@@ -204,7 +204,7 @@ window.ProjectWorkspace = (() => {
   async function conversation(p,id) {
     if(!p.items.some(x=>x.type==='chat'&&x.ref===id))throw Error('This chat does not belong to the project.');
     const c=H.chats.find(c=>c.id===id);if(!c||H.agent(c.agentId)?.mode!=='native')throw Error('This chat’s AI is not available here.');
-    if(get()!==p){const linked=ChatScenes.linkOf(id);await open(p.id,'chat',{chatId:id,sceneId:linked||p.workspace.sceneId});}
+    if(get()!==p){const linked=ChatScenes.linkOf(id),r0=route;await open(p.id,'chat',{chatId:id,sceneId:linked||p.workspace.sceneId});if(route!==r0+1||get()!==p)return;} // (round 113, warmopen113) a tab chosen while it opened (the Desk…) stays: the open already landed on this chat
     Native.view(chatOf(p)?.agentId)?.saveDraft?.flush();await Native.load(id);
     conversationId=id;const linked=ChatScenes.linkOf(id);conversationScene=p.items.some(x=>x.type==='scene'&&x.ref===linked)?linked:null;
     await go('chat');await Native.refresh(c.agentId,{keepScroll:true});
