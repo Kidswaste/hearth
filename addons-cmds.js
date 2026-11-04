@@ -412,8 +412,14 @@ const Addons = (() => {
     t.remove();
     progressSink = null;
     if (r?.error) { toast(r.error, { type: 'error' }); return r; }
+    const before = new Set((H.chats || []).map((c) => c.id));
     H.chats = await window.hub.listChats();
     Panel.render();
+    // (round 118, projsync118) the imported chats go into the open project at once (else Earlier chats), with a note
+    try {
+      const ids = Array.isArray(r.ids) ? r.ids : (H.chats || []).filter((c) => !before.has(c.id)).map((c) => c.id);
+      if (ids.length) { if (window.Lazy) await Lazy.load('projects'); await window.ProjChats?.imported(ids); }
+    } catch (err) { console.warn('import: projects', err); }
     const where = Object.values(r.sources).map((id) => H.agent(id)?.name).filter(Boolean).join(' and ');
     if (status) status.textContent = `Imported ${r.imported} chats${where ? ` into ${where}` : ''}${r.skipped ? ` (${r.skipped} skipped: empty, duplicate or already imported)` : ''}.`;
     toast(`Imported ${r.imported} chats${where ? ` into ${where}` : ''}`, { timeout: 5000 });

@@ -13,6 +13,10 @@
 //     It runs only after a careful read of the projects store says it is there and readable (a store that can't be
 //     read is never taken as “no projects”): else it waits and tries again. Its writes are ordinary saves of the
 //     projects store, so sync's write guard, store.settle and its choice writes treat them like any other change.
+//   - (round 118, projsync118) the keeper reads carefully too before it writes (ProjChatsCore.readable: a read failure,
+//     or an empty copy after the migration, is never “no projects”); a deleted project's chats go to Earlier chats at
+//     once (deleted here or on the other computer), other chats with no project after the grace; chats the owner
+//     imported (Import past chats…) go to the open project at once, with a note (else Earlier chats)
 window.ProjChats = (() => {
   const K = ProjChatsCore;
   const P = Projects;
@@ -29,15 +33,13 @@ window.ProjChats = (() => {
   const seenLost = new Map(); // chat id → when first seen with no project
 
   // ---------- the projects store, read carefully ----------
+  // (round 118, projsync118) the rules in ProjChatsCore.readable: unreadable, not a store, this window's copy empty while
+  // the disk has projects, or no projects at all after the migration with chats about → wait (never written over)
   async function readOk() {
     await P.ready();
     let r = null;
     try { r = await window.hub.kvGet('projects', null, { status: true }); } catch { return false; }
-    if (!r || r.state === 'unreadable') return false;
-    if (r.state === 'ok' && (!r.value || typeof r.value !== 'object' || !Array.isArray(r.value.list))) return false; // not a store: never written over
-    // a store on disk with projects in it while this window holds none: the window's own read failed. Wait.
-    if (r.state === 'ok' && r.value.list.length > 0 && P._data().list.length === 0) return false;
-    return Array.isArray(H.chats);
+    return K.readable(r, { held: P._data(), chats: H.chats, done: Boolean(store.get(DONE, null)) }).ok;
   }
   const data = () => P._data();
   const projectIdOf = (chatId) => { for (const p of data().list) if (p.items.some((x) => x.type === 'chat' && x.ref === chatId)) return p.id; return null; };
@@ -50,7 +52,7 @@ window.ProjChats = (() => {
     if (!(await readOk())) { tries += 1; setTimeout(() => migrate().catch((err) => console.warn('projchats', err)), RETRY); paintBar(); return false; }
     ok = true;
     const first = !store.get(DONE, null);
-    const r = K.sweep(data(), H.chats, first ? { at: Date.now() } : { at: Date.now(), ready: graceOk });
+    const r = K.sweep(data(), H.chats, first ? { at: Date.now() } : { at: Date.now(), ready: K.lostReady(data(), seenLost, Date.now(), GRACE) });
     if (r.changed) {
       try { await save('chats116'); } catch (err) { console.warn('projchats: not saved yet', err); ok = false; setTimeout(() => migrate().catch(() => {}), RETRY); return false; }
     }
@@ -62,13 +64,13 @@ window.ProjChats = (() => {
     refresh();
     return true;
   }
-  function graceOk(c) { const t = seenLost.get(c.id); if (!t) { seenLost.set(c.id, Date.now()); return false; } return Date.now() - t >= GRACE; }
   // the keeper: after the other computer's changes arrive, and now and then (a chat from an older Hearth, a project restored)
   let keepT = 0;
   function keepSoon(ms = 4000) { clearTimeout(keepT); keepT = setTimeout(keep, ms); }
   async function keep() {
     if (!ok) return;
-    const r = K.sweep(data(), H.chats || [], { at: Date.now(), ready: graceOk });
+    if (!(await readOk())) return; // (round 118, projsync118) a read failure is never “empty”: skipped, tried again later
+    const r = K.sweep(data(), H.chats || [], { at: Date.now(), ready: K.lostReady(data(), seenLost, Date.now(), GRACE) });
     for (const id of [...seenLost.keys()]) if (projectIdOf(id)) seenLost.delete(id);
     if (r.changed) { try { await save('chats116'); } catch (err) { console.warn('projchats keep', err); } }
   }
@@ -184,6 +186,25 @@ window.ProjChats = (() => {
     if (n) refresh();
   }
 
+  // (round 118, projsync118) chats the owner just imported (Import past chats…): the open project's at once (else
+  // Earlier chats), with a note. ids: the imported chats' ids. → how many were placed
+  async function imported(idList) {
+    const set = new Set(idList || []);
+    if (!set.size) return 0;
+    if (!ok || !(await readOk())) return 0; // projects not read: the keeper places them later (never none)
+    const list = (H.chats || []).filter((c) => set.has(c.id));
+    const p = current();
+    const placed = K.adopt(data(), list, p ? p.id : K.EARLIER_ID, { at: Date.now() });
+    if (!placed.length) return 0;
+    for (const id of placed) seenLost.delete(id);
+    const to = p || data().list.find(K.isEarlier);
+    P.changed(to, 'import');
+    try { await P.flush(); } catch (err) { console.warn('projchats import', err); }
+    refresh();
+    toast(`${placed.length} imported chat${placed.length === 1 ? '' : 's'} went into “${to?.name || K.EARLIER_NAME}”${p ? ' (the open project)' : ' (no project was open)'}. Right-click a chat › Move to project… to change.`, { timeout: 8000 });
+    return placed.length;
+  }
+
   // ---------- the bar at the top of the chats list ----------
   let bar = null;
   function paintBar() {
@@ -234,12 +255,12 @@ window.ProjChats = (() => {
   { const m = Panel.hooks.menu; const i = m ? m.indexOf(P.panelMenu) : -1; if (i >= 0) m.splice(i, 1); }
   Panel.hooks.render.push(() => { watch(); follow(); });
   Native.hooks.newChat.push(onNewChat);
-  addEventListener('hearth:projects', (e) => { if (e.detail?.why === 'sync') keepSoon(); refresh(); });
+  addEventListener('hearth:projects', (e) => { if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });
   document.addEventListener('hearth:activate', () => setTimeout(follow, 0));
   setInterval(() => keepSoon(0), 2 * 60000);
   // an older “Only one project” view becomes the open project
   { const v = Panel.view?.(); if (v && String(v).startsWith('project:')) { scope = v.slice(8); store.set(SCOPE, scope); Panel.setView(null); } }
   migrate().then(() => Panel.render()).catch((err) => console.warn('projchats', err));
 
-  return { current, setScope, newChatIn, ask, newProject, migrate, keep, readOk, inScope, projectIdOf, pending, core: K, _ok: () => ok };
+  return { current, setScope, newChatIn, ask, newProject, migrate, keep, readOk, imported, inScope, projectIdOf, pending, core: K, _ok: () => ok };
 })();

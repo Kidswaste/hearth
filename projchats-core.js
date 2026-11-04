@@ -10,6 +10,18 @@
 //   targetFor({ pending, scope, sceneProject, earlier }) → where a new chat goes
 // Deterministic: the keeper only reads what is the same on both computers (the synced projects store), never a time
 // this computer alone knows.
+// (round 118, projsync118) across two computers, one of them on an older Hearth (chats in several projects or none,
+// “Take out of”, a make's room chat added back by itself):
+//   · keeper: a project that already moved this chat out (its chatsMovedOut record) and has it again was given it back
+//     by an older Hearth: it ranks below the project the chat was moved to (a skewed clock can't flip it back)
+//   · landed(p, chatId): a chat moved INTO a project here clears that project's record of it (a real move back)
+//   · lostReady(data, seen, now, grace): a chat with no project waits `grace` (its project link may be a moment behind),
+//     except one whose project was deleted (it waits in Recently deleted): that one goes to Earlier chats at once
+//   · readable(r, o): the careful read's answer (kv:get { status: true }): a read failure, a file that isn't a projects
+//     store, an empty copy in this window while the disk has projects, or no projects at all after the migration ran
+//     with chats about (an empty read) → not now: the migration and the keeper skip, nothing is written
+//   · adopt(data, chats, toId): chats the owner imported, into the open project (else Earlier chats) at once
+//   · ensureEarlier from Recently deleted: only the chats that still need it come back with it
 const ProjChatsCore = (() => {
   const PC = typeof ProjectsCore !== 'undefined' ? ProjectsCore : require('./projects-core.js');
   const EARLIER_ID = 'pj-earlier-chats';
@@ -24,9 +36,12 @@ const ProjChatsCore = (() => {
   // which of several projects a chat stays in: the one it was most recently used in, as far as both computers know
   // (the project whose own chat it is), then a real project before “Earlier chats”, a live one before an archived one,
   // then the first it joined (its item's time), then the id (so a tie ends the same everywhere)
+  // (round 118, projsync118) a project that holds a record of moving this chat out, and has it again: an older Hearth
+  // gave it back (a new one clears the record when it moves a chat in: landed())
+  const left = (p, chatId) => (Array.isArray(p?.chatsMovedOut) && p.chatsMovedOut.some((r) => r && r.id === chatId && r.to !== p.id)) ? 1 : 0;
   function keeper(chatId, ps) {
     const at = (p) => Number(itemOf(p, chatId)?.at) || 0;
-    return ps.slice().sort((a, b) => (owns(b, chatId) - owns(a, chatId)) || (isEarlier(a) - isEarlier(b))
+    return ps.slice().sort((a, b) => (left(a, chatId) - left(b, chatId)) || (owns(b, chatId) - owns(a, chatId)) || (isEarlier(a) - isEarlier(b))
       || ((a.status === 'archived') - (b.status === 'archived')) || (at(a) - at(b)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0] || null;
   }
   function earlierProject() {
@@ -43,12 +58,26 @@ const ProjChatsCore = (() => {
     const was = (Array.isArray(p.chatsMovedOut) ? p.chatsMovedOut : []).filter((r) => r && r.id !== chatId);
     p.chatsMovedOut = [...was, { id: chatId, to, item: item ? { ...item } : null, at }].slice(-RECORD_KEEP);
   }
+  // (round 118, projsync118) a chat moved into p here: p's record of having moved it out is done with
+  function landed(p, chatId) {
+    if (!Array.isArray(p?.chatsMovedOut) || !p.chatsMovedOut.some((r) => r && r.id === chatId)) return false;
+    p.chatsMovedOut = p.chatsMovedOut.filter((r) => r && r.id !== chatId);
+    if (!p.chatsMovedOut.length) delete p.chatsMovedOut;
+    return true;
+  }
   // “Earlier chats”: the one in the list, else back from Recently deleted (its chats need a home), else a new one
+  // (round 118, projsync118) back from Recently deleted with only the chats that are in no other project (the others
+  // were moved out of it meanwhile: back in two projects, the other computer on an older Hearth would show both)
   function ensureEarlier(data) {
     let e = data.list.find(isEarlier);
     if (e) return e;
     const t = (data.trash || []).find(isEarlier);
-    if (t) { data.trash = data.trash.filter((x) => x !== t); if (!data.trash.length) delete data.trash; const { deletedAt: _d, revived: _r, ...rest } = t; e = rest; }
+    if (t) {
+      data.trash = data.trash.filter((x) => x !== t); if (!data.trash.length) delete data.trash;
+      const { deletedAt: _d, revived: _r, ...rest } = t; e = rest;
+      const w = where(data);
+      e.items = (e.items || []).filter((x) => !(x && x.type === 'chat' && w.has(x.ref)));
+    }
     else e = earlierProject();
     data.list.push(e);
     return e;
@@ -80,6 +109,7 @@ const ProjChatsCore = (() => {
           // (its time: the chat's own, the same on both computers; the project's “updated” stays the fixed one)
           const x = PC.addItem(e, { type: 'chat', ref: c.id, name: c.title || '', at: Number(c.createdAt) || Number(c.updatedAt) || EARLIER_AT }, Math.max(e.updated || 0, EARLIER_AT));
           if (x) { x.was = 'no-project'; report.earlier.push(c.id); }
+          landed(e, c.id);
         }
       }
     }
@@ -97,7 +127,52 @@ const ProjChatsCore = (() => {
       if (item && PC.removeItem(p, 'chat', chatId, at)) { record(p, chatId, to.id, item, at); n += 1; }
     }
     if (PC.addItem(to, { type: 'chat', ref: chatId, name }, at)) n += 1;
+    if (landed(to, chatId)) n += 1;
     return n > 0;
+  }
+  // (round 118, projsync118) when a chat with no project may go to Earlier chats: at once when a project that had it
+  // was deleted (it waits in Recently deleted; the owner's delete, here or on the other computer), else once this
+  // computer has seen it without one for `grace` (seen: chat id → when first seen so; kept by the caller)
+  function lostReady(data, seen, now = Date.now(), grace = 3 * 60000) {
+    const trashed = new Set();
+    for (const p of data?.trash || []) for (const x of p?.items || []) if (x && x.type === 'chat') trashed.add(x.ref);
+    return (c) => {
+      if (trashed.has(c.id)) return true;
+      const t = seen.get(c.id);
+      if (!t) { seen.set(c.id, now); return false; }
+      return now - t >= grace;
+    };
+  }
+  // (round 118, projsync118) the careful read before the migration or the keeper writes. r: kv:get('projects', null,
+  // { status: true }); o: { held: the window's copy, chats: the chats list, done: the migration ran on this computer }
+  // → { ok, why }. A store that can't be read is never “no projects”.
+  function readable(r, { held = null, chats = null, done = false } = {}) {
+    if (!r || r.state === 'unreadable' || (r.state !== 'ok' && r.state !== 'missing')) return { ok: false, why: 'unreadable' };
+    if (r.state === 'ok' && (!r.value || typeof r.value !== 'object' || !Array.isArray(r.value.list))) return { ok: false, why: 'not a store' };
+    if (!Array.isArray(chats)) return { ok: false, why: 'chats not read' };
+    const n = Array.isArray(held?.list) ? held.list.length : 0;
+    if (r.state === 'ok' && r.value.list.length > 0 && n === 0) return { ok: false, why: 'this window read none' };
+    // after the migration every chat has a project: none at all (and none in Recently deleted) with chats about is a
+    // read that came back empty, not the owner's projects
+    const empty = (d) => !d || ((!Array.isArray(d.list) || !d.list.length) && (!Array.isArray(d.trash) || !d.trash.length));
+    if (done && chats.length > 0 && empty(held) && (r.state === 'missing' || empty(r.value))) return { ok: false, why: 'empty after the migration' };
+    return { ok: true, why: '' };
+  }
+  // (round 118, projsync118) chats the owner just imported (Import past chats…): into `toId` (the open project; else
+  // Earlier chats) at once, each that has no project yet. → the ids placed
+  function adopt(data, chats, toId = EARLIER_ID, { at = Date.now() } = {}) {
+    if (!data || !Array.isArray(data.list)) return [];
+    const w = where(data);
+    const lost = (chats || []).filter((c) => c && c.id && !w.has(c.id));
+    if (!lost.length) return [];
+    let to = toId && toId !== EARLIER_ID ? data.list.find((p) => p.id === toId) : null;
+    if (!to) to = ensureEarlier(data);
+    const out = [];
+    for (const c of lost) {
+      if (PC.addItem(to, { type: 'chat', ref: c.id, name: c.title || '', at: Number(c.createdAt) || at }, at)) out.push(c.id);
+      landed(to, c.id);
+    }
+    return out;
   }
   // every recorded link back (the migration undone): a chat may then be in several projects again, as before
   function undo(data, { at = Date.now() } = {}) {
@@ -123,6 +198,6 @@ const ProjChatsCore = (() => {
     if (director && sceneProject) return sceneProject;
     return scope || sceneProject || EARLIER_ID;
   }
-  return { EARLIER_ID, EARLIER_NAME, EARLIER_AT, isEarlier, owns, keeper, where, sweep, move, undo, problems, targetFor, earlierProject, ensureEarlier };
+  return { EARLIER_ID, EARLIER_NAME, EARLIER_AT, isEarlier, owns, keeper, where, sweep, move, undo, problems, targetFor, earlierProject, ensureEarlier, landed, lostReady, readable, adopt };
 })();
 if (typeof module !== 'undefined') module.exports = ProjChatsCore;
