@@ -106,7 +106,7 @@ function fakeWindow({ stored, status = 'ok', chatList = chats }) {
   const timers = [];
   const kv = { projects: clone(stored) };
   const local = new Map();
-  const hooks = { scope: [], top: [() => {}], skip: [() => {}], menu: [], render: [], itemMenu: [], view: [] };
+  const hooks = { scope: [], row: [], render: [], itemMenu: [] }; // (round 121, listtidy121) panel.js's hooks now: no top / skip / view / menu
   let st = status;
   const H = {
     chats: chatList.map((c) => ({ agentId: 'claude', updatedAt: 1, ...c })), activeChat: {}, activeId: 'claude',
@@ -162,7 +162,7 @@ ok('readable: it runs once; the list shows the open project; New chat lands ther
   assert.ok(w.local.get('projchats.migrated'), 'marked done');
   assert.ok(w.writes.includes('projects'), 'saved through the projects store');
   assert.deepStrictEqual(K.problems(w.kv.projects, H.chats), { none: [], several: [] }, 'what was written: one project per chat');
-  assert.strictEqual(w.hooks.top.length + w.hooks.skip.length, 0, 'no general groups (other projects, makes) in the list');
+  assert.ok(!w.ctx.Projects.panelTop && !w.ctx.Projects.panelSkip && !('top' in w.hooks) && !('skip' in w.hooks), 'no general groups (other projects, makes) in the list'); // (round 121, listtidy121) gone at their source
   // the list: the open project's chats only
   PC.setScope('pjA');
   assert.strictEqual(w.hooks.scope[0]({ id: 'c-one' }), true);

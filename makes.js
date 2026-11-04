@@ -7,7 +7,7 @@
 //   category, who made it (the command or run), its parts and their rooms, its outputs, a status and a progress.
 // - Rooms ahead of time: /makes plan <words> (the Commands page, three_do make for the directors) makes every room at
 //   once — a Three Director chat "<Name> · Lab" with its own scene in the make's color, a second Three Director chat for the video (the Lab sequence)
-//   "<Name> · Video", a frame on the board… — grouped under the make in the chats list, each readable before anything
+//   "<Name> · Video", a frame on the board… — in the make's project in the chats list, each readable before anything
 //   is in it ("planned · waiting for Lab"). Empty rooms are real chats; a make is dismissed as a whole (to the trash,
 //   Undo / restore brings every room back).
 // - Every creation joins it: /dispatch comps (comp-dispatch.js), jams
@@ -45,7 +45,7 @@ const Makes = (() => {
     const detail = { make, id: make?.id || null, why, ...extra };
     for (const fn of listeners) { try { fn(detail); } catch (err) { console.warn(err); } }
     dispatchEvent(new CustomEvent('hearth:makes', { detail }));
-    if (why !== 'progress') { clearTimeout(panelT); panelT = setTimeout(() => { Panel.render(); paintPage(); }, 60); } else paintProgress(make);
+    if (why !== 'progress') { clearTimeout(panelT); panelT = setTimeout(paintPage, 60); } // (round 121, listtidy121) the chats list has no make groups to repaint
   }
   const onChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 
@@ -58,7 +58,7 @@ const Makes = (() => {
     if (/^\d+$/.test(s)) return live()[Number(s) - 1] || null;
     return get(q) || live().find((m) => m.name.toLowerCase() === s) || live().find((m) => m.name.toLowerCase().includes(s)) || data.list.find((m) => m.name.toLowerCase().includes(s)) || null;
   }
-  // chat id → { make, part }: an index made again after any change (the chats list asks for every row)
+  // chat id → { make, part }: an index made again after any change
   let idx = null;
   function roomOf(chatId) {
     if (!chatId) return null;
@@ -407,67 +407,11 @@ const Makes = (() => {
     if (r) addOutput(r.make, path, r.part.id, kind);
   }
 
-  // ---------- the chats list: each make with its rooms, above the agents ----------
-  const ST_TAG = { planned: 'planned', waiting: 'planned', working: 'working', ready: '', done: '✓', stuck: 'stuck' };
-  const MAX_GROUPS = 8;
+  // (round 121, listtidy121) a make's own group in the chats list (its rooms above the agents, the top / skip hooks,
+  // the Alt+right-click on a room) is gone: the list shows one project's chats (projchats.js), a make's rooms with them
+  // (a make with rooms is a project). The make's menu stays on the Commands page's Makes and on a room's card.
+  // its own rooms (a room is its own chat, named for the make)
   function roomsOf(make) { return make.parts.filter((p) => p.own && p.chatId && summary(p.chatId)); }
-  function panelTop(root, { row, itemOf, q, collapsed, toggleGroup }) {
-    if (!loaded) return;
-    // (round 23) a make whose project shows its rooms (projects.js) has no group of its own
-    const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
-    const list = live().filter((m) => roomsOf(m).length && !pj?.hidesMake?.(m.id));
-    let shown = 0;
-    for (const make of list) {
-      if (shown >= MAX_GROUPS && !q) break;
-      let rooms = roomsOf(make);
-      if (q && !make.name.toLowerCase().includes(q)) rooms = rooms.filter((p) => summary(p.chatId).title.toLowerCase().includes(q));
-      if (!rooms.length) continue;
-      shown += 1;
-      const key = `make:${make.id}`;
-      const st = C.statusOf(make);
-      const closed = collapsed.has(key) && !q;
-      const group = el('div', { class: `group mk-group mk-${st}`, dataset: { id: key, make: make.id } }); tint(group, make.ident.color); group.style.setProperty('--agent', make.ident.color);
-      const pct = C.pctOf(make);
-      const toggle = el('button', { class: 'group-toggle', type: 'button', title: `${make.name} · ${C.CATS[make.cat] || 'Make'} · ${C.chain(make)} · ${C.STATUS_LABEL[st]}${pct ? ` · ${pct} %` : ''}\nRight-click: rooms, rename, dismiss…`, on: { click: () => toggleGroup(key) } },
-        el('span', { class: 'caret', text: closed ? '▸' : '▾' }), el('span', { class: 'mk-mark', text: make.ident.glyph }), el('span', { class: 'group-name', text: make.name }),
-        el('span', { class: 'group-kind mk-st', text: st === 'planned' ? 'planned' : st === 'done' ? '✓' : st === 'stuck' ? 'stuck' : pct ? `${pct} %` : C.STATUS_LABEL[st] }));
-      const more = el('button', { class: 'group-add mk-more', type: 'button', text: '⋯', title: 'This make: its rooms, rename, hand off, dismiss…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 2, makeMenu(make)); } } });
-      const head = el('div', { class: 'group-head' }, toggle, more);
-      head.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, makeMenu(make)); });
-      group.append(head);
-      if (!closed) {
-        for (const p of rooms) {
-          const c = summary(p.chatId);
-          const agent = H.agent(c.agentId);
-          if (!agent) continue;
-          const r = row(agent, itemOf(c));
-          r.dataset.agent = agent.id;
-          r.classList.add('mk-room');
-          r.dataset.makePart = p.id; // progress-ui.js draws a part's bar here (make:<id>:<part>)
-          // under its make's name the row says only its room ("Lab 1/2 · red pulse"); the full title stays in the tooltip
-          const t = r.querySelector('.item-title');
-          if (t && t.textContent.startsWith(`${make.name} · `)) t.textContent = t.textContent.slice(make.name.length + 3);
-          if (!r.querySelector('.chat-ident')) r.prepend(el('span', { class: 'chat-ident mk-ident', text: make.ident.glyph }));
-          const tag = ST_TAG[p.status];
-          if (tag && !r.querySelector('.busy')) r.append(el('span', { class: `mk-tag mk-t-${p.status}`, text: tag, title: C.waitText(make, p) }));
-          r.addEventListener('contextmenu', (e) => { if (!e.altKey) return; e.preventDefault(); e.stopImmediatePropagation(); showMenu(e.clientX, e.clientY, makeMenu(make)); }, { capture: true });
-          group.append(r);
-        }
-      }
-      root.append(group);
-    }
-    if (!q && list.length > shown) root.append(el('button', { class: 'show-more mk-more-makes', type: 'button', text: `${list.length - shown} more makes ›`, on: { click: () => show() } }));
-  }
-  // a room of a make leaves its agent's group (it shows under its make)
-  const panelSkip = (c) => { const r = loaded && roomOf(c.id); return Boolean(r && r.part.own && !r.make.dismissed); };
-  function paintProgress(make) {
-    if (!make) return;
-    const g = document.querySelector(`#chat-groups .mk-group[data-make="${make.id}"] .mk-st`);
-    const st = C.statusOf(make);
-    const pct = C.pctOf(make);
-    const t = st === 'planned' ? 'planned' : st === 'done' ? '✓' : pct ? `${pct} %` : C.STATUS_LABEL[st];
-    if (g && g.textContent !== t) g.textContent = t;
-  }
 
   // ---------- menus (right-click on a make, its rooms, the Makes list) ----------
   function makeMenu(make) {
@@ -564,7 +508,7 @@ const Makes = (() => {
       const text = String(args.text || args.idea || args.what || '').trim();
       if (!text && !args.parts) return { ok: false, error: 'plan needs text: what will be made ("a three.js animation that cuts into a video").' };
       const make = await plan({ text, name: args.name, parts: Array.isArray(args.parts) ? args.parts : null }, { show: false, from: ctx.chatId || null, who: { cmd: 'three_do make', agent: true } });
-      return { ok: true, value: `Planned “${make.name}” (${C.chain(make)}): ${make.parts.map((p) => (p.chatId ? `room “${summary(p.chatId)?.title}”` : `${C.label(p, make)}`)).join(', ')}. They show grouped in the owner's chats list, empty until each part starts.` };
+      return { ok: true, value: `Planned “${make.name}” (${C.chain(make)}): ${make.parts.map((p) => (p.chatId ? `room “${summary(p.chatId)?.title}”` : `${C.label(p, make)}`)).join(', ')}. They show in the chats list of the make's project, empty until each part starts.` };
     }
     if (op === 'status') {
       const make = find(args.make) || roomOf(ctx.chatId)?.make || live()[0];
@@ -663,7 +607,7 @@ const Makes = (() => {
     const sub = ['plan', 'list', 'open', 'rename', 'dismiss', 'restore', 'next', 'status', 'progress'];
     Commands.register({
       name: 'makes', area: 'App', args: '[plan <what> | open <make> [room] | rename <make> = <name> | next | dismiss <make> | restore <make> | status]',
-      desc: 'Everything Hearth makes, one name and mark each: plan a make (its rooms are made now, grouped in the chats list) · open one · rename it (every room follows) · hand off to the next room · dismiss / restore',
+      desc: 'Everything Hearth makes, one name and mark each: plan a make (its rooms are made now, in its project’s chats) · open one · rename it (every room follows) · hand off to the next room · dismiss / restore',
       keywords: 'make makes plan rooms ahead project category same name logo three video chat room folder group',
       examples: ['/makes plan a three.js animation that cuts into a video', '/makes plan a neon tunnel loop then the edit', '/makes', '/makes rename 1 = Launch teaser', '/makes next'],
       complete: (a) => {
@@ -684,7 +628,7 @@ const Makes = (() => {
         if (verb === 'plan') {
           if (!restText) return 'What will be made? e.g. /makes plan a three.js animation that cuts into a video';
           const make = await plan(restText, { from: ctx.chatId || hereChat(), show: ctx.source !== 'code' });
-          return `${make.ident.glyph} **${make.name}** is planned: ${make.parts.map((p) => (p.chatId ? `“${summary(p.chatId)?.title}”` : C.roomTitle(make, p))).join(' → ')}. The rooms are in your chats list (grouped under ${make.ident.glyph} ${make.name}), empty until each part starts.`;
+          return `${make.ident.glyph} **${make.name}** is planned: ${make.parts.map((p) => (p.chatId ? `“${summary(p.chatId)?.title}”` : C.roomTitle(make, p))).join(' → ')}. The rooms are in your chats list (open the project ${make.ident.glyph} ${make.name}), empty until each part starts.`;
         }
         if (verb === 'open') {
           const m = find(rest[0]) || find(restText) || here()?.make;
@@ -717,8 +661,6 @@ const Makes = (() => {
 
   // ---------- wiring ----------
   window.addEventListener('DOMContentLoaded', () => {
-    Panel.hooks.skip?.push(panelSkip);
-    Panel.hooks.top?.push(panelTop);
     Native.hooks.render.push(onRender);
     Native.hooks.compose.push(compose);
     Native.hooks.send.push(onSend);
@@ -738,15 +680,13 @@ const Makes = (() => {
     document.addEventListener('hearth:capture', (e) => onCapture(e.detail?.path, e.detail?.kind === 'shot' ? 'still' : undefined));
     document.addEventListener('hearth:recording', (e) => { if (e.detail && e.detail.recording === false) onCapture(e.detail.path, 'video'); });
     Keys.add([
-      { area: 'Makes', keys: 'Right-click a make', what: 'In the chats list (or ⋯ on its row): open a room, hand off, rename the whole make, plan another room, dismiss / restore' },
-      { area: 'Makes', keys: 'Alt+right-click a room', what: 'The make\'s menu instead of the chat\'s' },
+      { area: 'Makes', keys: 'Right-click a make', what: 'In Makes on the Commands page: open a room, hand off, rename the whole make, plan another room, dismiss / restore' }, // (round 121, listtidy121) no make groups in the chats list
     ]);
     try { AppUI.addAction?.('Makes: everything Hearth makes, with its rooms', () => show()); AppUI.addAction?.('Makes: plan a make (its rooms now)…', async () => { const t = await Modal.prompt('Plan a make', { placeholder: 'a three.js animation that cuts into a video', label: 'What will be made? Its rooms are made now, with one name and mark.' }); if (t) plan(t).catch((e) => toast(e.message, { type: 'error' })); }); } catch { /* the palette is optional */ }
     ready.then(() => {
       const hook = () => { if (typeof Flows !== 'undefined') Flows.onChange((run) => { try { fromRun(run); } catch (err) { console.warn(err); } }); };
       if (window.Lazy?.isIn) Lazy.when('flows', hook); else hook(); // (round 29, fastboot) Flows loads after the first screen
-      Panel.render();
-    });
+    }); // (round 121, listtidy121) no list draw here: the chats list has no make groups
   });
 
   return {

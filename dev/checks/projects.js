@@ -1,7 +1,8 @@
 // Projects (round 23): a project made by hand (/project new: the chat comes along), from a make (automatically: same
 // name, mark and color, its rooms in one group), from a suggestion (names + links, no tokens); Home's cards with covers
 // and "continue where you left off"; Search everything across chats / scenes / boards / commands with type filters and
-// keys; the chats list (round 120: the open project's chats only, since round 116; ⏷ only one project, grouping off);
+// keys; the chats list (round 120: the open project's chats only, since round 116; round 121: /project filter / group
+// answer one line);
 // the Lab's sketch picker grouped by project; Ctrl/⌘+Shift+K; then the data on disk.
 //   node dev/smoke.js --fake-engines --script dev/checks/projects.js --check-timeout 400000 --shot /tmp/hearth-projects/end.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -139,18 +140,14 @@ step(/Stoop Ronin intro/.test(eMsg), '/everything <words> answers in a chat (cod
 ProjChats.setScope(ronin.id); Panel.render(); await wait(100);
 const rRows = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
 step(sc.every((id) => rRows.filter((k) => k === id).length === 1) && rRows.every((id) => ronin.items.some((x) => x.type === 'chat' && x.ref === id)) && !document.querySelector('#chat-groups .pj-group'), 'the chats list with the project open: just its chats, once each, no project group', rRows);
-await say(`/project filter ${ronin.name}`);
+// (round 121, listtidy121) /project filter and /project group drove the old grouped list: each answers one plain line now
+const GONE = 'Chats now live in one project each: open a project to see its chats.';
+const fMsg = await say(`/project filter ${ronin.name}`); const gMsg = await say('/project group on'); const gOff = await say('/project group off');
 await wait(80);
 const shown = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
-step(shown.length === 3 && sc.every((id) => shown.includes(id)) && /Stoop Ronin/.test(document.querySelector('#chat-groups .panel-view')?.textContent || ''), '⏷ only one project: just its chats, the chip names it', document.querySelector('#chat-groups .panel-view')?.textContent);
+step(fMsg === GONE && gMsg === GONE && gOff === GONE, '/project filter … and /project group … answer one plain line (not "unknown command")', [fMsg, gMsg, gOff]); // (round 121, listtidy121)
+step(shown.length === rRows.length && sc.every((id) => shown.includes(id)) && !document.querySelector('#chat-groups .panel-view, #chat-groups .pj-group'), '…and the list stays the open project\'s: no chip, no groups', shown); // (round 121, listtidy121)
 await smoke({ shot: `${SHOTS}/5-chats-filtered.png` });
-await say('/project filter off');
-await say('/project group off');
-await wait(80);
-step(!document.querySelector('#chat-groups .pj-group'), 'Group by project off: agents only');
-await say('/project group on');
-await wait(80);
-step(!document.querySelector('#chat-groups .pj-group'), '…and on: still one project\'s list, no groups (round 120: round 116\'s list)'); // (round 120, projperf120)
 // the chat's right-click menu has Project ›
 ProjChats.setScope(Projects.ofItem('chat', c2)[0]?.id); Panel.render(); await wait(80); // (round 120, projperf120) its project's list
 const row = document.querySelector(`#chat-groups .item[data-key="${c2}"]`);

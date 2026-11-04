@@ -1,22 +1,7 @@
-/* Makes (round 11): one name, color and mark per make — its group in the chats list, the card at the top of each room,
+/* Makes (round 11): one name, color and mark per make — the card at the top of each room,
    and the Makes list on the Commands page. Colors come from the make (--mk); no animation runs per frame. */
 
-/* the chats list: a make's group, its rooms under it */
-.mk-group > .group-head .group-toggle { gap: 6px; }
-.mk-group .mk-mark { color: var(--mk); font-size: 0.95em; line-height: 1; text-shadow: 0 0 7px color-mix(in srgb, var(--mk) 50%, transparent); }
-.mk-group .group-name { font-weight: 650; }
-.mk-group .mk-st { color: color-mix(in srgb, var(--mk) 70%, var(--muted, #999)); font-variant-numeric: tabular-nums; }
-.mk-group.mk-stuck .mk-st { color: var(--danger, #ff5d5d); }
-.mk-group { border-radius: 8px; } /* (nobars) the make's colored mark names its group */
-.mk-group .mk-more { opacity: 0.55; }
-.mk-group:hover .mk-more { opacity: 1; }
-.item.mk-room .chat-ident.mk-ident { color: var(--mk); }
-.item.mk-room { --chat-ident: var(--mk); }
-.item .mk-tag { flex: none; margin-left: auto; font-size: 0.72em; padding: 0 5px; border-radius: 6px; color: color-mix(in srgb, var(--mk) 75%, var(--text)); border: 1px dashed color-mix(in srgb, var(--mk) 45%, transparent); line-height: 1.5; }
-.item .mk-tag.mk-t-working { border-style: solid; }
-.item .mk-tag.mk-t-done { border: 0; }
-.item .mk-tag.mk-t-stuck { color: var(--danger, #ff5d5d); border-color: color-mix(in srgb, var(--danger, #ff5d5d) 50%, transparent); }
-.show-more.mk-more-makes { color: var(--muted, #999); }
+/* (round 121, listtidy121) a make's group in the chats list is gone (the list shows one project's chats) */
 
 /* the card at the top of a room: what it will hold before anything is in it; one slim line once it started */
 .mk-room-card { margin: 4px 2px 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--mk) 40%, transparent);

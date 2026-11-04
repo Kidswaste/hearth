@@ -217,7 +217,7 @@ add('unread', async () => {
 // ---------- 5. the window's side: an unreadable store; an import by the owner ----------
 function fakeWindow(stored, chatList) {
   const writes = []; const toasts = []; const kv = { projects: clone(stored) }; const local = new Map();
-  const hooks = { scope: [], top: [], skip: [], menu: [], render: [], itemMenu: [], view: [] };
+  const hooks = { scope: [], row: [], render: [], itemMenu: [] }; // (round 121, listtidy121) panel.js's hooks now
   let st = 'ok';
   const H = { chats: chatList.map((c) => ({ agentId: 'claude', updatedAt: 1, ...c })), activeChat: {}, activeId: 'claude', agent: () => ({ id: 'claude', name: 'Claude', mode: 'native' }), agents: () => [], claudeAgent: () => null, surfaceIdFor: () => '' };
   const ctx = {
