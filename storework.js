@@ -1056,12 +1056,13 @@ const OPS = {
   chatfind({ dir, kv, q, budgetMs = 30, limit = 20 }) {
     const t0 = performance.now();
     const { left } = recallCatch(dir, t0, budgetMs * 0.6, 3000); // (the rest of the budget: the find itself)
+    const t1 = performance.now(); let tt = 0;
     const reread = new Map();
     // (the texts read lately are kept: one more letter typed asks for mostly the same best messages again)
     const textOf = (file, k) => {
       const e = index.get(file); const key = `${file}|${e ? `${e.size}:${e.mtimeMs}` : ''}|${k}`;
       if (findTexts.has(key)) { const t = findTexts.get(key); findTexts.delete(key); findTexts.set(key, t); return t; }
-      const t = msgText(file, k, reread);
+      const a = performance.now(); const t = msgText(file, k, reread); tt += performance.now() - a;
       if (t !== undefined) { findTexts.set(key, String(t).slice(0, 4000)); if (findTexts.size > 400) findTexts.delete(findTexts.keys().next().value); }
       return t;
     };
@@ -1078,7 +1079,7 @@ const OPS = {
       if (hits.length >= limit) break;
     }
     const unread = [...recallBad.values()].slice(0, 8);
-    return { words: res.words, hits, total: res.total, left, unread, projects: proj.map ? proj.n : null, messages: res.messages, chats: res.chats, ms: Math.round(performance.now() - t0) };
+    return { words: res.words, hits, total: res.total, left, unread, projects: proj.map ? proj.n : null, messages: res.messages, chats: res.chats, ms: Math.round(performance.now() - t0), parts: { catchUp: Math.round(t1 - t0), find: Math.round(performance.now() - t1 - tt), texts: Math.round(tt) } };
   },
   // (round 75, syncstate75) a store saved by what changed (usage.js → store.js mergeKV): read here (with its .prev copy
   // when damaged, as the main side did), the changes applied, written as write() does. The main process only passes

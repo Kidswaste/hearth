@@ -60,9 +60,10 @@ const ChatFind = (() => {
       for (const h of S.res.hits) { const r = rowOf(h); if (seen.has(h.chatId) && h.k == null) continue; out.push(r); }
       for (const u of S.res.unread || []) out.push(note(`Couldn’t read “${u.title}” just now`, 'its messages aren’t in these results · try again in a moment', () => AppUI.palette(`?${S.q}`)));
       if (S.res.projects === null) out.push(note('Couldn’t read your projects just now', 'messages are found, but which project each is in isn’t shown'));
-      if (S.res.left > 0) out.push(note(`Still reading ${S.res.left} chat${S.res.left === 1 ? '' : 's'}…`, 'more messages may appear here'));
-    } else if (S.err) out.push(note('Couldn’t search the messages just now', S.err, () => AppUI.palette(`?${S.q}`)));
-    else if (R.foldWords(words).some((w) => w.length >= 2)) out.push(note('Looking in your messages…'));
+      if (S.res.left > 0 && !S.err) out.push(note(`Still reading ${S.res.left} chat${S.res.left === 1 ? '' : 's'}…`, 'more messages may appear here'));
+    }
+    if (S.err) out.push(note('Couldn’t search the messages just now', `${S.err} · Enter to try again`, () => AppUI.palette(`?${S.q}`))); // (the rows found before it stay)
+    else if (!S.res && R.foldWords(words).some((w) => w.length >= 2)) out.push(note('Looking in your messages…'));
     S.stats.firstRowsMs = Math.round((performance.now() - t0) * 10) / 10;
     return out;
   }

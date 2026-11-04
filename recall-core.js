@@ -312,6 +312,9 @@ const RecallCore = (() => {
       // stop words count only when they're all there is ("the who" still finds The Who's chat by its words)
       let qw = all.filter((w) => w.length >= minLen && !STOP.has(w));
       if (!qw.length) qw = all.filter((w) => w.length >= minLen);
+      // a next word only just begun (one or two letters after a whole one: "portal sh") waits for its third letter: the rows
+      // stay as they were instead of narrowing to every word starting "sh"
+      if (partialLast && qw.length > 1 && qw[qw.length - 1] === all[all.length - 1] && qw[qw.length - 1].length <= 2) qw.pop();
       qw = [...new Set(qw)].slice(0, 8);
       const out = { words: qw, hits: [], total: 0, messages: N, chats: byKey.size };
       if (!qw.length || !N) return out;
