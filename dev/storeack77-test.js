@@ -16,8 +16,7 @@
 //                 PC's text never lost; the caret's helper (into / keepCaret logic) keeps objects the screen holds
 //   counts        feature usage (ui-usage, saved by what changed): an op merge made from the disk as it is now must not go
 //                 through the guard again (the arrived clicks were counted twice on every save)
-//   soundbank     the sound bank's index (main process, its own writes, no guard): a favorite set on the Mac arrives
-//                 while the PC has a change waiting → both stay (before: the PC's save put the old index back)
+//   (soundbank: the sound bank's index, until round 116: gone with the music studio, slim116)
 // Never touches real data or a real cloud drive: a temp folder.
 //   node dev/storeack77-test.js [--only name,name] [--verbose]
 'use strict';
@@ -307,32 +306,6 @@ scenario('restore', async () => {
   ok(JSON.parse(win.held.items.p.data).bars === 16 && got.acked.includes(rel), 'restore: the window holds the 16 bars and acked', { held: win.held.items.p, got });
   ok(await T.converge(w) > 0, 'restore: converges', T.why(w));
   ok(JSON.parse(mac.json(rel).items.p.data).bars === 16 && JSON.parse(mac.json(rel).items.q.data).bars === 2, 'restore: the Mac has the 16 bars and the PC\'s change', mac.json(rel).items);
-});
-
-// ---------- 5. the sound bank (main process, its own writes) ----------
-scenario('soundbank', async () => {
-  const Bank = require('../soundbankmain');
-  const { w, pc, mac } = await pair('soundbank');
-  const rel = 'creative-vst/soundbank/index.json';
-  const entry = (id) => ({ id, source: 'plugin', instrument: 'Vital', name: id, favorite: false, usedIn: [], at: '2026-10-01T00:00:00.000Z', tags: [], file: '' });
-  pc.write(rel, { v: 1, settings: { pluginFolders: false, folders: [] }, entries: { a: entry('a'), b: entry('b') }, files: {} });
-  ok(await T.converge(w) > 0, 'soundbank: first sync', T.why(w));
-  const bank = Bank.create({ dataDir: pc.data, hostFactory: () => null });
-  ok(bank.list({}).ok !== false, 'soundbank: the PC\'s bank is read');
-  mac.edit(rel, (v) => { v.entries.a.favorite = true; return v; }); // ★ on the Mac
-  ok(await T.converge(w) > 0 && pc.json(rel).entries.a.favorite === true, 'soundbank: the Mac\'s ★ arrives on disk', T.why(w));
-  bank.update('b', { favorite: true }); // ★ on the PC, its save waiting (250 ms)
-  bank.arrived(); // StoreAck (main) on sync:pulled
-  bank.flush(); bank.stop?.();
-  ok(await T.converge(w) > 0, 'soundbank: converges', T.why(w));
-  for (const m of [pc, mac]) { const e = m.json(rel).entries; ok(e.a.favorite === true && e.b.favorite === true, `soundbank: both ★ stay (the Mac's and the PC's), on the ${m.name}`, e); }
-  // before: the PC's save of what it held put the old index back over the Mac's ★
-  const bank2 = Bank.create({ dataDir: mac.data, hostFactory: () => null });
-  bank2.list({});
-  pc.edit(rel, (v) => { v.entries.a.favorite = false; return v; });
-  ok(await T.converge(w) > 0, 'soundbank: the PC\'s un-★ reaches the Mac', T.why(w));
-  bank2.update('b', { favorite: false }); bank2.flush(); bank2.stop?.(); // no arrived(): the old way
-  ok(mac.json(rel).entries.a.favorite === true, 'soundbank: (the bug) without arrived(), the Mac\'s save put the old ★ back over the PC\'s change', mac.json(rel).entries.a);
 });
 
 async function main() {

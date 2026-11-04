@@ -1,8 +1,8 @@
 // ⚑ Finish line (round 67, finishlines67): the pure part (UMD: the window loads it with tools/three-finish.js, Node
 // tests require it: node dev/finishline-test.js). A Lab scene gets a size (10 s / 30 s / full), a short "done when"
 // checklist that starts from that size's defaults, and "Polish this": the unticked lines (or, when every line is
-// ticked, a short look at the scene) turned into exactly three small, concrete steps, as a side quest for the quest
-// journal (QuestCore's side-quest shape) with the same three steps for the step-by-step guide. No model call: 0 tokens.
+// ticked, a short look at the scene) turned into exactly three small, concrete steps. No model call: 0 tokens.
+// (round 116, slim116) the side quest made from them left with the Life tab; a saved `quest` is still read and kept.
 // State per scene (ThreeLab.scenes extras, key `finish`): { v: 1, size, items: [{ id, text, done }], custom, quest, doneAt }
 (function (root, make) { const api = make(); if (typeof module === 'object' && module.exports) module.exports = api; else root.FinishCore = api; })(typeof self !== 'undefined' ? self : this, () => {
   const SIZES = [
@@ -122,25 +122,5 @@
     for (const s of lookSteps(info)) { if (steps.length >= 3) break; if (!used.has(s.title)) { steps.push(s); used.add(s.title); } }
     return steps.slice(0, 3).map((s, i) => ({ id: `finish-${i + 1}`, title: cap(s.title, 140), instruction: cap(s.instruction, 1500), ...(s.item ? { item: s.item } : {}) }));
   }
-  // a side quest for the quest journal (QuestCore.validate's side-quest rules) + the guide's steps
-  function quest({ sceneId, sceneName, size, n = 1 }, steps) {
-    const name = cap(sceneName, 60) || 'this scene';
-    const z = sizeOf(size);
-    const id = `q-finish-${hash(sceneId).slice(0, 10)}-${Math.max(1, Math.min(9999, Math.floor(n) || 1))}`;
-    const list = steps.map((s, i) => `${i + 1}. ${s.title}`).join(' ');
-    return {
-      id, path: 'visual', tool: 'lab', minutes: 15, xp: 40,
-      title: cap(`Polish ${name}${z ? ` (${z.label})` : ''}`, 250),
-      done: cap(`Do three small things in ${name}: ${list}`, 1000),
-      tiny: cap(steps[0]?.instruction || `Open ${name} in the Lab.`, 500),
-      deep: 'Only after these three: tick the Finish line card again, or record it.',
-      finishLine: { v: 1, sceneId: cap(sceneId, 100) },
-      guideSteps: steps.map((s) => ({ id: s.id, title: s.title, instruction: `In the Lab, on “${name}”: ${s.instruction}`, check: 'manual', action: { type: 'hearth-tool', tool: 'lab' } })),
-    };
-  }
-  // what the guide gets (window.hub.questGuide({ op: 'start', ... }))
-  const guideStart = (q) => ({ op: 'start', questId: q.id, title: q.title, kind: 'custom', steps: clone(q.guideSteps) });
-  const isOurs = (questId) => /^q-finish-[a-z0-9]+-\d+$/.test(String(questId || ''));
-
-  return { SIZES, DEFAULTS, MAX_ITEMS, sizeOf, normalize, setSize, toggle, rename, add, remove, reset, progress, chip, stepFor, lookSteps, polishSteps, quest, guideStart, isOurs, hash };
+  return { SIZES, DEFAULTS, MAX_ITEMS, sizeOf, normalize, setSize, toggle, rename, add, remove, reset, progress, chip, stepFor, lookSteps, polishSteps, hash };
 });

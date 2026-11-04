@@ -88,13 +88,6 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
-   "file": "audiodoctormain.js",
-   "kind": "read",
-   "fn": "runHelper",
-   "call": "readFileSync(answer, 'utf8')",
-   "why": "the audio check helper's answer file: unreadable = the check is shown as failed; nothing written"
-  },
-  {
    "file": "board-links.js",
    "kind": "kv",
    "store": "board-templates",

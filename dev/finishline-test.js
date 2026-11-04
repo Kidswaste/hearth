@@ -1,11 +1,9 @@
 // Node tests for ⚑ Finish line (tools/three-finish-core.js): sizes and their default lines, ticking / editing /
 // adding / removing lines, "done" only when every line is ticked, Polish this → exactly three concrete steps (unticked
-// lines first, then a short look at the scene), and a side quest QuestCore accepts (on a fresh journal in memory:
-// nothing is read from or written to the owner's data).
+// lines first, then a short look at the scene). Nothing is read from or written to the owner's data.
 //   node dev/finishline-test.js
 const assert = require('assert');
 const C = require('../tools/three-finish-core.js');
-const QC = require('../tools/quest-core.js');
 let n = 0;
 const ok = (name, fn) => { try { fn(); n += 1; console.log(`✓ ${name}`); } catch (err) { console.log(`✖ ${name}: ${err.stack}`); process.exitCode = 1; } };
 
@@ -102,32 +100,5 @@ ok('Polish this: always exactly three steps', () => {
   assert.match(look[1].instruction, /Sky, Orb/);
   assert.strictEqual(C.polishSteps(null, {}).length, 3); // no list at all
   assert.deepStrictEqual(look.map((s) => s.id), ['finish-1', 'finish-2', 'finish-3']);
-});
-ok('the side quest passes QuestCore.validate and trackSide (fresh journal in memory)', () => {
-  const st = C.setSize(null, '10s');
-  const q = C.quest({ sceneId: 'sAbc_9', sceneName: 'Neon orb', size: '10s', n: 2 }, C.polishSteps(st, {}));
-  assert.ok(C.isOurs(q.id));
-  assert.match(q.id, /^q-finish-[a-z0-9]+-2$/);
-  assert.strictEqual(q.guideSteps.length, 3);
-  assert.ok(q.guideSteps.every((s) => s.check === 'manual' && s.action.type === 'hearth-tool' && s.action.tool === 'lab'));
-  assert.match(q.guideSteps[0].instruction, /Neon orb/);
-  const s = QC.upgrade(QC.initial());
-  QC.trackSide(s, q);
-  QC.validate(s);
-  assert.ok(s.sideQuests.some((x) => x.id === q.id));
-  const g = C.guideStart(q);
-  assert.strictEqual(g.op, 'start');
-  assert.strictEqual(g.steps.length, 3);
-});
-ok('the three-side-quest limit is QuestCore\'s plain message', () => {
-  const s = QC.upgrade(QC.initial());
-  for (let i = 1; i <= 3; i += 1) QC.trackSide(s, C.quest({ sceneId: `s${i}`, sceneName: `Scene ${i}`, size: '10s' }, C.polishSteps(null, {})));
-  assert.throws(() => QC.trackSide(s, C.quest({ sceneId: 's4', sceneName: 'Four', size: '10s' }, C.polishSteps(null, {}))), /three side quests/);
-});
-ok('a long scene name and odd ids still make a valid quest', () => {
-  const q = C.quest({ sceneId: 'X'.repeat(300), sceneName: 'N'.repeat(500), size: null }, C.polishSteps(null, {}));
-  const s = QC.upgrade(QC.initial());
-  QC.trackSide(s, q);
-  QC.validate(s);
 });
 console.log(`${n} passed`);

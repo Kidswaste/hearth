@@ -64,8 +64,8 @@ test('a GPU context loss next to a freeze: the graphics card', () => {
 });
 
 test('the window\'s own frame: script / layout / paint words and the file in plain words', () => {
-  const s1 = C.summarise(snap({ events: [frame(NOW - 3000, 700, { s: 650, r: 30, o: 20, file: 'tools/quest-atlas.js', fn: 'render', area: 'quests' })] }));
-  assert.equal(s1.headline, 'The last hiccup: 700 ms, while you were in Sidequest Studio (the window busy running quests (render)).');
+  const s1 = C.summarise(snap({ events: [frame(NOW - 3000, 700, { s: 650, r: 30, o: 20, file: 'tools/workbench-ui.js', fn: 'render', area: 'creative' })] }));
+  assert.equal(s1.headline, 'The last hiccup: 700 ms, while you were in the Creative board (the window busy running the Creative board (render)).');
   const s2 = C.summarise(snap({ events: [frame(NOW - 3000, 600, { s: 50, f: 500, r: 30, o: 20, file: 'native.js' })] }));
   assert.match(s2.cause, /re-measuring its layout for the chat view/);
   const s3 = C.summarise(snap({ events: [frame(NOW - 3000, 600, { s: 20, f: 0, r: 560, o: 20, file: '' })] }));
@@ -123,7 +123,7 @@ test('plain names: IPC channels and files, unknown ones kept', () => {
   assert.equal(C.plainIpc('kv:get'), 'reading or saving app data');
   assert.equal(C.plainIpc('config:save'), 'your settings');
   assert.equal(C.plainIpc('jank:test-stall'), 'a test freeze (made on purpose)');
-  assert.equal(C.plainIpc('creative-vst:scan'), 'the Sound desk');
+  assert.equal(C.plainIpc('board:import'), 'the mood board');
   assert.equal(C.plainIpc('weird:thing'), '“weird:thing”');
   assert.equal(C.plainFile('tools/three-media.js'), 'the Lab');
   assert.equal(C.plainFile('foo.js'), 'foo');

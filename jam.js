@@ -785,22 +785,19 @@ const Jam = (() => {
   }
   if (!Commands.get('jam')) {
     Commands.register({
-      name: 'jam', area: 'Collab', args: '[rounds] [idea] | stop | again | keep <round> | share | park [place | record 4|8|16 | ambience | proof | week | off]',
+      name: 'jam', area: 'Collab', args: '[rounds] [idea] | stop | again | keep <round> | share',
       desc: 'Claude and Astra take turns making a music visual in the Lab (4 rounds; Esc stops)',
-      examples: ['/jam', '/jam neon tunnel that breathes with the bass', '/jam 6 liquid chrome on the drop', '/jam again', '/jam keep 2', '/jam share', '/jam stop', '/jam park belleville', '/jam park record 8'],
+      examples: ['/jam', '/jam neon tunnel that breathes with the bass', '/jam 6 liquid chrome on the drop', '/jam again', '/jam keep 2', '/jam share', '/jam stop'],
       keywords: 'claude astra together turns bounce collaborate visual art director jam session',
       complete: (a) => {
         const w = a.trim().toLowerCase();
         if (/^keep\b/.test(w)) return (latest()?.list || []).filter((R) => R.snap).map((R) => ({ value: `keep ${R.n}`, hint: cap(R.build?.text, 50) }));
-        // (round 62, parkjam62) /jam park …: Park jam in the Sound desk (tools/parkjam.js, the creative lazy group)
-        if (/^park\b/.test(w)) return (typeof ParkJam !== 'undefined' && ParkJam.complete ? ParkJam.complete() : [{ value: 'park ', hint: 'make music outside: record, ambience, proof, week, off' }]).filter((x) => x.value.startsWith(w));
-        return [{ value: 'park', hint: 'Park mode: make music outside on the laptop (record a loop, park ambience, quest proof)' }, { value: 'stop', hint: 'end the jam now (Esc)' }, { value: 'again', hint: `${AGAIN} more rounds on the result` }, { value: 'keep ', hint: 'put a round\'s version back' }, { value: 'share', hint: 'a still to the clipboard + a 10-second clip' }, { value: '6 ', hint: 'more rounds, then your idea' }]
+        return [{ value: 'stop', hint: 'end the jam now (Esc)' }, { value: 'again', hint: `${AGAIN} more rounds on the result` }, { value: 'keep ', hint: 'put a round\'s version back' }, { value: 'share', hint: 'a still to the clipboard + a 10-second clip' }, { value: '6 ', hint: 'more rounds, then your idea' }]
           .filter((x) => !w || x.value.startsWith(w));
       },
       run: async (args, ctx) => {
         const w = String(args || '').trim();
         if (/^stop$/i.test(w)) return stop() ? 'Stopping the jam…' : 'No jam is running.';
-        if (/^park\b/i.test(w)) { await Lazy.load('creative'); return ParkJam.run(w.replace(/^park\b\s*/i, ''), ctx); } // (round 62, parkjam62) Park jam (music outside on the laptop)
         if (/^again$/i.test(w) || /^again\s+\d+$/i.test(w)) { await again(Number(w.split(/\s+/)[1]) || AGAIN); return null; }
         if (/^keep\b/i.test(w)) { const n = Number(w.split(/\s+/)[1]); if (!Number.isFinite(n)) return 'Which round? /jam keep 2'; return keep(n); }
         if (/^share$/i.test(w)) return share();
@@ -837,20 +834,4 @@ const Jam = (() => {
 })();
 window.Jam = Jam;
 
-// (round 63, loopsong63) /song: park loops → a song (Arrange in the Sound desk, tools/loopsong.js in the creative lazy
-// group). Registered here, at start, because the name is the Lab's (/song play | pause | seek…): a lazy stand-in's `when`
-// says no until its group loads. This one answers in Creative Playground, for its own words anywhere, and for a bare
-// /song outside the Lab; the Lab's /song keeps everything else.
-(() => {
-  if (typeof Commands === 'undefined') return;
-  const MINE = /^(arrange|open|takes|add|export|re-?render|proof|tempo|clear|list|close|repeat|move|trim|fade|remove)\b/i;
-  const when = (ctx, args) => { const at = ctx?.place || '', s = String(args || '').trim(); return MINE.test(s) || at === 'creative' || (at !== 'three' && !s); };
-  const run = async (args, ctx) => {
-    // before the Lab's group is in, this may be the only /song: hand the Lab's words to the Lab's command
-    if (!when(ctx, args) && typeof Lazy !== 'undefined') { await Lazy.load('lab').catch(() => {}); const lab = Commands.get('song')?.variants?.find((v) => !v.when); if (lab) return lab.run(args, ctx); }
-    if (typeof LoopSong === 'undefined') await Lazy.load('creative');
-    return LoopSong.command(args, ctx);
-  };
-  const complete = (a, ctx) => (typeof LoopSong !== 'undefined' ? LoopSong.complete(a, ctx) : ['takes', 'add 1', 'play', 'export', 'proof'].filter((v) => v.startsWith(String(a || '').trim().toLowerCase())).map((value) => ({ value })));
-  Commands.register({ name: 'song', args: '[takes | add <n> [lane] [bar] | play | rerender <clip> [preset] | export | proof]', desc: 'Arrange park loops into a song: lanes over bars, re-render through Serum 2 / Vital, export mix + stems + MIDI', area: 'Create', when, whenLabel: 'for park loops', run, complete, examples: ['/song', '/song takes', '/song add 1', '/song export', '/song proof'], keywords: 'arrange arrangement loops park stems mixdown bounce finish track' });
-})();
+// (round 116, slim116) the Sound desk's /song (park loops → a song) left with the music studio; /song is the Lab's again

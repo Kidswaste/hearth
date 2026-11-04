@@ -36,7 +36,7 @@ const ProjectsHome = (() => {
     const chips = el('div', { class: 'pj-chips pj-home-chips' });
     const results = el('div', { class: 'palette-list pj-home-results' });
     const quick = el('div', { class: 'pj-quick' },
-      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A dedicated chat, scene, sound desk and moodboard', on: { click: () => newProject() } }),
+      el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A dedicated chat, scene and moodboard', on: { click: () => newProject() } }),
       el('button', { type: 'button', class: 'ghost small pj-quick-more', text: '⋯', title: 'More: a new chat, the Lab, grouping in the chats list, archived projects', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, moreMenu()); } } }));
     const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Projects' }), input, quick);
     S.body = el('div', { class: 'pj-home-body' });
@@ -168,7 +168,7 @@ const ProjectsHome = (() => {
       { label: 'Bring Three.js chats into Projects', action: () => ProjectWorkspace.importScenes() },
       { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },
       { label: 'Customize the left rail…', action: () => WorkspaceNav.editShortcut() },
-      { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Sound desk',action:()=>WorkspaceNav.creative('vst')},{label:'Moodboards',action:()=>activate('tool:board')}] },
+      { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Moodboards',action:()=>activate('tool:board')}] },
       a ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id); } } : null,
       { label: 'Open the Lab', action: () => activate('tool:three') },
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
@@ -230,11 +230,10 @@ const ProjectsHome = (() => {
     const modules=el('details',{class:'pw-modules'},el('summary',{text:`Modules & mods · ${layers.length}`}),filter,moduleList);modules.addEventListener('toggle',()=>{if(modules.open&&!moduleList.children.length)paintModules();});filter.oninput=paintModules;
     const chats=p.items.filter(x=>x.type==='chat'),boards=p.items.filter(x=>x.type==='board');
     const materials=block('On your desk',...boards.map(x=>row(P.nameOf(x),'board',()=>x.ref===p.workspace?.boardId?ProjectWorkspace.go('moodboard'):P.openItem(x))),row('Drawing & storyboard','brushes',()=>ProjectWorkspace.go('board')), ...p.items.filter(x=>['capture','render','file'].includes(x.type)).slice(-4).map(x=>itemRow(p,x)));
-    const sound=block('Instruments',...(p.workspace?.plugins||[]).map(name=>row(name,'music',()=>ProjectWorkspace.go('sound'))),row('Choose instruments','plus',()=>ProjectWorkspace.settings(p)));
     const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
     const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
     const files=filesShelf(p,state);
-    S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),...(window.QuestGuide?.projectCard?[QuestGuide.projectCard(p)]:[]),materials,modules,sound,...(conversations?[conversations]:[]),about,files); // (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
+    S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),materials,modules,...(conversations?[conversations]:[]),about,files); // (round 116, slim116: no quest card, no Instruments block) (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
     for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
     if(modules.open)paintModules();
     if(window.DeskPaint)DeskPaint.place(S,state.scroll||0,{now:Boolean(state.focus)});else S.top=S.root.scrollTop=state.scroll||0; // (round 89, desk89) the place set in the coming frame (desk-paint-core.js): the write laid out the whole window inside this task (≈ 15–30 ms of Clink's 50–70) · (round 86: S.top, see keepDesk; a clamped place comes back by its scroll event)

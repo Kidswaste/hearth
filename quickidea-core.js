@@ -3,7 +3,8 @@
 // inbox, putting an idea where it goes). No DOM, no Electron; Node-tested (dev/quickidea71-test.js).
 // The store: kv 'quick-ideas' { v: 1, ideas: [idea], trash: [idea + deletedAt], last: { dest, projectId?, projectName? } }
 //   idea: { id, text, at, to: { dest, projectId?, projectName? }, memo?: { file, seconds }, placed: null | placement }
-//   dest: 'music' (Sound desk › Sessions) | 'quest' (Sidequest's saved ideas) | 'project' (a project's notes) | 'later'
+//   dest: 'project' (a project's notes) | 'later' — and, read as saved, 'music' / 'quest' (round 116, slim116: places that
+//   left with the music studio and the Life tab; an idea saved there stays as it was, CHOICES are the places offered now)
 //   placement: where it really is now: { dest, at, questIdea? (Codex's idea id), projectId?, line? (the notes line) }
 //   An idea whose placement isn't its target yet ("pending") is put there by the main window (quickidea.js), which
 //   first takes it out of the old place on a Move to…: one path for saving, moving, restoring.
@@ -21,6 +22,7 @@
     later: { icon: '💬', name: 'Later', where: '💡 Ideas' },
   };
   const ORDER = ['music', 'quest', 'project', 'later'];
+  const CHOICES = ['project', 'later']; // (round 116, slim116) the places offered (ORDER still reads ideas saved before)
   const isObj = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   const str = (v, n) => (typeof v === 'string' ? v : '').slice(0, n);
   const empty = () => ({ v: 1, ideas: [], trash: [], last: { dest: 'later' } });
@@ -125,21 +127,6 @@
     return c;
   }
 
-  // ---------- Sidequest: a saved idea in Codex's journal (QuestCore.saveIdea's shape) ----------
-  const PATH_WORDS = [
-    ['music', /\b(beat|loop|track|song|melod|chord|bass|drum|kick|snare|synth|serum|vital|sample|vocal|lyric|mix|bpm|music|sound|riff|hook|verse|chorus)/i],
-    ['visual', /\b(three|scene|shader|visual|render|video|clip|colou?r|palette|light|texture|particle|animation|motion|logo|poster|photo|draw|paint)/i],
-    ['game', /\b(game|clink|level|player|enemy|boss|mechanic|forgeheart|npc|quest log|controller)/i],
-  ];
-  function guessPath(text) { for (const [p, re] of PATH_WORDS) if (re.test(text || '')) return p; return 'life'; }
-  function questIdea(idea) {
-    const lines = String(idea.text || '').split('\n').map((l) => l.trim()).filter(Boolean);
-    const t = cut(lines[0] || title(idea), 150);
-    const rest = lines.slice(1).join(' ');
-    const goal = cut(rest || (idea.memo ? `Listen to the voice memo in 💡 Ideas, then do one small first step.${lines[0] ? ` (${lines[0]})` : ''}` : lines[0] || t), 500);
-    return { title: t, goal, path: idea.memo && !lines.length ? 'music' : guessPath(idea.text), minutes: 15 };
-  }
-
   // ---------- a project's notes: one line per idea, taken out again on a Move to… ----------
   function noteLine(idea) { return `💡 ${cut(String(idea.text || '').replace(/\s*\n\s*/g, ' · ') || title(idea), 300)}${idea.memo ? ' (voice memo in 💡 Ideas)' : ''} · ${dayWords(idea.at)}`; }
   function addNote(notes, line, max = 4000) {
@@ -195,13 +182,13 @@
   }
   const sameKey = (a, b) => Boolean(keyNorm(a)) && keyNorm(a) === keyNorm(b);
 
-  // ---------- chat: "/idea quest: try a 7/8 loop" ----------
+  // ---------- chat: "/idea project: try a 7/8 loop" ----------
   function parseWords(s) {
-    const m = String(s || '').trim().match(/^(music|quest|later|project)\s*[:›>-]\s*([\s\S]*)$/i);
+    const m = String(s || '').trim().match(/^(later|project)\s*[:›>-]\s*([\s\S]*)$/i);
     return m ? { dest: m[1].toLowerCase(), text: m[2].trim() } : { dest: null, text: String(s || '').trim() };
   }
 
-  return { KEY, DESTS, ORDER, MAX_IDEAS, MAX_TRASH, TRASH_DAYS, MAX_MEMO_S, DEFAULT_KEY, empty, clean, cut, title, hm, dayWords, target, sameTarget, placedOk, pending, whereWords, label,
-    validate, make, add, find, move, setPlaced, trash, restore, purge, counts, guessPath, questIdea, noteLine, addNote, removeNote, recentProjects,
+  return { KEY, DESTS, ORDER, CHOICES, MAX_IDEAS, MAX_TRASH, TRASH_DAYS, MAX_MEMO_S, DEFAULT_KEY, empty, clean, cut, title, hm, dayWords, target, sameTarget, placedOk, pending, whereWords, label,
+    validate, make, add, find, move, setPlaced, trash, restore, purge, counts, noteLine, addNote, removeNote, recentProjects,
     encodeWav, checkWav, stamp, memoName, keyNorm, sameKey, parseWords };
 }));

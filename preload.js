@@ -7,7 +7,6 @@ const startZoom = Number((process.argv.find((a) => a.startsWith('--hearth-zoom='
 if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the page re-applies it */ } }
 
 contextBridge.exposeInMainWorld('hub', {
-  volume: { get: call('volume:get'), set: call('volume:set') },
   // (round 72, longrun72) how many IPC listeners this window holds (in all, and per channel with more than one): the
   // hub.onX(cb) subscriptions have no "off", so one made again and again piles up for as long as the window lives
   ipcListeners: () => { const multi = {}; let total = 0; for (const n of ipcRenderer.eventNames()) { const c = ipcRenderer.listenerCount(n); total += c; if (c > 1) multi[String(n)] = c; } return { total, multi }; },
@@ -43,24 +42,8 @@ contextBridge.exposeInMainWorld('hub', {
   saveHistory: call('history:save'),
   kvGet: call('kv:get'),
   kvPick: call('kv:pick'), // (round 73) a big list store's rows with only some fields: kvPick('three-sketches', ['id', 'name', 'updatedAt'])
-  questGuide: call('questguide:call'),
-  onQuestGuide: on('questguide:changed'),
-  onQuestGuideReview: on('questguide:review'),
-  onQuestGuideTool: on('questguide:tool'),
-  onQuestGuideOuting: on('questguide:outing'),
-  outingGuide: call('outing:guide'),
-  onOutingGuide: on('outing:guide:open'),
-  vst: { scan: call('creative-vst:scan'), status: call('creative-vst:status'), setup: call('creative-vst:setup'), request: call('creative-vst:request'), stop: call('creative-vst:stop'), send: (r) => ipcRenderer.send('creative-vst:send', r), parkSave: call('creative-vst:park-save'), warmStatus: call('creative-vst:warm-status') /* (round 64, vstembed64) */ }, // (round 61, vstlive61) send: live notes / knob moves, no reply · (round 62, parkjam62) parkSave(sketch, name, bytes): a park take's file
-  soundbank: { list: call('soundbank:list'), similar: call('soundbank:similar'), update: call('soundbank:update'), settings: call('soundbank:settings'), previews: call('soundbank:previews'), cancel: call('soundbank:cancel'), queue: call('soundbank:queue'), preview: call('soundbank:preview'), state: call('soundbank:state') }, // (round 63, soundbank63) the Sound bank (soundbankmain.js)
   kvSet: call('kv:set'),
   kvMerge: call('kv:merge'), // (round 73, chatsteady73) a store saved by what changed: [op, path, value] (store.js mergeKV)
-  parkSong: { list: call('creative-vst:park-list'), mp3: call('creative-vst:park-mp3') }, // (round 63, loopsong63) every park sketch's takes · an exported mix as MP3 (ffmpeg)
-  audioDoctor: { probe: call('audiodoctor:probe'), live: call('audiodoctor:live'), open: call('audiodoctor:open'), asio: call('creative-vst:asio') }, // (round 64, audiodoctor64) /audio doctor: the music setup checked on this PC, on demand (audiodoctormain.js)
-  liveset: { save: call('creative-vst:live-save'), mp3: call('creative-vst:live-mp3') }, // (round 64, liveset64) the Live set's folder (<data>/creative-live/<set>/): prepared clips, run logs · a run as MP3
-  bouncelog: { note: call('bouncelog:note'), folder: call('bouncelog:folder'), ours: call('bouncelog:ours') }, // (round 66, bouncelog66) Session log: <data>/creative-sketches/<project>/ (a session's note for a quest proof)
-  dawsend: { begin: call('dawsend:begin'), open: call('dawsend:open'), write: call('dawsend:write'), close: call('dawsend:close'), put: call('dawsend:put'), copy: call('dawsend:copy'), state: call('dawsend:state'), finish: call('dawsend:finish'), cancel: call('dawsend:cancel'), defaultDir: call('dawsend:default-dir') }, // (round 69, stems69) 📤 Send to my DAW: the stems folder, written in pieces, renamed when done
-  sketchpads: { saveLoop: call('sketchpads:save-loop'), loops: call('sketchpads:loops'), trashList: call('sketchpads:trash-list') }, // (round 67, sketchpads67) Sessions › ✂ Trim loop: a new loop beside its sketch, the sketch's loops, a loop to the Trash
-  parisPhotos: { put: call('parisphotos:put'), dir: call('parisphotos:dir'), trash: call('parisphotos:trash'), heic: call('parisphotos:heic'), scan: call('parisphotos:scan') }, // (round 69, photos69) My Paris photos (parisphotosmain.js)
   saveAttachment: call('attachments:save'),
   importRef: call('refs:import'),
   importRefWhole: call('refs:importWhole'), refUses: call('refs:uses'), // (round 99, labmodels99)
@@ -149,7 +132,7 @@ contextBridge.exposeInMainWorld('hub', {
   onTray: (cb) => {
     ipcRenderer.on('tray:new-chat', () => cb('new-chat'));
     ipcRenderer.on('tray:palette', () => cb('palette'));
-    ipcRenderer.on('tray:ideas', () => cb('ideas')); // (round 71, quickidea71) a saved Quest / Project idea to put in its place (quietly)
+    ipcRenderer.on('tray:ideas', () => cb('ideas')); // (round 71, quickidea71) a saved Project idea to put in its place (quietly)
     ipcRenderer.on('tray:ideas-open', () => cb('ideas-open')); // … and the small window's "All ideas"
   },
   onContextAction: (cb) => {
@@ -217,11 +200,7 @@ contextBridge.exposeInMainWorld('hub', {
   power: { state: call('power:state'), hold: call('power:hold'), release: call('power:release'), allow: call('power:allow'), quiet: call('power:quiet'), test: call('power:test'), onState: on('power:state') }, // (round 39, powerwise) staying awake while it matters, battery / saver, wake (powerwisemain.js)
   notify: { send: call('notify:send'), seen: call('notify:seen'), onGo: on('notify:go'), test: call('notify:test') }, // (round 44, notify) desktop notifications (notifymain.js): send one, the chat was looked at, where a click goes, (checks) a recorder
   net: { probe: call('net:probe'), onPower: on('net:power'), prepareProject: call('net:prepareProject') }, // connection + this computer's offline project check
-  weekquest: { weather: call('weekquest:weather') }, // (round 62, weekquest62) the week plan's forecast (weekquestmain.js)
-  shows: { get: call('shows:get'), refresh: call('shows:refresh'), settings: call('shows:settings'), follow: call('shows:follow'), unfollow: call('shows:unfollow'), test: call('shows:test'), remind: call('shows:remind'), onRemind: on('shows:remind') }, // (round 61, showsync61) this week's shows from Shotgun / DICE (showsyncmain.js)
-  leave: { op: call('leave:op'), onDue: on('leave:due'), onChanged: on('leave:changed'), onWarn: on('leave:warn') /* (round 69, ratp69) ⚠ a line on the way is disrupted */ }, // (round 68, leavesoon68) ⏰ Remind me to leave (leavesoonmain.js: one timer)
   quickIdea: { op: (a) => ipcRenderer.invoke('quickidea:op', a), onChanged: on('quickidea:changed') }, // (round 71, quickidea71) 💡 the ideas inbox (quickideamain.js): list · move · placed · trash · restore · empty-trash · open (the small window)
-  tickets: { op: call('tickets:op') }, // (round 68, tickets68) 🎟 My ticket (ticketsmain.js): list · add · remove (Trash) · suggest (Downloads, names only) · hud · pass · awake
   safetynet: { last: call('safetynet:last'), reloading: call('safetynet:reloading'), status: call('safetynet:status'), keep: call('safetynet:keep'), done: call('safetynet:done'), testCrash: call('safetynet:test-crash') }, // (round 29) after an unexpected exit: what was kept (safetynetmain.js)
   crashsafe: { take: call('crashsafe:take'), done: call('crashsafe:done'), ack: call('crashsafe:ack'), test: call('crashsafe:test'), check: call('crashsafe:check'), onOrphan: on('crashsafe:orphan'), onFlush: on('crashsafe:flush'), onFrames: on('crashsafe:frames') }, // (round 50) replies cut off by a crash, renders cut off, the computer going down (crashsafemain.js)
   devreport: { info: call('devreport:info'), gh: call('devreport:gh'), send: call('devreport:send'), states: call('devreport:states'), log: call('devreport:log'), crashes: call('devreport:crashes'), annotate: call('devreport:annotate') }, // (round 21) Report to the developer

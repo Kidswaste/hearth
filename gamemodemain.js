@@ -128,7 +128,7 @@ async function warm() {
   await step('session', () => { gameSession(); warmState.session = true; });
   await step('page', () => labPageOnce());
   // the window's preloads read once (on Windows the first open of each is scanned; the game window then finds them ready)
-  await step('preloads', () => Promise.all(['game-preload.js', 'gamelook-preload.js', 'gamequality-preload.js', 'volume-preload.js'].map((f) => P.readFile(path.join(__dirname, f)).catch(() => null))));
+  await step('preloads', () => Promise.all(['game-preload.js', 'gamelook-preload.js', 'gamequality-preload.js'].map((f) => P.readFile(path.join(__dirname, f)).catch(() => null))));
   return warmState;
 }
 

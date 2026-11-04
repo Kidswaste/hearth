@@ -171,8 +171,6 @@ function isAuthUrl(url) {
 
 function openExternal(url) {
   if (/^https?:\/\//i.test(url)) shell.openExternal(url);
-  // (round 67, invite67) 👋 Bring someone › Open in Messages (Mac only): opens Messages with the text filled in, never sends
-  else if (process.platform === 'darwin' && /^sms:&body=/i.test(url) && url.length <= 8000) shell.openExternal(url);
 }
 
 // a reply can still be streaming when the window is closing or reloading: never send to a window that's gone (that threw
@@ -273,8 +271,7 @@ function createWindow() {
 
 app.on('web-contents-created', (_event, contents) => {
   contents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    // (round 61, questhud61) location only for Hearth's own page (the quest tracker's opt-in "near you"), never a website
-    callback(ALLOWED_PERMISSIONS.has(permission) || (permission === 'geolocation' && contents.getType() === 'window' && /^file:/.test(contents.getURL())));
+    callback(ALLOWED_PERMISSIONS.has(permission)); // (round 116, slim116) the quest tracker's "near you" location is gone with the Life tab
   });
   appshell.attachContextMenu(contents, send);
 
@@ -727,15 +724,6 @@ ipcMain.handle('packs:pending', () => { const p = packPending; packPending = nul
 // tick (the page can't send anything before this returns), instead of before Electron's 'ready': the window opens that
 // much sooner and the requires below run while its page process starts. Order unchanged.
 function registerAfterWindow() {
-  const vstIpc = lazyIpc('creative-vstmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app, settings })); // (round 63, loopsong63) + settings: ffmpeg for the song's MP3
-  // (round 64, vstembed64) the Sound desk's host warms up 20 s after start only if the owner used it last session
-  try { require('./creative-vstmain.js').warmLater(store.DATA_DIR, vstIpc.load); } catch { /* a cold start then */ }
-  lazyIpc('soundbankmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, app })); // (round 63, soundbank63) the Sound bank's index + preview queue
-  lazyIpc('audiodoctormain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, settings })); // (round 64, audiodoctor64) /audio doctor: runtime, ASIO, devices, MIDI, Serum 2 / Vital, a 2-second live test (only when asked)
-  lazyIpc('bouncelogmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 66, bouncelog66) Session log: a session's note file for a quest proof (sketches are written by the instrument host)
-  lazyIpc('dawsendmain.js', (m, ipc) => m.register(ipc, { app })); // (round 69, stems69) 📤 Send to my DAW: writes "<song> — stems <date>" where the owner chose (staged as .part, removed on Cancel)
-  lazyIpc('sketchpadsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 67, sketchpads67) a loop trimmed from a sketch: a NEW WAV + its card beside the sketch (the sketch is only read)
-  lazyIpc('parisphotosmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 69, photos69) My Paris photos: resized copies in data/paris-photos, HEIC → JPEG, a folder's EXIF (originals only read)
   const { nativeTheme, systemPreferences, nativeImage } = require('electron');
   nativeAttention = nativefeel.register(ipcMain, { getWin: () => win, nativeTheme, systemPreferences, app, nativeImage, appshell, send });
   bigscreen.register(ipcMain, { getWin: () => win, screen: require('electron').screen }); // (round 38) ⛶ full screen, size of everything
@@ -822,15 +810,9 @@ function registerAfterWindow() {
   } });
   require('./notifymain').register(ipcMain, { getWin: () => win, app, shell, appshell, Notification: require('electron').Notification, send }); // (round 44, notify) desktop notifications: Electron's own (Hearth's name / icon, Focus / Do Not Disturb), one per chat, a burst summed up, a click opens the chat / card / file
   require('./offlinemain').register(ipcMain, { getWin: () => win }); // (round 34, offline) is the internet there (no engine, no tokens), sleep / wake
-  require('./leavesoonmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, powerMonitor: require('electron').powerMonitor, later: afterFirstScreen }); // (round 68, leavesoon68) ⏰ Remind me to leave: ONE timeout to the next reminder (rings with Hearth in the tray; missed ones aren't rung late)
-  require('./showsyncmain').register(ipcMain, { dataDir: store.DATA_DIR, later: afterFirstScreen }); // (round 61, showsync61) this week's shows from Shotgun / DICE: polite fetches, nothing while idle
   // (round 71, quickidea71) 💡 Quick idea: the tray item / its key open a small always-on-top window; the inbox store and the voice memos (loaded on first use)
   const quickIpc = lazyIpc('quickideamain.js', (m, ipc) => m.register(ipc, { store, dataDir: store.DATA_DIR, getWin: () => win, send, icon: appshell.ensureIcon(), keyInfo: appshell.quickKeyInfo, trayMenu: appshell.trayMenuOf }));
   appshell.onQuickIdea(() => { quickIpc.load(); require('./quickideamain').open(); });
-  lazyIpc('ticketsmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 68, tickets68) 🎟 My ticket: copies in data/tickets/<show>, the Downloads look (names only), Wallet passes; loaded on first use
-  const outingGuide = require('./outing-guidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, Notification: require('electron').Notification });
-  require('./questguidemain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win, onChanged: snapshot => outingGuide.syncGuide(snapshot) });
-  require('./weekquestmain').register(ipcMain); // (round 62, weekquest62) the week plan's Paris forecast (Open-Meteo, no key), only when the week card opens
   require('./safetynetmain').register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 29) Hearth never loses work: the session marker, the page reloading after a crash, the work journal
   crashsafe.register(ipcMain, { dataDir: store.DATA_DIR, getWin: () => win }); // (round 50, crashsafe) replies being written, renders cut off, temp files killed writes left, Windows update restarts
   require('./devreportmain').register(ipcMain, { dataDir: store.DATA_DIR }); // (round 21) Report to the developer: gh issue / versions / crashes
@@ -888,7 +870,6 @@ ipcMain.handle('bg:state', () => {
 
 app.whenReady().then(async () => {
   bootMark('appReady');
-  require('./volumemain').init({ app, session, ipcMain, webContents: require('electron').webContents, getWin: () => win });
   require('./offline-library').register({ protocol: require('electron').protocol, ipcMain, dataDir: store.DATA_DIR });
   // (round 64, twocopies64) a copy with no chats that finds another Hearth folder with chats asks first (one card, before
   // anything empty is on screen): open that one, bring its chats here (copied, never moved), or start fresh

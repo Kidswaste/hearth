@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict');
-const C=require('../project-workspace-core'), P=require('../projects-core'), I=require('../tools/quest-atlas-index');
+const C=require('../project-workspace-core'), P=require('../projects-core');
 assert.equal(C.key('pj-hello'),'workbench-pj-hello');assert.throws(()=>C.key('../other'));
 assert.deepEqual(C.plugins(['Serum 2','Unknown','Vital','Serum 2']),['Serum 2','Vital']);
 assert.equal(C.workspace({persona:'evil',custom:{keep:true}}).persona,'partner');
@@ -8,11 +8,7 @@ assert.equal(C.frontpage({count:100000,speed:42,color:'url(x)',shape:'script'}).
 assert.equal(C.frontpage({color:'url(x)'}).color,'#ff9866');
 const p=P.create({name:'Watchdog'});p.workspace=C.workspace({sceneId:'scene-kept',chatId:'chat-kept',plugins:['Vital']});
 assert.deepEqual(P.normalize({v:1,list:[p],dismissed:[]}).list[0].workspace,p.workspace);
-const points=Array.from({length:10000},(_,i)=>({id:'p'+i,lat:48.7+(i%100)*.003,lon:2.15+Math.floor(i/100)*.004,minZoom:i%2?16:11}));
-const index=I.build(points),z=15,n=256*2**z,[x,y]=I.xy(48.86,2.35).map(v=>v*n),view={left:x-300,top:y-200,width:600,height:400,z,selected:'p4545'};
-const rows=I.query(index,view),brute=points.flatMap((p,i)=>{const [a,b]=I.xy(p.lat,p.lon).map(v=>v*n);return (p.minZoom<=z||p.id===view.selected)&&a>=view.left-80&&a<=view.left+680&&b>=view.top-40&&b<=view.top+440?[[i,a,b]]:[];});assert.deepEqual(rows,brute);
-assert.equal(I.query(I.build([{id:'bad',lat:NaN,lon:2}]),view).length,0);
-console.log('Project preferences round-trip, bounded AI configuration and 10,000-pin spatial index match passed.');
+console.log('Project preferences round-trip and bounded AI configuration passed.'); // (round 116, slim116: the quest map's pin index left with the Life tab)
 const banner=C.banner({symbol:'<script>',elements:Array.from({length:100},()=>({position:[Infinity,-99,99],scale:[0,999,1],color:'url(x)'}))},'Clinky');
 assert.equal(banner.elements.length,24);assert.equal(banner.symbol,'crystal');assert.deepEqual(banner.elements[0].position,[0,-5,5]);assert.deepEqual(banner.elements[0].scale,[.05,2,1]);assert.equal(banner.title,'Clinky');
 const chats=[{id:'c1',title:'One'},{id:'c2',title:'Two'},{id:'c3',title:'Gone'}],scenes=[{id:'s1',name:'Clinky'}],links={links:{c1:{sketch:'s1'},c2:{sketch:'s1'},c3:{sketch:'missing'}}};

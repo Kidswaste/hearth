@@ -5,8 +5,7 @@
   else root.CreativeCore = api;
 })(typeof globalThis === 'object' ? globalThis : this, function () {
   const FEATURES = [
-    ['studio', 'Workbenches', 'The worktable', 'Your sounds, sketches and shots, connected.'],
-    ['vst', 'Workbenches', 'Serum 2 & Vital', 'Play your instruments, shape a patch and keep the sound.'],
+    ['studio', 'Workbenches', 'The worktable', 'Your sketches and shots, connected.'],
     ['texture', 'Workbenches', 'Material foundry', 'Seamless color, normal, height and roughness maps.'],
     ['draw', 'Workbenches', 'Sketch to asset', 'A sketch, your description, and a creation to build on.'],
     ['story', 'Workbenches', 'Storyboard table', 'Arrange your creations into a timed visual sequence.'],

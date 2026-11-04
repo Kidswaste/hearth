@@ -1,4 +1,4 @@
-/* (round 71, quickidea71) 💡 Ideas: the inbox dialog, its rows, and the 🎵 Music ideas in the Sound desk's Sessions (quickidea.js) */
+/* (round 71, quickidea71) 💡 Ideas: the inbox dialog, its rows (quickidea.js) */
 .qi-inbox{width:min(620px,94vw);max-height:min(720px,88vh);display:flex;flex-direction:column;gap:8px;padding:14px 16px}
 .qi-inbox:not([open]){display:none}
 .qi-head{display:flex;align-items:center;gap:10px}
@@ -23,5 +23,3 @@
 .qi-trash .qi-list{margin:6px 0}
 .qi-foot{margin:0;color:var(--muted);font-size:12px}
 @media (max-width:560px){.qi-row{grid-template-columns:1fr}.qi-acts{justify-content:flex-start}}
-.qi-sessions{display:flex;flex-direction:column;gap:8px;margin-top:6px;padding-top:10px;border-top:1px solid #ffffff14}
-.qi-sessions .qi-row{border-color:#ffffff14;background:#ffffff06}

@@ -1049,48 +1049,19 @@ function popMenu(x, y, items, { width = 300 } = {}) {
 }
 
 // Projects first; tools belong to the open project. Chats stay one small utility away.
-// One device-local playback control; recording/export levels remain in their own tools.
-(() => {
-  const b = document.createElement('button');
-  b.id = 'volume-btn'; b.className = 'tool-btn'; b.type = 'button';
-  b.setAttribute('aria-label', 'Hearth playback volume'); b.textContent = '🔊';
-  $('config-btn').before(b);
-  let value = .75, previous = .75, pop = null;
-  const paint = () => { b.textContent = value ? '🔊' : '🔇'; b.title = `Hearth volume · ${Math.round(value * 100)}%`; };
-  hub.volume.get().then(n => { value = n; if (n) previous = n; paint(); }).catch(console.warn); paint();
-  b.onclick = () => {
-    if (pop) { pop.hidePopover(); return; }
-    pop = document.createElement('div'); pop.id = 'volume-pop'; pop.setAttribute('popover', 'auto');
-    pop.style.cssText = 'position:fixed;inset:auto auto 18px 86px;margin:0;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--bg,#15151b);color:var(--text);box-shadow:0 12px 40px #0008;z-index:10000';
-    const title = document.createElement('b'), row = document.createElement('div'), slider = document.createElement('input'), mute = document.createElement('button');
-    title.textContent = 'Playback · ' + Math.round(value * 100) + '%';
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;margin-top:12px';
-    slider.type = 'range'; slider.min = '0'; slider.max = '100'; slider.step = '1'; slider.value = String(Math.round(value * 100));
-    slider.setAttribute('aria-label', 'Hearth playback volume'); slider.style.accentColor = 'var(--accent,#ffd75e)';
-    mute.textContent = value ? 'Mute' : 'Unmute'; mute.type = 'button'; mute.className = 'ghost';
-    let timer;
-    const save = () => { clearTimeout(timer); timer = setTimeout(() => hub.volume.set(value).catch(e => toast(e.message, { type: 'error' })), 50); };
-    const change = n => { value = n; if (n) previous = n; slider.value = String(Math.round(n * 100)); title.textContent = `Playback · ${slider.value}%`; mute.textContent = n ? 'Mute' : 'Unmute'; paint(); save(); };
-    slider.oninput = () => change(Number(slider.value) / 100);
-    mute.onclick = () => change(value ? 0 : previous || .75);
-    pop.addEventListener('toggle', e => { if (e.newState === 'closed') { pop?.remove(); pop = null; b.focus(); } });
-    row.append(slider, mute); pop.append(title, row); document.body.append(pop); pop.showPopover(); slider.focus();
-  };
-})();
 const WorkspaceNav = window.WorkspaceNav = (() => {
-  const paths = { projects:'M3 5h7l2 3h9v13H3ZM3 5V3h7l2 2', chat:'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', life:'M12 3 4 7v14l8-4 8 4V7l-8-4Zm0 0v14M8 10l2 2 5-5', ship:'m12 2 5 10 5 6-8-2-2 6-2-6-8 2 5-6 5-10ZM10 10h4M7 19l-2 3M17 19l2 3', brushes:'m4 2 16 15-3 3L2 4Zm16 0L2 17l3 3L22 4ZM3 18l-1 4 4-1M18 18l4 4', spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z', plus:'M12 4v16M4 12h16' };
+  const paths = { projects:'M3 5h7l2 3h9v13H3ZM3 5V3h7l2 2', chat:'M4 4h16v12H9l-5 4V4Zm4 5h8M8 12h5', ship:'m12 2 5 10 5 6-8-2-2 6-2-6-8 2 5-6 5-10ZM10 10h4M7 19l-2 3M17 19l2 3', brushes:'m4 2 16 15-3 3L2 4Zm16 0L2 17l3 3L22 4ZM3 18l-1 4 4-1M18 18l4 4', spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z', plus:'M12 4v16M4 12h16' };
   const defaults = [{id:'forgeheart',name:'Forgeheart',icon:'ship',type:'tool',target:'forgeheart',color:'#ff9b61'},{id:'clink',name:'Clink!',icon:'brushes',type:'name',target:'Clink',color:'#e17ac4'}];
   const shortcuts = () => Array.isArray(H.settings().workspaceShortcuts) ? H.settings().workspaceShortcuts.slice(0,12) : defaults;
   let bar, signature='', routeToken=0, lastChat;
   const project = () => (projectsIn() ? window.ProjectWorkspace?.current?.() : null);
-  const category = id => { const sid=H.surfaceIdFor(id);if(sid==='tool:quests')return 'life';if(sid==='tool:forgeheart')return 'forgeheart';if(project())return 'projects';if(!H.isTool(sid))return 'chat';return 'projects'; };
+  const category = id => { const sid=H.surfaceIdFor(id);if(sid==='tool:forgeheart')return 'forgeheart';if(project())return 'projects';if(!H.isTool(sid))return 'chat';return 'projects'; };
   function icon(kind) { const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),p=document.createElementNS(svg.namespaceURI,'path');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');p.setAttribute('d',paths[kind]||paths.spark);svg.append(p);return svg; }
   function button(name,fn,props={}) { return el('button',{type:'button',...props,on:{click:async e=>{const b=e.currentTarget;if(b.disabled)return;b.disabled=true;try{await fn();}catch(err){toast(calmError(err),{type:'error'});}finally{b.disabled=false;}}}},el('span',{text:name})); }
   async function open(section) {
     routeToken++;
     if(section==='projects'||section==='studio'){await Lazy.load('projects');return ProjectWorkspace.home();}
     await window.ProjectWorkspace?.leave();
-    if(section==='life')return activate('tool:quests');
     const id=lastChat&&H.agent(lastChat)?lastChat:H.railAgents().find(a=>a.mode==='native'&&a.engine==='codex')?.id||H.railAgents()[0]?.id;
     if(id)activate(id);else Manager.open();
   }
@@ -1118,8 +1089,8 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
   async function saveShortcuts(xs){H.config.settings={...H.config.settings,workspaceShortcuts:xs};await saveConfig();render();}
   function render() {
     document.documentElement.classList.add('hearth-three-spaces');
-    const rail=$('agent-buttons');rail.replaceChildren();rail.setAttribute('aria-label','Projects, Life and your shortcuts');
-    for(const [id,name,color] of [['projects','Projects','#ffbd70'],['life','Life','#ff6b9d']]){const b=button(name,()=>open(id),{class:'space-button',dataset:{space:id},title:name});b.style.setProperty('--space-color',color);b.prepend(icon(id));rail.append(b);}
+    const rail=$('agent-buttons');rail.replaceChildren();rail.setAttribute('aria-label','Projects and your shortcuts');
+    for(const [id,name,color] of [['projects','Projects','#ffbd70']]){const b=button(name,()=>open(id),{class:'space-button',dataset:{space:id},title:name});b.style.setProperty('--space-color',color);b.prepend(icon(id));rail.append(b);}
     for(const x of shortcuts()){const b=button(x.name,()=>shortcut(x),{class:'space-button',dataset:{shortcut:x.id},title:x.name+' · right-click to customize'});b.style.setProperty('--space-color',x.color||'#d79bff');b.prepend(icon(x.icon));b.oncontextmenu=e=>{e.preventDefault();showMenu(e.clientX,e.clientY,[{label:'Edit shortcut',action:()=>editShortcut(x)},{label:'Move up',action:()=>{const xs=shortcuts().slice(),i=xs.findIndex(a=>a.id===x.id);if(i>0){[xs[i-1],xs[i]]=[xs[i],xs[i-1]];return saveShortcuts(xs);}}},{label:'Remove from rail',action:()=>saveShortcuts(shortcuts().filter(a=>a.id!==x.id))}]);};rail.append(b);}
     const add=button('',()=>editShortcut(),{class:'space-button space-add',title:'Add a project or tool to the rail',attrs:{'aria-label':'Add shortcut'}});add.prepend(icon('plus'));rail.append(add);
     rail.append(button('Chats',()=>open('chat'),{class:'space-button space-chats',dataset:{utility:'chat'},title:'All chats and assistants'}));
@@ -1129,13 +1100,13 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
   function sync() {
     if(!bar||!H.activeId)return;const space=category(H.activeId),sid=H.surfaceIdFor(H.activeId),p=project();$('app').dataset.space=space;if(space==='chat')lastChat=H.activeId;
     for(const b of $('agent-buttons').querySelectorAll('.space-button')){const x=shortcuts().find(x=>x.id===b.dataset.shortcut);const yes=b.dataset.space===space || b.dataset.utility===space || x&&(x.type==='tool'&&sid==='tool:'+x.target || x.type==='project'&&p?.id===x.target || x.type==='name'&&p?.name.toLowerCase().includes(x.target.toLowerCase()));b.classList.toggle('active',!!yes);b.setAttribute('aria-current',yes?'page':'false');if(b.dataset.utility==='chat')b.classList.toggle('unread',H.unread.size>0);}
-    bar.hidden=space==='life'||space==='forgeheart'||space==='projects'&&sid==='tool:home'&&!p;
+    bar.hidden=space==='forgeheart'||space==='projects'&&sid==='tool:home'&&!p;
     const feature=sid==='tool:creative'&&Lazy.loaded('creative')?CreativePlayground.snapshot().feature:'';
     const sig=JSON.stringify([space,p?.id,p?.name,H.railAgents().map(a=>[a.id,a.name,a.color])]);
     if(sig!==signature){signature=sig;bar.replaceChildren();const choices=el('div',{class:'workspace-choices'});bar.append(choices);
       if(space==='chat'){for(const a of H.railAgents()){const b=railButton(a.id,a,a.name+' · right-click for options');b.classList.add('workspace-agent');b.append(el('span',{text:a.name}));b.oncontextmenu=e=>{e.preventDefault();showAgentMenu(a.id,e.clientX,e.clientY);};choices.append(b);}bar.append(button('+ Assistant',()=>Manager.open(),{class:'workspace-utility'}));}
-      else if(p){choices.append(button('‹ Projects',()=>open('projects'),{class:'workspace-back'}),el('button',{type:'button',class:'workspace-project-name',text:p.name+' ▾',title:'Switch project',attrs:{'aria-label':'Switch project','aria-haspopup':'menu'},on:{click:e=>ProjectWorkspace.switcher(e.currentTarget)}}));for(const [name,tab,id,f] of [['Desk','overview','home'],['Scene','scene','three'],['Sound','sound','creative','vst'],['Creative board','board','creative','board'],['Moodboard','moodboard','board']])choices.append(button(name,()=>ProjectWorkspace.go(tab),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));}
-      else if(space==='projects'){for(const [name,id,f] of [['Projects','home'],['Scene','three'],['Sound','creative','vst'],['Creative board','creative','studio'],['Moodboard','board']])choices.append(button(name,()=>f?creative(f):(++routeToken,activate('tool:'+id)),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));bar.append(button('Apps',async()=>{await Lazy.load('apps');$('apps-btn')?.click();},{class:'workspace-utility'}));}
+      else if(p){choices.append(button('‹ Projects',()=>open('projects'),{class:'workspace-back'}),el('button',{type:'button',class:'workspace-project-name',text:p.name+' ▾',title:'Switch project',attrs:{'aria-label':'Switch project','aria-haspopup':'menu'},on:{click:e=>ProjectWorkspace.switcher(e.currentTarget)}}));for(const [name,tab,id,f] of [['Desk','overview','home'],['Scene','scene','three'],['Creative board','board','creative','board'],['Moodboard','moodboard','board']])choices.append(button(name,()=>ProjectWorkspace.go(tab),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));}
+      else if(space==='projects'){for(const [name,id,f] of [['Projects','home'],['Scene','three'],['Creative board','creative','studio'],['Moodboard','board']])choices.append(button(name,()=>f?creative(f):(++routeToken,activate('tool:'+id)),{dataset:{surface:'tool:'+id,...(f?{feature:f}:{})}}));bar.append(button('Apps',async()=>{await Lazy.load('apps');$('apps-btn')?.click();},{class:'workspace-utility'}));}
     }
     // Always reachable across the project's tools; lazy-load the scheduler only on demand.
     let auto=bar.querySelector('.workspace-auto');

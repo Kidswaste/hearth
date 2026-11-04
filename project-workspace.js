@@ -157,8 +157,7 @@ window.ProjectWorkspace = (() => {
         timings.sceneMs=Math.round(performance.now()-started)-timings.filesMs;cancelled(controller.signal);
         stage(2,'Preparing the creative board…');
         if(!await board)throw Error('The moodboard is not available on this computer yet.');
-        stage(3,'Restoring your instrument…');
-        const soundAt=performance.now();const warning=await WorkbenchUI.preloadSound({signal:controller.signal});timings.soundMs=Math.round(performance.now()-soundAt);cancelled(controller.signal);
+        const warning=null; // (round 116, slim116) the Sound desk's instrument restore is gone with the music studio
         await go(tab,ticket);cancelled(controller.signal);
         await painted();cancelled(controller.signal); // (round 86, projopen86) the tab drawn (the Desk) in its own task before the card goes
         timings.totalMs=Math.round(performance.now()-started);const lastSwitch=loadState.lastSwitch;stage(4,'Ready to make something.');loadState={phase:'ready',project:id,timings,lastSwitch};
@@ -238,14 +237,13 @@ window.ProjectWorkspace = (() => {
     const sketches=await P.Src.sketches(); sketches.slice(0,150).forEach(s=>scene.append(el('option',{value:s.id,text:s.name})));
     const board=el('select',{},el('option',{value:'',text:'An empty moodboard'}));
     const boards=await P.Src.boards();(Array.isArray(boards)?boards:[]).slice(0,150).forEach(b=>board.append(el('option',{value:b.id,text:b.name+' (copy)'})));
-    let files=[]; const fileList=el('p',{class:'pw-files',text:'Animation, song, artwork, references…'}), plugins=el('div',{class:'pw-plugins'});
-    for(const name of ['Serum 2','Vital'])plugins.append(el('label',{class:'pw-plugin'},el('input',{type:'checkbox',checked:true,value:name}),svg('music'),el('span',{text:name})));
+    let files=[]; const fileList=el('p',{class:'pw-files',text:'Animation, song, artwork, references…'}); // (round 116, slim116) no Serum 2 / Vital picker: the music studio is gone
     const label=(name,input)=>el('label',{class:'pw-field'},el('span',{text:name}),input), status=el('p',{class:'hint',attrs:{role:'status'}}), generate=el('input',{type:'checkbox',checked:false});
-    form.append(el('div',{class:'pw-eyebrow',text:'NEW / PROJECT'}),el('h2',{text:'Give your idea a home.'}),label('Project name',title),label('The idea',brief),el('div',{class:'pw-form-grid'},label('AI',agents),label('Personality',persona)),label('Starting scene',scene),plugins,action('＋ Starting files / moodboard',async()=>{const picked=await hub.openDialog({title:'Starting material',properties:['openFile','multiSelections']});if(picked?.length){files=[...new Set([...files,...picked])];fileList.textContent=files.map(base).join(' · ');}}),fileList,el('label',{class:'check'},generate,' Write the project description with AI when I create it'),status,el('div',{class:'dialog-actions'},action('Cancel',()=>d.close()),el('button',{type:'submit',class:'primary',text:'Create project ↗',disabled:!ai.length})));
+    form.append(el('div',{class:'pw-eyebrow',text:'NEW / PROJECT'}),el('h2',{text:'Give your idea a home.'}),label('Project name',title),label('The idea',brief),el('div',{class:'pw-form-grid'},label('AI',agents),label('Personality',persona)),label('Starting scene',scene),action('＋ Starting files / moodboard',async()=>{const picked=await hub.openDialog({title:'Starting material',properties:['openFile','multiSelections']});if(picked?.length){files=[...new Set([...files,...picked])];fileList.textContent=files.map(base).join(' · ');}}),fileList,el('label',{class:'check'},generate,' Write the project description with AI when I create it'),status,el('div',{class:'dialog-actions'},action('Cancel',()=>d.close()),el('button',{type:'submit',class:'primary',text:'Create project ↗',disabled:!ai.length})));
     if(!ai.length)status.textContent='Add a native AI in Settings first.';
     scene.parentElement.after(label('Starting moodboard',board));
     let busy=false,retryId=null; d.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
-    form.onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;status.textContent='Creating your chat, scene and moodboard…';form.querySelectorAll('button').forEach(b=>b.disabled=true);try{await create({resumeId:retryId,name:title.value,brief:brief.value,persona:persona.value,agentId:agents.value,sceneId:scene.value,boardId:board.value,plugins:[...plugins.querySelectorAll('input:checked')].map(i=>i.value),files,describe:generate.checked});d.close();}catch(err){retryId=err.projectId||retryId;status.textContent=calmError(err);}finally{busy=false;form.querySelectorAll('button').forEach(b=>b.disabled=false);}};
+    form.onsubmit=async e=>{e.preventDefault();if(busy)return;busy=true;status.textContent='Creating your chat, scene and moodboard…';form.querySelectorAll('button').forEach(b=>b.disabled=true);try{await create({resumeId:retryId,name:title.value,brief:brief.value,persona:persona.value,agentId:agents.value,sceneId:scene.value,boardId:board.value,plugins:[],files,describe:generate.checked});d.close();}catch(err){retryId=err.projectId||retryId;status.textContent=calmError(err);}finally{busy=false;form.querySelectorAll('button').forEach(b=>b.disabled=false);}};
     d.append(form);d.onclose=()=>d.remove();document.body.append(d);d.showModal();title.focus();return d;
   }
   async function ask(text,persona) {
@@ -281,12 +279,13 @@ window.ProjectWorkspace = (() => {
   }
   function toolbar(p) {
     const w=C.workspace(p.workspace), node=el('div',{class:'pw-project-tools'});
-    for(const [tab,title,kind] of [['chat','Chat','chat'],['scene','Scene','scene'],['sound','Sound','music'],['board','Creative board','brushes'],['moodboard','Moodboard','board']]){const b=action(title,()=>go(tab),'pw-tool');b.prepend(svg(kind));node.append(b);}
+    for(const [tab,title,kind] of [['chat','Chat','chat'],['scene','Scene','scene'],['board','Creative board','brushes'],['moodboard','Moodboard','board']]){const b=action(title,()=>go(tab),'pw-tool');b.prepend(svg(kind));node.append(b);}
     return el('section',{class:'pw-project-intro'},el('div',{class:'pw-eyebrow',text:`PROJECT / ${C.PERSONAS[w.persona][0]}`}),el('p',{class:'pw-description',text:w.description || p.notes || 'A space for your next finished piece.'}),node,action('✦ Three.js banner / logo',()=>ProjectFrontpage.edit(p)),action(w.description?'✦ Refresh description':'✦ Write description with AI',()=>describe(p)),action('Project setup',()=>settings(p)));
   }
   async function settings(p) {
-    const w=C.workspace(p.workspace),v=await Modal.form('Project setup',[{name:'persona',label:'AI personality',type:'select',value:w.persona,options:Object.entries(C.PERSONAS).map(([value,[label]])=>({value,label}))},{name:'serum',label:'Serum 2',type:'checkbox',value:w.plugins.includes('Serum 2')},{name:'vital',label:'Vital',type:'checkbox',value:w.plugins.includes('Vital')}],{ok:'Save'});if(!v)return;
-    await save(p,{persona:v.persona,plugins:[...(v.serum?['Serum 2']:[]),...(v.vital?['Vital']:[])]});const c=chatOf(p);if(c){const chat=await Native.load(c.id);chat.style=C.PERSONAS[v.persona][1];Native.save(chat);if(H.activeChat[c.agentId]===c.id)Native.setStyle(c.agentId,chat.style);}
+    const w=C.workspace(p.workspace),v=await Modal.form('Project setup',[{name:'persona',label:'AI personality',type:'select',value:w.persona,options:Object.entries(C.PERSONAS).map(([value,[label]])=>({value,label}))}],{ok:'Save'});if(!v)return;
+    await save(p,{persona:v.persona,plugins:w.plugins}); // (round 116, slim116) the instrument picker left with the music studio; the saved list is kept as it was
+    const c=chatOf(p);if(c){const chat=await Native.load(c.id);chat.style=C.PERSONAS[v.persona][1];Native.save(chat);if(H.activeChat[c.agentId]===c.id)Native.setStyle(c.agentId,chat.style);}
     if(Lazy.loaded('creative') && current()===p)await WorkbenchUI.setProject(p.id,{title:p.name,plugins:p.workspace.plugins});
   }
   Tools.define({id:'projectchat',offRail:true,name:'Project chat',icon:'◇',mount:body=>body.closest('.surface')?.classList.add('pw-chat-surface')});

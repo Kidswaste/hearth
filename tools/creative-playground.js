@@ -47,12 +47,12 @@ const CreativePlayground = (() => {
     nav=el('nav',{class:'cp-nav',attrs:{'aria-label':'Creative workbenches'}},el('h3',{text:'Workbenches'}));
     for(const f of C.FEATURES)nav.append(button(f.name,()=>openFeature(f.id),{dataset:{featureId:f.id},attrs:{'aria-pressed':'false',title:f.description}}));
     stage=el('main',{class:'cp-stage'});
-    host.append(el('header',{class:'cp-heading'},el('h1',{text:'Creative Playground'}),button('✦ Quest journal',async()=>{await Lazy.load('questjournal');activate('tool:quests');})),feedback,el('div',{class:'cp-layout'},nav,stage));
+    host.append(el('header',{class:'cp-heading'},el('h1',{text:'Creative Playground'})),feedback,el('div',{class:'cp-layout'},nav,stage));
     ready=true;openFeature(feature);
     document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();else if(suspended && H.surfaceIdFor(H.activeId)==='tool:creative')resume();});
     document.addEventListener('hearth:activate',()=>{if(H.surfaceIdFor(H.activeId)!=='tool:creative')suspend();});
   }
-  Tools.define({id:'creative',offRail:true,name:'Creative board',icon:'✺',color:'#ed77a8',description:'Sounds, sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)resume();}});
-  Commands.register({name:'playground',area:'Create',desc:'Open your sounds, sketches, materials and storyboard',run:()=>activate('tool:creative')});
+  Tools.define({id:'creative',offRail:true,name:'Creative board',icon:'✺',color:'#ed77a8',description:'Sketches, materials and storyboards',mount:body=>{mount(body).catch(e=>{body.textContent=`Creative desk could not open: ${calmError(e)}`;});},onShow:()=>{if(ready && suspended)resume();}});
+  Commands.register({name:'playground',area:'Create',desc:'Open your sketches, materials and storyboard',run:()=>activate('tool:creative')});
   return {openFeature,pause,lastBoard:()=>boardFeature,ready:()=>ready,flush:()=>saving,snapshot:()=>({feature,state:JSON.parse(JSON.stringify(state)),playing:Boolean(source)})};
 })();

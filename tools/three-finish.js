@@ -8,16 +8,14 @@
 //     plainly that the piece is done and offers ⏺ Record it (the Lab's own recorder: N seconds, or the whole song /
 //     timeline) and More ways to record… (the timeline's record menu).
 //   · ✦ Polish this: the unticked lines (or, with every line ticked, a short look at the scene) become exactly three
-//     small steps, shown on the card first. "Track it" adds them as a side quest to the quest journal (through
-//     QuestHud.write + QuestCore.trackSide, so the journal's own rules and the three-side-quest limit apply); "Track +
-//     guide me" also starts the step-by-step guide with the same three steps (window.hub.questGuide). Made here, from
-//     the list and the scene's layer names: no model call, 0 tokens.
+//     small steps, shown on the card. Made here, from the list and the scene's layer names: no model call, 0 tokens.
+//     (round 116, slim116) "Track it" / "Track + guide me" (a side quest in the quest journal) left with the Life tab.
 // Stored per scene in the Lab's extras (ThreeLab.scenes.setExtras, key `finish`; it follows the scene through sync and
 // duplicates, and the Lab never writes over an extras file it couldn't read). Nothing runs on a timer: the chip
 // repaints on a scene switch or a change. Ctrl/⌘+K: "Lab: ⚑ Finish line". Model: tools/three-finish-core.js.
 const LabFinish = (() => {
   const C = FinishCore;
-  const S = { chip: null, card: null, draft: null, editing: null, adding: false, note: '', guideHooked: false, seam: null }; // seam: dev/checks/finishline.js's stand-in journal + guide (never the owner's)
+  const S = { chip: null, card: null, draft: null, editing: null, adding: false, note: '' };
   const err = (e) => toast(String(e?.message || e), { type: 'error' });
   const Lab = () => (typeof ThreeLab !== 'undefined' ? ThreeLab : null);
   const scenes = () => Lab()?.scenes || null;
@@ -201,7 +199,7 @@ const LabFinish = (() => {
     return true;
   }
 
-  // ---------- ✦ Polish this → a side quest with three steps ----------
+  // ---------- ✦ Polish this → three small steps ----------
   function polishPart(id, st) {
     const box = el('div', { class: 'fl-polish' });
     if (!S.draft || S.draft.sceneId !== id) {
@@ -209,74 +207,24 @@ const LabFinish = (() => {
       box.append(el('div', { class: 'lm-acts' },
         btn('✦ Polish this', open ? 'Your unticked lines as three small steps you can do now' : 'A short look at the scene as three small steps you can do now', () => polish(id), 'lm-ask fl-polish-btn'),
         el('span', { class: 'fl-free', text: 'made here, 0 tokens' })));
-      if (st.quest) box.append(el('div', { class: 'fl-note', text: `Last polish quest: ${st.quest.title}` }));
       return box;
     }
     box.append(el('div', { class: 'fl-label', text: 'Three small steps' }),
       el('ol', { class: 'fl-steps' }, ...S.draft.steps.map((s) => el('li', {}, el('b', { text: s.title }), el('span', { text: s.instruction })))),
       el('div', { class: 'lm-acts' },
-        btn('✦ Track + guide me', 'Adds it to your side quests and opens the step-by-step guide beside the Lab', () => track(id, true), 'lm-ask'),
-        btn('Track it', 'Adds it to your side quests (the quest tracker shows it)', () => track(id, false)),
-        btn('Not now', 'Nothing is saved', () => { S.draft = null; paintCard(); })));
-    if (S.draft.msg) box.append(el('div', { class: 'fl-note fl-warn', attrs: { role: 'status' } }, el('span', { text: S.draft.msg }), S.draft.full ? btn('Open the quest tracker', 'Park, skip or finish a side quest there', () => openTracker()) : false));
+        btn('Close', 'Nothing is saved', () => { S.draft = null; paintCard(); })));
     return box;
   }
   function polish(id) {
-    S.draft = { sceneId: id, steps: C.polishSteps(stateOf(id), infoOf(id)), msg: '' };
+    S.draft = { sceneId: id, steps: C.polishSteps(stateOf(id), infoOf(id)) };
     paintCard();
   }
-  async function hud() {
-    if (S.seam?.hud) return S.seam.hud;
-    if (typeof QuestHud === 'undefined' || !QuestHud?.write) await Lazy.load('questhud');
-    if (typeof QuestHud === 'undefined' || !QuestHud?.write) throw Error('The quest tracker isn\'t available just now. Nothing was changed.');
-    return QuestHud;
-  }
-  async function openTracker() { (await hud()).open?.(); }
-  async function track(id, guide) {
-    const d = S.draft;
-    if (!d || d.sceneId !== id) return;
-    const st = stateOf(id);
-    const n = (Number(String(st.quest?.id || '').split('-').pop()) || 0) + 1;
-    const q = C.quest({ sceneId: id, sceneName: nameOf(id), size: st.size, n }, d.steps);
-    const H = await hud();
-    try {
-      await H.write((s) => window.QuestCore.trackSide(s, q), `Polish ${nameOf(id)}`);
-    } catch (e) {
-      const full = /three side quests/i.test(e?.message || '');
-      d.msg = full ? 'You already have 3 side quests. Finish, park or skip one first, then press Track again.' : String(e?.message || e);
-      d.full = full;
-      paintCard();
-      return;
-    }
-    S.draft = null;
-    save(id, { ...st, quest: { id: q.id, title: q.title, at: Date.now() } });
-    if (!guide) { toast(`✦ “${q.title}” is in your side quests`, { action: { label: 'Show', fn: () => openTracker().catch(err) } }); return; }
-    const startGuide = S.seam?.guide || (typeof window.hub?.questGuide === 'function' ? window.hub.questGuide : null);
-    if (!startGuide) { toast(`✦ “${q.title}” is in your side quests. The guide isn't available in this build.`); return; }
-    const r = await startGuide(C.guideStart(q));
-    if (!r?.ok) throw Error(r?.error || 'The guide could not start. Your quest is tracked.');
-    toast(`✦ “${q.title}”: the guide is open, step 1 of 3`);
-  }
-  // the guide's "↗ Work" on one of these quests opens the Lab: and its scene
-  function hookGuide() {
-    if (S.guideHooked || !window.hub?.onQuestGuideTool) return;
-    S.guideHooked = true;
-    window.hub.onQuestGuideTool((d) => {
-      if (!C.isOurs(d?.questId) || d.tool !== 'lab') return;
-      const sc = scenes();
-      const id = sc?.all?.().find((x) => stateOf(x.id).quest?.id === d.questId)?.id
-        || (typeof QuestHud !== 'undefined' && QuestHud.journal?.().S?.sideQuests?.find((x) => x.id === d.questId)?.finishLine?.sceneId) || null;
-      if (id && sc.get(id)) ThreeLab.cmd({ show: true }).then(() => { if (sc.currentId() !== id) sc.open(id); }).catch(err);
-    });
-  }
-
   // ---------- wiring (events only: nothing polls, nothing runs while hidden) ----------
   addEventListener('hearth:lab-ready', () => mountChip());
   addEventListener('hearth:sketch', () => { if (!mountChip()) return; if (S.card && S.card.dataset.scene !== sceneId()) { S.draft = null; S.editing = null; S.adding = false; S.note = ''; paintCard(); } });
   addEventListener('hearth:lab-scenes-arrived', () => paint()); // another computer's changes (sync)
   mountChip();
-  hookGuide();
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Lab: ⚑ Finish line (piece size, "done when" list, Polish this)', async () => { try { await ThreeLab.cmd({ show: true }); mountChip(); if (!S.card) openCard(); } catch (e) { err(e); } });
 
-  return { open: openCard, close: closeCard, toggle: toggleCard, state: (id) => stateOf(id), pickSize, polish, track, recordIt, mountChip, get card() { return S.card; }, get chip() { return S.chip; }, _seam: (x) => { S.seam = x || null; }, _S: S };
+  return { open: openCard, close: closeCard, toggle: toggleCard, state: (id) => stateOf(id), pickSize, polish, recordIt, mountChip, get card() { return S.card; }, get chip() { return S.chip; }, _S: S };
 })();

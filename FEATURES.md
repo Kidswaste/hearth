@@ -1284,7 +1284,7 @@ One short, plain-words page per round (docs/patch-notes/round-NN.md): what each 
 - ✓ Lab toolbar **Credits**: who did what on the scene (visual code, sound, direction; "not recorded" where Hearth didn't see it), Copy; **How it was made** makes a 9:16 or 16:9 reel of the versions, saved locally.
 - ○ `node dev/credits-test.js`, `dev/checks/credits.js` passed in a test copy. The reel hasn't been rendered from a real scene.
 ## ⚑ Finish lines (round 67, finishlines67: docs/upgrades/finishlines67.md)
-- ✓ **⚑ Finish line** chip: a size (10 s / 30 s / Full), a "Done when" list to tick, Record it when done; **✦ Polish this** → exactly three small steps as a side quest (Track it / Track + guide me), 0 tokens.
+- ✓ **⚑ Finish line** chip: a size (10 s / 30 s / Full), a "Done when" list to tick, Record it when done; **✦ Polish this** → exactly three small steps, 0 tokens (round 116: the side-quest tracking left with the Life tab).
 - ○ `node dev/finishline-test.js`, `dev/checks/finishline.js` passed in a test copy.
 ## 🕘 Earlier versions and Deleted things (round 75, versions75: docs/upgrades/versions75.md)
 - ✓ Right-click a chat / a project / a Lab scene card › **Earlier versions…** (also Board ▾ › More, the sync panel, Ctrl/⌘+K): one timeline from every safety copy (automatic copies, sync's base / set-asides / Deleted files / conflicts, Keep both copies, the time machine, backups) with when, which computer and a plain difference ("12 messages fewer", "notes: 3 lines changed").

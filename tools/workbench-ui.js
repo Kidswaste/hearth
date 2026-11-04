@@ -24,14 +24,12 @@ const WorkbenchUI = (() => {
   }
   function setProject(id,options={}) {
     scopeChanges=scopeChanges.catch(()=>{}).then(async()=>{
-      if(scope===id){if(loaded)await ready();if(options.plugins && String(state.vst.projectPlugins)!==String(options.plugins)){state.vst.projectPlugins=options.plugins;await persist();}return;}
-      if(loaded)await ready();await WorkbenchVST.saveWorkspace?.();pause();await flush();
+      if(scope===id){if(loaded)await ready();return;} // (round 116, slim116) no instrument selection to keep: the Sound desk is gone (state.vst stays as saved)
+      if(loaded)await ready();pause();await flush();
       if(id&&!/^[\w-]{1,100}$/.test(id))throw Error('Invalid project id');
-      await WorkbenchVST.resetWorkspace?.();
       scope=id;KEY=id?'workbench-'+id:'creative-workbenches';loaded=null;writable=false;state=C.defaults();
       if(!id)return;await ready();
       if(options.title&&state.title==='Untitled workbench')state.title=options.title;
-      if(options.plugins)state.vst.projectPlugins=options.plugins;
     });return scopeChanges;
   }
   const name = (suffix, ext) => `hearth-${state.title.replace(/[^a-z0-9_-]/gi, '-').slice(0, 40)}-${suffix}.${ext}`;
@@ -42,7 +40,7 @@ const WorkbenchUI = (() => {
   function file(label, accept, handler, limit = 12e6) { const n = field(label, '', () => {}, 'file'), i = n.querySelector('input'); i.accept = accept; i.onchange = async () => { try { const f = i.files[0]; if (!f) return; if (f.size > limit) throw Error(`File exceeds ${Math.round(limit / 1e6)} MB.`); await handler(f); } catch (err) { say(err.message); } finally { i.value = ''; } }; return n; }
   const badge = (n, title, text) => { const a = e('article', null, 'wb-card'); a.append(e('span', n, 'wb-number'), e('h3', title), note(text)); return a; };
   let mountedKey=null;
-  function pause() { epoch++; cleanup(); cleanup = () => {}; mountedKey=null; api?.stopAudio(); if (typeof WorkbenchVST !== 'undefined') WorkbenchVST.pause(); }
+  function pause() { epoch++; cleanup(); cleanup = () => {}; mountedKey=null; api?.stopAudio(); }
   function suspend() { cleanup.suspend?.();api?.stopAudio();if(current==='vst'){pause();} }
   function resume() { if(mountedKey!==KEY||!root?.isConnected)return false;cleanup.resume?.();return true; }
   async function mount(target, id, helpers) { pause(); const ticket = epoch; api = helpers; root = e('section', null, 'wb-shell'); target.append(root); const ownRoot = root; current = id; await scopeChanges; await ready(); if (ticket !== epoch) return;
@@ -50,7 +48,7 @@ const WorkbenchUI = (() => {
     body.append(...(scope?[]:[field('Worktable name', state.title, v => { state.title = v || 'Untitled workbench'; summary.textContent = `◈ ${state.title}`; })]), btn('Export project', () => save('project', JSON.stringify(state, null, 2), 'json')), file('Open project copy', '.json', async f => { const key=KEY, next = await validateAsync(await f.text()); if(key!==KEY)throw Error('The project changed while importing. Reopen the file in the intended project.'); state = next; await persist(); api.openFeature(current); }, 64e6), note('Open replaces this worktable. Export a copy first to keep another version.'));
     menu.append(summary, body); top.append(e('p', writable ? 'Saved on this computer' : 'Recovery mode · export changes', 'wb-status'), menu); root.append(top);
     const content = e('div', null, 'wb-content'); root.append(content);mountedKey=KEY;
-    if (id === 'studio') home(content); else if (id === 'vst') { const dispose = await bank(content); if (ticket !== epoch) { dispose?.(); return; } cleanup = dispose || (() => {}); } else if (id === 'texture') textures(content); else if (id === 'draw') draw(content); else if (id === 'story') storyboard(content);
+    if (id === 'studio') home(content); else if (id === 'texture') textures(content); else if (id === 'draw') draw(content); else if (id === 'story') storyboard(content);
     if (ticket === epoch && id !== 'story') WorkbenchStory.dock(ownRoot, workspaceHelpers());
   }
   function home(out) {
@@ -107,15 +105,12 @@ const WorkbenchUI = (() => {
   function draw(out) { cleanup = WorkbenchStory.draw(out, workspaceHelpers()); }
   function storyboard(out) { cleanup = WorkbenchStory.storyboard(out, workspaceHelpers()); }
   function animaticHTML(board) { const data = JSON.stringify(board).replace(/</g, '\\u003c'); return `<!doctype html><meta charset="utf-8"><title>${C.esc(board.title)}</title><style>body{background:#18151c;color:#eee;font:18px system-ui;max-width:1000px;margin:30px auto}img{width:100%;height:65vh;object-fit:contain}button{padding:14px}p{white-space:pre-wrap}</style><h1>${C.esc(board.title)}</h1><button id="play">Play / restart</button> <button id="stop">Stop</button><h2></h2><img alt="Storyboard frame"><p></p><script>const b=${data};let timer,i=0;function show(){const p=b.panels[i];document.querySelector('h2').textContent=(i+1)+'. '+p.title+' / '+p.duration+'s';const im=document.querySelector('img');if(p.image){im.src=p.image;im.hidden=false}else{im.removeAttribute('src');im.hidden=true}document.querySelector('p').textContent=p.notes}function next(){show();timer=setTimeout(()=>{if(++i<b.panels.length)next()},b.panels[i].duration*1000)}document.querySelector('#play').onclick=()=>{clearTimeout(timer);i=0;next()};document.querySelector('#stop').onclick=()=>clearTimeout(timer);document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(timer)});show();</script>`; }
-  async function bank(out) { return WorkbenchVST.mount(out, { ...workspaceHelpers(), state: state.vst }); }
-  async function soundTool(args) { await ready(); return WorkbenchVST.soundTool(args); }
   async function addAsset(asset) { await ready(); if (!asset || typeof asset.name !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(asset.image || '') || asset.image.length > 8e6) throw Error('Use a PNG asset up to 8 MB.'); state.shelf.unshift({name:asset.name.slice(0,100),image:asset.image}); state.shelf=state.shelf.slice(0,24); await persist(); }
-  if (typeof HubBridge !== 'undefined') HubBridge.register(['chat_sound'], async (_tool, args, context) => { try { const p=window.Projects?.projectOfChat(context?.chatId); if(p?.workspace && scope!==p.id)throw Error(`Open the Sound desk in “${p.name}” before using its instrument. Another project's sound will not be changed.`); return { ok: true, value: await soundTool(args) }; } catch (err) { return { ok: false, error: err.message }; } });
   addEventListener('beforeunload',()=>{flush().catch(()=>{});});
   // (round 77, storeack77 — For Codex) the worktable when the other computer's version arrives (StoreAck,
   // storeack-core.js): a change not written yet goes first (sync's guard merges it with what arrived), then what's on
   // disk is put INTO the state in memory (same objects: open stations keep working on it) and the station on screen is
-  // drawn again (its scroll kept) — the Sound desk keeps playing and shows it next time — then sync is told, so a thing
+  // drawn again (its scroll kept), then sync is told, so a thing
   // taken off the shelf right after it arrived stays off. Typing in a field or drawing: it waits until you're done.
   let wbDown=false,wbPutOff=null;
   addEventListener('pointerdown',ev=>{if(root?.contains(ev.target))wbDown=true;},true);
@@ -135,7 +130,5 @@ const WorkbenchUI = (() => {
   });
   addEventListener('pointerup',()=>{wbDown=false;if(wbPutOff)setTimeout(()=>{if(wbPutOff&&!wbBusy()){const r=wbPutOff;wbPutOff=null;wbHold?.again(r);}},600);},true);
   addEventListener('focusout',()=>{if(wbPutOff)setTimeout(()=>{if(wbPutOff&&!wbBusy()){const r=wbPutOff;wbPutOff=null;wbHold?.again(r);}},600);},true);
-  // parisquests61: "Make music at the park" names the worktable after the park (only the project name changes; returns the old one).
-  async function startSketch(title) { await ready(); const before = state.title; state.title = String(title || '').trim().slice(0, 160) || before; await persist(); return before; }
-  return { mount, pause, suspend, resume, ready, setProject, preloadSound: options => WorkbenchVST.preload({ ...workspaceHelpers(), state: state.vst },options), soundTool, addAsset, startSketch, snapshot: () => C.copy(state), flush, scope: () => scope, animaticHTML };
+  return { mount, pause, suspend, resume, ready, setProject, addAsset, snapshot: () => C.copy(state), flush, scope: () => scope, animaticHTML };
 })();
