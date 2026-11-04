@@ -67,7 +67,10 @@ class Connection {
         const p = this.pending.get(msg.id); if (!p) continue;
         this.pending.delete(msg.id); clearTimeout(p.timer);
         if (msg.error) p.reject(new Error(msg.error.message || 'Codex request failed')); else p.resolve(msg.result);
-      } else if (msg.method) this.onNotification?.(msg.method, msg.params || {});
+      } else if (msg.method) {
+        if (msg.method === 'item/started' && msg.params?.item?.id) { (this.items ||= new Map()).set(msg.params.item.id, msg.params.item); if (this.items.size > 64) this.items.delete(this.items.keys().next().value); } // (round 119, datalock119)
+        this.onNotification?.(msg.method, msg.params || {});
+      }
     }
     const tail = chunk.slice(from); this.parts.push(tail); this.bytes += Buffer.byteLength(tail);
     if (this.bytes > MAX_LINE) this.close(new Error('Codex response exceeded the message size limit'));
@@ -77,6 +80,14 @@ class Connection {
     // Hearth's existing tools ask through chat_ask / access. Never silently grant a new native
     // permission or leave the model waiting forever for an approval UI this client doesn't own.
     let result;
+    // (round 119, datalock119) a chat on Hearth's folder: Hearth's own check answers edits / commands (engines.js decide)
+    if (this.decide && /^(item\/(commandExecution|fileChange)\/requestApproval|execCommandApproval|applyPatchApproval)$/.test(msg.method)) {
+      let v = null; try { v = this.decide(msg.method, msg.params || {}, this.items?.get(msg.params?.itemId) || null); } catch { v = null; } // (round 119, datalock119)
+      const legacy = !msg.method.startsWith('item/'); // (round 119, datalock119)
+      this.write({ id: msg.id, result: { decision: v?.ok ? (legacy ? 'approved' : 'accept') : (legacy ? 'denied' : 'decline') } }); // (round 119, datalock119)
+      if (!v?.ok) this.onRequest?.(msg.method, v?.why || ''); // (round 119, datalock119)
+      return;
+    }
     if (/^(item\/(commandExecution|fileChange)\/requestApproval)$/.test(msg.method)) result = { decision: 'decline' };
     else if (/^(execCommandApproval|applyPatchApproval)$/.test(msg.method)) result = { decision: 'denied' };
     else if (msg.method === 'item/permissions/requestApproval') result = { permissions: {}, scope: 'turn' };
@@ -100,7 +111,7 @@ class Pool {
     Object.assign(this, { spawn, kill, log, idleMs, activeIdleMs, requestMs });
     this.connections = new Map(); this.active = new Map();
   }
-  run({ chatId, bin, runtimeKey, args, cwd, env, session, thread, threadLegacy, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
+  run({ chatId, bin, runtimeKey, args, cwd, env, session, thread, threadLegacy, turn, servers, parser, fallbackText, text, showThinking = true, decide = null }, emit, live) { // (round 119, datalock119) decide
     if (this.active.has(chatId) || this.maintenance?.has(chatId)) { emit({ type: 'error', message: 'This Hearth chat already has a running Codex operation.' }); return; }
     const start = performance.now(); const elapsed = () => Math.round(performance.now() - start);
     const timing = { engine: 'codex', transport: 'app-server', connectionReused: false, setupMs: null, firstEventMs: null, firstTextMs: null, totalMs: null };
@@ -178,6 +189,7 @@ class Pool {
     try {
       if (!conn) { conn = new Connection({ spawn: this.spawn, kill: this.kill, bin, args, cwd, env, requestMs: this.requestMs }); conn.key = key; this.connections.set(chatId, conn); }
       clearTimeout(conn.idleTimer);
+      conn.decide = decide; // (round 119, datalock119)
       conn.onQuestion = (msg) => {
         const p = msg.params;
         if (done || cancelled || !threadReady || p.threadId !== session.id || (turnId && p.turnId !== turnId) || !Array.isArray(p.questions) || !p.questions.length || p.questions.length > 3) return false;
@@ -188,7 +200,7 @@ class Pool {
         return true;
       };
       conn.onClose = (err) => finish(cancelled ? { type: 'stopped' } : { type: 'error', message: `${err.message}\nThe turn was not replayed. Check any partial work before retrying.` });
-      conn.onRequest = (method) => { if (!done && /mcp|tool\/call|elicitation/i.test(method)) blocked.add(method); if (!done) emit({ type: 'thinking', text: `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); };
+      conn.onRequest = (method, why) => { if (!done && /mcp|tool\/call|elicitation/i.test(method)) blocked.add(method); if (!done) emit({ type: 'thinking', text: why ? `${why}\n\n` : `Hearth could not complete the Codex request (${method}); no additional permission was granted.\n\n` }); }; // (round 119, datalock119) why
       conn.onNotification = (method, p) => {
         // Some versions publish the saved cumulative baseline while thread/resume resolves.
         if (!threadReady && method === 'thread/tokenUsage/updated' && p.threadId === session.id) {

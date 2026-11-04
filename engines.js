@@ -335,7 +335,22 @@ function accessLine0(agent, acc) {
     : `File access (${label}): ${where}. Start commands with cd into it; deletes go to the Trash; a denied call means the user said no; never run commands that ask for a password (sudo, ssh): ask the user to run those in a terminal.`;
 }
 // What the access server needs: the chat to show its cards in, and where relative paths start.
-const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, HUB_ACCESS_CHAT: agent.accessChatId || '', HUB_ACCESS_CWD: WORKSPACE });
+const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.id, HUB_ACCESS_CHAT: agent.accessChatId || '', HUB_ACCESS_CWD: WORKSPACE, HUB_ACCESS_LOCKED: JSON.stringify(dataLocksOf(agent)) });
+// (round 119, datalock119) the data folders this chat's folders cover (datalock.js): Hearth refuses any read or change
+// there, on both engines. A Hearth source folder's data/ and the running copy's data folder (DATA_DIR).
+function dataLocksOf(agent, acc = accessOf(agent), folder = fileFolder(agent)) {
+  const out = [];
+  const add = (d) => { for (const x of [d, (() => { try { return fs.realpathSync(d); } catch { return d; } })()]) if (!out.includes(x)) out.push(x); };
+  for (const f of acc ? acc.folders : folder ? [folder] : []) {
+    if (isHearthSource(f)) add(path.join(f, 'data'));
+    if (isInside(DATA_DIR, f)) add(DATA_DIR);
+  }
+  return out;
+}
+// datalock.js (Claude's deny rules, Astra's answers); a test's copy of engines.js may run without it
+const dataLock = () => { try { return require('./datalock'); } catch { return null; } };
+const isInside = (p, dir) => { const r = path.relative(dir, p); return r === '' || (!r.startsWith('..') && !path.isAbsolute(r)); };
+const DATA_LOCK_LINE = (locks) => `Hearth's data folder (${locks[0]}) is off limits: the user's chats, settings and keys live there. Never read, list or change anything in it; Hearth refuses it.`;
 // Which file / command a tool call touches, for the chat's activity log (access.js), from the engines' own events.
 // (winshell) A command refused before it ran, by the engine's own policy: Claude Code's "No such tool available" (a tool
 // left out of --tools, e.g. PowerShell on Windows) or a policy setting; Codex's sandbox / approval policy (on Windows its
@@ -453,6 +468,7 @@ function promptParts(agent, session = null) {
   if (acc) add('access', accessLine(agent, acc));
   // (round 116, astraparity116) working on Hearth's own code (a chat's folder is a Hearth source folder): a short map of
   // the codebase, the same for both engines. Only then: chats in the owner's other folders get nothing extra.
+  { const locks = dataLocksOf(agent, acc, folder); if (locks.length) add('datalock', DATA_LOCK_LINE(locks)); } // (round 119, datalock119)
   if (ownCode(agent, acc, folder)) add('hearthCode', hearthMap().CODE); // (round 118, selfmap118) the text lives in mcp/hearth-map.js (CODE), read there on demand too
   if (folder && agent.engine === 'codex') {
     add('folder', agent.codexFiles === 'edit'
@@ -568,6 +584,8 @@ function claudeToolArgs(agent, options = {}, session = {}) {
   const allowed = acc ? accessAllowed : folder ? [...FILE_TOOLS] : images ? ['Read'] : [];
   for (const key of sets) allowed.push(`mcp__${HUB_TOOLSETS[key].server}`);
   const denied = [];
+  // (round 119, datalock119) Claude reads its folders without asking Hearth: its own deny rules keep it out of the data folder
+  if (acc || folder) denied.push(...(dataLock()?.claudeRules(dataLocksOf(agent, acc, folder)) || []));
   if (own) { const r = Conn.claudeRules(agent); allowed.push(...r.allowed); denied.push(...r.denied); }
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
@@ -742,7 +760,10 @@ function codexArgs(agent, session, options = {}) {
     // resumed runs get the sandbox again (-s only applies to new sessions); writes only inside the folder(s), no network.
     // `codex exec` can't show an approval prompt, so approvals stay off and the sandbox is the safety (round 14: each
     // access level maps here: read → read-only, read & write / full → workspace-write on the chat's folders).
-    const roots = acc ? acc.folders : [folder];
+    let roots = acc ? acc.folders : [folder];
+    // (round 119, datalock119) `codex exec` can't ask Hearth before an edit: a folder holding Hearth's data folder isn't
+    // writable there (its source can be read, not changed); the app-server plan asks Hearth instead (codexServerPlan)
+    if (!options._server) { const locks = dataLocksOf(agent, acc, folder); if (locks.length) roots = roots.filter((r) => !locks.some((l) => isInside(l, r))); }
     // (winshell) the owner's Windows opt-in: no sandbox (Codex's blocks every command there); approvals stay off
     if (codexOpen(agent, acc)) args.push('-c', 'sandbox_mode="danger-full-access"', '-c', 'approval_policy="never"');
     else args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
@@ -773,7 +794,7 @@ function codexArgs(agent, session, options = {}) {
 // Reuse the same model, tool, prompt and file-access configuration as exec. Only transport
 // flags change. Each chat gets its own server because MCP environments contain HUB_CHAT_ID.
 function codexServerPlan(agent, session, options = {}) {
-  const old = codexArgs(agent, session, options);
+  const old = codexArgs(agent, session, { ...options, _server: true });
   const args = ['app-server', '--listen', 'stdio://', '-c', 'mcp_servers={}', '-c', 'approval_policy="never"', '-c', 'model_provider="openai"'];
   const servers = [];
   for (let i = 0; i < old.length; i++) {
@@ -805,10 +826,18 @@ function codexServerPlan(agent, session, options = {}) {
   // (round 116, astraparity116) Codex keeps its base instructions (no baseInstructions: the model's own); Hearth's prompt
   // is the developer instructions. threadLegacy: the old way, for a server that refuses developerInstructions (codex-server.js)
   const prompt = buildPrompt(agent, session);
-  const thread = { cwd, approvalPolicy: 'never', sandbox, ...(codexDevOk() ? { developerInstructions: prompt } : { baseInstructions: prompt, developerInstructions: '' }), ...(model ? { model } : {}) };
-  return { args, cwd, servers, thread,
-    threadLegacy: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: prompt, developerInstructions: '', ...(model ? { model } : {}) },
-    turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), skillMentions: options.skillMentions, input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
+  // (round 119, datalock119) a chat whose folders hold Hearth's data folder: Codex's sandbox can't keep one subfolder of
+  // a writable folder read-only, so Codex asks before every edit and every command that isn't a plain read (approval
+  // policy "untrusted") and Hearth answers at once (datalock.js codexDecider, through codex-server.js): edits into the
+  // data folder and commands naming it are declined, the rest go ahead. Read-only chats keep Codex's read-only sandbox.
+  const locks = edit ? dataLocksOf(agent, acc, folder) : [];
+  const decide = locks.length ? dataLock()?.codexDecider({ locks, folders: acc ? acc.folders : [folder], level: acc ? acc.level : 'write', cwd }) || null : null;
+  const approvalPolicy = decide ? 'untrusted' : 'never';
+  if (decide) args.push('-c', 'approval_policy="untrusted"');
+  const thread = { cwd, approvalPolicy, sandbox, ...(codexDevOk() ? { developerInstructions: prompt } : { baseInstructions: prompt, developerInstructions: '' }), ...(model ? { model } : {}) };
+  return { args, cwd, servers, thread, ...(decide ? { decide } : {}),
+    threadLegacy: { cwd, approvalPolicy, sandbox, baseInstructions: prompt, developerInstructions: '', ...(model ? { model } : {}) },
+    turn: { cwd, approvalPolicy, sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), skillMentions: options.skillMentions, input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
   };
 }
 
@@ -1807,7 +1836,7 @@ module.exports = {
   send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
+  _test: { dataLocksOf, lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };
