@@ -115,19 +115,37 @@ await until(() => typeof H !== 'undefined' && H.agents().length && performance.g
 const ready = performance.getEntriesByName('hearth:ready')[0].startTime;
 { const left = ready + 3000 - performance.now(); if (left > 0) await wait(left); }
 ok(lab().state === 'stub', 'the Lab isn\'t loaded 3 s after the first screen');
+// (round 114, projchecks114) each screen change from here, and who asked for it (named when the Lab isn't on screen)
+const shown = []; { const act0 = window.activate; window.activate = function (id, o) { shown.push(`${Math.round(performance.now())} ${id} ← ${(new Error().stack || '').split('\n').slice(2, 6).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ')}`); return act0.call(this, id, o); }; }
 // Ctrl/⌘+K, "Three.js Lab"
 activate(H.claudeAgent().id); await wait(300);
 await key('k', 'KeyK', 75, mac ? 4 : 2);
 let pal = await until(() => document.querySelector('.palette .palette-input'), 1500);
 if (!pal) { AppUI.palette(); pal = await until(() => document.querySelector('.palette .palette-input'), 1500); R.notes = 'palette opened by AppUI.palette(): the key did not reach it here'; }
 ok(pal, 'Ctrl/⌘+K opens the palette');
+// (round 114, projchecks114) the list as drawn from the typing to the Enter: the selected row each time it changes
+const drawn = []; let lastDrawn = '';
+const selNow = () => document.querySelector('.palette .palette-item.sel .p-label')?.textContent || '';
+const listNow = () => `sel ${selNow().slice(0, 30)} | ${[...document.querySelectorAll('.palette .palette-item .p-label')].slice(0, 3).map((x) => x.textContent.slice(0, 24)).join(' / ')} | appsearch ${Lazy.state().find((g) => g.name === 'appsearch')?.state}`;
+const noteList = () => { const t = listNow(); if (t !== lastDrawn) { lastDrawn = t; drawn.push({ t: Math.round(performance.now()), text: t, sel: selNow() }); } };
+const palMo = new MutationObserver(noteList); { const l = document.querySelector('.palette .palette-list'); if (l) palMo.observe(l, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] }); }
 pal?.focus();
 await cdp('Input.insertText', { text: 'Three.js Lab' });
-ok(await until(() => lab().state !== 'stub', 3000, 10) && LabIntent.state().intent === 'palette', `a Lab row on top starts loading the Lab (intent: ${LabIntent.state().intent}; by: ${Lazy.by?.("lab")}; misses: ${Lazy.misses().filter((x) => x.group === 'lab').map((x) => `${x.name} ${x.where}`).join('; ')}; rows: ${[...document.querySelectorAll('.palette-item .p-label')].slice(0, 3).map((x) => x.textContent).join(' | ')})`);
-await until(() => [...document.querySelectorAll('.palette-item.sel .p-label')].some((x) => /Three\.js Lab/.test(x.textContent)), 3000);
+ok(await until(() => lab().state !== 'stub', 3000, 10) && LabIntent.state().intent === 'palette', `a Lab row on top starts loading the Lab (intent: ${LabIntent.state().intent}; by: ${Lazy.by?.("lab")}; misses: ${Lazy.misses().filter((x) => x.group === 'lab').map((x) => `${x.name} ${x.where}`).join('; ')}; rows: ${[...document.querySelectorAll('.palette .palette-item .p-label')].slice(0, 3).map((x) => x.textContent).join(' | ')})`);
+await until(() => /Three\.js Lab/.test(selNow()), 3000); noteList();
+// (round 114) the first Ctrl/⌘+K of a start loads Find anything's code; its rows replace the plain ones when it's in.
+// For one task they came without the tools (the Lab row gone, "Use the Three.js Lab" or "Ask …" selected): an Enter
+// there (a busy start: the release run's "the Lab is on screen" ✖) ran that row. Wait for Find anything to be in
+// (its live rows made) and judge every list drawn since the Lab row was first selected, then press Enter.
+const selAt = drawn.findIndex((x) => /Three\.js Lab/.test(x.sel));
+await until(() => Lazy.loaded('appsearch') && window.AppSearch?.ready?.() !== false && AppSearch.index.live?.items.length > 0, 8000, 20);
+await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 120)));
+const away = drawn.slice(Math.max(0, selAt)).filter((x) => x.sel && !/^Three\.js Lab$/.test(x.sel.trim()));
+ok(selAt >= 0 && !away.length, `the Lab row stays selected while Find anything comes in (${away.length ? `left for: ${away.map((x) => `${x.t} ${x.text}`).join(' | ')}` : `${drawn.length} lists drawn`})`);
 await key('Enter', 'Enter', 13, 0);
+palMo.disconnect(); drawn.push({ t: Math.round(performance.now()), text: `Enter sent; ran ${JSON.stringify(window.AppSearch?.last?.ran || null)}` });
 ok(await labUp(), 'Enter on it opens the Lab');
-ok(H.surfaceIdFor(H.activeId) === 'tool:three', 'the Lab is on screen');
+ok(H.surfaceIdFor(H.activeId) === 'tool:three', `the Lab is on screen (${H.activeId}; shown: ${shown.join(' | ').slice(0, 700)}; the list: ${drawn.slice(-8).map((x) => `${x.t} ${x.text}`).join(' | ').slice(0, 1400)})`);
 localStorage.setItem('ll94.out', JSON.stringify(R));
 return '[LABLOAD94] palette done';
 //@@ reload
