@@ -72,9 +72,9 @@ const LabDirect = (() => {
     if (!u || (entry && entry.direct < u.n)) return false;
     if (u.sid !== h.sketchId()) { toast('That move was in another scene', { timeout: 1800 }); return false; }
     U.pop();
-    const L = h.layerById(u.lid);
-    if (!L) return false;
-    if (u.fn) u.fn(L); else h.restore(L, u.before);
+    const L = u.lid == null ? null : h.layerById(u.lid); // (round 116) lid null: a step on the scene (deleted layers back)
+    if (!L && u.lid != null) return false;
+    if (u.fn) { if (u.fn(L) === false) return false; } else h.restore(L, u.before); // (false: undone already, by its toast)
     stats.undos += 1;
     toast(`↶ ${u.label} undone`, { timeout: 1400 });
     return true;

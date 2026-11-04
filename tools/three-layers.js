@@ -657,5 +657,47 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     b.title = state === 'on' ? 'Remove this keyframe' : state === 'animated' ? 'Add a keyframe here (it\'s animated: moving the slider also adds one)' : 'Animate: add a keyframe at the playhead';
   }
 
-  return { panel, shapeCode, SHAPES, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM, KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
+  // (round 116, layerdelete116) the layers a chat asked to delete (three_remove_layer, on screen and backstage): refs is
+  // one ref or a list: a name, an id, a number (1 = bottom), top / bottom / selected, a group's name (all its layers),
+  // or a row as three_layers shows it ("4. Beat rig*"). An exact name first; a part of a name only when one layer has
+  // it; a name two layers share, or a part several have, is refused with their numbers (never the wrong layer).
+  // → { list: layers (once each), error }
+  function pickLayers(Ls, refs, selId = null) {
+    const low = (s) => String(s ?? '').trim().toLowerCase();
+    const bare = (s) => low(s).replace(/^[^\p{L}\p{N}]+/u, '').trim(); // without a leading ✦ / 🧊 / ◫
+    const row = (L) => `${Ls.indexOf(L) + 1}. ${L.name}`;
+    const all = () => Ls.map(row).join(', ');
+    const out = [];
+    for (const ref0 of Array.isArray(refs) ? refs : [refs]) {
+      let ref = ref0 && typeof ref0 === 'object' ? ref0.layer ?? ref0.name ?? ref0.id : ref0;
+      let hits = null;
+      if (ref == null || ref === '' || ref === 'selected') hits = [Ls.find((L) => L.id === selId) || Ls.at(-1)];
+      else if (ref === 'top') hits = [Ls.at(-1)];
+      else if (ref === 'bottom') hits = [Ls[0]];
+      else if (typeof ref === 'number' || /^\d+$/.test(String(ref).trim())) hits = [Ls[Number(ref) - 1]];
+      else {
+        ref = String(ref).trim();
+        const line = /^(\d+)\.\s+(.+?)\*?(?:\s+·.*)?$/.exec(ref); // a three_layers row
+        const name = line ? line[2] : ref.replace(/\*$/, '');
+        const by = (f) => Ls.filter((L) => f(L));
+        const g = typeof LayerGroups !== 'undefined' ? LayerGroups.byName(Ls, name) : null;
+        for (const f of [(L) => L.id === ref, (L) => low(L.name) === low(name), (L) => bare(L.name) === bare(name)]) { const h = by(f); if (h.length) { hits = h; break; } }
+        if (!hits && g) hits = LayerGroups.members(Ls, g.id);
+        if (!hits && line && Ls[Number(line[1]) - 1]) hits = [Ls[Number(line[1]) - 1]];
+        if (!hits) hits = by((L) => bare(L.name).includes(bare(name)) && bare(name));
+        if (!hits.length) return { list: [], error: `No layer "${ref}". Layers: ${all()}.` };
+        if (hits.length > 1 && !(g && !line && hits.every((L) => L.group?.id === g.id))) return { list: [], error: `"${ref}" fits ${hits.length} layers: ${hits.map(row).join(', ')}. Name them by number (layers: [${hits.map((L) => Ls.indexOf(L) + 1).join(', ')}] deletes them all); nothing was deleted.` };
+      }
+      if (!hits[0]) return { list: [], error: `No layer ${ref}: the scene has ${Ls.length} (${all()}).` };
+      for (const L of hits) if (!out.includes(L)) out.push(L);
+    }
+    return { list: out, error: out.length ? null : 'No layer named: pass layer, or layers: [...].' };
+  }
+  // what's left when a chat deletes every layer: an empty layer, as a new scene's first layer is a starting point
+  const EMPTY_CODE = `${HEAD}// Empty: the scene's layers were deleted. Describe what you want, or start from a template.
+${BODY}
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+`;
+
+  return { pickLayers, EMPTY_CODE, panel, shapeCode, SHAPES, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM,KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
 })();

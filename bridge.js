@@ -40,6 +40,7 @@ const HubBridge = (() => {
     if (a.action) return `${a.action}${a.time != null ? ` ${a.time}s` : ''}${a.name ? ` ${clip(a.name, 30)}` : ''}`;
     if (a.question) return clip(a.question);
     if (a.steps) return `${a.steps.length} steps`;
+    if (Array.isArray(a.layers)) return clip(a.layers.join(', '), 50); // (round 116) three_remove_layer {layers}
     if (a.layer) return clip(a.layer, 40);
     if (a.size || a.region || a.frames || a.compare || a.at != null) return [a.size, a.region && 'region', a.frames && `${a.frames} frames`, a.compare && 'compare', a.at != null && `@${a.at}s`].filter(Boolean).join(' · ');
     if (a.code) return `${String(a.code).split('\n').length} lines`;
