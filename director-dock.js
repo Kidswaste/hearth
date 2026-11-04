@@ -89,6 +89,7 @@ const DirectorDock = (() => {
         undoBtn.title = h ? `Undo the director's last code edit: "${h.layer}" (${nameOf(h.tool)}, ${timeAgo(h.at)})${ThreeDirector.history().length > 1 ? ` · ${ThreeDirector.history().length} in its history` : ''}` : 'Undo the director\'s last code edit (none yet)';
       }
       if (listOpen) paintList(log);
+      globalThis.DirectorSwitch?.paint(); // (round 114, directorswitch) the AI switcher's marks: another chat working / a new reply
     }
     function paintList(log) {
       list.replaceChildren(el('div', { class: 'dd-list-head' }, el('b', { text: 'Director activity' }), el('span', { class: 'spacer' }),
@@ -129,6 +130,7 @@ const DirectorDock = (() => {
           { label: 'Width', hint: `${w} px`, items: () => [...WIDTHS.map((px) => ({ label: `${px} px`, checked: w === px, action: () => setWidth(s, px) })), { label: 'Reset (420 px)', action: () => setWidth(s, 420) }] },
           { label: 'Collapse to a thin bar', key: 'Alt+Shift+D', action: () => setCollapsed(s, true) },
         ] },
+        ...(toolId === 'three' && globalThis.DirectorSwitch ? [{ label: 'Switch AI…', key: 'Alt+Shift+A', action: () => DirectorSwitch.open() }] : []), // (round 114, directorswitch)
         { label: 'What this director costs per message', action: () => Commands.exec('/director-cost', agent.id) },
       ];
     }
@@ -185,6 +187,7 @@ const DirectorDock = (() => {
       },
     };
     attached.set(toolId, entry);
+    globalThis.DirectorSwitch?.mount(entry); // (round 114, directorswitch) "◆ Claude ▾" at the left of the strip (director-switch.js)
     return entry;
   }
   function detach(toolId) { attached.get(toolId)?.off(); attached.delete(toolId); }
@@ -265,7 +268,9 @@ const DirectorDock = (() => {
   // (in a tool with a docked director).
   document.addEventListener('keydown', (e) => {
     if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
-    const toolId = H.isTool?.(H.activeId) ? H.activeId.slice(5) : null;
+    // (round 114, directorswitch) H.activeId is the director's own id while its docked chat has the focus: its tool then
+    const sid = H.surfaceIdFor?.(H.activeId) || H.activeId;
+    const toolId = H.isTool?.(sid) ? sid.slice(5) : null;
     const a = toolId && attached.get(toolId);
     if (!a) return;
     if (e.code === 'KeyZ' && toolId === 'three') { e.preventDefault(); undoEdit(); } else if (e.code === 'KeyY' && toolId === 'three') { e.preventDefault(); redoEdit(); } else if (e.code === 'KeyD') { e.preventDefault(); setCollapsed(a.s, !store.get(`dockCollapsed.${toolId}`, false)); }
