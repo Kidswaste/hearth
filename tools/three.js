@@ -3378,8 +3378,12 @@ const ThreeLab = (() => {
       if (!vis && typeof FrameBar !== 'undefined') FrameBar.visible(false);
     }
     const fbCheck = () => fbShown(stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }));
-    previewHost.addEventListener('mouseenter', () => setTimeout(fbCheck, 50));
-    previewHost.addEventListener('mouseleave', () => setTimeout(fbCheck, 400));
+    // (round 113, warmopen113) read after a painted frame: the preview coming in under a resting pointer (a name ▾
+    // switch onto a project left on the Lab) sent mouseenter mid-switch, and the read laid out the window there (≈ 20–40 ms)
+    let fbT = 0;
+    const fbSoon = (ms) => { clearTimeout(fbT); fbT = setTimeout(() => { if (document.visibilityState === 'visible') requestAnimationFrame(() => setTimeout(fbCheck, 0)); else fbCheck(); }, ms); };
+    previewHost.addEventListener('mouseenter', () => fbSoon(50));
+    previewHost.addEventListener('mouseleave', () => fbSoon(400));
     api.framebar = { host: previewHost, call: (m, t) => sandboxCall(m, t), name: (id) => layerById(id)?.name || null, ids: () => layersOf().map((L) => L.id), selected: () => selId, recheck: () => fbCheck() };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
