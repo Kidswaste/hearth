@@ -373,7 +373,8 @@ function recallCatch(dir, t0, budgetMs, maxAge) {
   const live = new Set(); let left = 0; let added = 0;
   const soft = budgetMs * 0.7;
   const fresh = !recallList || recallList.dir !== dir || Date.now() - recallList.at > maxAge;
-  if (fresh) recallList = { dir, at: Date.now(), list: chats(dir) };
+  // (round 113, search113) the most recently changed chats first: a find while the index is still being read finds them first
+  if (fresh) recallList = { dir, at: Date.now(), list: chats(dir).sort((a, b) => (b.e.sum?.updatedAt || 0) - (a.e.sum?.updatedAt || 0)) };
   for (const { file, e } of recallList.list) {
     live.add(file);
     if (recallIdx.has(file, recallSrc(e))) { const j = recallJobs.get(file); if (j) { recallIdx.abort(j.b); recallJobs.delete(file); } continue; }
@@ -396,7 +397,7 @@ function recallCatch(dir, t0, budgetMs, maxAge) {
       if (state === 'changed') { left += 1; continue; }
     }
     const chat = readChat(file);
-    if (chat) { recallIdx.add(file, chat, recallSrc(e)); added += 1; recallBad.delete(file); } else { live.delete(file); recallBad.set(file, { id: e.sum?.id || path.basename(file, '.json'), title: e.sum?.title || path.basename(file, '.json') }); }
+    if (chat) { recallIdx.add(file, chat, recallSrc(e)); added += 1; recallBad.delete(file); } else { live.delete(file); recallBad.set(file, { id: e.sum?.id || path.basename(file, '.json'), title: e.sum?.unreadable ? null : e.sum?.title || null }); }
   }
   for (const [file, j] of recallJobs) if (!live.has(file)) { recallIdx.abort(j.b); recallJobs.delete(file); }
   recallKeep.changed += added;

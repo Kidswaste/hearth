@@ -20,9 +20,12 @@ const ChatFind = (() => {
 
   // ---------- the chats whose title has every word (this window's list: instant) ----------
   let titles = null; // [chat, its folded title words] made once per H.chats list (it's replaced, never changed in place)
+  let lastTitles = { q: null, list: null, proj: null, rows: [] }; // (the rows are drawn again as messages arrive: the same words, the same rows)
   function titleRows(q) {
     const words = R.foldWords(q).filter(Boolean);
     if (!words.length) return [];
+    const proj = window.Projects?.isLoaded?.() ? 'p' : projOf.size;
+    if (lastTitles.q === words.join(' ') && lastTitles.list === H.chats && lastTitles.proj === proj) return lastTitles.rows.slice();
     if (!titles || titles.list !== H.chats) { const ids = new Set(); titles = { list: H.chats, rows: (H.chats || []).filter((c) => H.agent(c.agentId) && !ids.has(c.id) && ids.add(c.id)).map((c) => [c, R.foldWords(c.title)]) }; } // (one row per chat: a .prev copy has its id)
     const hits = [];
     for (const [c, tw] of titles.rows) {
@@ -31,7 +34,8 @@ const ChatFind = (() => {
       hits.push({ c, s: (exact ? 4 : tw[0]?.startsWith(words[0]) ? 2 : 1) + (c.pinned ? 1.5 : 0) + Math.max(0, 1 - (Date.now() - (c.updatedAt || 0)) / (30 * 864e5)) });
     }
     hits.sort((a, b) => b.s - a.s);
-    return hits.slice(0, 5).map(({ c }) => ({ kind: kindOf(projectOf(c.id), c), label: c.title || 'Chat', detail: c.pinned ? '📌 pinned' : when(c.updatedAt), chatId: c.id, run: () => go({ chatId: c.id, agentId: c.agentId, k: null }) }));
+    lastTitles = { q: words.join(' '), list: H.chats, proj, rows: hits.slice(0, 5).map(({ c }) => ({ kind: kindOf(projectOf(c.id), c), label: c.title || 'Chat', detail: c.pinned ? '📌 pinned' : when(c.updatedAt), chatId: c.id, run: () => go({ chatId: c.id, agentId: c.agentId, k: null }) })) };
+    return lastTitles.rows.slice();
   }
 
   // a chat's project: the projects' own index when it's loaded, else what the store thread said about this chat
@@ -58,7 +62,7 @@ const ChatFind = (() => {
     const seen = new Set(out.map((r) => r.chatId));
     if (S.res) {
       for (const h of S.res.hits) { const r = rowOf(h); if (seen.has(h.chatId) && h.k == null) continue; out.push(r); }
-      for (const u of S.res.unread || []) out.push(note(`Couldn’t read “${u.title}” just now`, 'its messages aren’t in these results · try again in a moment', () => AppUI.palette(`?${S.q}`)));
+      for (const u of S.res.unread || []) out.push(note(`Couldn’t read ${u.title ? `“${u.title}”` : `a chat (${u.id})`} just now`, 'its messages aren’t in these results · try again in a moment', () => AppUI.palette(`?${S.q}`)));
       if (S.res.projects === null) out.push(note('Couldn’t read your projects just now', 'messages are found, but which project each is in isn’t shown'));
       if (S.res.left > 0 && !S.err) out.push(note(`Still reading ${S.res.left} chat${S.res.left === 1 ? '' : 's'}…`, 'more messages may appear here'));
     }
@@ -77,7 +81,8 @@ const ChatFind = (() => {
     if (!R.foldWords(q || '').some((w) => w.length >= 2)) { S.res = { hits: [], left: 0, unread: [] }; paint(); return; }
     S.inFlight = true;
     const t0 = performance.now(); let r = null; let err = null;
-    try { r = await window.hub.chatFind({ q, budgetMs: 30, limit: 12 }); } catch (e) { err = e?.message || String(e); } finally { S.inFlight = false; }
+    // (still reading: a little more of the index per ask)
+    try { r = await window.hub.chatFind({ q, budgetMs: S.res?.left > 0 ? 45 : 30, limit: 12 }); } catch (e) { err = e?.message || String(e); } finally { S.inFlight = false; }
     S.stats.asks += 1; S.stats.lastMs = Math.round(performance.now() - t0); S.stats.maxMs = Math.max(S.stats.maxMs, S.stats.lastMs);
     if (S.again) { S.again = false; run(); return; }
     if (n !== S.seq || q !== S.q) return; // (the words changed meanwhile: their own ask is on its way)

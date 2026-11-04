@@ -150,12 +150,12 @@ async function windowSide() {
   await sleep(20);
   ok('… the answer to the old words is dropped, the newest words asked right after', CF.state().res === null && asks.length === 2 && asks[1].o.q === 'kyoto', { res: CF.state().res, asks: asks.map((a) => a.o.q) });
   asks[1].resolve({ hits: [{ chatId: 's113-kyoto', agentId: 'claude', title: 'Kyoto trip plan', k: 3, role: 'assistant', snippet: 'the ryokan budget stays under ¥45,000. Kyoto in April', count: 3, project: { id: 'pj-s113-travel', name: 'Travel' } }],
-    total: 1, left: 120, unread: [{ id: 's113-broken', title: 'Broken chat' }], projects: 3 });
+    total: 1, left: 120, unread: [{ id: 's113-broken', title: null }, { id: 's113-held', title: 'Held chat' }], projects: 3 });
   await sleep(20);
   rows = CF.rows('kyoto', paint);
   const msg = rows.find((r) => r.hit);
   ok('the message row: its snippet, its project, what it is in; a project\'s title row says the project too', msg && /ryokan/.test(msg.label) && msg.kind === '◆ Travel' && /Kyoto trip plan/.test(msg.detail) && /3 messages match/.test(msg.detail) && rows[0].kind === '◆ Travel', rows.map((r) => [r.kind, r.label, r.detail]));
-  ok('a chat that couldn\'t be read is a row ("Couldn\'t read “Broken chat” just now"); still reading → a row says so', rows.some((r) => /Couldn’t read “Broken chat”/.test(r.label)) && rows.some((r) => /Still reading 120 chats/.test(r.label)), rows.map((r) => r.label));
+  ok('a chat that couldn\'t be read is a row ("Couldn\'t read “Broken chat” just now"); still reading → a row says so', rows.some((r) => /Couldn’t read a chat \(s113-broken\)/.test(r.label)) && rows.some((r) => /Couldn’t read “Held chat”/.test(r.label)) && rows.some((r) => /Still reading 120 chats/.test(r.label)), rows.map((r) => r.label));
   ok('the rows were painted again when the answer came', painted >= 1, painted);
   await sleep(150); // (still reading: asked again in a quiet moment)
   ok('still reading: asked again by itself', asks.length === 3 && asks[2].o.q === 'kyoto', asks.map((a) => a.o.q));

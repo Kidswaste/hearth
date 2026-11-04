@@ -162,19 +162,48 @@ const AppSearch = (() => {
     for (const it of out) it.kind = 'menu';
     return out;
   }
+  function chatRows(base) {
+    const out = []; const seen = new Set();
+    for (const it of base) {
+      if (!(it.chat || /\schat$/.test(it.kind || ''))) continue;
+      const id = `ch:${it.kind}|${it.label}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, kind: 'chat', label: it.label || 'Untitled', hint: it.kind, path: 'Chats', tags: 'chat conversation', run: it.run });
+    }
+    return out;
+  }
+  // (round 113, search113) the chats by title in an index of their own, kept while the chats list stays the same: every
+  // opening made them again with the menus (2,200 chats on the heavy profile: a 110–180 ms task on each Ctrl/⌘+K). A
+  // new list is indexed in slices of ≤ 8 ms (the most recent first, the rest in idle moments; the rows join as they're in)
+  const chatIx = { sig: '', ix: null, rows: [], at: 0, done: true, ms: 0 };
+  const FIELDS = [['label', 1], ['tags', 0.6], ['hint', 0.5], ['path', 0.4]];
+  function chatIndex(items) {
+    const rows = chatRows(items);
+    let sig = String(rows.length); for (const r of rows) sig += `\n${r.id}`;
+    if (sig === chatIx.sig) { for (let i = 0; i < rows.length; i++) chatIx.rows[i].run = rows[i].run; return; } // (the same chats: this opening's actions)
+    Object.assign(chatIx, { sig, rows, at: 0, done: false, ms: 0, ix: { items: [], post: new Map(), vocab: [], labels: [], labelLen: [], memo: new Map(), V } });
+    chatSlice(8);
+  }
+  function chatSlice(ms) {
+    const t0 = performance.now(); const x = chatIx; const ix = x.ix;
+    while (x.at < x.rows.length && performance.now() - t0 < ms) {
+      const it = x.rows[x.at++]; const i = ix.items.push(it) - 1;
+      for (const [f, w] of FIELDS) for (const t of C.words(it[f])) { let m = ix.post.get(t); if (!m) { m = new Map(); ix.post.set(t, m); } if ((m.get(i) || 0) < w) m.set(i, w); }
+      const lw = C.words(it.label); ix.labels.push(lw.join(' ')); ix.labelLen.push(lw.length);
+    }
+    ix.vocab = [...ix.post.keys()].sort(); ix.memo.clear();
+    x.ms += performance.now() - t0;
+    if (x.at < x.rows.length) { const me = x.ix; (window.requestIdleCallback || setTimeout)(() => { if (chatIx.ix === me) chatSlice(8); }, { timeout: 60 }); return; }
+    x.done = true; last.chatIndexMs = Math.round(x.ms); refresh();
+  }
   function liveItems(base) {
     const out = [];
-    const seenChat = new Set();
     for (const it of base) {
       if (it.kind === 'Agent') out.push({ id: `ag:${it.label}`, kind: 'agent', label: it.label, hint: 'open', path: 'The rail', keys: it.keys, tags: 'ai agent open chat', run: it.run });
       else if (it.kind === 'Tool') out.push({ id: `tl:${it.label}`, kind: 'tool', label: it.label, hint: 'open', path: 'The rail', keys: it.keys, tags: 'tool open', run: it.run });
       else if (it.kind === 'Project') out.push({ id: `pj:${it.id}`, kind: 'project', label: it.label, hint: it.hint || 'open', path: 'Projects', tags: 'project open switch workspace desk', run: it.run }); // (round 91, projaudit91) a project by its name: switch to it
-      else if (it.chat || /\schat$/.test(it.kind || '')) {
-        const id = `ch:${it.kind}|${it.label}`;
-        if (seenChat.has(id)) continue;
-        seenChat.add(id);
-        out.push({ id, kind: 'chat', label: it.label || 'Untitled', hint: it.kind, path: 'Chats', tags: 'chat conversation', run: it.run });
-      }
+      // (round 113, search113) the chats: their own index (chatIndex), made once per chats list, in slices
     }
     // ◎ missions for the chat you're in
     if (typeof Missions !== 'undefined') {
@@ -205,8 +234,9 @@ const AppSearch = (() => {
     buildFixed(items);
     const lab = inLab();
     liveIx = C.build([...menuItems(lab), ...liveItems(items)], { vocab: V });
+    chatIndex(items);
     last.liveMs = Math.round((performance.now() - t0) * 10) / 10;
-    last.items = fixedIx.items.length + liveIx.items.length;
+    last.items = fixedIx.items.length + liveIx.items.length + chatIx.rows.length;
     labOn = false;
     if (lab) labReady().catch(() => {});
     // what joins a moment later: Settings' switches, the patch notes
@@ -252,7 +282,7 @@ const AppSearch = (() => {
     q = String(q || '').trim();
     if (!fixedIx || !liveIx) prepare(base);
     const recent = recentMap();
-    let res = [...C.search(liveIx, q, { limit, recent }), ...C.search(fixedIx, q, { limit, recent })];
+    let res = [...C.search(liveIx, q, { limit, recent }), ...C.search(fixedIx, q, { limit, recent }), ...(chatIx.ix ? C.search(chatIx.ix, q, { limit, recent }) : [])];
     if (labOn && typeof LabSearch !== 'undefined') {
       try { for (const r of LabSearch.find(q, 12)) res.push({ item: { ...r.item, id: `lab:${r.item.id}`, kind: 'lab', labKind: r.item.kind, path: `Lab › ${r.item.path || ''}`.replace(/ › $/, ''), labItem: r.item }, score: r.score + 0.1 }); } catch { /* the Lab went away */ }
     }
@@ -412,7 +442,7 @@ const AppSearch = (() => {
     if (await Modal.confirm(h.title, h.text, { ok: 'Show me' })) await runItem(go);
   }
   function findById(id) {
-    for (const ix of [fixedIx, liveIx]) { const it = ix?.items.find((x) => x.id === id); if (it) return it; }
+    for (const ix of [fixedIx, liveIx, chatIx.ix]) { const it = ix?.items.find((x) => x.id === id); if (it) return it; }
     return null;
   }
   async function until(fn, ms) {
@@ -431,5 +461,5 @@ const AppSearch = (() => {
   }
 
   return { prepare, find, tidy, plain, warm, later, toSettings, toAiSetup, locateSetting, locateAi, jumpChat, findById, runItem, last, vocab: V,
-    get index() { return { fixed: fixedIx, live: liveIx }; }, get labOn() { return labOn; } };
+    get index() { return { fixed: fixedIx, live: liveIx, chats: chatIx.ix }; }, get labOn() { return labOn; } };
 })();

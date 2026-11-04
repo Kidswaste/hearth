@@ -10,6 +10,8 @@
 //   · a chat that can't be read is named (unread), never silently missing
 //   · each row's project (an archived project's chat: none, as Projects.openChat sees it)
 //   · a long chat (read in slices) and a giant one (read by its bytes) land on the right message
+// (a plain script too: the app check gets it in front of its body with smoke.js --lib, as S113Set)
+const S113Set = (() => {
 const DAY = 864e5;
 const PROJECTS = [
   { id: 'pj-s113-travel', name: 'Travel', chats: ['s113-kyoto'] },
@@ -103,4 +105,6 @@ function addTo(dataDir, { now = Date.now(), giantN = 3000, giantPad = 40, fs = r
   }
   W('kv/projects.json', JSON.stringify(data));
 }
-module.exports = { PROJECTS, QUERIES, chats, extras, longChat, addTo, DAY };
+return { PROJECTS, QUERIES, chats, extras, longChat, addTo, DAY };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = S113Set;

@@ -454,5 +454,44 @@ const AppUIDialogs = (() => {
     dlg.querySelector('.dialog-actions button[type=button]')?.remove();
   }
 
-  return { openSettings, downloadsDialog, trashDialog, backupsDialog, restoreBackup, usageDialog };
+  // ---------- shortcuts help (round 113, search113: moved here from appui.js, the same code) ----------
+  const SHORTCUTS = [
+    ['Ctrl+K', 'Find anything: settings, AI setup, menus, chats and their messages, “how do I…”'], ['Ctrl+;', 'Command bar: run a /command over any tool (↑ history, ? help)'], ['Ctrl+1…9', 'The rail, top to bottom: agents, then tools'], ['Ctrl+Tab', 'Previous agent/tool (press again to go further back)'],
+    ['Ctrl+N', 'New native chat'], ['Ctrl+F', 'Find in the current view'], ['Ctrl+J', 'Notes'], ['Ctrl+\\', 'Show/hide chats panel'],
+    ['Ctrl+G', 'All agents side by side'], ['Ctrl+Shift+Space', 'Ask all agents'], ['Ctrl+B', 'Show/hide ask-all bar'],
+    ['Ctrl + / − / 0', 'Text size'], ['Ctrl+R', 'Reload website'], ['Ctrl+Shift+R', 'Reload the hub itself'], ['Ctrl+,', 'Settings'], ['Ctrl+/', 'This list'],
+    ['Enter / Shift+Enter', 'Send / new line in a chat'], ['/', 'Chat commands (at the start of the message box; /help lists them)'], ['Esc', 'Stop the reply being written'],
+    ['Alt+T / Alt+R', 'In a chat box: open / close thinking · read the last reply aloud'], ['Alt+B / Alt+P / Alt+M', 'In a chat box: bookmark / pin / menu of the last reply'],
+    ['Alt+F', 'Find in this chat'], ['Alt+↑ / Alt+↓', 'Messages you sent before (in the chat box)'], ['Ctrl+Shift+U', 'Token & usage dashboard'],
+    ['Ctrl+V (image)', 'Attach a screenshot to a native chat'], ['Ctrl+Enter', 'Run code in Three.js Lab and shader playground'],
+    ['Ctrl+/ (in code)', 'Toggle comment'], ['Ctrl+D (in code)', 'Duplicate line'], ['Ctrl+Alt+H', 'Show/hide the hub from anywhere (configurable)'],
+    ['Ctrl+Shift+S', 'Snapshot the window into the chat you\'re using'], ['Ctrl+Shift+T', 'Keep Hearth on top of other windows'],
+    ['Ctrl+Shift+L', 'Appearance: looks, textures, glow, motion (/theme, /appearance in any chat)'],
+  ];
+  // Keys inside the Three.js Lab sketch (when you're not typing).
+  const LAB_SHORTCUTS = [
+    ['Space', 'Play / pause'], ['← →', 'Nudge 10 ms (Alt 1 ms, Shift a grid step)'], ['[ ]', 'Loop start / end at the playhead'],
+    ['K S H', 'Kick / snare / hit marker at the playhead'], ['C', 'Drop a hot cue'], ['1…9', 'Jump to cue 1…9'],
+    ['A', 'Show / hide every animated curve'], ['W', 'Write: record slider / knob moves as curves while it plays'], ['N', 'Note with a screenshot'], ['F', 'Freeze the picture (Shift+F: Focus)'], ['P', 'Present: fullscreen preview'], ['R / Shift+R', 'Shuffle the sliders / the shuffle before'], ['Shift+1…5', 'Frame size: Fit, 9:16, 16:9, 4:5, 1:1'], ['T / Shift+T', 'Tap tempo / this tap is the 1'],
+    ['X / Shift+X', 'FX picker: effects & layers / everything'], ['Shift+A / B / C', 'Recall slider slot A, B, C'], ['Alt+1…9', 'Hide / show layer 1…9 (Shift: solo)'],
+    ['Ctrl+S / Ctrl+Shift+S', 'Save the sliders into the code / as a look (in the Lab)'], ['Alt+N', 'Code ⇄ nodes (in the Lab code view)'], ['O / `', 'Your sketches / console'], ['?', 'Every Lab key'],
+    ['Shift+drag (lane)', 'Select points'], ['Ctrl+drag (lane)', 'Draw points'], ['Alt+drag (selection)', 'Stretch the swing'],
+    ['Ctrl+C / V / D / A', 'Copy, paste at playhead, duplicate, select all points'], ['Delete', 'Delete selected points / marker'], ['Ctrl+Z', 'Undo grid, marker, cue or curve change'],
+  ];
+  function shortcutsHelp() {
+    Modal.confirm('Keyboard shortcuts', '').then(() => {});
+    const dlg = document.querySelector('dialog.ui-modal:last-of-type');
+    const mac = /Mac/.test(navigator.platform);
+    // (round 31, winmac) the global hotkey is the Control key on a Mac (⌃⌥H), not ⌘
+    // (round 49) through WinMac.keyLabel: ⇧⌘U / Ctrl+Shift+U, ⌃Tab on the Mac (⌘Tab is the system's)
+    const keyText = (k) => (typeof WinMac !== 'undefined' && WinMac.keyLabel ? WinMac.keyLabel(k, { mac }) : mac && k === 'Ctrl+Alt+H' ? '⌃⌥H' : mac ? k.replace(/Ctrl\+/g, '⌘').replace(/Ctrl /g, '⌘ ').replace(/Alt\+/g, '⌥') : k);
+    const rows = (list) => list.map(([k, d]) => el('tr', {}, el('td', {}, el('kbd', { text: keyText(k) })), el('td', { text: d })));
+    dlg.querySelector('.modal-text').replaceWith(el('div', { class: 'shortcut-cols' },
+      el('div', {}, el('h4', { text: 'Everywhere' }), el('table', { class: 'shortcut-table' }, rows(SHORTCUTS))),
+      el('div', {}, el('h4', { text: 'Three.js Lab' }), el('table', { class: 'shortcut-table' }, rows(LAB_SHORTCUTS)))));
+    dlg.classList.add('wide');
+    dlg.querySelector('.dialog-actions button[type=button]')?.remove();
+  }
+
+  return { openSettings, downloadsDialog, trashDialog, backupsDialog, restoreBackup, usageDialog, shortcutsHelp, SHORTCUTS, LAB_SHORTCUTS };
 })();

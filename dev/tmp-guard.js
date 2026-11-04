@@ -39,6 +39,7 @@ const SHARED = new Map([
   ['hearth-perf93-fresh', 'perfguard: the heavy profile + one giant chat'], ['hearth-perfguard', 'perfguard\'s own logs when run by hand (--out)'],
   ['hearth-mediapipe', 'motion-in-real: the real MediaPipe files, placed by hand'],
   ['hearth-bigprofile-fixture', 'dev/make-bigprofile-fixture.js'],
+  ['hearth-search113', 'FIX: dev/search113-fixture.js (hearth-perf93-fresh linked + the query set\'s chats)'],
 ]);
 const isShared = (name) => SHARED.has(name) || /\.making$/.test(name); // (a fixture being made by another run)
 // a run folder of ours or of another run at once (each removes its own; ours is checked by name)
