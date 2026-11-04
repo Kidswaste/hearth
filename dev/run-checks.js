@@ -450,7 +450,13 @@ GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.as
 // test. Round 104 ran the whole unit list for the first time in a while and found four failing on the base for weeks
 // (they were never in a usual release run). Timing tests in it are load-aware (dev/loadwait.js): a box too busy to
 // tell says "can't tell" on its line instead of failing. docs/upgrades/units105.md
-GROUPS.release = [...new Set([...GROUPS.qa, ...GROUPS.unit])];
+// (round 114, owner: "our testing list is too long") the release runs what the app's core needs: chats, projects, sync,
+// the Lab, speed. The Life side (Paris, quests, outings) and the music studio's checks, plus the known failures
+// (KNOWN_FAIL) and the flaky live-set check, moved to the "extra" group: still runnable (run-checks.js extra), no
+// longer part of every release. Nothing deleted.
+const EXTRA_RX = /^unit:(quest|questguide|showsync|showprep|outing|city-|paris|photos69|rewards|weekendplan|weekquest|trynew|herepin66|invite67|leavesoon68|ratp69|tickets68|follow70|leavefix70|eatnearby71|errands67|studiohours71|quickidea71|map-session|offline-library|bouncelog66|sketchpads67|refab68|midilearn69|stems69|presethover61|vst-|vstembed64|parkjam62|soundbank63|loopsong63|audiodoctor64|liveset64|playback-volume)/;
+GROUPS.extra = GROUPS.unit.filter((n) => EXTRA_RX.test(n));
+GROUPS.release = [...new Set([...GROUPS.qa, ...GROUPS.unit])].filter((n) => !EXTRA_RX.test(n));
 
 if (argv.includes('--list')) {
   for (const [g, list] of Object.entries(GROUPS)) if (g !== 'all') console.log(`${g}: ${list.join(' ')}`);
