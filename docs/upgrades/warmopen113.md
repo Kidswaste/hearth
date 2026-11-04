@@ -117,10 +117,27 @@ switch by `.click()`, so without the frame bar's hover case):
 | `syncPark` | 16.4 ms a switch | **none over 2 ms** |
 | all forced reads, a switch | ≈ 77 ms | ≈ 40 ms (the loading card's `showModal` 19 ms is most of what's left) |
 
-The switch as a whole, `dev/warmopen113-probe.js`, base `98f439f` (`git archive`, `--app`) and this branch run in
-turn, 3 + 3 launches (27 switches and 6 warm opens a side), box load 2.6–4.3 from another stream's checks:
+The switch as a whole, `dev/warmopen113-probe.js`, base `98f439f` (an archive of it, run with `--app`) and this branch
+run in turn, 3 + 3 launches a block (27 switches and 6 warm opens a side). Block 1 ran on the old container (load
+2.6–4.3 from another stream's checks; the frame bar change not in yet); block 2 after the container restarted, on a box
+about twice as fast (load 1–3). Medians; "longest" is each switch's longest window task, the scene's page left out:
 
-RESULTS_TABLE
+| | block 1 base | block 1 after | block 2 base | block 2 after |
+|---|---:|---:|---:|---:|
+| **name ▾ switch: ready (usable)** | 3291 ms | 3317 ms | 1720 ms | 1851 ms |
+| …of which the scene's own page work | 2384 ms | 2391 ms | 1434 ms | 1571 ms |
+| …Hearth's part | 727 ms | 764 ms | 339 ms | 359 ms |
+| its chat drawn | 339 ms | 324 ms | 194 ms | 196 ms |
+| window CPU | 527 ms | 555 ms | 309 ms | 308 ms |
+| longest window task: median / max | 57 / 105 ms | 54 / 109 ms | 0 / 69 ms | 0 / 64 ms |
+| switches with a task over 50 / 80 ms | 21 / 5 of 27 | 20 / 4 | 1 / 0 | 2 / 0 |
+| warm open from Projects: ready / Hearth's part | 5541 / 1315 ms | 4666 / 1078 ms | 2910 / 545 ms | 2372 / 450 ms |
+
+**Honest reading:** the forced layouts are gone (the table above), but the switch's totals don't move by more than this
+box's run-to-run noise. The window still lays itself out once per frame either way; what was cut was an extra, earlier
+pass, ≈ 20–45 ms a switch, against 0.3–0.55 s of window CPU and 1.7–3.3 s until usable. The time until usable is the
+scene's own start (software GL) plus the preview page's start; nothing else in Hearth's part was both cheap and safe.
+On the faster box, 25 of 27 switches had no window task over 50 ms, before and after.
 
 ## For Codex
 No Codex-owned file touched. One idea left for you (`project-workspace.js` `loading()`): the loading card's
@@ -144,8 +161,7 @@ CHECKS_SECTION
   painted frame), `chat-scenes.js` (`ownersOf`).
 
 ## For the patch notes
-- Switching projects with the name ▾ is a little smoother when the project was left on the Lab: Hearth no longer
-  stops in the middle of the switch to work out what's on screen, so the window has fewer small hitches while the
-  project opens.
+- Switching projects with the name ▾ does a little less work: Hearth no longer stops in the middle of the switch to
+  check what's on screen, it checks right after. The difference is small (a few hundredths of a second per switch).
 - No slowdown in opening a project from Projects: last round's check thought it might have got slower, but measured
   again properly it is the same as before.
