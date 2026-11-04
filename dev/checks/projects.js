@@ -156,7 +156,7 @@ step(Boolean(document.querySelector('#chat-groups .pj-group')), '…and back on'
 const row = document.querySelector(`#chat-groups .item[data-key="${c2}"]`);
 row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 200 }));
 await wait(80);
-step([...document.querySelectorAll('#menu .menu-item, #menu button, #menu div')].some((n) => /^Project/.test(n.textContent.trim())), 'right-click a chat › Project');
+step([...document.querySelectorAll('#menu .menu-item, #menu button, #menu div')].some((n) => /^(Project|Move to project)/.test(n.textContent.trim())), 'right-click a chat › Move to project… (round 116: one project per chat)');
 hideMenu?.();
 
 // ---- 7. the Lab's sketch picker ----
