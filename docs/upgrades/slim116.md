@@ -109,7 +109,12 @@ they would have loaded. Several of them (questhud, the quest tracker and its tou
   aliases 335, actions 1,379, keys 500, apps 51, tools 8, dups 0); no file threw.
 - `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package flock /tmp/hearth-run.lock timeout 2400 node
   dev/run-checks.js --exact qa-commands qa-keys lazy fastboot unit:lazymanifest-test unit:slim116-test labload94
-  unit:labaudio77-test`: see the result in the round's report.
+  unit:labaudio77-test`: **8 / 8 passed** in 10 min (qa-commands, qa-keys, lazy, fastboot, lazymanifest-test,
+  slim116-test, labload94, labaudio77-test).
+- A unit batch through run-checks (32 / 32 passed): lazy-groups, appsearch, localanswers, whatsnew, notify, bugcard,
+  deploy, voice, director-mcp, projects, credits, round67, promptdiet, toolslim, datasafe / errorcalm / storeack /
+  chatsafe scans, winmac, offline-library, offline, labaudio77, music, finishline, quickidea71, creative, workbench,
+  slowcard, project-workspace, commandonly-scan, slim116, boot-test.
 - Run by hand while cutting: slowcard-test, storeack77-test, storeack-scan, datasafe-scan, creative-test,
   workbench-test, workbench-story-test, quickidea71-test, finishline-test, project-workspace-test, commandonly-scan,
   lazy-groups-test, plus a unit batch (appsearch, localanswers, whatsnew, notify, bugcard, deploy, voice, director-mcp,
