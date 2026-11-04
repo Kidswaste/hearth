@@ -7,6 +7,10 @@
 // the click went to the Desk's body and nothing opened (round 108's "a ⋯ that did nothing"). Now the redraw waits
 // until the click has been handled (the task after the release), 1.5 s at most (a release that never comes: a drag
 // out of the window). holdPress(false) turns it off (a check's before).
+// (round 114, projchecks114) a project card on Projects home too: it's a focusable <div>, not a button, so a card pressed
+// while Home was drawn again (it shows the cards drawn last time, then draws them again 20–50 ms after it comes on
+// screen, more on a busy start; any project change while it's on screen) lost its click: no click event at all, the
+// project didn't open (measured on the heavy profile: a press, a project change, the release → 0 clicks).
 const DeskPaint = (() => {
   const core = DeskPaintCore.placer({
     frame: (fn) => requestAnimationFrame(fn), clearFrame: (id) => cancelAnimationFrame(id),
@@ -24,7 +28,7 @@ const DeskPaint = (() => {
   addEventListener('pointercancel', release, { capture: true, passive: true });
   function held(root, fn) {
     const d = hold.down;
-    if (!hold.on || !d || !(d instanceof Element) || !root?.contains(d) || !d.closest('button, a, input, select, textarea, summary, [role=button]')) return false;
+    if (!hold.on || !d || !(d instanceof Element) || !root?.contains(d) || !d.closest('button, a, input, select, textarea, summary, [role=button], .pj-card')) return false;
     hold.waiting.push(fn); hold.held += 1;
     return true;
   }

@@ -4,10 +4,13 @@
 //   redraw    a project change (setWorkspace: the Desk is drawn again ≈ 80 ms later) and the ⋯ pressed 0–240 ms after
 //   switch    the Desk asked for (from the project's chat) and the ⋯ pressed 0–240 ms after
 //   row       the menu open, a project change, and a row (Notes…) pressed 0–240 ms after
+//   card      (round 114, projchecks114) Projects home: a project change (Home drawn again ≈ 80 ms later) and a project
+//             card pressed 0–240 ms after; what counts is that the press's click reaches a card (it is stopped there:
+//             no project opens)
 // What counts: the ⋯ opened its menu / the row opened its prompt. ClickWatch (renderer.js) must name every miss.
 //   node dev/smoke.js --fake-engines --data <projopen86 fixture> --wait 1000 --check-timeout 900000 --lib dev/projaudit108-lib.js --script dev/projopen109-menu.js
 // window.PO109_NOHOLD = 1 (an --eval): the Desk draws under a press as before this round (DeskPaint.hold off)
-const res = { redraw: [], switch: [], row: [] };
+const res = { redraw: [], switch: [], row: [], card: [] };
 const HOLD_MS = 70;
 const at = (n) => { const r = n.getBoundingClientRect(); return { x: Math.round(r.left + Math.min(r.width / 2, 40)), y: Math.round(r.top + r.height / 2) }; };
 const pressAt = async ({ x, y }) => { await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y }); await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1, buttons: 1 }); };
@@ -63,12 +66,33 @@ try {
       res.row.push({ d, round, ok, sameNode: row.isConnected, ...(ok ? {} : { before, after, asked: mine, closes: (window.__po109close || []).filter((x) => x.t >= tRow), dialogs: [...document.querySelectorAll('dialog')].map((x) => `${x.className}${x.open ? ' open' : ''}`).slice(0, 4), menu: menuOpen() }) });
     }
   }
+  // (round 114, projchecks114) a project card on Projects home, pressed around a Home redraw
+  await closeAll(); await ProjectWorkspace.home().catch(() => {});
+  const other = P.live().find((x) => x.id !== p.id) || p;
+  if (await until(() => document.querySelector(`.pj-card[data-project="${other.id}"] .pj-card-description`), 8000, 50)) {
+    await wait(1500);
+    let reached = 0; const stop = (e) => { if (e.target.closest?.('.pj-card') && !e.target.closest('.pj-go')) { reached += 1; e.stopPropagation(); e.preventDefault(); } };
+    document.addEventListener('click', stop, true);
+    try {
+      for (const round of [0, 1]) for (const d of [0, 20, 40, 60, 80, 100, 120, 140, 160, 200, 240]) {
+        await wait(400);
+        const desc = document.querySelector(`.pj-card[data-project="${other.id}"] .pj-card-description`);
+        desc.scrollIntoView({ block: 'nearest' }); await frame();
+        const r = desc.getBoundingClientRect(); const spot = { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        const before = reached;
+        P.setWorkspace(P.get(other.id), {});
+        await wait(d);
+        await pressAt(spot); await wait(HOLD_MS); await releaseAt(spot); await wait(150);
+        res.card.push({ d, round, ok: reached > before, sameNode: desc.isConnected });
+      }
+    } finally { document.removeEventListener('click', stop, true); }
+  } else res.card.push({ d: -1, round: 0, ok: false, why: 'no cards on Projects home' });
   await closeAll();
   const sum = (xs) => ({ tries: xs.length, missed: xs.filter((x) => !x.ok).length, at: xs.filter((x) => !x.ok).map((x) => `${x.d}${x.why ? ` ${x.why}` : ''}${x.asked ? ` ${JSON.stringify({ before: x.before, after: x.after, asked: x.asked.length, menu: x.menu }).slice(0, 900)}` : ''}`) });
   const misses = ClickWatch.misses();
-  const missed = res.redraw.concat(res.switch, res.row).filter((x) => !x.ok).length;
-  step('slow steps (ms)', true, { hold: !window.PO109_NOHOLD, redraw: sum(res.redraw), switch: sum(res.switch), row: sum(res.row), clickWatch: misses.slice(-12), deskPaint: window.DeskPaint?.pressStats?.() || null, burn: window.SMOKE_BURN });
-  step('every ⋯ press opened its menu and every row press its prompt (a Desk redrawn under the press doesn\'t eat it)', window.PO109_NOHOLD || missed === 0, { missed });
+  const missed = res.redraw.concat(res.switch, res.row, res.card).filter((x) => !x.ok).length;
+  step('slow steps (ms)', true, { hold: !window.PO109_NOHOLD, redraw: sum(res.redraw), switch: sum(res.switch), row: sum(res.row), card: sum(res.card), clickWatch: misses.slice(-12), deskPaint: window.DeskPaint?.pressStats?.() || null, burn: window.SMOKE_BURN });
+  step('every ⋯ press opened its menu, every row press its prompt and every card press reached its card (a Desk or Home redrawn under the press doesn\'t eat it)', window.PO109_NOHOLD || missed === 0, { missed });
   // (noted, not judged: a click that reached the wrong row, e.g. the row above while the menu still moved, is a click
   // ClickWatch sees as fine; it names the presses and clicks that parted)
   step('ClickWatch: the misses it named (noted)', true, { missed, caught: misses.length, why: [...new Set(misses.map((m) => m.why))] });
