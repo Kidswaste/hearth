@@ -115,9 +115,13 @@ window.ProjChats = (() => {
     if (was && Date.now() - was.at < 3000) return; // chosen a moment ago (the bar's ＋ New chat, the question)
     const a = H.agent(agentId);
     const director = Boolean(a?.dock);
-    const pid = director ? sceneProjectId() || current()?.id : current()?.id;
+    // (round 116, labchat92) a chat started from the Lab ("Ask Claude about this layer", a linked chat) belongs to the
+    // scene's project, whichever AI; and the "Which project?" window only answers the owner's own press: a chat started
+    // by code (no fresh click or key) never opens a window that takes the keyboard (it goes to Earlier chats, with a note)
+    const pid = director ? sceneProjectId() || current()?.id : current()?.id || sceneProjectId();
     if (pid) { pending.set(agentId, { pid, at: Date.now() }); return; }
     if (!ok) return; // projects not read yet: the chat goes to Earlier chats when it is made (never none)
+    if (navigator.userActivation && !navigator.userActivation.isActive) return; // placed by place(): Earlier chats + a note
     ask(agentId);
   }
   // a chat in a project of your choice: the AI given, in the project given
