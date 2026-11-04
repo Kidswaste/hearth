@@ -41,7 +41,7 @@ const ChatFind = (() => {
   // a chat's project: the projects' own index when it's loaded, else what the store thread said about this chat
   const projOf = new Map(); // chat id → { id, name } | null, from the store thread's answers
   const projectOf = (id) => (window.Projects?.isLoaded?.() ? (() => { const p = Projects.projectOfChat(id); return p ? { id: p.id, name: p.name } : null; })() : projOf.get(id) || null);
-  const kindOf = (p, c) => (p ? `◆ ${p.name}` : c ? `${H.agent(c.agentId)?.name || 'Chat'} chat` : 'Not in a project');
+  const kindOf = (p, c) => (p ? `◆ ${p.name}` : c ? `${H.agent(c.agentId)?.name || 'Chat'} chat` : 'Chat'); // (round 116, projchats116) every chat has a project (its name shows once the projects are read)
 
   // ---------- the messages (the store thread) ----------
   function rowOf(h) {

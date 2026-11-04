@@ -22,7 +22,11 @@ const Panel = (() => {
   // chat's right-click menu
   // (round 42) a row built once is kept while its chat shows the same things: row hooks run when it is built, render
   // hooks after every draw (and after a long group brings other rows near the screen)
-  const hooks = { row: [], render: [], skip: [], top: [], view: [], menu: [], itemMenu: [] };
+  // (round 116, projchats116) scope(chatSummary | null, agent) → false keeps a chat out of the list: only the open
+  // project's chats show (projchats.js; null: a website's group). Until that file loads, the ids it last showed.
+  const hooks = { row: [], render: [], skip: [], top: [], view: [], menu: [], itemMenu: [], scope: [] };
+  const early = (() => { const s = store.get('projchats.early', null); return s && Array.isArray(s.ids) ? new Set(s.ids) : null; })();
+  const outOfScope = (c, agent) => (hooks.scope.length ? hooks.scope.some((fn) => { try { return fn(c, agent) === false; } catch { return false; } }) : Boolean(early && !(c && early.has(c.id))));
   const fromHooks = (list, ...a) => list.flatMap((fn) => { try { return fn(...a) || []; } catch (err) { console.warn(err); return []; } });
   const viewName = (v) => { for (const fn of hooks.view) { try { const l = fn.label?.(v); if (l) return l; } catch { /* its own trouble */ } } return v; };
   const skipped = (c) => !view && hooks.skip.length > 0 && hooks.skip.some((fn) => { try { return fn(c); } catch { return false; } });
@@ -171,9 +175,10 @@ const Panel = (() => {
       const base = (inc && inc.lists.get(agent.id)) || model().get(agent.id) || [];
       // (round 46, smooth46) the search first: a letter typed rules out most chats before the view and the projects'
       // grouping are asked about each of them (the same chats pass)
-      return base.filter((c) => hit(c, q) && inView(c, agent) && !skipped(c));
+      return base.filter((c) => hit(c, q) && inView(c, agent) && !skipped(c) && !outOfScope(c, agent));
     }
     if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
+    if (outOfScope(null, agent)) return []; // (round 116, projchats116) a website's pages aren't a project's chats
     return (H.history[agent.id] || []).map((h) => ({ key: h.url, title: h.title, url: h.url })).filter((i) => matches(i, q));
   }
 
@@ -655,7 +660,7 @@ const Panel = (() => {
         const chip = el('div', 'panel-view');
         chip.append(el('span', null, `Showing: ${viewName(v)}`));
         const x = el('button', null, '×');
-        x.title = 'Show every chat';
+        x.title = 'Show all of this project’s chats'; // (round 116, projchats116) the list is one project's
         x.addEventListener('click', () => setView(null));
         chip.append(x);
         return chip;
@@ -671,7 +676,7 @@ const Panel = (() => {
     for (const agent of H.agents()) {
       const items = listFor(agent, q);
       if (agent.mode === 'native') lists.set(agent.id, items);
-      if (view && !items.length) continue;
+      if ((view || (agent.mode !== 'native' && outOfScope(null, agent))) && !items.length) continue; // (round 116, projchats116)
       want.push(groupFor(agent, items, q));
       groups += 1;
     }
@@ -814,7 +819,7 @@ const Panel = (() => {
       const tags = typeof ChatUX !== 'undefined' ? ChatUX.allTags() : [];
       const folders = typeof ChatUX !== 'undefined' ? ChatUX.allFolders() : [];
       showMenu(b.left, b.bottom + 4, [
-        { label: `${view ? '' : '✓ '}Everything`, action: () => setView(null) },
+        { label: `${view ? '' : '✓ '}All of this project’s chats`, action: () => setView(null) }, // (round 116, projchats116)
         ...['pinned', 'today', 'week', 'unread', 'busy', 'archived'].map((v) => ({ label: `${view === v ? '✓ ' : ''}${{ pinned: '📌 Pinned', today: 'Today', week: 'Last 7 days', unread: 'Unread replies', busy: 'Answering now', archived: '🗄 Archived' }[v]}`, action: () => setView(v) })),
         ...Object.keys(SORTS).map((k) => ({ label: `${sortBy() === k ? '✓ ' : ''}Sort: ${{ recent: 'latest first', oldest: 'oldest first', title: 'by title' }[k]}`, action: () => { store.set('panel.sort', k); render(); } })),
         ...folders.map((f) => ({ label: `${view === `folder:${f.toLowerCase()}` ? '✓ ' : ''}📁 ${f}`, action: () => setView(`folder:${f.toLowerCase()}`) })),
@@ -823,7 +828,7 @@ const Panel = (() => {
       ]);
     });
     search.after(btn);
-    search.placeholder = 'Search chats (#tag)';
+    search.placeholder = 'Search this project’s chats (#tag)'; // (round 116, projchats116)
     if (typeof Keys !== 'undefined') Keys.add({ area: 'Chats panel', keys: 'Drag a chat onto a 📁 folder', what: 'Move it into that folder (onto its AI’s name: out of the folder); Ctrl/⌘+Z puts it back', sel: '#panel .item' });
   }
   setTimeout(wireKeys, 0);
