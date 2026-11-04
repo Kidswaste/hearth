@@ -46,10 +46,17 @@ await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.director, 30000);
 await wait(1500);
 const at0 = Date.now() - 86400000;
 const para = (i) => `Reply ${i}: some **bold** text and \`code\`.\n\n- one\n- two`;
+// (round 121, listtidy121) since round 116 the chats list shows only the open project's chats: this check's chats go
+// into one project of their own, open in the list (in no project, none of them showed: "no row for S46 chat A")
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); await until(() => ProjChats._ok(), 20000);
+const S46P = Projects.create({ name: 'S46 check' }); ProjChats.setScope(S46P.id);
+const inP = (id, title) => Projects.add(S46P, 'chat', id, title, { links: false });
 const mk = async (title, count, ago = 0) => {
   const c = { id: `s46-${Math.random().toString(36).slice(2, 8)}`, agentId: claude.id, title, createdAt: at0 - ago, updatedAt: at0 - ago + count, messages: Array.from({ length: count }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: i % 2 ? para(i) : `Question ${i}`, at: at0 - ago + i })) };
   await window.hub.saveChat(c);
   H.chats = [{ id: c.id, agentId: c.agentId, title: c.title, updatedAt: c.updatedAt, pinned: false }, ...H.chats.filter((x) => x.id !== c.id)];
+  inP(c.id, title); // (round 121, listtidy121)
   return c;
 };
 const C = [await mk('S46 long chat', 300), await mk('S46 chat A', 40, 1000), await mk('S46 chat B', 20, 2000)];
@@ -195,6 +202,7 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
 {
   for (let i = 0; i < 300; i++) H.chats.push({ id: `s46f-${i}`, agentId: claude.id, title: i % 25 === 0 ? `S46 neon filler ${i}` : `S46 filler ${i}`, updatedAt: at0 - 5000 - i, pinned: false });
   H.chats = H.chats.slice(); // (a new list: the model sorts it again)
+  for (let i = 0; i < 300; i++) inP(`s46f-${i}`, ''); // (round 121, listtidy121) in the open project
   let asks = 0;
   const hook = () => { asks += 1; return true; }; // (round 121, listtidy121) the skip hook is gone: the scope hook is asked after the search the same way
   Panel.hooks.scope.push(hook);

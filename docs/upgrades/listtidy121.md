@@ -90,7 +90,7 @@ Expectations were changed only where they tested the removed grouping:
 - `dev/checks/projects.js` (Codex, marked) has a new section 6. It checks that `/project filter <p>`, `/project group on`
   and `/project group off` each answer the plain line, and that the list stays the open project's (no chip, no groups).
   This replaces "⏷ only one project: the chip names it" and the two group on / off steps.
-- `dev/checks/smooth46.js` (not run this round)
+- `dev/checks/smooth46.js`
   - Its search step pushed a counting hook into `Panel.hooks.skip`, which no longer exists. The same counting hook now
     goes into `Panel.hooks.scope`, which is also asked after the search.
 
@@ -109,10 +109,17 @@ Runs:
   - `run-checks --exact projperf120 unit:projperf120-test unit:projchats116-test unit:projsync118-test`: 4/4 passed.
 - No full release run, as asked.
 
-**Not run, likely affected.** `dev/checks/makes.js` still expects a make's group in the chats list (`.mk-group`, "the
-rooms aren't repeated under their agent", the `.mk-tag` "planned" rows, the group's `%`). That group has not shown since
-round 116 / 120 (projchats took it out), so this check was already out of date. Its expectations should become: the make's
-rooms are in its project's list.
+**After the merge: `makes` and `smooth46`.** Both checks failed the same way on 2ae054b (round 120, before this round),
+so this round didn't cause either failure. Both now pass (`run-checks --exact makes smooth46`: 2/2). No app change was
+needed. Only expectations that tested the removed grouping changed:
+
+- `dev/checks/makes.js` expected a make's own group in the chats list (`.mk-group`, the `.mk-tag` rows, the group's `%`).
+  - It now opens the make's project in the list: a make with rooms is a project with its name, mark and color. It checks
+    that both rooms show once each, with no group.
+  - Rows are clicked there, and the progress bar is looked for on the room's card.
+  - Dismiss / restore and the reload check the rows in that project's list.
+- `dev/checks/smooth46.js`'s chats were in no project, so since round 116 none of them showed ("no row for S46 chat A",
+  "neon shows 0"). They now go into an open project of their own.
 
 ## For the patch notes
 
@@ -141,4 +148,3 @@ Minimal removal edits in Codex-owned files. Each is marked `// (round 121, listt
   .pj-all`).
 - `dev/checks/projects.js`: section 6 now checks the one-line answers instead of the filter chip and group toggles. The
   header line is updated.
-- Follow-up, not done here: `dev/checks/makes.js` still expects the make's group in the chats list (see Tests).

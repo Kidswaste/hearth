@@ -1,11 +1,13 @@
 // Makes (round 11): plan "a three.js animation that cuts into a video" → a Lab room (Three Director) and a Video room
-// (Video Director) appear at once with the same name, mark and color, grouped under the make in the chats list, before
+// (Video Director) appear at once with the same name, mark and color, in the make's project's chats list, before
 // any message; both open and say what they will hold ("waiting for Lab"); the Lab room has its own scene named after
 // it; running it (a fake director turn) moves its status and its first message carries the one-line make context; a
 // screenshot made in the room carries the make's name and becomes its output; hand off opens the Video room with the
 // work; rename cascades to both rooms and the scene; the progress API stores and tells; a /dispatch and an /intro
 // become makes too; dismiss sends the rooms to the trash and restore brings them back; the Makes list on the Commands
-// page; then a reload: everything is read back (names, marks, statuses, grouping).
+// page; then a reload: everything is read back (names, marks, statuses, the rooms in the make's project).
+// (round 121, listtidy121) since round 116 the chats list shows one project's chats: a make's rooms show in its
+// project's list (a make with rooms is a project), under their AI. The make's own group in the list is gone.
 //   node dev/smoke.js --fake-engines --script dev/checks/makes.js --wait 6000 --check-timeout 900000 --shot /tmp/hearth-makes/end.png
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 30000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(150); } return false; };
@@ -15,7 +17,10 @@ const say = async (text, id = H.claudeAgent().id, source) => { let msg = ''; awa
 const SHOTS = '/tmp/hearth-makes';
 const errs = []; addEventListener('error', (e) => errs.push(e.message));
 const summary = (id) => H.chats.find((c) => c.id === id);
-const group = (makeId) => document.querySelector(`#chat-groups .mk-group[data-make="${makeId}"]`);
+const LIST = async () => { if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects'); await Projects.ready(); }; // (round 121, listtidy121)
+const projOf = (makeId) => Projects.all().find((p) => p.make === makeId) || null;
+const rowOf = (chatId) => document.querySelector(`#chat-groups .item[data-key="${chatId}"]`);
+const openList = async (makeId) => { await LIST(); await until(() => projOf(makeId) && ProjChats._ok(), 10000); const p = projOf(makeId); if (p) ProjChats.setScope(p.id); Panel.render(); await wait(100); return p; }; // (round 121, listtidy121)
 
 // ---- 1. plan: two rooms at once, grouped, same name / mark / color, nothing sent ----
 const heard = [];
@@ -33,23 +38,23 @@ const idL = ChatScenes.identity(lab.chatId); const idV = ChatScenes.identity(vid
 step(idL.color === make.ident.color && idV.color === make.ident.color && idL.glyph === make.ident.glyph && idV.glyph === make.ident.glyph, 'same mark and color on both rooms (the make\'s)', [make.ident.glyph, make.ident.color]);
 const lc = await Native.load(lab.chatId); const vc = await Native.load(vid.chatId);
 step(lc.messages.length === 0 && vc.messages.length === 0, 'nothing was sent in them');
-await until(() => group(make.id)?.querySelectorAll('.item.mk-room').length === 2, 5000);
-const g = group(make.id);
-step(g && g.querySelectorAll('.item.mk-room').length === 2 && g.querySelector('.mk-mark')?.textContent === make.ident.glyph && g.querySelector('.group-name')?.textContent === make.name, 'one group in the chats list, with the make\'s mark and name, holding both rooms');
-step(![...document.querySelectorAll(`#chat-groups .group:not(.mk-group) .item`)].some((r) => r.dataset.key === lab.chatId || r.dataset.key === vid.chatId), 'the rooms aren\'t repeated under their agents');
-step([...g.querySelectorAll('.mk-tag')].every((t) => /planned/.test(t.textContent)), 'both rows say "planned"');
+const mp = await openList(make.id); // (round 121, listtidy121)
+await until(() => rowOf(lab.chatId) && rowOf(vid.chatId), 5000);
+const keys = [...document.querySelectorAll('#chat-groups .item')].map((r) => r.dataset.key);
+step(mp && mp.name === make.name && mp.ident.glyph === make.ident.glyph && mp.ident.color === make.ident.color && /* the bar names it */ (document.querySelector('.pc-bar .pc-name')?.textContent === make.name), 'the make is a project with its name, mark and color, open in the chats list', mp && [mp.name, mp.ident.glyph]); // (round 121, listtidy121)
+step([lab.chatId, vid.chatId].every((id) => keys.filter((k) => k === id).length === 1) && !document.querySelector('#chat-groups .mk-group, #chat-groups .pj-group'), 'its list holds both rooms, once each, and no make group', keys.length); // (round 121, listtidy121)
 step(heard.includes('plan'), 'Makes.onChange heard the plan');
 await smoke({ shot: `${SHOTS}/1-planned.png` });
 
 // ---- 2. navigate ahead of time: the Video room, then the Lab room ----
-g.querySelector(`.item[data-key="${vid.chatId}"]`).click();
+rowOf(vid.chatId).click(); // (round 121, listtidy121)
 // (both rooms are chats of the same Three Director since round 17: wait for this room's own card, not the Lab room's)
 await until(() => H.activeChat[va.id] === vid.chatId && /· Video/.test(Native.view(va.id)?.list.querySelector('.mk-room-card')?.textContent || ''), 15000);
 const vcard = Native.view(va.id)?.list.querySelector('.mk-room-card');
 step(vcard && /waiting for Lab/.test(vcard.textContent) && /will hold/.test(vcard.textContent), 'the Video room opens before anything is made: "planned · waiting for Lab", what it will hold', vcard?.textContent.slice(0, 160));
 await wait(600);
 await smoke({ shot: `${SHOTS}/2-video-room.png` });
-group(make.id).querySelector(`.item[data-key="${lab.chatId}"]`).click();
+rowOf(lab.chatId).click(); // (round 121, listtidy121)
 await until(() => H.activeChat[la.id] === lab.chatId && ThreeLab.scenes && ChatScenes.linkOf(lab.chatId), 30000);
 await until(() => ThreeLab.scenes.currentId() === ChatScenes.linkOf(lab.chatId), 15000);
 const sk = ThreeLab.scenes.get(ChatScenes.linkOf(lab.chatId));
@@ -102,10 +107,10 @@ const vp = Makes.get(make.id).parts[1].progress;
 step(vp?.pct === 40 && vp.label === 'cutting' && vp.eta === 12 && got[0]?.partId === vid.id && got[0].progress.pct === 40, 'Makes.progress stores { pct, label, eta } and tells onChange', got[0]?.progress);
 await wait(100);
 if (typeof Progress !== 'undefined') {
-  await until(() => document.querySelector(`#chat-groups [data-make-part="${vid.id}"] .pg-bar, #chat-groups [data-make="${make.id}"] .pg-bar`), 5000);
+  await until(() => document.querySelector(`[data-make="${make.id}"] .pg-bar, [data-make="${make.id}"] [data-make-part="${vid.id}"] .pg-bar`), 5000); // (round 121, listtidy121) (the room's card: the list has no make group)
   step(Progress.get(`make:${make.id}:${vid.id}`)?.shown === 40 && Progress.get(`make:${make.id}`)?.title === make.name && Boolean(document.querySelector(`[data-make="${make.id}"] .pg-bar, [data-make="${make.id}"] [data-make-part="${vid.id}"] .pg-bar`)), 'it is a Progress item (make:<id>:<part>) with a bar on the make in the chats list');
 }
-step(/\d+ %/.test(group(make.id)?.querySelector('.mk-st')?.textContent || ''), 'the group shows the make\'s progress', group(make.id)?.querySelector('.mk-st')?.textContent);
+step(Makes.core.pctOf(Makes.get(make.id)) > 0, 'the make\'s progress moves', Makes.core.pctOf(Makes.get(make.id))); // (round 121, listtidy121) (was: its group in the list showed it)
 
 // ---- 8. /dispatch becomes a make ----
 const D = H.agents().find((a) => a.dock === 'three');
@@ -117,8 +122,8 @@ const cm = Makes.live().find((m) => m.cat === 'comp');
 const parts = cm?.parts || [];
 step(cm && cm.name === 'Ocean comp' && parts.length === 2 && parts.every((p) => p.chatId), 'a /dispatch is a make named after its main chat, its parts are rooms', cm && [cm.name, parts.map((p) => summary(p.chatId)?.title)]);
 step(parts.every((p) => summary(p.chatId)?.title.startsWith('Ocean comp · Lab ')) && parts.every((p) => ChatScenes.identity(p.chatId).glyph === cm.ident.glyph), 'its parts share its name and mark', parts.map((p) => summary(p.chatId)?.title));
-await until(() => group(cm.id), 5000);
-step(Boolean(group(cm.id)), 'grouped in the chats list too');
+await openList(cm.id); await until(() => parts.every((p) => rowOf(p.chatId)), 5000); // (round 121, listtidy121)
+step(parts.length && parts.every((p) => rowOf(p.chatId)), 'in its project\'s chats list too', projOf(cm.id)?.name);
 await until(() => Makes.get(cm.id).parts.every((p) => ['done', 'ready'].includes(p.status)), 240000);
 step(Makes.get(cm.id).parts.every((p) => ['done', 'ready'].includes(p.status)), 'its parts\' states follow the comp card', Makes.get(cm.id).parts.map((p) => p.status));
 
@@ -139,12 +144,12 @@ step(Makes.get(make.id).by?.cmd === '/makes', 'a make knows the command that mad
 // ---- 11. dismiss and restore ----
 const pm = Makes.get(make.id);
 await Makes.dismiss(pm, { quiet: true });
-await until(() => !summary(lab.chatId) && !summary(vid.chatId) && !group(make.id), 5000);
-step(!summary(lab.chatId) && !summary(vid.chatId) && !group(make.id), 'dismissing the make sends its rooms to the trash, the group goes', { lab: Boolean(summary(lab.chatId)), vid: Boolean(summary(vid.chatId)), group: Boolean(group(make.id)) });
+await until(() => !summary(lab.chatId) && !summary(vid.chatId) && !rowOf(lab.chatId) && !rowOf(vid.chatId), 5000);
+step(!summary(lab.chatId) && !summary(vid.chatId) && !rowOf(lab.chatId) && !rowOf(vid.chatId), 'dismissing the make sends its rooms to the trash, out of the list', { lab: Boolean(summary(lab.chatId)), vid: Boolean(summary(vid.chatId)) }); // (round 121, listtidy121)
 await Makes.restore(pm);
 await until(() => summary(lab.chatId) && summary(vid.chatId), 5000);
-await until(() => group(make.id), 3000);
-step(summary(lab.chatId) && summary(vid.chatId) && group(make.id), 'restore brings both rooms and the group back');
+await openList(make.id); await until(() => rowOf(lab.chatId) && rowOf(vid.chatId), 3000);
+step(summary(lab.chatId) && summary(vid.chatId) && rowOf(lab.chatId) && rowOf(vid.chatId), 'restore brings both rooms back, in the make\'s project\'s list'); // (round 121, listtidy121)
 
 // ---- 12. one place: the Makes list on the Commands page, right-click ----
 await Makes.show(make.id);
@@ -178,11 +183,14 @@ step(m && m.name === 'Neon Check' && m.ident.glyph === was.glyph && m.ident.colo
 step(m && m.parts[0].status === 'done' && m.parts[1].progress?.pct === 40, 'its parts\' states and progress', m && m.parts.map((p) => [p.status, p.progress?.pct]));
 step(m && m.outputs.length >= 1, 'its outputs');
 step(Makes.get(was.comp), 'the comp is still a make');
-await until(() => document.querySelector(`#chat-groups .mk-group[data-make="${was.id}"] .item.mk-room`), 10000);
-const g = document.querySelector(`#chat-groups .mk-group[data-make="${was.id}"]`);
-step(g && g.querySelectorAll('.item.mk-room').length === 2, 'the rooms are grouped again under the make');
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects'); // (round 121, listtidy121) the rooms are in the make's project's list
+await Projects.ready(); await until(() => ProjChats._ok() && Projects.all().some((p) => p.make === was.id), 10000);
+ProjChats.setScope(Projects.all().find((p) => p.make === was.id)?.id); Panel.render();
+const rowOf = (chatId) => document.querySelector(`#chat-groups .item[data-key="${chatId}"]`);
+await until(() => rowOf(was.lab) && rowOf(was.vid), 10000);
+step(rowOf(was.lab) && rowOf(was.vid), 'the rooms are in the make\'s project\'s list again');
 step(ChatScenes.identity(was.vid).glyph === was.glyph, 'the rooms keep the make\'s mark');
-g.querySelector(`.item[data-key="${was.vid}"]`).click();
+rowOf(was.vid).click(); // (round 121, listtidy121)
 const va = H.agent(H.chats.find((c) => c.id === was.vid).agentId);
 await until(() => H.activeChat[va.id] === was.vid && Native.view(va.id)?.list.querySelector('.mk-room-card'), 15000);
 step(Boolean(Native.view(va.id)?.list.querySelector('.mk-room-card')), 'and still open on the room card');
