@@ -1050,7 +1050,7 @@ const ChatCmds = (() => {
     name: 'memory', aliases: ['mem', 'memories'], area: 'Memory', args: '[edit]', desc: 'What this agent remembers about you (edit: the memory editor)',
     complete: pick(['edit']),
     run: async (args, ctx) => {
-      if (/^edit$/i.test(args)) { MemoryEditor.open(); return; }
+      if (/^edit$/i.test(args)) { await Lazy.load('memory'); MemoryEditor.open(); return; } // (round 118, startup118: the memory editor loads after the start)
       const memory = await window.hub.getMemory();
       const own = (memory.agents?.[ctx.agentId] || '').trim();
       const shared = (memory.shared || '').trim();
@@ -1163,6 +1163,7 @@ const ChatCmds = (() => {
       const chat = chatOf(ctx);
       let text = args;
       if (!args || args === 'last') { if (!chat) return 'Nothing to save yet.'; text = chat.messages[mustIndex(chat, 'last', 'assistant')].text; } else if (/^#?\d+$/.test(args) && chat) text = chat.messages[mustIndex(chat, args)].text;
+      await Lazy.load('notes'); // (round 118, startup118: Notes loads after the start)
       await Notes.append(text);
     },
   });
@@ -1251,7 +1252,7 @@ const ChatCmds = (() => {
   // App: notes, palette, settings… (the rest is reachable through /do)
   // =====================================================================================================
   const OPENERS = [
-    ['notes', 'Open Notes', 'Ctrl+J', () => Notes.toggle()],
+    ['notes', 'Open Notes', 'Ctrl+J', () => Lazy.load('notes').then(() => Notes.toggle())],
     ['palette', 'Open the command palette', 'Ctrl+K', () => AppUI.palette()],
     ['settings', 'Open Settings (with words: only what matches, e.g. /settings tokens)', 'Ctrl+,', (args) => AppUI.openSettings(args || '')],
     ['shortcuts', 'Keyboard shortcuts', 'Ctrl+/', () => AppUI.shortcutsHelp()],

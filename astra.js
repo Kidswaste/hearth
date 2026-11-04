@@ -894,7 +894,7 @@ function toggleFold(hostId, m) {
     const r = anchor.getBoundingClientRect();
     const host = H.agent(agentId);
     const other = H.agent(seatsFor(agentId).find((x) => x.agentId !== agentId)?.agentId) || partner(host);
-    const jam = typeof Jam !== 'undefined' ? Jam : window.Jam; // jam.js (another round-4 stream) may be a global const
+    const jam = (typeof Jam !== 'undefined' ? Jam : window.Jam) || (Commands.get('jam') ? {} : null); // jam.js (another round-4 stream) may be a global const // (round 118, startup118) or its /jam stand-in while the lazy group 'jam' isn't in
     const items = [
       jam ? { label: `🎛 Jam: ${host.name} ⇄ ${other?.name || 'Astra'} build a visual together`, action: () => (Commands.get('jam') ? Native.setDraft(agentId, '/jam ') : (jam.start || jam.open)?.call(jam, { agentId })) } : null,
       // a director's engine switch: the other engine picks up the task right here (same chat, same scene)

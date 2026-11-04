@@ -218,7 +218,7 @@ const CmdBar = (() => {
         // ↶ when the command just run has a known way back (same as Ctrl+Z in an empty bar)
         lastBarLine && Commands.undoOf(Commands.parse(lastBarLine)?.def) ? el('button', { type: 'button', class: 'ghost small', text: '↶', title: `Undo: ${Commands.undoOf(Commands.parse(lastBarLine).def)}`, on: { mousedown: (e) => e.preventDefault(), click: () => undoLast() } }) : null,
         el('button', { type: 'button', class: 'ghost small', text: '⧉', title: 'Copy the output', on: { mousedown: (e) => e.preventDefault(), click: () => { navigator.clipboard.writeText(outText()); toast('Copied', { timeout: 1200 }); } } }),
-        el('button', { type: 'button', class: 'ghost small', text: '📝', title: 'Save the output to Notes (like | note)', on: { mousedown: (e) => e.preventDefault(), click: async () => { await Notes.append(outText()); toast('Saved to Notes', { timeout: 1400 }); } } }),
+        el('button', { type: 'button', class: 'ghost small', text: '📝', title: 'Save the output to Notes (like | note)', on: { mousedown: (e) => e.preventDefault(), click: async () => { await Lazy.load('notes'); await Notes.append(outText()); toast('Saved to Notes', { timeout: 1400 }); } } }),
         el('button', { type: 'button', class: 'ghost small', text: '→ draft', title: 'Put the output in the chat box (like | draft)', on: { mousedown: (e) => e.preventDefault(), click: () => { const a = target(); if (a) { const t = outText(); close(); activate(a.id); Native.setDraft(a.id, t); } } } }),
         el('button', { type: 'button', class: 'ghost small', text: '×', title: 'Clear (Esc)', on: { mousedown: (e) => e.preventDefault(), click: clearOut } })));
     }

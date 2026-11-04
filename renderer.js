@@ -921,7 +921,7 @@ function handleShortcut({ key, shift }) {
   else if (key === '-') AppUI.zoom(-0.1);
   else if (key === '0') AppUI.zoom(0);
   else if (key === 'tab') AppUI.switchRecent(shift);
-  else if (key === 'j') Notes.toggle();
+  else if (key === 'j') Lazy.load('notes').then(() => Notes.toggle()); // (round 118, startup118: Notes loads after the start)
   else if (key === 's' && shift) AppUI.snapshotToChat();
   else if (key === 't' && shift) AppUI.toggleOnTop();
   else if (key === 'm' && shift && typeof BoardDrawer !== 'undefined') BoardDrawer.toggle(); // forwarded from a website agent (main.js)
@@ -1115,7 +1115,7 @@ const WorkspaceNav = window.WorkspaceNav = (() => {
       window.Routines?.projectControls(auto,window.ProjectWorkspace?.currentChat?.());
       if(!bar.querySelector('.workspace-feedback'))auto.parentElement.prepend(button('✦ Feedback',async()=>{await Lazy.load('visualfeedback');await VisualFeedback.open();},{class:'workspace-feedback',title:'A second pair of eyes: review a recording and draft the next improvement'}));
     }else auto?.parentElement?.classList.contains('workspace-auto-group')?auto.parentElement.remove():auto?.remove();
-    for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f)&&feature!=='vst');b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}
+    for(const b of bar.querySelectorAll('[data-surface],[data-id]')){const f=b.dataset.feature,yes=(b.dataset.surface||b.dataset.id)===sid&&(!f||f===feature||['board','studio'].includes(f));b.classList.toggle('active',yes);b.setAttribute('aria-current',yes?'page':'false');}
   }
   document.addEventListener('hearth:activate',sync);document.addEventListener('hearth:creative-feature',sync);
   return {render,sync,open,creative,category,editShortcut};

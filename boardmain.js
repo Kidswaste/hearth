@@ -1,10 +1,10 @@
 // Mood board, main-process side (board.js is the page): copies dropped files into Hearth's data folder (originals
 // are never touched), saves pictures the page makes (thumbnails, posters, frame grabs, exports) and takes a live
 // snapshot of a website in an offscreen window (title, favicon, colors, fonts, a picture). Required from main.js
-// with one line: require('./boardmain').registerIpc(ipcMain, () => win).
+// on its first call (round 118: main.js lazyIpc('boardmain.js', …); boardpinsmain.js, the Pinterest window, likewise).
 const fs = require('fs');
 const path = require('path');
-const { BrowserWindow, session } = require('electron');
+const electron = () => require('electron'); // (round 118) read on use: dev/boot-test.js loads this file in plain Node
 const { DATA_DIR } = require('./store');
 
 const BOARD_DIR = path.join(DATA_DIR, 'board');
@@ -45,7 +45,7 @@ async function fetchMedia(url) {
   ensureDirs();
   const u = new URL(String(url));
   if (!/^https?:$/.test(u.protocol)) throw new Error('Only web addresses can be downloaded');
-  const res = await session.fromPartition('board-snap').fetch(u.href, { signal: AbortSignal.timeout(20000) });
+  const res = await electron().session.fromPartition('board-snap').fetch(u.href, { signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`The site answered ${res.status}`);
   const type = res.headers.get('content-type') || '';
   // too big: refused before downloading it into memory (when the site says its size)
@@ -76,13 +76,13 @@ async function snapOnce(url, { width, height, wait, timeout }) {
   try { u = new URL(String(url)); } catch { return { ok: false, error: 'Not a web address' }; }
   if (!/^(https?|file|data):$/.test(u.protocol)) return { ok: false, error: 'Only http, https, file and data pages' };
   ensureDirs();
-  const ses = session.fromPartition('board-snap');
+  const ses = electron().session.fromPartition('board-snap');
   if (!ses.__boardReady) { // once per run: no permissions, no downloads
     ses.__boardReady = true;
     ses.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
     ses.on('will-download', (e) => e.preventDefault());
   }
-  const w = new BrowserWindow({
+  const w = new (electron().BrowserWindow)({
     show: false, width, height, useContentSize: true, enableLargerThanScreen: true, // tall / wide snapshots aren't clipped to the screen
     webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, partition: 'board-snap', backgroundThrottling: false, autoplayPolicy: 'document-user-activation-required', spellcheck: false },
   });
@@ -139,10 +139,10 @@ function unused(keep) {
   return fs.readdirSync(MEDIA_DIR, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => path.join(MEDIA_DIR, d.name)).filter((p) => !used.has(norm(p)));
 }
 
-function registerIpc(ipcMain, getWin) {
-  ensureDirs();
-  require('./boardpinsmain').register(ipcMain, getWin); // (round 14) the Pinterest window: pick pins onto the board
-  ipcMain.handle('board:dir', () => ({ dir: BOARD_DIR, media: MEDIA_DIR, exports: EXPORT_DIR }));
+function registerIpc(ipcMain) {
+  // (round 118, startup118) the Pinterest window's channels (boardpinsmain.js) are main.js's own lazyIpc: each module is
+  // required on its first call
+  ipcMain.handle('board:dir', () => { ensureDirs(); return { dir: BOARD_DIR, media: MEDIA_DIR, exports: EXPORT_DIR }; }); // (round 118: made here, not at the start)
   ipcMain.handle('board:import', async (_e, src) => { try { return { ok: true, ...(await importFile(src)) }; } catch (err) { return { ok: false, error: err.message }; } });
   ipcMain.handle('board:save', (_e, name, base64, opts) => saveData(name, base64, opts || {}));
   ipcMain.handle('board:fetch', async (_e, url) => { try { return { ok: true, ...(await fetchMedia(url)) }; } catch (err) { return { ok: false, error: err.message }; } });
@@ -150,4 +150,4 @@ function registerIpc(ipcMain, getWin) {
   ipcMain.handle('board:unused', (_e, keep) => unused(keep));
 }
 
-module.exports = { registerIpc, importFile, saveData, snapshot, BOARD_DIR, MEDIA_DIR, EXPORT_DIR };
+module.exports = { registerIpc, register: registerIpc, importFile, saveData, snapshot, BOARD_DIR, MEDIA_DIR, EXPORT_DIR };

@@ -211,7 +211,7 @@ const SafetyNet = (() => {
     return { k: 'board', icon: '▦', label: `Board “${clip(b.name || e.name, 36)}”: ${word(n, 'edit')} put back`, hint: 'Open', open: { k: 'board', id: e.id } };
   }
   async function restoreField(e) {
-    if (typeof Notes === 'undefined') return null;
+    if (!(await window.Lazy?.load?.('notes')?.then(() => true, () => false) ?? typeof Notes !== 'undefined')) return null; // (round 118, startup118: Notes loads after the start)
     const p = C.fieldPlan(e, await Notes.list().catch(() => []));
     if (!p) return null;
     const n = await Notes.create({ title: p.title, text: p.text });

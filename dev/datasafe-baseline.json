@@ -285,7 +285,7 @@
    "why": "window memory per screen: not the owner's work"
   },
   {
-   "file": "notes.js",
+   "file": "notes-panel.js",
    "kind": "kv",
    "store": "notes",
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"

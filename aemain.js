@@ -317,4 +317,4 @@ function registerIpc(ipcMain, getWin, getOverride) {
 }
 
 function forgetTools() { for (const k of Object.keys(toolCache)) delete toolCache[k]; }
-module.exports = { forgetTools, registerIpc, status, running, ffStatus, probe, transcode, runJob, _jobs: jobs, _test: { locate, macError, findTool, readJobResult } }; // transcode / _jobs: the render queue (rendersmain.js)
+module.exports = { forgetTools, registerIpc, register: registerIpc, status, running, ffStatus, probe, transcode, runJob, _jobs: jobs, _test: { locate, macError, findTool, readJobResult } }; // transcode / _jobs: the render queue (rendersmain.js)

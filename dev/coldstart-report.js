@@ -211,7 +211,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
       mainReadyToShown: M.windowShown - M.appReady, mainReadyToRTS: M.readyToShow - M.appReady, mainReadyToWindow: M.windowCreated - M.appReady,
       mainjsToReady: M.appReady - (M.mainjs ?? M.probe),
       splash: Object.fromEntries(Object.entries(page.marks).filter(([k]) => k.startsWith('splash:')).map(([k, v]) => [k, r1(toMain(v))])),
-      requires: probe.requires, ipc: probe.ipc || {}, groups: `${page.vis} anims ${page.anims} ${page.groups}`,
+      requires: probe.requires, requiresAfter: probe.requiresAfter || [], ipc: probe.ipc || {}, groups: `${page.vis} anims ${page.anims} ${page.groups}`,
     };
   } finally { kill(); }
 }
@@ -283,9 +283,14 @@ function summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) {
   for (const r of runs) for (const [k, v] of Object.entries(r.splash || {})) (splash[k] ||= []).push(v);
   console.log(`\nCold start (median of ${runs.length}, ms since the process started):`, JSON.stringify(med));
   console.log('main.js requires (ms):', requires.map(([m, ms]) => `${m} ${ms}`).join(' · '), `(total ${r1(requires.reduce((a, [, ms]) => a + ms, 0))})`);
+  // (round 118, startup118) what main.js requires in the 3 s after the window exists (registerAfterWindow, first IPC)
+  const reqA = {};
+  for (const r of runs) for (const [m, ms] of r.requiresAfter || []) (reqA[m] ||= []).push(ms);
+  const requiresAfter = Object.entries(reqA).map(([m, xs]) => [m, r1(median(xs))]).sort((a, b) => b[1] - a[1]);
+  if (requiresAfter.length) console.log(`main.js requires after the window (ms, ${requiresAfter.length} modules):`, requiresAfter.map(([m, ms]) => `${m} ${ms}`).join(' · '), `(total ${r1(requiresAfter.reduce((a, [, ms]) => a + ms, 0))})`);
   const ipcRows = Object.entries(runs.at(-1)?.ipc || {}).sort((a, b) => b[1][2] - a[1][2]); // [calls, ms to answer, ms of work]
   if (ipcRows.length) console.log(`IPC in the first 5 s (last run: ${ipcRows.reduce((a, [, s]) => a + s[0], 0)} calls, ${r1(ipcRows.reduce((a, [, s]) => a + s[2], 0))} ms of main-process work):`, ipcRows.slice(0, 14).map(([ch, s]) => `${ch} ×${s[0]} ${r1(s[2])} ms`).join(' · '));
   if (Object.keys(splash).length) console.log('Splash milestones (ms):', JSON.stringify(Object.fromEntries(Object.entries(splash).map(([k, xs]) => [k, r1(median(xs))]))));
-  if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify({ app: APP, when: new Date().toISOString(), median: med, requires, runs }, null, 1));
+  if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify({ app: APP, when: new Date().toISOString(), median: med, requires, requiresAfter, runs }, null, 1));
   process.exit(runs.length ? 0 : 1);
 })();

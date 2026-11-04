@@ -47,7 +47,7 @@ const MemoryEditor = (() => {
     await window.hub.saveMemory(memory);
   });
   $('cancel-memory').addEventListener('click', () => dialog.close());
-  $('memory-btn').addEventListener('click', () => open());
+  // (round 118, startup118) the 🧠 button's click is start.js's (it loads this group first)
 
   // ---------- facts ----------
   const strip = (line) => line.trim().replace(/^[-*•]\s+/, '');

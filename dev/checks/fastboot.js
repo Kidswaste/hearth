@@ -32,6 +32,12 @@ const a = await window.hub.assets.status().catch((err) => ({ error: err.message 
 const h = await window.hub.hooks.watch([]).catch((err) => ({ error: err.message }));
 check('renders / updater / assets / hooks answer from modules loaded on first use', r?.ok === false && !/no handler/i.test(r?.error || 'x?') && u && !u.error && a && !a.error && !(h && h.error),
   `${JSON.stringify(r)} ${JSON.stringify(u).slice(0, 60)} ${JSON.stringify(a).slice(0, 60)} ${JSON.stringify(h)}`);
+// (round 118, startup118) After Effects / video tools, the mood board and its Pinterest window: main modules required on first use
+const aeJobs = await window.hub.ae.jobs().catch((err) => ({ error: err.message }));
+const bdDir = await window.hub.board.dir().catch((err) => ({ error: err.message }));
+const pinsState = await window.hub.board.pins('state', {}).catch((err) => ({ error: err.message }));
+check('ae / board / board pins answer from modules loaded on first use', Array.isArray(aeJobs) && typeof bdDir?.media === 'string' && pinsState?.open === false,
+  `${JSON.stringify(aeJobs).slice(0, 60)} ${JSON.stringify(bdDir).slice(0, 80)} ${JSON.stringify(pinsState).slice(0, 60)}`);
 localStorage.setItem('fastboot.out', JSON.stringify(out));
 localStorage.setItem('lazy.hold', '1');
 return 'phase 1 done';

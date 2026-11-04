@@ -116,7 +116,7 @@ const Native = (() => {
       selAct('❝ Quote', 'Quote it in your message', (t) => { input.value = `${t.split('\n').map((l) => `> ${l}`).join('\n')}\n\n${input.value}`; autosize(input); input.focus(); getSelection().removeAllRanges(); }),
       selAct('Copy', 'Copy the selection', (t) => copyText(t, 'Copied')),
       selAct('🔎', 'Find it in this chat', (t) => (typeof ChatUX !== 'undefined' ? ChatUX.find(agentId, t.slice(0, 80)) : null)),
-      selAct('📝', 'Save it to notes', (t) => Notes.append(t)));
+      selAct('📝', 'Save it to notes', (t) => Lazy.load('notes').then(() => Notes.append(t))));
     quoteSel.addEventListener('mousedown', (e) => e.preventDefault());
     wrap.addEventListener('mouseup', (e) => { if (inList(e)) setTimeout(() => {
       const s = getSelection(); const t = String(s).trim();
@@ -559,7 +559,7 @@ const Native = (() => {
           { label: 'Insert in my message', action: () => insertDraft(agentId, `\`\`\`${lang}\n${code}\n\`\`\`\n`) },
           { label: pre.classList.contains('code-wrap') ? 'Don\'t wrap lines' : 'Wrap long lines', action: () => pre.classList.toggle('code-wrap') },
           { label: 'Copy as a Markdown block', action: () => copyText(`\`\`\`${lang}\n${code}\n\`\`\``, 'Code copied') },
-          { label: 'Save to notes', action: () => Notes.append(`\`\`\`${lang}\n${code}\n\`\`\``) },
+          { label: 'Save to notes', action: () => Lazy.load('notes').then(() => Notes.append(`\`\`\`${lang}\n${code}\n\`\`\``)) },
           hasNodes() ? { label: 'Open in the node view', action: () => nodeView((N) => N.openCode(code, lang)) } : null,
           typeof ThreeLab !== 'undefined' && /^(js|javascript|mjs)$/i.test(lang) ? { label: 'Open in Three.js Lab', action: () => ThreeLab.openCode(code) } : null,
         ].filter(Boolean));
@@ -697,7 +697,14 @@ const Native = (() => {
   function messageEl(m, agent, index, isLast, live = null) {
     // Claude × Astra collaborations (duo, relay, debate…) draw their own card (astra.js)
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
-    if (m.role === 'jam' && typeof Jam !== 'undefined') return Jam.cardEl(m, agent, index); // jam.js
+    if (m.role === 'jam') { // jam.js
+      if (Lazy.isIn('jam')) return Jam.cardEl(m, agent, index);
+      // (round 118, startup118) lazy group 'jam' (after the start): until it is in, the card's head, then the whole card
+      const stand = el('div', { class: 'msg jam-card', dataset: { index } }, el('div', { class: 'jam-head' }, el('b', { text: `🎛 Jam${m.idea ? ` · ${m.idea}` : ''}` })));
+      const swap = (n) => { if (stand.isConnected) stand.replaceWith(Jam.cardEl(m, agent, index)); else if (n) requestAnimationFrame(() => swap(n - 1)); };
+      Lazy.load('jam').then(() => swap(30)).catch((err) => console.warn('jam', err));
+      return stand;
+    }
     if (m.role === 'intro') return el('div', { class: 'msg note', dataset: { index }, text: `🎬 Video project${m.name ? ` “${m.name}”` : ''} (video projects left with Video Review in round 17; the Lab sequence makes videos now)` });
     if (m.role === 'comp') { // comp-dispatch.js (parts in other chats)
       if (typeof CompDispatch !== 'undefined') return CompDispatch.cardEl(m, agent, index);
@@ -869,7 +876,7 @@ const Native = (() => {
         { label: 'Copy a way back here', hint: 'paste it in this chat', tip: 'Copies a short line that brings this chat back to this message when you send it', action: () => copyText(`/jump ${index + 1}`, 'Paste it in this chat to come back to this message') },
         '-',
         m.role === 'assistant' ? { label: 'Save as a Markdown file…', action: () => saveReply(m) } : null,
-        { label: 'Save to notes', action: () => Notes.append(m.text) },
+        { label: 'Save to notes', action: () => Lazy.load('notes').then(() => Notes.append(m.text)) },
         m.role !== 'user' ? { label: 'Show the Markdown source', action: () => toggleRaw(agentId, index) } : null,
       ] },
       ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Chat') : []), // round 7: pin / tuck what's under messages
@@ -1904,7 +1911,7 @@ const Native = (() => {
     if (window.MemoryTidyCore) {
       const r = MemoryTidyCore.saveFacts(memory, H.agent(agentId) || { id: agentId }, facts);
       await window.hub.saveMemory(r.memory);
-      window.MemoryEditor?.stamp?.(agentId, r);
+      window.Lazy.load('memory').then(() => MemoryEditor.stamp(agentId, r)).catch(() => {}); // (round 118, startup118: the memory editor loads after the start)
       for (const t of r.skipped) knownSaves.add(`${agentId}|${t}`); // it knew it already: its Undo leaves the old fact
       return r;
     }

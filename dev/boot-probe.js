@@ -68,7 +68,16 @@ if (OUT && process.versions.electron && process.type === 'browser') {
   // the app's own modules main.js requires (their nested requires included), until the window exists
   const load = Module._load;
   Module._load = function (request, parent, ...rest) {
-    if (t.marks.windowCreated != null || !/[\\/]main\.js$/.test(parent?.filename || '')) return load.call(this, request, parent, ...rest);
+    if (!/[\\/]main\.js$/.test(parent?.filename || '')) return load.call(this, request, parent, ...rest);
+    // (round 118, startup118) and those it requires in the 3 s after the window exists (registerAfterWindow, the first
+    // screen's IPC): main-process work the window's first screen still waits for, listed apart (requiresAfter)
+    if (t.marks.windowCreated != null) {
+      if (performance.now() > t.marks.windowCreated + 3000 || !request.startsWith('.') || (() => { try { return require.cache[require.resolve(request, { paths: [require('path').dirname(parent.filename)] })]; } catch { return true; } })()) return load.call(this, request, parent, ...rest);
+      const t0 = performance.now();
+      const out = load.call(this, request, parent, ...rest);
+      (t.requiresAfter ||= []).push([request, Math.round((performance.now() - t0) * 10) / 10]);
+      return out;
+    }
     if (t.marks.mainjs == null) mark('mainjs');
     const t0 = performance.now();
     const out = load.call(this, request, parent, ...rest);
