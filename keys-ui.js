@@ -79,7 +79,7 @@ const KeysUI = (() => {
     ['#rail #keys-btn', 'Ctrl+/'], ['#chat-search', 'Ctrl+F'], ['form.composer button[type=submit]', 'Enter'], ['form.composer .collab-chip', 'Ctrl+Alt+C'],
     ['[data-feature="Layers & sliders"]', '/'], ['[data-feature="Edit scene"]', 'E'], ['[data-feature="Live sound"]', 'Shift+L'], ['[data-feature="Shuffle"]', 'R'],
     ['[data-feature="Shuffle back"]', 'Shift+R'], ['[data-feature="Save"]', 'Ctrl+S'], ['.layers .tw-head .primary', 'X'], ['.three-sketch-select', 'O'],
-    ['.mb-g-capture button', 'N'], ['.dd-undo', 'Alt+Shift+Z'], ['.dd-fold', 'Alt+Shift+D'], ['.dd-rail', 'Alt+Shift+D'], ['.tool-dock .native-head > button:last-of-type', 'Ctrl+N'],
+    ['.mb-g-capture button', 'N'], ['.dd-undo', 'Alt+Shift+Z'], ['.dd-ai', 'Alt+Shift+A'], ['.dd-fold', 'Alt+Shift+D'], ['.dd-rail', 'Alt+Shift+D'], ['.tool-dock .native-head > button:last-of-type', 'Ctrl+N'],
     ['[data-feature="Console"]', '`'], ['[data-feature="Present"]', 'P'], ['.ly-eye', 'Alt+1…9'], ['.notes-panel button[title^="Close"]', 'Ctrl+J'],
     ['.tw-search', '/'], ['[data-feature="Freeze"]', 'F'],
   ];

@@ -69,7 +69,7 @@ const ChatScenes = (() => {
   function agentsOn(chatId) {
     if (workers.get(chatId)?.list.length) return workers.get(chatId).list;
     if (jamOn(chatId)) return ['claude', 'codex'];
-    return [agentOfChat(chatId)?.engine || 'claude'];
+    return [summaryOf(chatId)?.engine || agentOfChat(chatId)?.engine || 'claude']; // (round 114, directorswitch) a chat with its own AI
   }
 
   // ---------- links ----------
@@ -470,7 +470,8 @@ renderer.setAnimationLoop((now) => {
     const id = identity(owner);
     host.style.setProperty('--scene-color', id.color);
     tag ||= el('button', { type: 'button', class: 'scene-tag', dataset: { feature: 'Scene tag' }, on: { click: () => tagClick() } });
-    const viewing = H.activeChat[agent.id] !== owner;
+    // (round 114, directorswitch) the director's other chat on this scene (the AI switcher's, a guest) isn't "another chat's scene"
+    const viewing = H.activeChat[agent.id] !== owner && data.links[H.activeChat[agent.id]]?.sketch !== S.currentId();
     const working = busy(owner);
     const who = agentsOn(owner);
     const active = workers.get(owner)?.active || null; // a jam: the one building / directing right now
