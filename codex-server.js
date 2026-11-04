@@ -100,7 +100,7 @@ class Pool {
     Object.assign(this, { spawn, kill, log, idleMs, activeIdleMs, requestMs });
     this.connections = new Map(); this.active = new Map();
   }
-  run({ chatId, bin, runtimeKey, args, cwd, env, session, thread, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
+  run({ chatId, bin, runtimeKey, args, cwd, env, session, thread, threadLegacy, turn, servers, parser, fallbackText, text, showThinking = true }, emit, live) {
     if (this.active.has(chatId) || this.maintenance?.has(chatId)) { emit({ type: 'error', message: 'This Hearth chat already has a running Codex operation.' }); return; }
     const start = performance.now(); const elapsed = () => Math.round(performance.now() - start);
     const timing = { engine: 'codex', transport: 'app-server', connectionReused: false, setupMs: null, firstEventMs: null, firstTextMs: null, totalMs: null };
@@ -253,11 +253,17 @@ class Pool {
         let inputText = text;
         if (!session.id || conn.threadId !== session.id || conn.signature !== signature) {
           let result;
-          try { result = await conn.request(session.id ? 'thread/resume' : 'thread/start', { ...thread, config, ...(session.id ? { threadId: session.id } : {}) }); }
-          catch (err) {
-            if (!session.id || !fallbackText || !LOST.test(err.message)) throw err;
-            emit({ type: 'thinking', text: 'The previous Codex session is unavailable. Continuing in a new session with the saved conversation.\n\n' });
-            result = await conn.request('thread/start', { ...thread, config }); inputText = fallbackText; delete session.totals;
+          const open = (t) => conn.request(session.id ? 'thread/resume' : 'thread/start', { ...t, config, ...(session.id ? { threadId: session.id } : {}) });
+          try { result = await open(thread); }
+          catch (err0) {
+            let err = err0;
+            // (round 116, astraparity116) a server that refuses developerInstructions: once more the old way (Hearth's prompt as base instructions)
+            if (threadLegacy && thread.developerInstructions && /developer_?instructions|unknown field/i.test(err.message)) { try { result = await open(threadLegacy); err = null; } catch (e) { err = e; } }
+            if (err) {
+              if (!session.id || !fallbackText || !LOST.test(err.message)) throw err;
+              emit({ type: 'thinking', text: 'The previous Codex session is unavailable. Continuing in a new session with the saved conversation.\n\n' });
+              result = await conn.request('thread/start', { ...thread, config }); inputText = fallbackText; delete session.totals;
+            }
           }
           if (done) return;
           if (conn.threadId !== result.thread.id) conn.totals = null;

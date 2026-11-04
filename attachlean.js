@@ -16,7 +16,7 @@ const AttachLean = (() => {
   const isImage = (a) => a.kind === 'image' && a.path && !a.lean?.ref;
   const isText = (a) => a.kind === 'text' && typeof (a.full ?? a.content) === 'string' && !a.ref && !a.tokens && !/^reference: /.test(a.name || '');
   const agentOf = (id) => H.agent(id) || {};
-  const engineOf = (id) => (agentOf(id).engine === 'codex' ? 'codex' : 'claude');
+  const engineOf = (id) => ((typeof Native !== 'undefined' && Native.chatOf?.(id)?.engine) || agentOf(id).engine) === 'codex' ? 'codex' : 'claude'; // (round 116, astraparity116) the open chat's own engine first
   // Claude reads the attachments folder with its Read tool (Hearth turns it on for that message); Astra reads files
   // only with file access (its sandboxed shell)
   // (round 67) on Windows Codex's sandbox blocks every command, so Astra reads files only without it (at Read & write or

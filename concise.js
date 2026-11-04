@@ -48,7 +48,7 @@ const Concise = (() => {
   function askedFor(chat) {
     const a = typeof H !== 'undefined' ? H.agent(chat?.agentId) : null;
     if (!a) return '';
-    const v = a.engine === 'codex' ? (chat.verbosity || a.verbosity) : a.verbosity;
+    const v = (chat.engine || a.engine) === 'codex' ? (chat.verbosity || a.verbosity) : a.verbosity; // (round 116, astraparity116) the chat's own engine
     return v === 'low' || v === 'high' ? labelOf(v) : '';
   }
   function onFinish(event, chat, extras) {

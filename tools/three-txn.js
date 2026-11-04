@@ -153,7 +153,7 @@ const LabTxn = (() => {
   const undoStack = []; const redoStack = []; const MAX = 12;
   let lastUndo = null; // 'turn' | 'code'
   if (typeof Native !== 'undefined' && Native.hooks?.send) Native.hooks.send.push((agentId, chat) => { if (chat?.id) turns.set(chat.id, (turns.get(chat.id) || 0) + 1); });
-  const whoOf = (chatId) => { const c = (typeof H !== 'undefined' ? H.chats || [] : []).find((x) => x.id === chatId); const ag = c && H.agent?.(c.agentId); return ag?.engine === 'codex' ? 'Astra' : ag?.name && !/director/i.test(ag.name) ? ag.name : 'Claude'; };
+  const whoOf = (chatId) => { const c = (typeof H !== 'undefined' ? H.chats || [] : []).find((x) => x.id === chatId); const ag = c && H.agent?.(c.agentId); return (c?.engine || ag?.engine) === 'codex' ? 'Astra' : ag?.name && !/director/i.test(ag.name) ? ag.name : 'Claude'; };
   function remember(ctx, tool, before, after, at, words) {
     if (!ctx.chatId || !before || !after || sigOf(before) === sigOf(after)) return;
     const key = `${ctx.chatId}|${turns.get(ctx.chatId) || 0}|${before.id}`;

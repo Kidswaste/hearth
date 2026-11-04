@@ -81,7 +81,7 @@ const ThreeHistory = (() => {
     const w = chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.workers?.(chatId) : null;
     if (w?.active) return w.active === 'codex' ? 'codex' : 'claude';
     const c = chatId ? (H.chats || []).find((x) => x.id === chatId) : null;
-    return H.agent?.(c?.agentId)?.engine === 'codex' ? 'codex' : 'claude';
+    return (c?.engine || H.agent?.(c?.agentId)?.engine) === 'codex' ? 'codex' : 'claude'; // (round 116, astraparity116) the chat's own engine first
   }
   function actorFor(id) {
     const h = hints.get(id);

@@ -39,7 +39,9 @@ const Offline = (() => {
   const astraName = () => Native.astraAgent?.()?.name || 'Astra';
   const engineOf = (agent, chat) => chat?.engine || agent?.engine || 'claude';
   const whoOf = (agent, chat) => (engineOf(agent, chat) === 'codex' ? astraName() : 'Claude');
-  const otherOf = (agent) => Native.partnerOf?.(agent) || null;
+  // (round 116, astraparity116) the other AI of the chat's own engine: in the AI switcher's Astra chat of a Claude
+  // director, "Ask … instead" offered Astra again (the director's engine decided)
+  const otherOf = (agent, chat) => { const e = engineOf(agent, chat); return Native.partnerOf?.(agent && e !== agent.engine ? { ...agent, engine: e } : agent) || null; };
   const KINDS = new Set(['offline', 'busy', 'limit', 'signedout', 'proxy']);
 
   // ---------- the queue on disk ----------
@@ -370,7 +372,7 @@ const Offline = (() => {
     const foot = node.querySelector(':scope > .msg-foot');
     const live = Boolean(foot); // the last message of the chat: it gets the action
     const it = live ? itemFor(chatId, m) : null;
-    const other = otherOf(agent);
+    const other = otherOf(agent, chat);
     const kind = net.kind;
     const o = { who: whoOf(agent, chat), other: kind === 'busy' || kind === 'limit' ? other?.name || '' : '', resetAt: net.resetAt, now: now(), queued: Boolean(it), cancelled: !it, gaveUp: net.gaveUp || !it, slept: net.slept, crashed: net.crashed };
     if (kind === 'busy' && it) o.inS = Math.max(0, Math.ceil((it.notBefore - now()) / 1000));
@@ -486,11 +488,11 @@ const Offline = (() => {
   // continues in a new chat with that AI, carrying the last few messages (no summary asked of the AI that is down).
   async function switchOver(agentId, chatId, m) {
     const agent = H.agent(agentId);
-    const other = otherOf(agent);
-    if (!other) throw new Error('There is no other AI to ask.');
-    drop((x) => x.chatId === chatId && x.kind !== 'new');
     const { chat } = await chatAndMsg(chatId, m);
     if (!chat) throw new Error('That chat is gone.');
+    const other = otherOf(agent, chat);
+    if (!other) throw new Error('There is no other AI to ask.');
+    drop((x) => x.chatId === chatId && x.kind !== 'new');
     const ei = chat.messages.findLastIndex((x) => x.role === 'error' && x.at === m.at);
     const ui = chat.messages.slice(0, ei).findLastIndex((x) => x.role === 'user');
     if (ei < 0 || ui < 0) throw new Error('Nothing to send.');

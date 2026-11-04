@@ -757,8 +757,22 @@ function toggleFold(hostId, m) {
   // A docked director changes engine in place: same chat, same scene, its tools and guide identical on both engines
   // (Astra directors get the chat tools too, agent.hubTools). The next message hands over the task state
   // (director-task.js). Model / effort of the engine you leave are kept for switching back.
+  // (round 116, astraparity116) the engine the director's open chat really runs on: a chat the AI switcher made for the
+  // other AI carries its own (chat.engine), else the director's
+  const chatEngine = (d) => Native.chatOf?.(d?.id)?.engine || d?.engine;
   function switchDirector(d, engine) {
-    if (!d || engine === d.engine) return false;
+    if (!d) return false;
+    // (round 116, astraparity116) a chat with its own engine switches itself: "/director-engine claude" in the switcher's
+    // Astra chat said "already runs on Claude" (the director's engine) and did nothing; the director's other chats stay as they are
+    const own = Native.chatOf?.(d.id);
+    if (own?.engine) {
+      if (engine === own.engine) return false;
+      if (engine === d.engine) delete own.engine; else own.engine = engine;
+      own.handoffNext = true; own.handoffEngine = engine === 'codex' ? 'Claude' : 'Astra'; Native.save(own);
+      Native.refresh?.(d.id);
+      return true;
+    }
+    if (engine === d.engine) return false;
     const keep = { model: d.model, effort: d.effort };
     const back = d.otherEngine || {};
     const fallbackModel = engine === 'codex' ? astra()?.model : claude()?.model;
@@ -774,9 +788,10 @@ function toggleFold(hostId, m) {
     const chat = Native.chatOf(hostId);
     // a director keeps its chat and scene: the other engine takes over right here
     if (host?.dock && host.mode === 'native') {
-      const engine = target?.engine && target.engine !== host.engine ? target.engine : host.engine === 'codex' ? 'claude' : 'codex';
+      const now = chatEngine(host); // (round 116, astraparity116) the chat's own engine, not the director's
+      const engine = target?.engine && target.engine !== now ? target.engine : now === 'codex' ? 'claude' : 'codex';
       switchDirector(host, engine);
-      toast(`${host.name} now runs on ${engineName(host)}: same chat and scene; your next message hands over the task state`, { timeout: 4000 });
+      toast(`${host.name} now runs on ${engineName({ engine: chatEngine(host) })}: same chat and scene; your next message hands over the task state`, { timeout: 4000 });
       return;
     }
     if (!target || target.mode !== 'native') throw new Error('Hand off to which agent? e.g. /handoff astra');
@@ -1501,9 +1516,9 @@ function toggleFold(hostId, m) {
       if (!d) return `No director docked in “${where}”.`;
       const engine = ENG(which);
       if (!engine) return `${d.name} runs on ${engineName(d)}. Say claude or astra.`;
-      if (engine === d.engine) return `${d.name} already runs on ${engineName(d)}.`;
+      if (engine === chatEngine(d)) return `${d.name} already runs on ${engineName({ engine })} in this chat.`; // (round 116, astraparity116) the chat's engine
       switchDirector(d, engine);
-      return `${d.name} now runs on ${engineName(d)}${d.model ? ` (${d.model})` : ''}, in the same chat and scene, with the same tools and guide: its next message carries the task state (/task shows it).${engine === 'codex' ? ' Astra-backed directors cost more tokens per turn (tool definitions).' : ''}`;
+      return `${d.name} now runs on ${engineName({ engine: chatEngine(d) })}${d.model && chatEngine(d) === d.engine ? ` (${d.model})` : ''}, in the same chat and scene, with the same tools and guide: its next message carries the task state (/task shows it).${engine === 'codex' ? ' Astra-backed directors cost more tokens per turn (tool definitions).' : ''}`;
     } });
 
   // ---------- collaboration presets (one searchable picker: /collab-preset) ----------
@@ -1835,7 +1850,7 @@ function toggleFold(hostId, m) {
   });
 
   return {
-    collabEl, emptyHints, beforeSend, start, handoff, switchDirector, stop, PERSONAS, MODES, PRESETS, reasoning, setReasoning,
+    collabEl, emptyHints, beforeSend, start, handoff, switchDirector, chatEngine, stop, PERSONAS, MODES, PRESETS, reasoning, setReasoning,
     _test: { parseSeat, parseLead, parseSeats, carryText, collabText, totals, live },
   };
 })();

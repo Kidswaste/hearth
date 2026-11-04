@@ -45,8 +45,8 @@ activate(A.id);
 await sleep(200);
 await Native.send(A.id, 'judge my sketch');
 await until(() => Native.chatOf(A.id)?.messages.at(-1)?.role === 'assistant');
-const instr = JSON.parse(await window.hub.fs.read('__TMP__/fake-codex-astra/last-args.json')).configs.model_instructions_file;
-out.personaFile = (await window.hub.fs.read(JSON.parse(instr))).slice(0, 90);
+const cfgs = JSON.parse(await window.hub.fs.read('__TMP__/fake-codex-astra/last-args.json')).configs; // (round 116) developer_instructions, else the old file
+out.personaFile = (cfgs.developer_instructions ? JSON.parse(cfgs.developer_instructions) : await window.hub.fs.read(JSON.parse(cfgs.model_instructions_file))).slice(0, 90);
 await Commands.tryRun('/astra-usage', A.id);
 out.usage = lastNote(A.id).slice(0, 160);
 await Commands.tryRun('/astra-session', A.id);
