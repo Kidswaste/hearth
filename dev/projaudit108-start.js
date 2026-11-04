@@ -2,7 +2,8 @@
 // by keys the way the owner does it (Ctrl/⌘+K, the project's name, Enter). Fixtures only (a throwaway profile).
 //   setup     two projects, "Start Alpha" and "Start Beta", each with its own scene; the session ends in Alpha's Scene
 //             (the Lab on Alpha's scene) and Beta's last view was its Scene too
-//   restart   the window reloads (a start, the Lab's code held back); at once, while the Lab group isn't loaded: Ctrl/⌘+K › "Start Beta" › Enter
+//   restart   the window reloads (a start, the Lab's code held back: lazy.lab.mode none + Open on start Projects, as
+//             labload94; round 114); at once, while the Lab group isn't loaded: Ctrl/⌘+K › "Start Beta" › Enter
 //             → Beta opens into the Lab on BETA's scene (not Alpha's, the one the Lab had last), and stays on it
 //   again     a second start, the Lab loading by itself (it ended in the Lab): the switch to Alpha the same way →
 //             Alpha's scene
@@ -20,6 +21,13 @@ await Projects.flush(); await wait(2500); // (the Lab's own saves: its current s
 // start it is held back ('none', as labload94 does), so the switch surely comes before the Lab is in; the second start
 // is left as it is (the Lab loading by itself while the switch happens)
 localStorage.setItem('lazy.lab.mode', 'none');
+// (round 114, projchecks114) and, as labload94 does, an explicit "Open on start": a reload nobody in Hearth asked for
+// then keeps that screen (freshen.js comeBack) instead of putting the last view back, the Lab, whose put-back loads the
+// Lab's code at once (round 113: "loaded" by putBack before the window's first rail; in round 108 it was still
+// "loading" when the switch began). The Lab's own last scene stays Alpha's (three.current): the switch to Beta must
+// still win over it. The second start goes back to no "Open on start" (the Lab put back and loading by itself).
+H.config.settings = { ...H.config.settings, startOn: 'tool:home' };
+await saveConfig();
 localStorage.setItem('pa108.start', JSON.stringify({ steps: out.steps, a: { id: a.id, name: a.name, scene: a.workspace.sceneId }, b: { id: b.id, name: b.name, scene: b.workspace.sceneId } }));
 return '[PA108] setup done; next: a start';
 //@@ reload
@@ -28,7 +36,7 @@ out.steps.push(...S.steps);
 const lab = () => Lazy.state().find((g) => g.name === 'lab')?.state;
 async function switchAtStart(to, label) {
   await until(() => typeof H !== 'undefined' && H.agents().length && document.querySelector('#agent-buttons'), 60000, 20);
-  const labAtSwitch = lab();
+  const labAtSwitch = lab(); const labWhy = { by: Lazy.by?.('lab') || null, intent: window.LabIntent?.state?.() || null, view: H.activeId }; // (round 114, projchecks114) who loaded it, when it was in
   const t0 = performance.now();
   await key('k', { ctrl: true });
   const input = await until(() => document.querySelector('.palette-input'), 8000, 20);
@@ -42,13 +50,14 @@ async function switchAtStart(to, label) {
   const onIt = await until(() => H.activeId === 'tool:three' && ThreeLab.scenes?.currentId() === to.scene, 20000);
   await wait(5000); // (anything still on its way from the start: the Lab's own restore of its last scene)
   const after = { at: H.activeId, scene: typeof ThreeLab !== 'undefined' ? ThreeLab.scenes?.currentId() : null, project: ProjectWorkspace.current()?.id, phase: ProjectWorkspace.state().phase };
-  step(`${label}: the Lab group not loaded yet when the switch began`, labAtSwitch !== 'loaded', { lab: labAtSwitch });
+  step(`${label}: the Lab group not loaded yet when the switch began`, labAtSwitch !== 'loaded', { lab: labAtSwitch, ...labWhy });
   step(`${label}: Ctrl/⌘+K › “${to.name}” › Enter opens that project`, Boolean(row) && ready, { ms, row: row?.textContent?.slice(0, 60), state: JSON.stringify(ProjectWorkspace.state()).slice(0, 240) });
   step(`${label}: …the Lab is on ${to.name}'s scene, and stays on it`, onIt && after.scene === to.scene && after.project === to.id && after.at === 'tool:three', { want: to.scene, after });
   return ms;
 }
 const ms1 = await switchAtStart(S.b, 'start (the Lab held back)');
 localStorage.removeItem('lazy.lab.mode');
+{ const st = { ...H.config.settings }; delete st.startOn; H.config.settings = st; await saveConfig(); } // (round 114) the second start as before
 S.steps = out.steps; S.ms = [ms1];
 localStorage.setItem('pa108.start', JSON.stringify(S));
 return '[PA108] the first start done';
@@ -58,7 +67,7 @@ out.steps.push(...S.steps);
 const lab = () => Lazy.state().find((g) => g.name === 'lab')?.state;
 async function switchAtStart(to, label) {
   await until(() => typeof H !== 'undefined' && H.agents().length && document.querySelector('#agent-buttons'), 60000, 20);
-  const labAtSwitch = lab();
+  const labAtSwitch = lab(); const labWhy = { by: Lazy.by?.('lab') || null, intent: window.LabIntent?.state?.() || null, view: H.activeId }; // (round 114, projchecks114) who loaded it, when it was in
   const t0 = performance.now();
   await key('k', { ctrl: true });
   const input = await until(() => document.querySelector('.palette-input'), 8000, 20);
@@ -71,7 +80,7 @@ async function switchAtStart(to, label) {
   const onIt = await until(() => H.activeId === 'tool:three' && ThreeLab.scenes?.currentId() === to.scene, 20000);
   await wait(5000);
   const after = { at: H.activeId, scene: typeof ThreeLab !== 'undefined' ? ThreeLab.scenes?.currentId() : null, project: ProjectWorkspace.current()?.id, phase: ProjectWorkspace.state().phase };
-  step(`${label}: the Lab group's state when the switch began (noted)`, true, { lab: labAtSwitch });
+  step(`${label}: the Lab group's state when the switch began (noted)`, true, { lab: labAtSwitch, ...labWhy });
   step(`${label}: Ctrl/⌘+K › “${to.name}” › Enter opens that project`, Boolean(row) && ready, { ms, row: row?.textContent?.slice(0, 60), state: JSON.stringify(ProjectWorkspace.state()).slice(0, 240) });
   step(`${label}: …the Lab is on ${to.name}'s scene, and stays on it`, onIt && after.scene === to.scene && after.project === to.id && after.at === 'tool:three', { want: to.scene, after });
   return ms;
