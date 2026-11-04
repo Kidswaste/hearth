@@ -13,6 +13,8 @@
 //   flist / fsearch               fsapi.js's recursive folder listing and folder search (on a second copy: "files")
 //   syncHash { file, rel, cloud, ctx }  cloud sync: a big JSON store's cloud form + hash (sync-engine.js hashJson)
 //   mergeKV { file, ops, prev }   (round 75) a store saved by what changed (store.js mergeKV, kvops.js applyOps)
+//   tokenStat { file, list }      (round 121, sendlag121) the meter's numbers: the replies that ended, added and written here
+//   tokenStatsText { file }       (round 121) the meter's numbers as text for the window (parsed there)
 //   projfind { spec, dirs, q?, budgetMs? }  (round 81) Find in this project: its index caught up in a slice (only what
 //                                 changed since), then the query (projfind-core.js); made on the first find, let go when idle
 //   recall { dir, q?, budgetMs? }  (round 30) "what did we decide about X?": catches the recall index up (only chats that
@@ -88,6 +90,9 @@ function formOf(file, ctx, S, got = null) {
 const FIND_BIG = Math.min(BIG, 128 * 1024); // (round 82) Find in this project / recall: a chat this big is read (and its words indexed) a slice at a time
 // (round 82) how many chatDelta ops are finished (the main process waits on it before stopping this thread at quit)
 const deltaDone = workerData?.deltaSab ? new Int32Array(workerData.deltaSab) : null;
+// (round 121, sendlag121) how many tokenStat batches are finished (the quit waits for them too); the stats as last written
+const statsDone = workerData?.statsSab ? new Int32Array(workerData.statsSab) : null;
+let statsKept = null;
 
 const SS = require('./scenesafe-core');
 const ssEnv = { fs, path, cache: new Map() };
@@ -1106,6 +1111,44 @@ const OPS = {
     if (st && !doubt && !blind && !res?.kept) { merged.set(file, { value, size: st.size, mtimeMs: st.mtimeMs }); if (merged.size > 8) merged.delete(merged.keys().next().value); }
     return { ok: true };
   },
+  // (round 121, sendlag121) the meter's numbers (kv/token-stats.json): the replies that ended since the last batch
+  // ([{ agentId, usage, meta, at }], in order) added here, as store.js did on the main process after every reply (the
+  // file read and parsed, the numbers added, stringified, written: ≈ 10–30 ms there with a year of stats or a busy disk).
+  // Read as store.js read it (datasafe's load: a held file read again, its copy; nothing real read → nothing written
+  // over it), kept while the file stays as this thread left it (size, time, inode: sync's write or a rebuild makes it
+  // read again), written as before (compact, temp file, flush, rename). Finished batches are counted (statsSab) for the
+  // quit. → { ok, read: { state, from, doubt, code, garbled } }
+  tokenStat({ file, list }) {
+    try {
+      const k = statsKept; const st = stat(file);
+      let value = k && k.file === file && st && st.size === k.size && st.mtimeMs === k.mtimeMs && st.ino === k.ino ? k.value : null;
+      let read = { state: 'ok', from: 'file', doubt: false };
+      statsKept = null;
+      if (!value) {
+        const r = DS.load(dfs, file, null);
+        read = { state: r.state, from: r.from, doubt: Boolean(r.doubt), ...(r.code ? { code: r.code } : {}), ...(r.garbled ? { garbled: true } : {}) };
+        value = r.value;
+      }
+      if (!value?.backfilledAt || typeof value !== 'object') return { ok: false, read }; // (the first read builds everything from the chats: meter.js)
+      require('./tokenstats-core').addAll(value, Array.isArray(list) ? list : []);
+      require('./crashsafe-core').writeAtomicSync(fs, file, JSON.stringify(value), { dirSync: false });
+      const s2 = stat(file);
+      if (s2) statsKept = { file, value, size: s2.size, mtimeMs: s2.mtimeMs, ino: s2.ino };
+      return { ok: true, read };
+    } finally { if (statsDone) Atomics.add(statsDone, 0, 1); }
+  },
+  // (round 121, sendlag121) the meter's read (store.js getTokenStatsText): the stats as text, from the ones kept above
+  // while the file stays as this thread left it, else read here. Only a plain good read answers (the file itself,
+  // built: backfilledAt); anything else → {} and the main process reads it the careful way, as before
+  tokenStatsText({ file }) {
+    const k = statsKept; const st = stat(file);
+    if (k && k.file === file && st && st.size === k.size && st.mtimeMs === k.mtimeMs && st.ino === k.ino) return { text: JSON.stringify(k.value) };
+    const r = DS.load(dfs, file, null);
+    if (r.state !== 'ok' || r.from !== 'file' || r.doubt || r.garbled || !r.value?.backfilledAt || typeof r.value !== 'object') return {};
+    const s2 = stat(file);
+    if (s2 && st && s2.size === st.size && s2.mtimeMs === st.mtimeMs && s2.ino === st.ino) statsKept = { file, value: r.value, size: s2.size, mtimeMs: s2.mtimeMs, ino: s2.ino };
+    return { text: JSON.stringify(r.value) };
+  },
   // (round 81, projsearch81) Find in this project: the window asks in slices while the Desk is open (budgetMs), then queries
   projfind(msg) {
     const PF = require('./projfind-core');
@@ -1137,7 +1180,7 @@ const OPS = {
     try { if (!gcFn) { require('v8').setFlagsFromString('--expose_gc'); gcFn = require('vm').runInNewContext('gc'); } gcFn(); gcFn(); } catch { /* no gc: reads higher */ }
     const h = require('v8').getHeapStatistics();
     const snapshot = snap ? require('v8').writeHeapSnapshot(String(snap)) : undefined; // (a by-constructor diff)
-    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, findTexts: findTexts.size, find: findIdx ? 1 : 0, findChars: findIdx ? findIdx.size().chars : 0, winCalc: winCalc.chat ? 1 : 0 } };
+    return { snapshot, heap: h.used_heap_size, total: h.total_heap_size, ext: h.external_memory, caches: { statsKept: statsKept ? 1 : 0, index: index.size, textChars, written: written.size, merged: merged.size, stubs: stubs.size, bigs: bigs.size, spans: spans.size, recallJobs: recallJobs.size, bigSearch: bigSearch.size, winFind: winFind.size, calcs: calcs.size, forms: forms.size, digests: digests.size, ss: ssEnv.cache.size, ds: dsEnv.cache.size, recall: recallIdx ? 1 : 0, findTexts: findTexts.size, find: findIdx ? 1 : 0, findChars: findIdx ? findIdx.size().chars : 0, winCalc: winCalc.chat ? 1 : 0 } };
   },
 };
 let gcFn = null; // (round 91, longrun91) _mem's gc, made on its first (test-only) use

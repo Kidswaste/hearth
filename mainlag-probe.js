@@ -32,6 +32,31 @@ const P = { since: performance.now(), fs: new Map(), ipc: new Map(), sends: new 
 let watching = 0; // (round 78) inside an fs.watch call
 const h = monitorEventLoopDelay({ resolution: 10 });
 h.enable();
+// (round 121, sendlag121) every hold of the loop of HEARTH_STALL_MIN ms (default 8) or more, one by one, as
+// dev/loadwait.js stallWatch splits them (dev/ isn't in the app copy a smoke run starts: the same logic, main thread
+// only): ms (the gap beyond the tick), wait (the main thread runnable, not running: the box), own (ms − wait, never
+// below its CPU), cpu, and at (performance.now() at its start: the CPU profile's blocks say what it was). take() →
+// stalls: { maxMs, maxOwn, list (the 12 largest by own, in time order) }
+const STALL_MIN = Number(process.env.HEARTH_STALL_MIN) || 8;
+const STALL = { list: [], maxMs: 0, maxOwn: 0 };
+{
+  const fsx = require('fs');
+  const rd = () => { try { const f = fsx.readFileSync('/proc/thread-self/schedstat', 'utf8').split(' '); return [Number(f[0]) / 1e6, Number(f[1]) / 1e6]; } catch { return [null, null]; } };
+  const EVERY = 4;
+  const look = () => { const t0 = performance.now(); const [c, d] = process.platform === 'linux' ? rd() : [null, null]; return { t0, t: performance.now(), c, d }; };
+  let prev = look();
+  const tick = () => {
+    const cur = look(); const ms = cur.t0 - prev.t - EVERY;
+    if (ms >= STALL_MIN) {
+      const wait = cur.d != null && prev.d != null ? cur.d - prev.d : 0; const cpu = cur.c != null && prev.c != null ? cur.c - prev.c : ms;
+      const g = { at: Math.round(prev.t), ms: Math.round(ms), wait: Math.round(Math.min(ms, wait)), own: Math.round(Math.max(cpu, ms - wait)), cpu: Math.round(cpu) };
+      STALL.maxMs = Math.max(STALL.maxMs, g.ms); STALL.maxOwn = Math.max(STALL.maxOwn, g.own);
+      STALL.list.push(g); if (STALL.list.length > 400) STALL.list.shift();
+    }
+    prev = cur;
+  };
+  const tm = setInterval(tick, EVERY); tm.unref?.();
+}
 
 // (round 78) linuxWatch: the call came from Node's own recursive fs.watch on Linux (a JS tree walk that Windows and the
 // Mac never make: they watch natively), so the Windows simulation doesn't charge it
@@ -192,6 +217,7 @@ async function startProfile() {
     await post('Profiler.enable');
     await post('Profiler.setSamplingInterval', { interval: 1000 });
     await post('Profiler.start');
+    P.profPerf = performance.now(); // (round 121) stalls' at: from here, as the blocks' atMs
     P.profAt = Date.now(); // (round 70, bigprofile70) the profile's start as a wall-clock time: blocks → when they ended
   } catch (err) { P.profileError = err.message; }
 }
@@ -231,6 +257,7 @@ function blocks(profile, min = 30) {
 
 const ms = (ns) => Math.round(ns / 1e4) / 100;
 async function take({ reset = true, label = '' } = {}) {
+  const profPerf = P.profPerf || 0; // (round 121) the profile being stopped: its start
   const secs = (performance.now() - P.since) / 1000;
   const top = (map, n = 14) => [...map].sort((a, b) => b[1].ms - a[1].ms || b[1].n - a[1].n).slice(0, n).map(([k, v]) => ({ k, n: v.n, ms: Math.round(v.ms * 10) / 10 }));
   const out = { label, seconds: Math.round(secs * 10) / 10, slowFsUs: SLOW_US, procStart: Math.round(Date.now() - process.uptime() * 1000), profAt: P.profAt || 0,
@@ -246,8 +273,11 @@ async function take({ reset = true, label = '' } = {}) {
       byProg: Object.entries([...P.spawns].reduce((o, [k, v]) => { const g = k.split(' ')[0]; o[g] = (o[g] || 0) + v.n; return o; }, {})).sort((a, b) => b[1] - a[1]) },
     fsAsync: { n: [...P.fsAsync.values()].reduce((a, v) => a + v.n, 0), top: [...P.fsAsync].sort((a, b) => b[1].n - a[1].n).slice(0, 14).map(([k, v]) => ({ k, n: v.n })) },
     watch: { n: [...P.watch.values()].reduce((a, v) => a + v.n, 0), top: [...P.watch].map(([k, v]) => ({ k, n: v.n })) } };
+  // (round 121, sendlag121) the holds one by one (STALL above), taken before the profile's own stop
+  out.stalls = { min: STALL_MIN, maxMs: STALL.maxMs, maxOwn: STALL.maxOwn, n: STALL.list.length, list: [...STALL.list].sort((a, b) => b.own - a.own).slice(0, 12).sort((a, b) => a.at - b.at).map((g) => ({ ...g, at: Math.round(g.at - profPerf) })) }; // (at: ms after the profile started, as blocks' atMs)
+  if (reset) { STALL.list = []; STALL.maxMs = 0; STALL.maxOwn = 0; }
   if (session && MODE === 'prof') {
-    try { const { profile } = await post('Profiler.stop'); out.blocks = blocks(profile).slice(0, 12); out.appTop = blocks.appTop; } catch (err) { out.profileError = err.message; }
+    try { const { profile } = await post('Profiler.stop'); out.blocks = blocks(profile, Number(process.env.HEARTH_LOOPLAG_MIN) || 30).slice(0, 12); out.appTop = blocks.appTop; } catch (err) { out.profileError = err.message; } // (round 121) HEARTH_LOOPLAG_MIN: shorter stretches listed too
     if (reset) await startProfile();
   }
   if (reset) { h.reset(); P.fs.clear(); P.ipc.clear(); P.sends.clear(); P.spawns.clear(); P.fsAsync.clear(); P.watch.clear(); P.simMs = 0; P.since = performance.now(); }

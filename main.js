@@ -413,8 +413,10 @@ ipcMain.handle('engine:once', (_e, { agentId, text, images, options }) => {
 // Astra's /astra-doctor: engine paths, versions, sign-in state.
 ipcMain.handle('engine:doctor', () => { engines.setEnginePaths(settings().enginePaths); return engines.doctor(readConfig().agents); });
 ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) => {
-  engines.setEnginePaths(settings().enginePaths);
-  const agent = readConfig().agents.find((a) => a.id === agentId);
+  // (round 121, sendlag121) the config read and joined with the defaults once per message, not twice (settings() did it again)
+  let cfg = null; try { cfg = readConfig(); } catch { cfg = null; }
+  engines.setEnginePaths(cfg?.settings?.enginePaths);
+  const agent = (cfg || readConfig()).agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
   const turn = powerwise.turn(chatId); // (round 39) a long turn keeps the computer awake until it ends
   crashsafe.reply(chatId, agentId, { type: 'start' }); // (round 50, crashsafe) the reply journaled as it streams
@@ -445,7 +447,7 @@ ipcMain.handle('codex:workspace', (_e, args = {}) => {
 });
 // Token meter aggregates (kv/token-stats.json); the first call builds them from the chats.
 const configAgents = () => { try { return readConfig().agents || []; } catch { return []; } };
-ipcMain.handle('usage:stats', () => store.getTokenStats(configAgents()));
+ipcMain.handle('usage:stats', () => store.getTokenStatsText(configAgents())); // (round 121, sendlag121) JSON text from the store thread when it can (parsed in preload.js), else the object as before
 ipcMain.handle('usage:rebuild', () => store.rebuildTokenStats(configAgents()));
 ipcMain.handle('memory:get', afterSync(() => store.getMemory()));
 ipcMain.handle('memory:save', afterSync((_e, memory) => store.saveMemory(memory)));

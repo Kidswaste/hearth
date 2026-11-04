@@ -40,7 +40,15 @@ const OFF = Boolean(window.CW86_OFF);
 const out = { mode: OFF ? 'off (whole)' : 'windowed', problems: [] };
 // (wake: find and jump draw an older block in place, and that block's first layout — chatwindow72/76's, the same with
 // the setting off — is 35–75 ms here on its own: measured, budgeted apart)
-const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, calcReply: 120 }, window.CW_BUDGET || {});
+const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, calcReply: 120, sendHold: 20 }, window.CW_BUDGET || {});
+// (round 121, sendlag121) the main process while a message is sent and its reply streams (send, reply2, reply3): each
+// hold of its loop (mainlag-probe.js stalls: ms beyond the tick, own = without the wait for a CPU) matched to the CPU
+// profile's busy stretches over it (HEARTH_LOOPLAG_MIN=8: from 8 ms). A hold fails when its OWN time is over sendHold
+// AND the profile's time in the app's own lines in it is too (load-aware: the wait for a CPU is never the app's); what
+// isn't the app's is listed apart (known): starting the engine's process
+// (spawn: the OS copying a big process, ≈ 3–25 ms, every app that starts a CLI pays it), the test probes' own wrappers,
+// a GC alone, Electron's own internals. A hold with no busy stretch over it (off the CPU) is listed, not failed.
+const KNOWN = /\bspawn\b|winpolish\.js|mainlag-probe\.js|powerwisemain\.js:3\d|\(garbage collector\)|browser_init|node_init|\(program\)|TimersList|processTimers|listOnTimeout/;
 const RARE = 'zanzibar84quokka';
 const ID = 'claude-giant0';
 const lag = (label) => window.hub.power?.test?.({ lag: { label } });
@@ -57,6 +65,16 @@ const CW = () => Native._rest?.W?.x || null;
 const cwStats = () => { const s = CW()?.stats?.(); return s ? { windowed: s.windowed, loaded: s.loaded, total: s.total, ranges: s.ranges, fetched: s.fetched, released: s.released, wholes: s.wholes.map((w) => `${w.why} ${w.ms}ms`), misses: s.misses.length, poisoned: s.poisoned } : null; };
 let wholesSeen = 0;
 const newWholes = () => { const w = CW()?.stats?.().wholes || []; const n = w.slice(wholesSeen); wholesSeen = w.length; return n; };
+// (round 121) a hold: its time, its own time, and what the profile saw run in it
+function holdsOf(l) {
+  const blocks = l?.blocks || [];
+  return (l?.stalls?.list || []).filter((g) => g.at >= 0).map((g) => { // (at < 0: the probe's own profile restart, before the step)
+    const over = blocks.filter((b) => b.atMs < g.at + g.ms + 2 && b.atMs + b.ms > g.at - 2);
+    const app = over.flatMap((b) => (b.app || []).filter((x) => !KNOWN.test(x)));
+    const appMs = app.reduce((a, x) => a + (Number((/^(\d+)ms/.exec(x) || [])[1]) || 0), 0); // (the profile's ms in the app's own lines)
+    return { at: g.at, ms: g.ms, own: g.own, cpu: g.cpu, appMs, what: over.flatMap((b) => (b.app || []).slice(0, 3)).join(' | '), app: app.join(' | '), known: !over.length || !app.length };
+  });
+}
 // a step: what it took (ms), the window's longest tasks, the main process's busy stretches
 // (round 88, checkfix88) load-aware: each step runs under a light trace of the window's tasks (dev/smoke.js { trace:
 // 'start', tasks }), so a task over the budget is judged by its OWN CPU time and the thread's wait for a CPU
@@ -66,7 +84,7 @@ const newWholes = () => { const w = CW()?.stats?.().wholes || []; const n = w.sl
 // wall time as before. window.CW86_TRACECATS: extra trace categories, window.CW86_DUMP: a file prefix for each step's
 // trace (to see what a long task was: Layout, GC, a reply received…).
 out.cantTell = [];
-async function step(name, fn, { taskBudget = BUDGET.task, wholeOk = false } = {}) {
+async function step(name, fn, { taskBudget = BUDGET.task, wholeOk = false, sendHolds = false } = {}) {
   await lag(`before-${name}`);
   newWholes();
   const traced = await smoke({ trace: 'start', tasks: true, cats: window.CW86_TRACECATS || '' }).then((r) => !r?.error).catch(() => false);
@@ -86,6 +104,13 @@ async function step(name, fn, { taskBudget = BUDGET.task, wholeOk = false } = {}
     else if (lt.verdict === 'load') out.cantTell.push(`${name}: a ${lt.tasks[0]?.ms} ms task over the ${taskBudget} ms budget, but the box, not the app: ${lt.why}`);
   } else if ((s.windowLong[0] || 0) > taskBudget) out.problems.push(`${name}: the window held ${s.windowLong[0]} ms in one task (budget ${taskBudget})`);
   if (blocksOver(l, BUDGET.mainBlock).length) out.problems.push(`${name} held the main process: ${s.main.blocks.join('; ')}`);
+  if (sendHolds) { // (round 121, sendlag121)
+    const hs = holdsOf(l);
+    s.holds = hs.map((h) => `${h.at}+${h.ms}ms own ${h.own}, app ${h.appMs}${h.what ? ` ${h.what}` : ''}${h.known ? ' (known)' : ''}`).slice(0, 10);
+    s.holdMax = hs.reduce((a, h) => Math.max(a, h.appMs), 0); // (the app's own code in one hold)
+    const bad = hs.filter((h) => h.own > BUDGET.sendHold && h.appMs > BUDGET.sendHold);
+    if (bad.length) out.problems.push(`${name}: the main process held ${bad.map((h) => `${h.own} ms (own), ${h.appMs} ms of it the app's: ${h.app}`).join('; ')} (budget ${BUDGET.sendHold})`);
+  }
   const w = newWholes();
   if (!OFF && w.length && !wholeOk) out.problems.push(`${name} loaded the giant chat whole: ${w.map((x) => x.why).join(', ')}`);
   if (w.length) s.loadAll = w.map((x) => `${x.why} ${x.ms}ms`);
@@ -193,7 +218,7 @@ const sendText = async (text) => {
   return until(() => chat.messages.length >= n0 + 2 && chat.messages.at(-1).role !== 'user' && !document.querySelector('.surface.active .msg.streaming'), 1200);
 };
 const said = `chatwindow86 says hi ${Date.now()}`;
-await step('send', async () => { const ok = await sendText(said); await wait(1500); return { replied: Boolean(ok), n: chat.messages.length }; });
+await step('send', async () => { const ok = await sendText(said); await wait(1500); return { replied: Boolean(ok), n: chat.messages.length }; }, { sendHolds: true });
 {
   const d = await disk(chat.messages.length - 2, chat.messages.length);
   out.send.disk = { n: d?.n, text: d?.msgs?.[0]?.text === said, reply: d?.msgs?.[1]?.role };
@@ -211,7 +236,7 @@ await threadMs(); // (the probe started)
 const calcsNow = () => CW()?.stats?.().calcs?.length || 0;
 for (const name of ['reply2', 'reply3']) {
   const t0 = await threadMs(); const c0 = calcsNow();
-  await step(name, async () => { const ok = await sendText(`chatcalc87 ${name} ${Date.now()}`); await wait(3000); return { replied: Boolean(ok) }; });
+  await step(name, async () => { const ok = await sendText(`chatcalc87 ${name} ${Date.now()}`); await wait(3000); return { replied: Boolean(ok) }; }, { sendHolds: true });
   const t1 = await threadMs();
   out[name].threadMs = t0 == null || t1 == null ? null : r0(t1 - t0);
   const cs = (CW()?.stats?.().calcs || []).slice(c0);
