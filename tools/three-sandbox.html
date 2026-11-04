@@ -65,7 +65,9 @@
     // asks (a `Math.min(devicePixelRatio, 2)` would cap a 4K or supersampled frame), and with ?alpha=1 they keep an
     // alpha channel and clear to transparent, so a scene with no background exports with alpha
     const XPX = params.get('xp') === '1' ? `setPixelRatio() { super.setPixelRatio(globalThis.devicePixelRatio); }${params.get('alpha') === '1' ? ' setClearColor(c, a) { super.setClearColor(c, 0); }' : ''}` : '';
-    const XPP = params.get('xp') === '1' && params.get('alpha') === '1' ? '{ ...(p0 || {}), alpha: true, premultipliedAlpha: true }' : 'p0';
+    // (Nov 4) and always antialiased, as ▶ Play: a scene can turn it off for a light preview (Visualizer2: 21 → 64 fps
+    // with it off and 1× pixels) and its renders still get smooth edges
+    const XPP = params.get('xp') === '1' ? `{ ...(p0 || {}), antialias: true${params.get('alpha') === '1' ? ', alpha: true, premultipliedAlpha: true' : ''} }` : 'p0';
     // (round 52, gamemode) ▶ Play (?game=1, its own window): every renderer at max fidelity (antialias, the fast GPU, the
     // screen's own pixel ratio whatever the sketch asks); the layers that can merge share ONE context (__gmTake, see "▶ Play")
     const GMQ = params.get('game') === '1';
