@@ -218,12 +218,14 @@ const ChatWinCore = (() => {
   }
 
   // ---------- find in the chat (the store thread's side, exact) ----------
-  // the test chat-rest.js restingHits makes on a message (needle: lowercase)
+  // the test chat-rest.js restingHits makes on a message (round 114, findaccents114: folded, findfold.js: accents,
+  // capitals and ligatures don't matter, the needle folded here too)
   // (round 87, chatcalc87) chat-refs.js's @file list: the absolute paths a message names (the same expression there),
   // walked from the end; the store thread does the same on the messages that aren't loaded (chatScan)
   const FILE_PATHS = /(?:[A-Za-z]:\\|\/)(?:[^\s"'<>|*?\n]+[\\/])*[^\s"'<>|*?\n]+\.[A-Za-z0-9]{1,5}\b/g;
   const SCAN = { paths: (m) => (m && typeof m === 'object' ? String(m.sent || m.text || '').match(FILE_PATHS) || [] : []) };
-  const findHit = (m, needle) => Boolean(m) && !m.compactReq && (String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle));
+  const FF = () => (typeof FindFold !== 'undefined' ? FindFold : typeof require === 'function' ? require('./findfold.js') : null);
+  const findHit = (m, needle) => { if (!m || m.compactReq) return false; const F = FF(); if (!F) return String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle); const q = F.fold(needle); return F.has(m.text || '', q) || F.has(m.thinking || '', q); };
 
   return { textPx, msgPx, profOf, pxAt, FILE_PATHS, SCAN, metaOf, recOf, useOf, small, BIG, NotLoaded, stubOf, isStub, makeArray, delta, sameSaved, findHit, idx };
 })();

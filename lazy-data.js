@@ -110,7 +110,7 @@ const LazyData = (() => {
     { name: 'labbatch', tier: 'use', after: ['lab', 'labtemplates', 'multiformat'], at: 'updater.js', files: ['tools/three-batch-core.js', 'tools/three-batch.js'], css: ['tools/three-batch.css'], globals: ['BatchCore', 'LabBatch'] }, // (round 42) · docs/lazy-groups.md
     { name: 'labsearch', tier: 'use', after: ['lab', 'searchcore'], at: 'updater.js', files: ['tools/three-search.js'], css: ['tools/three-search.css'], globals: ['LabSearch'] }, // (round 36) · docs/lazy-groups.md
     { name: 'appsearch', tier: 'use', after: ['searchcore', 'updater'], at: 'updater.js', files: ['appsearch-data.js', 'appsearch.js'], globals: ['AppSearchData', 'AppSearch'] }, // (round 37) · docs/lazy-groups.md
-    { name: 'chatfind', tier: 'use', at: 'updater.js', files: ['recall-core.js', 'chatfind.js'], globals: ['RecallCore', 'ChatFind'] }, // (round 113) · docs/lazy-groups.md
+    { name: 'chatfind', tier: 'use', at: 'updater.js', files: ['recall-core.js', 'chatfind.js', 'findfold.js'], globals: ['RecallCore', 'ChatFind', 'FindFold'] }, // (round 113; round 114: findfold.js, Alt+F's folding) · docs/lazy-groups.md
     { name: 'dragdrop', at: 'updater.js', files: ['dragdrop-core.js', 'dragdrop.js'], css: ['dragdrop.css'], globals: ['DragDropCore', 'DragDrop'] }, // (round 38) · docs/lazy-groups.md
     { name: 'attachlean', at: 'updater.js', files: ['attachlean-core.js', 'attachlean.js'], css: ['attachlean.css'], globals: ['AttachLeanCore', 'AttachLean'] }, // (round 40) · docs/lazy-groups.md
     { name: 'filewatch', at: 'updater.js', files: ['filewatch-core.js', 'filewatch.js'], globals: ['FileWatchCore', 'FileWatch'] }, // (round 42) · docs/lazy-groups.md
