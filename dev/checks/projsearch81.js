@@ -26,9 +26,16 @@ const out = { budget: BUDGET, index: {}, query: {}, open: {}, keys: {}, live: {}
 const need = (ok, what) => { if (!ok) fails.push(what); return ok; };
 const cdp = (method, params = {}) => smoke({ cdp: method, params });
 // a real mouse click in the middle of a node (the node must be what is under that point)
+// (round 114, projchecks114) `node` may be a finder (a function giving the node): it is asked again right before the
+// press, the way the owner aims at what is on screen now. Projects home shows the cards it drew last time at once and
+// draws them again a few ms later (its paint waits on Projects.ready / lookFor): a card found in between was gone by
+// the time its middle was read (0,0, the rail). Something else drawn over the node is still caught (elementFromPoint).
 async function realClick(node, what) {
+  const find = typeof node === 'function' ? node : null;
+  if (find) node = find();
   if (!node) throw Error(`nothing to click: ${what}`);
   node.scrollIntoView({ block: 'nearest' }); await frame();
+  if (find && !node.isConnected) { node = find(); if (!node) throw Error(`nothing to click: ${what} (gone after a redraw)`); node.scrollIntoView({ block: 'nearest' }); await frame(); }
   const r = node.getBoundingClientRect(); const x = Math.round(r.left + r.width / 2); const y = Math.round(r.top + r.height / 2);
   const hit = document.elementFromPoint(x, y);
   need(hit && (hit === node || node.contains(hit)), `${what}: something else is under the mouse at ${x},${y} (${hit?.className || hit?.tagName}${node.isConnected ? '' : ', the node was redrawn'})`);
@@ -51,8 +58,9 @@ try {
   await until(() => document.querySelector('#agent-buttons .space-button'), 'app', 1500); await wait(1500);
   // ---------- open Clink by clicks, then its Desk ----------
   await realClick(document.querySelector('#agent-buttons [data-space=projects]'), 'Projects');
-  const card = await until(() => document.querySelector('.pj-card[data-project="pjbp0"]'), 'cards', 1500);
-  await realClick(card, 'Clink card');
+  const clink = () => document.querySelector('.pj-card[data-project="pjbp0"]');
+  await until(clink, 'cards', 1500);
+  await realClick(clink, 'Clink card');
   await until(() => ProjectWorkspace.state().phase === 'ready' && ProjectWorkspace.state().project === 'pjbp0', 'Clink open', 3000);
   await wait(800);
   await lag(true);
