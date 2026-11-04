@@ -215,7 +215,8 @@ All under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0
 - `dev/perfguard-probe.js`: `PERFGUARD_OPTS` (sections, warm opens).
 - `dev/warmopen113-probe.js` (new): the warm switch's measure.
 - `tools/three.js` (`syncPark` and `fbCheck` after a painted frame), `tools/three-media.js` (`checkOnScreen` after a
-  painted frame), `chat-scenes.js` (`ownersOf`).
+  painted frame), `chat-scenes.js` (`ownersOf`), `project-workspace.js` (Codex's: one marked line in `conversation()`,
+  after the merge with search113).
 
 ## For the patch notes
 - Switching projects with the name ▾ does a little less work: Hearth no longer stops in the middle of the switch to
