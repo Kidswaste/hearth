@@ -238,7 +238,7 @@ const AppSearch = (() => {
 
   // ---------- an opening ----------
   // prepare(base): the palette's rows (appui.js gathers them on each opening); the live index is made again
-  let base = [];
+  let base = []; let livePending = false;
   function prepare(items) {
     const t0 = performance.now();
     base = items;
@@ -247,8 +247,11 @@ const AppSearch = (() => {
     const lab = inLab();
     // (round 113, search113) the very first opening: the fixed rows now, the menus and chats in the next task (one task
     // held them all: the first Ctrl/⌘+K's 90–130 ms)
-    if (!liveIx) { liveIx = C.build([], { vocab: V }); setTimeout(() => { if (base !== items) return; liveIx = C.build([...menuItems(inLab()), ...liveItems(items)], { vocab: V }); chatIndex(items); refresh(); }); } else {
-      liveIx = C.build([...menuItems(lab), ...liveItems(items)], { vocab: V });
+    // (round 114, projchecks114) until then the palette keeps its plain rows (ready() is false): Find anything's rows
+    // without the menus, tools, AIs and projects showed for that one task, so "Three.js Lab" typed at the first
+    // Ctrl/⌘+K had its Lab row gone and the next row selected (an Enter there ran "Use the Three.js Lab" or "Ask …")
+    if (!liveIx) { liveIx = C.build([], { vocab: V }); livePending = true; setTimeout(() => { if (base !== items) return; liveIx = C.build([...menuItems(inLab()), ...liveItems(items)], { vocab: V }); livePending = false; chatIndex(items); refresh(); }); } else {
+      liveIx = C.build([...menuItems(lab), ...liveItems(items)], { vocab: V }); livePending = false;
       chatIndex(items);
     }
     last.liveMs = Math.round((performance.now() - t0) * 10) / 10;
@@ -476,6 +479,6 @@ const AppSearch = (() => {
     (window.requestIdleCallback || setTimeout)(next);
   }
 
-  return { prepare, find, tidy, plain, warm, later, toSettings, toAiSetup, locateSetting, locateAi, jumpChat, findById, runItem, last, vocab: V,
+  return { prepare, find, ready: () => !livePending, tidy, plain, warm, later, toSettings, toAiSetup, locateSetting, locateAi, jumpChat, findById, runItem, last, vocab: V,
     get index() { return { fixed: fixedIx, live: liveIx, chats: chatIx.ix }; }, get labOn() { return labOn; } };
 })();

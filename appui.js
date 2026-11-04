@@ -228,7 +228,7 @@ const AppUI = (() => {
       // (round 18, tidy) nothing typed: a short list, not a thousand rows: ↻ Again, your agents and tools (with their
       // keys), what you pick most here, your latest chats; typing searches everything
       if (!ql) { let chats = 0; pal.shown = pal.items.filter((it) => ['Again', 'Agent', 'Tool'].includes(it.kind) || it.used || (it.chat && chats++ < 5)).slice(0, 30); }
-      else if (finder()) pal.shown = finder().find(q);
+      else if (finder() && finder().ready?.() !== false) pal.shown = finder().find(q); // (round 114) its rows once its live ones are in (appsearch.js ready)
       else pal.shown = pal.items.map((it) => ({ ...it, score: fuzzy(ql, it.hay ||= `${it.label} ${it.kind}`.toLowerCase()) })).filter((it) => it.score > 0)
         .sort((a, b) => b.score - a.score).slice(0, 60);
       if (ql) window.LabIntent?.seen(pal.shown); // (round 94, labload94) a Lab line near the top: the Lab's code starts loading
