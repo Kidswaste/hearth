@@ -107,7 +107,7 @@ const calib = async () => {
 };
 R.calib = {};
 // (round 113, warmopen113) perfguard --probe <sections>: only those sections run (e.g. `projects`), and --warm N warm
-// opens instead of 2 (PERFGUARD_OPTS from perfguard.js's --lib); a narrow A/B of one row in minutes, not an hour
+// opens (4; 2 before this round) (PERFGUARD_OPTS from perfguard.js's --lib); a narrow A/B of one row in minutes, not an hour
 const PG = typeof PERFGUARD_OPTS === 'object' && PERFGUARD_OPTS ? PERFGUARD_OPTS : {};
 const section = async (name, fn) => { if (PG.sections && !PG.sections.includes(name)) return; const t0 = Date.now(); try { await fn(); } catch (err) { R.problems.push(`${name}: ${String(err?.message || err).slice(0, 300)}`); if (prof) await profStop(name); } R.notes[`${name}Secs`] = Math.round((Date.now() - t0) / 100) / 10; };
 window.hub.openExternal = () => {};

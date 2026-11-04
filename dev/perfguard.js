@@ -75,7 +75,7 @@ const N = { labcold: Number(opt('--labcold', 4)), many: Number(opt('--many', 2))
 const PARTS = (opt('--only', 'startup,app,sync')).split(',').map((s) => s.trim()).filter(Boolean);
 const LOCK = has('--lock');
 // (round 113, warmopen113) --probe <sections> (the app part's sections only, e.g. `projects`) and --warm N (warm opens a
-// launch, 2): one app row A/B'd in ≈ 1 min a launch. The other sections' rows aren't measured, so aren't judged.
+// launch, 4): one app row A/B'd in ≈ 2.5 min a launch. The other sections' rows aren't measured, so aren't judged.
 const PROBE = { sections: opt('--probe') ? opt('--probe').split(',').map((s) => s.trim()).filter(Boolean) : null, warm: Number(opt('--warm', 4)) };
 const CALIB = path.join(DEV, 'perfguard-calib.js');
 const EXIT = { ok: 0, regressed: 1, error: 2, inconclusive: 3 };

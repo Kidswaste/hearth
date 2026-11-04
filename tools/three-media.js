@@ -1788,8 +1788,18 @@ const ThreeMedia = (() => {
     // (a way back on screen that sends none of these events can't leave it stopped: a look once a second while parked)
     let parkT = 0;
     const parkWatch = () => { if (parkT) return; parkT = setInterval(() => { checkOnScreen(); if (raf || !tickHidden || !(st.playing || recording)) { clearInterval(parkT); parkT = 0; } }, 1000); };
-    addEventListener('hearth:view', () => setTimeout(checkOnScreen, 0));
-    document.addEventListener('hearth:activate', () => setTimeout(checkOnScreen, 0));
+    // (round 113, warmopen113) after the next painted frame, as tools/three.js syncPark: a task right after the event
+    // found the window's layout dirty (a project switch) and checkVisibility laid it all out there, 20–40 ms of every
+    // name ▾ switch here. Several events → one look; 200 ms at most when no frame comes.
+    let lookT = 0;
+    const lookSoon = () => {
+      if (lookT) return;
+      const go = () => { if (!lookT) return; clearTimeout(lookT); lookT = 0; checkOnScreen(); };
+      lookT = setTimeout(go, 200);
+      if (document.visibilityState === 'visible') requestAnimationFrame(() => setTimeout(go, 0)); else setTimeout(go, 0);
+    };
+    addEventListener('hearth:view', lookSoon);
+    document.addEventListener('hearth:activate', lookSoon);
     document.addEventListener('visibilitychange', () => checkOnScreen());
     function tick() {
       // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the

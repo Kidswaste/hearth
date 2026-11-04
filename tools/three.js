@@ -1099,7 +1099,19 @@ const ThreeLab = (() => {
     // its first open), it laid the whole Lab out an extra time before its scenes were read (≈ 20–35 ms of the opening)
     let parkRaf = 0;
     const parkSoon = () => { if (document.visibilityState !== 'visible') { syncPark(); return; } if (!parkRaf) parkRaf = requestAnimationFrame(() => { parkRaf = 0; syncPark(); }); };
-    for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(() => syncPark(), 0));
+    // (round 113, warmopen113) looked at after the next painted frame, not in a task right after the event: there the
+    // window's style and layout were dirty (a project switch, a tool shown) and checkVisibility laid the whole window out
+    // then and there, 15–20 ms of every name ▾ switch here, done again by the frame after the switch's next changes.
+    // After the frame it reads what was drawn, for nearly nothing. Several events → one look; 200 ms at most (no frame
+    // comes: the window hidden or covered). The IntersectionObserver below still sees the preview come and go.
+    let parkLook = 0;
+    const parkAfterPaint = () => {
+      if (parkLook) return;
+      const go = () => { if (!parkLook) return; clearTimeout(parkLook); parkLook = 0; syncPark(); };
+      parkLook = setTimeout(go, 200);
+      if (document.visibilityState === 'visible') requestAnimationFrame(() => setTimeout(go, 0)); else setTimeout(go, 0);
+    };
+    for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, parkAfterPaint);
     document.addEventListener('visibilitychange', () => syncPark());
     // (the preview showing or going away without one of those events, e.g. another Lab tab, a panel, the first layout:
     // the observer sees it; the stall timer below checks too, so a park can never stick)
