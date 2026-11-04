@@ -133,7 +133,7 @@ function thread() {
   if (worker || workerOff) return worker;
   try {
     const { Worker } = require('worker_threads');
-    worker = new Worker(path.join(__dirname, 'storework.js'), { workerData: { deltaSab } }); // (round 82) deltaSab: its finished chatDelta count
+    worker = new Worker(path.join(__dirname, 'storework.js'), { workerData: { deltaSab, statsSab } }); // (round 82) deltaSab: its finished chatDelta count · (round 121) statsSab: its finished tokenStat batches
     worker.on('message', ({ id, res, err, ms }) => { const j = jobs.get(id); if (!j) return; jobs.delete(id); wstats.ms += ms || 0; if (err) j.reject(new Error(err)); else j.resolve(asBuffers(res)); });
     const dead = (why) => { workerOff = true; worker = null; for (const j of jobs.values()) j.reject(new Error(`store thread: ${why}`)); jobs.clear(); };
     worker.on('error', (err) => dead(err.message));
@@ -240,9 +240,16 @@ function idle() { return gates.size ? Promise.all([...gates.values()].map((g) =>
 function flushSync() {
   // (round 82, bigchat82) giant chats' changes on their way: the thread finishes them first (≤ 5 s)
   if (worker && deltaSent) { const v = new Int32Array(deltaSab); const until = Date.now() + 5000; for (let d = Atomics.load(v, 0); d < deltaSent && Date.now() < until; d = Atomics.load(v, 0)) Atomics.wait(v, 0, d, 100); }
+  // (round 121, sendlag121) and the token stats' batches handed to it (their numbers are not kept here twice)
+  if (worker && statsOut.length) { const until = Date.now() + 5000; for (let d = Atomics.load(statsDone, 0); d < statsSent && Date.now() < until; d = Atomics.load(statsDone, 0)) Atomics.wait(statsDone, 0, d, 100); }
   const w = worker; worker = null; workerOff = true; flushing = true;
   try { w?.terminate(); } catch { /* gone */ }
   try { filesWorker?.terminate(); } catch { /* gone */ }
+  // (round 121, sendlag121) the token stats' batches the thread didn't finish (it was given ≤ 5 s above) and the ones not
+  // sent yet: added here, on what is on disk (or the numbers not written yet: the no-thread way)
+  const statsLeft = [...statsOut.filter((b) => b.n > Atomics.load(statsDone, 0)).flatMap((b) => b.list), ...statsQ];
+  statsOut.length = 0; statsQ = [];
+  if (statsLeft.length) { try { const stats = statsLive || readJson(STATS_PATH, null); if (stats?.backfilledAt) { TS().addAll(stats, statsLeft); statsLive = stats; } } catch (err) { console.error('save failed', STATS_PATH, err.message); } }
   if (statsLive) { try { writeStats(statsLive); statsLive = null; } catch (err) { console.error('save failed', STATS_PATH, err.message); } } // (round 65) the token stats not written yet
   for (const [file, { value }] of pending) { try { writeSync(file, value, null, SS.guardedName(file) ? { sent: SS.idsOf(value) } : null); } catch (err) { console.error('save failed', file, err.message); } }
   pending.clear();
@@ -296,7 +303,7 @@ function settle(file) {
     const tail = g.tail; tail.then(() => { if (gates.get(k) === g && g.n === 0 && g.tail === tail) gates.delete(k); });
   };
   const t = setTimeout(release, 60000); t.unref?.(); // (never held longer: sync's write is milliseconds)
-  return (thread() && (pending.has(k) || deltaFiles.has(k)) ? ping() : Promise.resolve()).then(() => release);
+  return (thread() && (pending.has(k) || deltaFiles.has(k) || (statsOut.length && k === path.resolve(STATS_PATH))) ? ping() : Promise.resolve()).then(() => release); // (round 121) + the token stats' batches on the thread (the ones not sent yet wait for release: sendStats)
 }
 function gated(file, value, o) {
   const k = path.resolve(file); const g = gates.get(k);
@@ -643,65 +650,50 @@ function saveAttachment(name, base64) {
 
 // usage.json: { "2026-10-04": { claude: { input, output, replies, cached } } }
 // meta (optional): { chatId, model, dock, ms, tools } for the meter's richer aggregates below.
-const dayKey = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA');
+let TSmod = null; const TS = () => (TSmod ||= require('./tokenstats-core')); // (round 121, sendlag121) the meter's numbers' code
+// (round 121, sendlag121) the local day as YYYY-MM-DD without Intl (tokenstats-core.js dayKey: toLocaleDateString's first
+// call loaded the locale data, ≈ 25–100 ms of the main process after the first reply)
+const dayKey = (t) => TS().dayKey(t);
+// (round 121, sendlag121) a reply's end held the main process: usage.json and kv/token-stats.json were read and parsed
+// here (sync reads: on a busy disk 10–30 ms off the CPU), the stats stringified here, and the first dayKey loaded the
+// locale data, all before the engine's "done" reached the window. Now both are only handed to the store thread
+// (usage.json as [op, path, value] changes, mergeFile; the stats as the reply's numbers, tokenStat below), in the
+// order the replies ended; the main process reads or writes neither. Where the thread can't (no thread: Node tools and
+// tests; sync's guard wants usage.json; a save of it on its way or held; a file missing or unreadable there) the same
+// code as before runs here, so what is saved is the same.
 function addUsage(agentId, usage, meta = {}) {
   if (!usage) return;
-  const all = readJson(USAGE_PATH, {});
   const day = dayKey();
+  if (thread() && !SS.guardedName(USAGE_PATH)) {
+    const ops = [['inc', [day, agentId, 'input'], usage.input || 0], ['inc', [day, agentId, 'output'], usage.output || 0], ['inc', [day, agentId, 'replies'], 1]];
+    if (usage.cached) ops.push(['inc', [day, agentId, 'cached'], usage.cached]);
+    Promise.resolve(mergeFile(USAGE_PATH, ops, null, true)).then((r) => { if (!r?.ok) addUsageHere(agentId, usage, day); }).catch(() => addUsageHere(agentId, usage, day));
+  } else addUsageHere(agentId, usage, day);
+  try { addTokenStat(agentId, usage, meta); } catch { /* the meter's aggregates are best-effort */ }
+}
+function addUsageHere(agentId, usage, day) {
+  const all = readJson(USAGE_PATH, {});
   const entry = ((all[day] ||= {})[agentId] ||= { input: 0, output: 0, replies: 0 });
   entry.input += usage.input || 0;
   entry.output += usage.output || 0;
   entry.replies += 1;
   if (usage.cached) entry.cached = (entry.cached || 0) + usage.cached;
-  writeJson(USAGE_PATH, all, { off: true }); // (round 82, bigchat82) on the store thread: its flush to disk held the main process ≈ 60–70 ms after every reply
-  try { addTokenStat(agentId, usage, meta); } catch { /* the meter's aggregates are best-effort */ }
+  return writeJson(USAGE_PATH, all, { off: true }); // (round 82, bigchat82) on the store thread: its flush to disk held the main process ≈ 60–70 ms after every reply
 }
 
 // ---------- token stats (the meter, meter.js) ----------
-// kv/token-stats.json, one small update per reply (written compact, no .prev copy):
-// { v, since, backfilledAt,
-//   days: { 'YYYY-MM-DD': { a: { agentId: T }, m: { model: T }, t: { tool: T }, h: { hour: tokens } } },
-//   chats: { chatId: { a, model, last, peak, ctx, ...T } } }
-// T = { i: input (cached included), o: output, c: cache reads, w: cache writes, r: replies, ms, tools, cost }
+// kv/token-stats.json, one small update per reply (written compact, no .prev copy): its shape and the code that adds a
+// reply's numbers are in tokenstats-core.js (round 121)
 const STATS_PATH = path.join(KV_DIR, 'token-stats.json');
-const emptyStats = () => ({ v: 1, since: Date.now(), days: {}, chats: {} });
-const round6 = (n) => Math.round(n * 1e6) / 1e6;
-function bump(t, usage, meta) {
-  t.i = (t.i || 0) + (usage.input || 0);
-  t.o = (t.o || 0) + (usage.output || 0);
-  if (usage.cached) t.c = (t.c || 0) + usage.cached;
-  if (usage.cacheWrite) t.w = (t.w || 0) + usage.cacheWrite;
-  if (usage.cost) t.cost = round6((t.cost || 0) + usage.cost);
-  if (meta.ms) t.ms = (t.ms || 0) + meta.ms;
-  if (meta.tools) t.tools = (t.tools || 0) + meta.tools;
-  t.r = (t.r || 0) + (meta.replies ?? 1);
-  return t;
-}
-// Which tool a reply belongs to: a docked director's tool, a one-off second opinion, or plain chat.
-const toolOf = (meta) => (meta.chatId?.startsWith('once-') ? 'second-opinion' : meta.dock || 'chat');
-function statInto(stats, agentId, usage, meta, at = Date.now()) {
-  const day = (stats.days[dayKey(at)] ||= { a: {}, m: {}, t: {}, h: {} });
-  bump(day.a[agentId] ||= {}, usage, meta);
-  bump(day.m[meta.model || 'default'] ||= {}, usage, meta);
-  bump(day.t[toolOf(meta)] ||= {}, usage, meta);
-  const hour = new Date(at).getHours();
-  day.h[hour] = (day.h[hour] || 0) + (usage.input || 0) + (usage.output || 0);
-  if (meta.chatId && !meta.chatId.startsWith('once-')) {
-    const c = (stats.chats[meta.chatId] ||= { a: agentId });
-    bump(c, usage, meta);
-    c.last = at;
-    const context = usage.contextInput ?? usage.input ?? 0;
-    c.peak = Math.max(c.peak || 0, context);
-    c.ctx = context; // last model call's input, not all repeated inputs across a tool-using turn
-    if (usage.contextWindow) c.contextWindow = usage.contextWindow;
-    if (meta.model) c.model = meta.model;
-  }
-}
+const emptyStats = () => TS().emptyStats();
+const statInto = (...a) => TS().statInto(...a);
+const bump = (...a) => TS().bump(...a);
 const writeStats = (stats) => { const tmp = `${STATS_PATH}.tmp`; writeFlushed(tmp, JSON.stringify(stats)); renameRetry(tmp, STATS_PATH); };
 // (round 65, mainhang65) after every reply the stats were read, flushed to the disk (fsync) and renamed on the main
 // thread: on a Windows disk a flush can take a long moment, with the whole app waiting. Now they are kept in memory
 // while a write is on its way and written off the main thread (temp file, flush, rename: crashsafe's writeAtomic),
 // one write at a time, the newest numbers last; whatever is still unwritten at quit is written then (flushSync).
+// (round 121) the way when there is no store thread (Node tools and tests)
 let statsLive = null; let statsChain = Promise.resolve(); let statsGen = 0;
 function writeStatsSoon(stats) {
   statsLive = stats; const gen = ++statsGen;
@@ -709,11 +701,53 @@ function writeStatsSoon(stats) {
     .catch((err) => console.warn('token stats', err.code || err.message))
     .then(() => { if (gen === statsGen) statsLive = null; });
 }
+// (round 121, sendlag121) with the store thread: each reply's numbers ({ agentId, usage, meta, at }) are queued and handed
+// over together a moment later (storework.js tokenStat: the file read there — kept while it stays as the thread left it
+// —, the numbers added, written as before: compact, temp file, flush, rename). The thread counts the batches it has
+// finished (statsSab): the quit waits for them (≤ 5 s) and adds what is left here, so a reply's numbers are written
+// at quit as they were. While sync writes the stats file (settle), the batch waits until it's done, then adds to what
+// arrived. A file the thread can't read: nothing written over it (as before), noted as in doubt.
+const statsSab = new SharedArrayBuffer(4); const statsDone = new Int32Array(statsSab);
+let statsQ = []; let statsSoon = false; let statsSent = 0;
+const statsOut = []; // [{ n, list }] handed to the thread, not answered yet
+let statsLast = Promise.resolve();
 function addTokenStat(agentId, usage, meta) {
-  const stats = statsLive || readJson(STATS_PATH, null);
-  if (!stats?.backfilledAt) return; // the first read builds everything from the chats (this reply included)
-  statInto(stats, agentId, usage, meta);
-  writeStatsSoon(stats);
+  if (!thread()) {
+    const stats = statsLive || readJson(STATS_PATH, null);
+    if (!stats?.backfilledAt) return; // the first read builds everything from the chats (this reply included)
+    statInto(stats, agentId, usage, meta);
+    writeStatsSoon(stats);
+    return;
+  }
+  statsQ.push({ agentId, usage, meta: { ...meta }, at: Date.now() });
+  if (!statsSoon) { statsSoon = true; setImmediate(sendStats); }
+}
+function sendStats() {
+  const g = gates.get(path.resolve(STATS_PATH));
+  if (g && g.n > 0) { g.tail.then(sendStats, sendStats); return; } // (sync writing it: after)
+  statsSoon = false;
+  if (!statsQ.length) return;
+  const list = statsQ; statsQ = [];
+  const b = { n: ++statsSent, list }; statsOut.push(b);
+  const p = ask({ op: 'tokenStat', file: STATS_PATH, list })
+    .then((r) => {
+      seen.add(STATS_PATH);
+      if (r?.read?.doubt) noteDoubt(STATS_PATH, r.read); // (a read that failed or came from a copy: as readJson notes it)
+      if (r?.ok) wstats.writes += 1;
+    }, (err) => {
+      // the thread is gone: what it didn't finish is added here (its count says whether it did)
+      if (Atomics.load(statsDone, 0) >= b.n) return;
+      try { const stats = statsLive || readJson(STATS_PATH, null); if (stats?.backfilledAt) { TS().addAll(stats, list); writeStatsSoon(stats); } } catch { console.warn('token stats', err.message); }
+    })
+    .finally(() => { const i = statsOut.indexOf(b); if (i >= 0) statsOut.splice(i, 1); });
+  statsLast = p;
+}
+// every reply's numbers asked so far on disk (the meter's read, a rebuild)
+function statsIdle() {
+  if (!statsQ.length && !statsOut.length) return null;
+  if (statsQ.length && statsSoon && !gates.has(path.resolve(STATS_PATH))) { sendStats(); }
+  const wait = () => (statsQ.length || statsOut.length ? Promise.resolve(statsLast).catch(() => {}).then(() => new Promise((r) => setImmediate(r))).then(wait) : Promise.resolve());
+  return wait();
 }
 // First run (and "rebuild"): everything the chats recorded (every reply keeps its usage), then each day
 // topped up to usage.json's per-agent counts, which also saw deleted chats and second opinions.
@@ -762,24 +796,27 @@ let mergeMemo = null;
 // isn't there, when a whole save of the store is still on its way or waiting for a held file, and when sync's guard
 // wants this very file (it just arrived from the other computer: its merge needs the value here).
 const offMerging = new Map(); // file → the promise of the last merge sent to the thread
-function mergeKV(name, ops) {
-  const file = kvPath(name);
+function mergeKV(name, ops) { return mergeFile(kvPath(name), ops); }
+// (round 121, sendlag121) any store file the same way (usage.json after each reply: addUsage); prev: its copy (kv stores:
+// <name>.prev.json; usage.json has none). offOnly: never here on the main process (→ { ok: false, state: 'main' }: the
+// caller saves it its own way, as before)
+function mergeFile(file, ops, prev = file.replace(/\.json$/, '.prev.json'), offOnly = false) {
   if (SS.guardedName(file)) return { ok: false, state: 'guarded' }; // (the Lab's scenes: whole saves with their guard)
   const guard = Boolean(beforeWrite) && (!beforeWants || beforeWants(file));
   if (!guard && !pending.has(file) && !held.has(file) && thread()) {
     const ds = dsFlags(file); seen.add(file); mergeMemo = null;
-    const p = ask({ op: 'mergeKV', file, ops, prev: file.replace(/\.json$/, '.prev.json'), ...ds })
+    const p = ask({ op: 'mergeKV', file, ops, prev, ...ds })
       .then((r) => { if (r?.ok) { wstats.writes += 1; held.delete(file); return { ok: true }; } return { ok: false, state: r?.state || 'unreadable' }; },
-        (err) => (isHeld(err) ? { ok: false, state: 'unreadable' } : mergeOnMain(file, ops))) // held: the window saves it whole (held then, as any save)
+        (err) => (isHeld(err) ? { ok: false, state: 'unreadable' } : offOnly ? { ok: false, state: 'main' } : mergeOnMain(file, ops))) // held: the window saves it whole (held then, as any save)
       .finally(() => { if (offMerging.get(file) === p) offMerging.delete(file); });
     offMerging.set(file, p);
     return p;
   }
   // one sent to the thread still on its way: this one after it (it reads what that one wrote)
-  if (offMerging.has(file)) return offMerging.get(file).then(() => mergeKV(name, ops));
-  return mergeOnMain(file, ops);
+  if (offMerging.has(file)) return offMerging.get(file).then(() => mergeFile(file, ops, prev, offOnly));
+  return offOnly ? { ok: false, state: 'main' } : mergeOnMain(file, ops);
 }
-function mergeOnMain(file, ops) {
+function mergeOnMain(file, ops) { // (round 121) never for a file merged offOnly (usage.json): those go their own way
   let value = null;
   const m = !beforeWrite && mergeMemo?.file === file ? mergeMemo : null;
   if (m) {
@@ -800,7 +837,24 @@ function mergeOnMain(file, ops) {
   return { ok: true };
 }
 
+// (round 121, sendlag121) the meter's read (usage:stats) as JSON text from the store thread: the meter asks after every
+// reply, and a year of stats (≈ 1 MB) was read and parsed here each time (4–8 ms of the main process right as a reply
+// ended), then copied to the window. The thread answers from the stats it keeps (or reads them, as getTokenStats
+// would); the text is parsed in the window (preload.js). Anything but a plain good read: getTokenStats here, as before
+// (a file in doubt, unreadable, missing, not built yet, no thread)
+async function getTokenStatsText(agents) {
+  const w = statsIdle(); if (w) await w;
+  if (thread() && !statsLive) {
+    try {
+      const r = await ask({ op: 'tokenStatsText', file: STATS_PATH });
+      if (typeof r?.text === 'string') { seen.add(STATS_PATH); return r.text; }
+    } catch { /* here */ }
+  }
+  return getTokenStats(agents);
+}
 function getTokenStats(agents) {
+  // (round 121, sendlag121) replies' numbers still on their way to the thread: read once they are written
+  const w = statsIdle(); if (w) return w.then(() => getTokenStats(agents));
   // (round 43, datasafe) a stats file that's there but can't be read is not rebuilt over (it reads next time)
   if (statsLive) return statsLive; // (round 65) the newest, still being written
   const r = DS.load(dfs, STATS_PATH, null);
@@ -888,9 +942,9 @@ module.exports = {
   importRefWhole, // (round 99, labmodels99)
   ATTACH_DIR,
   addUsage,
-  getUsage: () => readJson(USAGE_PATH, {}),
-  getTokenStats,
-  rebuildTokenStats: buildTokenStats,
+  getUsage: () => (offMerging.has(USAGE_PATH) ? offMerging.get(USAGE_PATH).then(() => readJson(USAGE_PATH, {}), () => readJson(USAGE_PATH, {})) : readJson(USAGE_PATH, {})), // (round 121) a reply's counts on their way to the thread: read once written
+  getTokenStats, getTokenStatsText,
+  rebuildTokenStats: (agents) => { const w = statsIdle(); return w ? w.then(() => buildTokenStats(agents)) : buildTokenStats(agents); }, // (round 121) after the replies' numbers on their way
   setBeforeWrite: (fn, wants) => { beforeWrite = typeof fn === 'function' ? fn : null; beforeWants = beforeWrite && typeof wants === 'function' ? wants : null; }, // (round 75) wants(file): would the guard change a save of it
   // (round 43, datasafe) what couldn't be read in this window's session (the calm card), saves waiting for a held file,
   // and a fresh page (a reload reads everything again: the old page's doubts go with it; held saves stay)

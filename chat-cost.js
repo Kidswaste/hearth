@@ -27,6 +27,17 @@ const ChatCost = (() => {
     }
     return fixedCache.get(sig);
   }
+  // (round 121, sendlag121) the first measure of a run compiles each tool server's definitions in the main process
+  // (mcp/cost.js, 13–40 ms there, kept after): asked when a chat is shown, at an idle moment, so it isn't paid while the
+  // owner types or sends (the send preview's measure, tokenaudit, then finds them made too)
+  const warmed = new Set();
+  Native.hooks.render.push((agentId, _v, chat) => {
+    const a = agentFor(agentId, chat);
+    if (!a || warmed.has(sigOf(a))) return;
+    warmed.add(sigOf(a));
+    const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+    idle(() => { fixed(agentId, chat); }, { timeout: 8000 });
+  });
   const baseKey = (engine) => `ctx.base.${engine || 'claude'}`;
   const baseOf = (engine) => store.get(baseKey(engine), 0) || 0;
 

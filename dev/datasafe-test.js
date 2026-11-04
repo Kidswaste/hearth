@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, typeof v === 'string' ? v : JSON.stringify(v, null, 2)); };
 const J = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return undefined; } };
 const ls = (d) => { try { return fs.readdirSync(d); } catch { return []; } };
-const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js' /* (round 75) */, 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js'];
+const STORE_FILES = ['store.js', 'storework.js', 'fswalk.js', 'sync-merge.js', 'sync-hard.js', 'kvops.js' /* (round 75) */, 'scenesafe-core.js', 'datasafe-core.js', 'datasafemain.js', 'recall-core.js', 'configsafe-core.js', 'crashsafe-core.js', 'tokenstats-core.js' /* (round 121) */];
 // a fake fs whose reads of chosen files fail with a Windows error (n times, or always)
 function faulty(fails) {
   const left = new Map(Object.entries(fails));
@@ -78,7 +78,7 @@ async function storeRun() {
   store.addUsage('claude', { input: 10, output: 5 });
   check(J(path.join(D, 'usage.json'))?.['2026-01-01']?.claude?.input === 100, `usage counts (EBUSY): the old days aren't replaced by today's count${tag}`);
   // 6. token stats held: not rebuilt over
-  const ts = store.getTokenStats([]);
+  const ts = await store.getTokenStats([]); // (round 121, sendlag121) with the store thread: once the replies' numbers on their way are written
   check(ts.unreadable === true && J(path.join(D, 'kv', 'token-stats.json'))?.keep === 'me', `token stats unreadable: not rebuilt over the file${tag}`, ts);
   // 7. chats: one chat file held → its row stays (a stub), the list is never shorter
   const list = await store.listChats();

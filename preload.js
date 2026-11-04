@@ -49,7 +49,7 @@ contextBridge.exposeInMainWorld('hub', {
   importRefWhole: call('refs:importWhole'), refUses: call('refs:uses'), // (round 99, labmodels99)
   attachmentsDir: call('attachments:dir'),
   getUsage: call('usage:get'),
-  getTokenStats: call('usage:stats'),
+  getTokenStats: (...a) => ipcRenderer.invoke('usage:stats', ...a).then((r) => (typeof r === 'string' ? JSON.parse(r) : r)), // (round 121, sendlag121) the stats as text from the store thread: parsed here, not in the main process
   getCodexUsage: call('usage:codex'),
   codex: { capabilities: call('codex:capabilities'), steer: call('codex:steer'), answer: call('codex:answer'), workspace: call('codex:workspace') },
   rebuildTokenStats: call('usage:rebuild'),
