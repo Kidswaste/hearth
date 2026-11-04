@@ -8,6 +8,9 @@
 //   top         scrolled to the very top: message #0 drawn (its block read by range); then back at the end, the far
 //               blocks rest and their messages are let go
 //   find        Alt+F, a word only in #30 (the store thread finds it; its block wakes): marked
+//   findAccents (round 114, findaccents114) Alt+F typed without accents, "l'eglise saint-zephyrin84": the store thread
+//               finds #40's "L’Église Saint-Zéphyrin84" (folded, findfold.js); its block wakes; the mark holds exactly
+//               those original letters; the count shown; no window task over the budget
 //   jump        to #100: woken, on screen
 //   send        a message sent, the fake engine answers: saved by change, nothing loaded whole
 //   react       a reaction on #2001 (never loaded): its block read first, saved by change, on disk exactly there
@@ -154,6 +157,22 @@ await step('find', async () => {
   return r;
 }, { taskBudget: BUDGET.wake });
 if (!out.find.found) out.problems.push(`find: ${JSON.stringify({ bar: out.find.bar, found: out.find.found, count: out.find.count })}`);
+// (round 114, findaccents114) the same with accents, capitals and a curly apostrophe left out (bigchat84-fixture ACCENTS)
+const ACC = { at: 40, text: 'L’Église Saint-Zéphyrin84', typed: 'l\'eglise saint-zephyrin84' };
+await step('findAccents', async () => {
+  v().input.focus();
+  await key('f', 'KeyF', 1); await wait(300);
+  const bar = v().root.querySelector('.chat-find input');
+  if (bar) { bar.focus(); bar.select(); await smoke({ cdp: 'Input.insertText', params: { text: ACC.typed } }); await wait(400); await key('Enter', 'Enter'); }
+  const hit = await until(() => list().querySelector(`.msg[data-index="${ACC.at}"] mark.find-hit`), 300);
+  const marks = [...(list()?.querySelectorAll('mark.find-hit') || [])].map((m) => [m.closest('.msg')?.dataset.index, m.textContent]);
+  const r = { bar: Boolean(bar), found: Boolean(hit), marks, count: v().root.querySelector('.chat-find .find-count')?.textContent || null };
+  if (bar) { await key('Escape', 'Escape'); await wait(200); }
+  return r;
+}, { taskBudget: BUDGET.wake });
+if (!out.findAccents.found) out.problems.push(`findAccents: "${ACC.typed}" didn't find #${ACC.at}'s "${ACC.text}": ${JSON.stringify({ bar: out.findAccents.bar, count: out.findAccents.count, marks: out.findAccents.marks })}`);
+else if (JSON.stringify(out.findAccents.marks) !== JSON.stringify([[String(ACC.at), ACC.text]])) out.problems.push(`findAccents: the marks aren't exactly "${ACC.text}" in #${ACC.at}: ${JSON.stringify(out.findAccents.marks)}`);
+else if (!/^1 \/ 1$/.test(out.findAccents.count || '')) out.problems.push(`findAccents: the count shows "${out.findAccents.count}" (1 / 1 expected)`);
 await step('jump', async () => {
   Native.jumpTo(claude.id, 100);
   const n = await until(() => list().querySelector('.msg[data-index="100"]'), 300);

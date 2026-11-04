@@ -64,53 +64,9 @@ const ChatUX = (() => {
     for (const m of list.querySelectorAll('mark.find-hit')) { parents.add(m.parentNode); m.replaceWith(document.createTextNode(m.textContent)); }
     for (const p of parents) p?.normalize();
   }
-  const lowText = new WeakMap();
-  function markAll(list, q, near) {
-    const hits = [];
-    if (!q) return hits;
-    const needle = q.toLowerCase();
-    const nodes = [];
-    // (round 113, search113) a common word in the drawn part of a long chat: every match was marked at once (557 marks in
-    // 27 messages of 40 KB: 1.1–1.2 s of the window; "t": 23,000). The messages nearest where you are are marked, about
-    // 200 marks in all; the other messages with it are stand-ins (their index), marked when you step to them
-    const ix = (r) => Number(r.dataset?.index ?? -1);
-    const has = []; let total = 0; const end = list.lastElementChild;
-    // (each message's lowered text kept while it is the same node: a key re-read 40 drawn messages of 40 KB; never the
-    // last one, a reply may be streaming into it)
-    for (const r of list.children) { let t = lowText.get(r); if (t == null) { t = r.textContent.toLowerCase(); if (r !== end) lowText.set(r, t); } let n = 0; for (let i = t.indexOf(needle); i >= 0 && n < 400; i = t.indexOf(needle, i + needle.length)) n += 1; if (n) has.push([r, n]); }
-    if (near == null) near = ix(has[has.length - 1]?.[0] || {});
-    const roots = [];
-    for (const [r, n] of has.sort((a, b) => Math.abs(ix(a[0]) - near) - Math.abs(ix(b[0]) - near))) {
-      if (!roots.length || ix(r) < 0 || total + n <= 200) { roots.push(r); total += n; } else hits.push({ index: ix(r) });
-    }
-    // (round 35, streamrender) only the messages whose text has it are walked: in a 1,200-message chat every text node
-    // was tested (two closest() each), ≈ 250 ms a search here
-    for (const root of roots) {
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode: (n) => (n.parentElement.closest('.msg .body, .msg .thinking-text') && !n.parentElement.closest('.code-acts, .copy-code, .code-label, .note-acts') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
-      });
-      while (walker.nextNode()) nodes.push(walker.currentNode);
-    }
-    for (const node of nodes) {
-      const text = node.nodeValue;
-      const lower = text.toLowerCase();
-      let i = lower.indexOf(needle);
-      if (i < 0 || hits.length > 600) continue; // (one message alone with thousands: its first 600)
-      const frag = document.createDocumentFragment();
-      let from = 0;
-      while (i >= 0) {
-        frag.append(text.slice(from, i));
-        const mark = el('mark', { class: 'find-hit', text: text.slice(i, i + q.length) });
-        frag.append(mark);
-        hits.push(mark);
-        from = i + q.length;
-        i = lower.indexOf(needle, from);
-      }
-      frag.append(text.slice(from));
-      node.replaceWith(frag);
-    }
-    return hits;
-  }
+  // (round 114, findaccents114) accents, capitals and ligatures don't matter ("sohne" finds Söhne): the marks are made by
+  // findfold.js (lazy group chatfind, with recall-core.js's fold), loaded the first time you find
+  const FF = () => (window.Lazy && !Lazy.isIn('chatfind') ? null : typeof FindFold !== 'undefined' ? FindFold : null);
   function find(agentId, text) {
     const v = Native.view(agentId);
     if (!v) return null;
@@ -144,7 +100,8 @@ const ChatUX = (() => {
     clearMarks(v.list);
     const q = f.input.value.trim();
     if (q !== f.q) { f.q = q; f.near = undefined; }
-    f.hits = markAll(v.list, q, f.near);
+    if (q && !FF()) { f.hits = []; f.count.textContent = '…'; (window.Lazy ? Lazy.load('chatfind') : Promise.reject()).then(() => finds.get(agentId) === f && run(agentId, { jump }), () => { f.count.textContent = 'Find couldn\'t load'; }); return 0; }
+    f.hits = q ? FF().markAll(v.list, q, f.near) : [];
     // (round 72, chatwindow72) the resting messages of a long chat count too: one stand-in each, in message order (the
     // message is woken when you reach it, then its own matches are marked)
     const rest = q && typeof ChatRest !== 'undefined' ? ChatRest.restingHits(agentId, q, () => finds.get(agentId) === f && run(agentId, { jump: f.at < 0 })) : [];

@@ -33,8 +33,8 @@
 //   chatRange { file, ver, from, to }  (round 86) messages [from, to) of a giant chat as bytes ({"messages":[…]}): cut once
 //                                 per version of the file (the offsets kept with its sig, in `bigs`); same: whether the file is
 //                                 the version the window holds. A file that can't be read: { error } (never an empty range)
-//   chatFind { file, q }          (round 86) find in a windowed chat: the messages whose text or thinking holds q (exact:
-//                                 the same test as chat-rest.js restingHits, on each candidate the lowered bytes point at)
+//   chatFind { file, q }          (round 86) find in a windowed chat: the messages whose text or thinking holds q (round 114: folded, findfold.js; exact:
+//                                 the same test as chat-rest.js restingHits, on each candidate the folded bytes point at)
 //   chatCalc { file, what, agent, tools, upto }  (round 86) whole-chat numbers for a windowed chat, from the file: autocompact's
 //                                 decision, sendpreview's history, historylean's lighter history (the same pure code)
 //                                 (round 87, chatcalc87) from records kept per message (chatcalc-core.js): made once per
@@ -964,7 +964,11 @@ const OPS = {
     return { same: e.vers.has(String(ver)), h: e.meta.prof.map((p) => CW().pxAt(p, c)) };
   },
   chatFind({ file, q }) {
-    const needle = String(q || '').toLowerCase();
+    // (round 114, findaccents114) folded as the window's Alt+F is (findfold.js: accents, capitals, ligatures; "sohne"
+    // finds Söhne): the file's bytes are folded once per version, message by message (escapes read), and kept instead
+    // of its lowered bytes; a message found there is then tested on its parsed text (findHit), so the answer stays exact
+    const FF = require('./findfold.js');
+    const needle = FF.fold(q);
     if (!needle) return { hits: [], n: 0 };
     const st = stat(file);
     if (!st) return { error: 'gone' };
@@ -974,19 +978,19 @@ const OPS = {
       winFind.delete(file);
       const got = readStill(file);
       if (!got || got.sig !== sig) return { error: 'read' };
-      const ix = BC().searchIndex(got.buf);
-      if (!ix) return { error: 'cut' };
-      x = { sig, ix }; winFind.set(file, x);
+      const cut = BC().scanBuf(got.buf);
+      if (cut.bad) return { error: 'cut' };
+      const fb = FF.foldBytes(got.buf, cut.els); // (Kelvin K and İ fold to k and i here: no message needs reading apart)
+      const n = cut.els.length / 2; const odd = []; // (a text that isn't a string: always read, as before)
+      for (let k = 0; k < n; k++) { const t = BC().textTok(got.buf, cut.els[k * 2], cut.els[k * 2 + 1]); if (t?.text && got.buf[t.text[0]] !== 0x22) odd.push(k); }
+      x = { sig, ix: { n, els: cut.els, fold: fb.buf, fat: fb.at, odd } }; winFind.set(file, x);
       for (const k of winFind.keys()) { if (winFind.size <= 2) break; if (k !== file) winFind.delete(k); }
     }
     clearTimeout(winFindT); winFindT = setTimeout(() => winFind.clear(), 10 * 60000); winFindT.unref?.();
     const { ix } = x; const n = ix.n; const cand = new Uint8Array(n);
-    if (!/^[\x20-\x7e]+$/.test(needle)) cand.fill(1); // (not plain ASCII: every message is read; exact either way)
-    else {
-      const esc = Buffer.from(JSON.stringify(needle).slice(1, -1), 'utf8');
-      for (let p = ix.lower.indexOf(esc); p >= 0;) { const k = elOf(ix.els, p); if (k >= 0) { cand[k] = 1; p = ix.lower.indexOf(esc, ix.els[k * 2 + 1]); } else p = ix.lower.indexOf(esc, p + 1); }
-      for (let k = 0; k < n; k++) if (ix.special[k]) cand[k] = 1;
-    }
+    const nb = Buffer.from(needle, 'utf8');
+    for (let p = ix.fold.indexOf(nb); p >= 0;) { const k = elOf(ix.fat, p); if (k >= 0) { cand[k] = 1; p = ix.fold.indexOf(nb, ix.fat[k * 2 + 1]); } else p = ix.fold.indexOf(nb, p + 1); }
+    for (const k of ix.odd) cand[k] = 1;
     const hits = [];
     const fd = fs.openSync(file, 'r');
     try {

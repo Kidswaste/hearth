@@ -327,14 +327,20 @@ const ChatRest = (() => {
   // find in chat (chat-ux.js): the resting messages of the open chat that hold `q` (their text or thinking)
   // (round 86, chatwindow86) a windowed giant chat asks the store thread (chatFind: the same test on every message of the
   // file); again() runs the find again when its answer is in
+  // (round 114, findaccents114) folded as Alt+F's marks are (findfold.js: accents, capitals, ligatures; loaded before
+  // chat-ux.js asks); a message's folded text kept while its text is the same (only one that isn't plain ASCII: the rest
+  // is lowered, as cheap as before)
+  const folds = new WeakMap();
+  const foldOf = (m, k) => { const t = String(m[k] || ''); if (/^[\x00-\x7f]*$/.test(t)) return t.toLowerCase(); const c = folds.get(m)?.[k]; if (c?.t === t) return c.f; const x = folds.get(m) || {}; x[k] = { t, f: FindFold.fold(t) }; folds.set(m, x); return x[k].f; };
   function restingHits(agentId, q, again) {
-    const v = views.get(agentId); const id = H.activeChat[agentId]; const chat = id && chats.get(id); const needle = String(q || '').toLowerCase();
+    const ff = (!window.Lazy || Lazy.isIn('chatfind')) && typeof FindFold !== 'undefined';
+    const v = views.get(agentId); const id = H.activeChat[agentId]; const chat = id && chats.get(id); const needle = ff ? FindFold.fold(q || '') : String(q || '').toLowerCase();
     if (!v?.list.awake || !chat || !needle) return [];
     if (Native.isWin?.(chat)) { const from = R.shownFrom(chat, R.unreadFrom.get(id)); return R.W.x.hits(chat, needle, (i) => i < from && !v.list.awake.has(Math.floor(i / R.BLOCK)) && !chat.messages[i]?.compactReq, again); }
     const out = [];
     for (let i = 0, from = R.shownFrom(chat, R.unreadFrom.get(id)); i < from; i++) {
       const m = chat.messages[i];
-      if (!v.list.awake.has(Math.floor(i / R.BLOCK)) && !m.compactReq && (String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle))) out.push(i);
+      if (!v.list.awake.has(Math.floor(i / R.BLOCK)) && !m.compactReq && (ff ? foldOf(m, 'text').includes(needle) || foldOf(m, 'thinking').includes(needle) : String(m.text || '').toLowerCase().includes(needle) || String(m.thinking || '').toLowerCase().includes(needle))) out.push(i);
     }
     return out;
   }
