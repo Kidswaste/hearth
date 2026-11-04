@@ -1,0 +1,12 @@
+/* (round 116, projchats116) the open project at the top of the chats list: its name (switch, new, its page) and ＋ New chat */
+.pc-bar { margin-bottom: 8px; display: grid; gap: 6px; }
+.pc-row { display: flex; gap: 6px; align-items: center; }
+.pc-project { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; text-align: left; border-left: 3px solid var(--pj, var(--accent)); }
+.pc-project .pc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pc-project .pc-mark { color: var(--pj, var(--accent)); }
+.pc-new { white-space: nowrap; }
+.pc-empty { display: flex; flex-wrap: wrap; gap: 4px; }
+.pc-empty .hint { width: 100%; margin: 0; }
+.pc-wait { font-size: 12px; }
+.pc-ask-list { display: grid; gap: 4px; max-height: 50vh; overflow: auto; margin: 8px 0; }
+.pc-ask-p { text-align: left; }

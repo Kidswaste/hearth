@@ -248,6 +248,7 @@ const Projects = (() => {
   function add(p, type, ref, name = '', { links = true } = {}) {
     if (!p) return 0;
     let n = 0;
+    if (type === 'chat') for (const o of data.list) if (o !== p && C.removeItem(o, 'chat', ref)) n += 1; // (round 116, projchats116) a chat is in one project: adding it is a move
     for (const it of links ? withLinks(type, ref, name) : [{ type, ref, name }]) if (C.addItem(p, it)) n += 1;
     if (n) changed(p, 'add');
     return n;
@@ -273,7 +274,7 @@ const Projects = (() => {
     data.trash = [{ ...was, deletedAt: Date.now() }, ...(data.trash || []).filter((x) => x.id !== p.id)].slice(0, C.TRASH_KEEP);
     if (p.make && !data.dismissed.includes(`make:${p.make}`)) data.dismissed.push(`make:${p.make}`); // not made again from its make
     changed(null, 'delete');
-    if (!quiet) toast(`Project “${p.name}” deleted (its chats, scenes and files stay; Projects › ⋯ › Recently deleted brings it back)`, { timeout: 8000, action: { label: 'Undo', fn: () => restoreProject(p.id, { at: i, as: p }) } });
+    if (!quiet) toast(`Project “${p.name}” deleted (${p.items.some((x) => x.type === 'chat') ? 'its chats move to “Earlier chats”; ' : ''}its scenes and files stay; Projects › ⋯ › Recently deleted brings it back)` /* (round 116, projchats116) */, { timeout: 8000, action: { label: 'Undo', fn: () => restoreProject(p.id, { at: i, as: p }) } });
     return true;
   }
   const trashed = () => (data.trash || []).filter((x) => !get(x.id)); // (round 76) a revived project's deleted copy isn't listed
@@ -436,15 +437,16 @@ const Projects = (() => {
       // (round 52, gamemode) a Lab scene or an HTML game build: ▶ Play it full screen in its own window
       x.type === 'scene' || (['file', 'download'].includes(x.type) && /\.html?$/i.test(String(x.ref))) ? { label: '▶ Play', hint: 'as a game, full screen', action: () => (window.Lazy ? window.Lazy.load('gamemode') : Promise.resolve()).then(() => GameMode.play(x.type === 'scene' ? { kind: 'lab', id: x.ref, title: x.name } : { kind: 'html', path: x.ref })).catch((err) => toast(calmError(err), { type: 'error', raw: err })) } : null,
       p ? '-' : null,
-      p ? { label: `Take out of “${p.name}”`, danger: true, action: () => remove(p, x.type, x.ref) } : null,
+      p && x.type !== 'chat' ? { label: `Take out of “${p.name}”`, danger: true, action: () => remove(p, x.type, x.ref) } : null, // (round 116, projchats116) a chat is moved, never left without a project
     ].filter(Boolean);
   }
   // "Project ›": add this thing to a project (or a new one), take it out
   function projectMenu(type, ref, name = '') {
-    return { label: 'Project', items: () => {
+    const chat = type === 'chat'; // (round 116, projchats116) a chat has one project: “Move to project…”, never take it out
+    return { label: chat ? 'Move to project…' : 'Project', items: () => {
       const inP = ofItem(type, ref);
       return [
-        ...live().slice(0, 12).map((p) => ({ label: `${p.ident.glyph} ${p.name}`, checked: inP.includes(p), action: () => (inP.includes(p) ? remove(p, type, ref) : add(p, type, ref, name)) })),
+        ...live().slice(0, 12).map((p) => ({ label: `${p.ident.glyph} ${p.name}`, checked: inP.includes(p), action: () => (inP.includes(p) ? (chat ? null : remove(p, type, ref)) : (add(p, type, ref, name), chat && toast(`Moved to “${p.name}”`, { timeout: 2500 }))) })),
         { label: '＋ New project…', action: async () => { const nm = await Modal.prompt('New project', { placeholder: 'Stoop Ronin', label: `With ${C.TYPES[type]?.label.toLowerCase() || 'this'} “${C.cap(name || base(ref), 40)}” in it` }); if (nm == null) return; const p = create({ name: nm.trim() }); add(p, type, ref, name); toast(`Project “${p.name}”`, { timeout: 4000, action: { label: 'Open', fn: () => openHome(p.id) } }); } },
       ];
     } };
@@ -582,7 +584,7 @@ const Projects = (() => {
     return [
       { label: '⌂ Open its page', action: () => openHome(p.id) },
       { label: '↻ Continue where you left off', action: () => continueIn(p) },
-      { label: 'Show only its chats', action: () => Panel.setView(`project:${p.id}`) },
+      { label: 'Show its chats', action: () => (window.ProjChats ? ProjChats.setScope(p.id) : Panel.setView(`project:${p.id}`)) }, // (round 116, projchats116) the chats list shows one project
       { label: '✦ Three.js banner / logo…', action: () => ProjectFrontpage.edit(p) },
       { label: '⇩ Prepare for offline…', action: () => Offline.prepare(p) },
       { label: 'Add', items: () => addMenu(p) },

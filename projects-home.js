@@ -37,7 +37,7 @@ const ProjectsHome = (() => {
     const results = el('div', { class: 'palette-list pj-home-results' });
     const quick = el('div', { class: 'pj-quick' },
       el('button', { type: 'button', class: 'primary small', text: '＋ New project', title: 'A dedicated chat, scene, sound desk and moodboard', on: { click: () => newProject() } }),
-      el('button', { type: 'button', class: 'ghost small pj-quick-more', text: '⋯', title: 'More: a new chat, the Lab, grouping in the chats list, archived projects', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, moreMenu()); } } }));
+      el('button', { type: 'button', class: 'ghost small pj-quick-more', text: '⋯', title: 'More: a new chat, the Lab, archived projects' /* (round 116, projchats116) no grouping: the chats list shows one project */, on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, moreMenu()); } } }));
     const head = el('div', { class: 'pj-home-head' }, el('h2', { text: 'Projects' }), input, quick);
     S.body = el('div', { class: 'pj-home-body' });
     S.root = el('div', { class: 'pj-home' }, head, el('div', { class: 'pj-home-find', hidden: true }, chips, results), S.body);
@@ -115,7 +115,7 @@ const ProjectsHome = (() => {
   function empty() {
     return el('div', { class: 'pj-empty' },
       el('p', { text: 'No projects yet. A project gathers the chats, Lab scenes, boards, renders and files of one piece of work, so you can pick it up on either computer.' }),
-      el('p', { class: 'hint', text: 'Make one with ＋ New project, from a suggestion below the search, or right-click a chat › Project. Makes become projects by themselves.' }));
+      el('p', { class: 'hint', text: 'Make one with ＋ New project, or from a suggestion below the search. Every chat belongs to one project: right-click a chat › Move to project… Makes become projects by themselves.' })); // (round 116, projchats116)
   }
   function card(p) {
     const cover = P.coverOf(p);
@@ -169,11 +169,11 @@ const ProjectsHome = (() => {
       { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },
       { label: 'Customize the left rail…', action: () => WorkspaceNav.editShortcut() },
       { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Sound desk',action:()=>WorkspaceNav.creative('vst')},{label:'Moodboards',action:()=>activate('tool:board')}] },
-      a ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id); } } : null,
+      a ? { label: 'New chat (in a project)…', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id); } } : null, // (round 116, projchats116) asks which project when none is open
       { label: 'Open the Lab', action: () => activate('tool:three') },
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
       { label: 'Suggest projects', action: () => suggestNow() },
-      { label: `${P.grouping() ? '✓ ' : ''}Group chats by project`, action: () => P.setGrouping(!P.grouping()) },
+      // (round 116, projchats116) “Group chats by project” is gone: the chats list shows the open project's chats only
       // (round 74, projdesk74) opt-in: the preview page stays loaded behind this page, so opening a project is as quick as switching
       { label: `${ProjectWorkspace.keepLab() ? '✓ ' : ''}Keep the Lab ready behind Projects`, hint: 'Opens projects faster · uses more memory', action: () => { const on = ProjectWorkspace.keepLab(!ProjectWorkspace.keepLab()); toast(on ? 'The Lab stays ready behind Projects (uses more memory)' : 'The Lab is let go behind Projects', { timeout: 3000 }); } },
       { label: 'Archived projects', items: () => { const xs = P.all().filter((p) => p.status === 'archived'); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, action: () => show(p.id) })) : [{ label: 'None', disabled: true }]; } },
