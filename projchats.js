@@ -17,6 +17,14 @@
 //     or an empty copy after the migration, is never “no projects”); a deleted project's chats go to Earlier chats at
 //     once (deleted here or on the other computer), other chats with no project after the grace; chats the owner
 //     imported (Import past chats…) go to the open project at once, with a note (else Earlier chats)
+//   - (round 120, projperf120) at the owner's scale (thousands of chats, 40+ projects): a plain draw of the list does
+//     nothing here but two cheap looks (a new chat? a new chat or project in front?); the open project's ids, the
+//     early-ids note (localStorage) and the bar are made again only when the projects store or the scope changed,
+//     and written / repainted only when they differ; a chat's project is looked up in an index (made again after a
+//     change); the keeper (after sync, every 2 minutes) first asks whether a sweep would change anything at all
+//     (ProjChatsCore.due) and skips its careful read of the whole store and the sweep when not; and Projects' and
+//     makes' old groups in the list (their top / skip hooks, which their files add at DOMContentLoaded, AFTER this
+//     file ran) are taken out again then: they made every draw of 2,000 chats cost ½ s
 window.ProjChats = (() => {
   const K = ProjChatsCore;
   const P = Projects;
@@ -42,7 +50,19 @@ window.ProjChats = (() => {
     return K.readable(r, { held: P._data(), chats: H.chats, done: Boolean(store.get(DONE, null)) }).ok;
   }
   const data = () => P._data();
-  const projectIdOf = (chatId) => { for (const p of data().list) if (p.items.some((x) => x.type === 'chat' && x.ref === chatId)) return p.id; return null; };
+  // (round 120, projperf120) chat id → its (first) project's id, as the scan of data().list gave: made again after any
+  // change of the projects store (gen: its hearth:projects events; a new store object from sync) or a sweep here
+  let gen = 0; let ix = null; let ixGen = -1; let ixData = null;
+  function index() {
+    const d = data();
+    if (ix && ixGen === gen && ixData === d) return ix;
+    ix = new Map();
+    for (const p of d.list) for (const x of p.items) if (x && x.type === 'chat' && !ix.has(x.ref)) ix.set(x.ref, p.id);
+    ixGen = gen; ixData = d;
+    return ix;
+  }
+  const changedHere = () => { ix = null; }; // after ProjChatsCore changed the store in place (before its event)
+  const projectIdOf = (chatId) => index().get(chatId) || null;
   async function save(why) { P.changed(null, why); await P.flush(); }
   function earlier() { const had = data().list.some(K.isEarlier); const e = K.ensureEarlier(data()); if (!had) P.changed(e, 'create'); return e; }
 
@@ -53,6 +73,7 @@ window.ProjChats = (() => {
     ok = true;
     const first = !store.get(DONE, null);
     const r = K.sweep(data(), H.chats, first ? { at: Date.now() } : { at: Date.now(), ready: K.lostReady(data(), seenLost, Date.now(), GRACE) });
+    if (r.changed) changedHere();
     if (r.changed) {
       try { await save('chats116'); } catch (err) { console.warn('projchats: not saved yet', err); ok = false; setTimeout(() => migrate().catch(() => {}), RETRY); return false; }
     }
@@ -67,27 +88,43 @@ window.ProjChats = (() => {
   // the keeper: after the other computer's changes arrive, and now and then (a chat from an older Hearth, a project restored)
   let keepT = 0;
   function keepSoon(ms = 4000) { clearTimeout(keepT); keepT = setTimeout(keep, ms); }
+  // (round 120, projperf120) first, would a sweep change anything at all (ProjChatsCore.due: a chat in two projects, a
+  // listed chat in none)? Not: no careful read (the whole store over IPC, ≈ 25 ms a tick on the heavy profile) and no
+  // sweep, since nothing would be written. Else the careful read and the sweep, as before.
   async function keep() {
     if (!ok) return;
+    const forgetPlaced = () => { for (const id of [...seenLost.keys()]) if (projectIdOf(id)) seenLost.delete(id); };
+    if (!K.due(data(), H.chats || [])) { forgetPlaced(); return; }
     if (!(await readOk())) return; // (round 118, projsync118) a read failure is never “empty”: skipped, tried again later
     const r = K.sweep(data(), H.chats || [], { at: Date.now(), ready: K.lostReady(data(), seenLost, Date.now(), GRACE) });
-    for (const id of [...seenLost.keys()]) if (projectIdOf(id)) seenLost.delete(id);
+    if (r.changed) changedHere();
+    forgetPlaced();
     if (r.changed) { try { await save('chats116'); } catch (err) { console.warn('projchats keep', err); } }
   }
 
   // ---------- the open project ----------
   const current = () => (scope && P.get(scope)) || null;
+  let savedScope = scope; // (round 120, projperf120) what localStorage holds: written only when it changes
   function setScope(pid, { quiet = false } = {}) {
     const p = pid ? P.get(pid) : null;
     scope = p ? p.id : null;
-    store.set(SCOPE, scope);
+    if (scope !== savedScope) { store.set(SCOPE, scope); savedScope = scope; }
     refresh();
     if (!quiet) (Panel.soon || Panel.render)();
   }
+  // the open project's chat ids (the list's filter), the early-ids note for the next start, the bar. Called when the
+  // projects store or the scope changed (never by a plain draw). (round 120, projperf120) the note is written only when
+  // the ids differ (≈ 40 KB of JSON for Earlier chats' 1,500 chats), the bar repainted only when what it shows differs
+  let earlyKey = null;
   function refresh() {
     const p = current();
-    ids = new Set(p ? p.items.filter((x) => x.type === 'chat').map((x) => x.ref) : []);
-    try { store.set(EARLY, { ids: [...ids].slice(0, 3000), at: Date.now() }); } catch { /* a convenience */ }
+    const next = new Set(p ? p.items.filter((x) => x.type === 'chat').map((x) => x.ref) : []);
+    const same = earlyKey === (p ? p.id : '') && next.size === ids.size && [...next].every((id) => ids.has(id));
+    ids = next;
+    if (!same) {
+      earlyKey = p ? p.id : '';
+      try { store.set(EARLY, { ids: [...ids].slice(0, 3000), at: Date.now() }); } catch { /* a convenience */ }
+    }
     paintBar();
   }
   // what is open: a project's workspace or page, else the chat in front of you's project
@@ -207,11 +244,16 @@ window.ProjChats = (() => {
 
   // ---------- the bar at the top of the chats list ----------
   let bar = null;
+  let barKey = null; // (round 120, projperf120) what the bar shows: repainted only when it changes
+  const barKeyOf = (p) => (!ok ? `wait|${tries ? 1 : 0}` : p ? `p|${p.id}|${p.name}|${p.ident.glyph}|${p.ident.color}` : `none|${P.live().slice(0, 6).map((x) => `${x.id}\u0001${x.ident.glyph}\u0001${x.name}`).join('\u0002')}`);
   function paintBar() {
     const head = document.querySelector('#panel .panel-head');
     if (!head) return;
     if (!bar) { bar = el('div', { class: 'pc-bar', attrs: { role: 'group', 'aria-label': 'The open project' } }); head.prepend(bar); }
     const p = current();
+    const key = barKeyOf(p);
+    if (key === barKey) return;
+    barKey = key;
     if (!ok) {
       bar.replaceChildren(el('span', { class: 'pc-wait hint', text: tries ? 'Your projects couldn’t be read yet, so every chat shows for now. Trying again every minute.' : 'Reading your projects… (every chat shows meanwhile)' }));
       return;
@@ -251,11 +293,20 @@ window.ProjChats = (() => {
   // own groups in the list are gone (one project at a time), and so is the “Group by project / Only one project” menu.
   function inScope(c) { if (!ok) return true; return Boolean(c && ids.has(c.id)); }
   Panel.hooks.scope?.push(inScope);
-  for (const k of ['top', 'skip']) Panel.hooks[k]?.splice(0);
-  { const m = Panel.hooks.menu; const i = m ? m.indexOf(P.panelMenu) : -1; if (i >= 0) m.splice(i, 1); }
-  Panel.hooks.render.push(() => { watch(); follow(); });
+  // (round 120, projperf120) Projects' (projects-cmds.js) and makes' own wiring adds these at DOMContentLoaded, which
+  // the lazy loader runs after every file of the group is in, so after this file: taken out again then, and at a
+  // draw if anything added them later (one cheap look; the list is drawn again without them)
+  function unhook() {
+    let n = 0;
+    for (const k of ['top', 'skip']) n += Panel.hooks[k]?.splice(0).length || 0;
+    const m = Panel.hooks.menu; const i = m ? m.indexOf(P.panelMenu) : -1; if (i >= 0) { m.splice(i, 1); n += 1; }
+    return n;
+  }
+  unhook();
+  addEventListener('DOMContentLoaded', () => { if (unhook()) (Panel.soon || Panel.render)(); });
+  Panel.hooks.render.push(() => { if (Panel.hooks.top?.length || Panel.hooks.skip?.length) { unhook(); (Panel.soon || Panel.render)(); } watch(); follow(); });
   Native.hooks.newChat.push(onNewChat);
-  addEventListener('hearth:projects', (e) => { if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });
+  addEventListener('hearth:projects', (e) => { gen += 1; if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });
   document.addEventListener('hearth:activate', () => setTimeout(follow, 0));
   setInterval(() => keepSoon(0), 2 * 60000);
   // an older “Only one project” view becomes the open project

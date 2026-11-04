@@ -22,6 +22,8 @@
 //     with chats about (an empty read) → not now: the migration and the keeper skip, nothing is written
 //   · adopt(data, chats, toId): chats the owner imported, into the open project (else Earlier chats) at once
 //   · ensureEarlier from Recently deleted: only the chats that still need it come back with it
+// (round 120, projperf120) due(data, chats): would sweep() change anything (a chat in several projects, or a listed chat
+//   in none)? One pass, no copies: the keeper asks it first and skips its careful read and the sweep when not
 const ProjChatsCore = (() => {
   const PC = typeof ProjectsCore !== 'undefined' ? ProjectsCore : require('./projects-core.js');
   const EARLIER_ID = 'pj-earlier-chats';
@@ -116,6 +118,20 @@ const ProjChatsCore = (() => {
     report.changed = report.moved.length > 0 || report.earlier.length > 0 || report.created;
     return report;
   }
+  // (round 120, projperf120) true when sweep(data, chats) could change something: a chat listed by two projects, or a
+  // chat of the list in no project (the sweep's `ready` then decides whether now or after the grace). Else the sweep
+  // would move nothing, add nothing and make no Earlier chats: the same report as a sweep, without building it
+  function due(data, chats) {
+    if (!data || !Array.isArray(data.list)) return false;
+    const m = new Map();
+    for (const p of data.list) for (const x of p.items || []) {
+      if (!x || x.type !== 'chat' || x.ref == null) continue;
+      const was = m.get(x.ref);
+      if (was === undefined) m.set(x.ref, p); else if (was !== p) return true;
+    }
+    for (const c of chats || []) if (c && c.id && !m.has(c.id)) return true;
+    return false;
+  }
   // a move: out of every other project (each keeps a record), into `to`. → true when something changed
   function move(data, chatId, toId, { name = '', at = Date.now() } = {}) {
     const to = data?.list?.find((p) => p.id === toId);
@@ -198,6 +214,6 @@ const ProjChatsCore = (() => {
     if (director && sceneProject) return sceneProject;
     return scope || sceneProject || EARLIER_ID;
   }
-  return { EARLIER_ID, EARLIER_NAME, EARLIER_AT, isEarlier, owns, keeper, where, sweep, move, undo, problems, targetFor, earlierProject, ensureEarlier, landed, lostReady, readable, adopt };
+  return { EARLIER_ID, EARLIER_NAME, EARLIER_AT, isEarlier, owns, keeper, where, sweep, due, move, undo, problems, targetFor, earlierProject, ensureEarlier, landed, lostReady, readable, adopt };
 })();
 if (typeof module !== 'undefined') module.exports = ProjChatsCore;
