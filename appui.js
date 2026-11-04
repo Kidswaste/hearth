@@ -192,14 +192,13 @@ const AppUI = (() => {
     pal = { box, input, list, items: [], shown: [], sel: 0, selEl: null, rows: [], empty: el('div', { class: 'palette-empty' }), scrollFrame: 0 };
     const close = () => box.remove();
     const run = (it) => { close(); it.run(); };
-    const debounced = debounce(() => paletteRender(), 120);
     list.addEventListener('click', (e) => { const r = e.target.closest('.palette-item'); const it = r && pal.shown[r.__i]; if (it) run(it); });
     list.addEventListener('mousemove', (e) => { const r = e.target.closest('.palette-item'); if (r && r.__i !== pal.sel) { pal.sel = r.__i; paletteMark(); } }, { passive: true });
     input.addEventListener('input', () => {
       // "/" hands over to the command bar (chat commands over any tool, cmdbar.js)
       if (input.value.startsWith('/') && window.Lazy?.isIn && !Lazy.isIn('cmdbar')) { const t = input.value; close(); Lazy.load('cmdbar').then(() => CmdBar.open(t)).catch(() => {}); return; } // (round 29: it loads after the first screen)
       if (input.value.startsWith('/') && typeof CmdBar !== 'undefined') { const t = input.value; close(); CmdBar.open(t); return; }
-      pal.sel = 0; if (input.value.startsWith('?')) debounced(); else paletteRender();
+      pal.sel = 0; paletteRender();
     });
     const step = (d) => { pal.sel = Math.max(0, Math.min(pal.sel + d, pal.shown.length - 1)); paletteMark(); pal.scrollFrame ||= requestAnimationFrame(() => { pal.scrollFrame = 0; pal.selEl?.scrollIntoView({ block: 'nearest' }); }); };
     input.addEventListener('keydown', (e) => {
@@ -221,10 +220,9 @@ const AppUI = (() => {
   async function paletteRender() {
     const { input, list } = pal;
     const q = input.value.trim();
-    if (q.startsWith('?')) {
-      const hits = await window.hub.searchChatText(q.slice(1));
-      pal.shown = hits.map((h) => ({ kind: `${H.agent(h.agentId)?.name || h.agentId} · ${h.count} match${h.count === 1 ? '' : 'es'}`, label: h.title, detail: h.snippet, run: () => Native.open(h.agentId, h.id) }));
-    } else {
+    // (round 113, search113) "?words": every project's chats, titles at once, messages as they're found (chatfind.js, lazy)
+    if (q.startsWith('?')) pal.shown = window.ChatFind ? ChatFind.rows(q.slice(1), () => pal.box.isConnected && pal.input.value.trim() === q && paletteRender()) : (Lazy.load('chatfind').then(() => pal.box.isConnected && paletteRender(), () => {}), [{ kind: 'Messages', label: 'Looking in your messages…', run() {} }]);
+    else {
       // (each item's text is lower-cased once per opening, not on every keystroke)
       const ql = q.toLowerCase();
       // (round 18, tidy) nothing typed: a short list, not a thousand rows: ↻ Again, your agents and tools (with their

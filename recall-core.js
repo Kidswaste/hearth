@@ -37,10 +37,28 @@ const RecallCore = (() => {
     return w;
   }
   const words = (text) => String(text || '').replace(FENCE, ' ').toLowerCase().replace(/[’‘]/g, '\'').match(/[a-z0-9À-ɏ][a-z0-9À-ɏ']*/g) || [];
+  // (round 113, search113) French elisions are their word: "l'intro" → intro, "d'accord" → accord, "qu'on" → on
+  const ELIDE = /^(?:[ldjmnts]|qu|c)'(?=[a-z0-9À-ɏ])/;
+  // (round 113) accents, case and ligatures don't matter when finding (café = CAFE = cafe, œuvre = oeuvre)
+  const LIG = { œ: 'oe', æ: 'ae', ß: 'ss', ø: 'o', ł: 'l', đ: 'd', ı: 'i', ŀ: 'l' };
+  const fold = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[œæßøłđıŀ]/g, (c) => LIG[c]);
+  const foldWords = (s) => (fold(s).replace(/[’‘]/g, '\'').match(/[a-z0-9][a-z0-9']*/g) || []).map((w) => w.replace(ELIDE, '').replace(/'s$|'+$/g, '')).filter(Boolean);
+  // the snippet for a find: the message's text around the first query word it has (plain, one line, ≤ 160 characters)
+  function snipAround(text, qw, max = 160) {
+    const t = plain(String(text).replace(FENCE, ' ')).slice(0, 40000);
+    const low = fold(t);
+    let at = -1;
+    for (const w of qw) { const re = new RegExp(`(?:^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`); const m = re.exec(low); if (m) { const i = m.index + (m[0].length - w.length); if (at < 0 || i < at) at = i; } }
+    // (folding can change the length before the match: the place is found again in the text itself when it moved)
+    if (low.length !== t.length) at = at < 0 ? -1 : Math.min(at, t.length);
+    if (t.length <= max) return t;
+    const from = Math.max(0, Math.min(at < 0 ? 0 : at - 50, t.length - max));
+    return `${from > 0 ? '…' : ''}${t.slice(from, from + max).trim()}${from + max < t.length ? '…' : ''}`;
+  }
   function tokens(text, extraStop = null) {
     const out = [];
     for (let w of words(text)) {
-      w = w.replace(/'s$|'+$/g, '');
+      w = w.replace(ELIDE, '').replace(/'s$|'+$/g, '');
       if (w.length < 2 || STOP.has(w) || (extraStop && extraStop.has(w)) || w.length > 40) continue;
       out.push(stem(w));
     }
@@ -226,6 +244,144 @@ const RecallCore = (() => {
       }
       return out;
     }
+    // (round 113, search113) find as you type over every chat's messages (Ctrl/⌘+K "?word", Find anything's "In a chat"
+    // rows): the same postings, read another way. Each word of the query may be the start of a word ("shad" → shader),
+    // accents and case don't matter (fold: the term table is folded once per new term, never the postings), every word
+    // must be in the message or in its chat's title (AND), and the result is one row per chat: its best message (k, to
+    // land on it), how many of its messages match, ranked by how well (BM25, exact > start of a word), how recent,
+    // 📌 pinned, and whether the chat's title names it. skip(key) leaves a chat out (a .prev copy). No text is read here:
+    // textOf(key, k) gives the snippet's text for the rows kept (by its bytes for a long chat: storework.js).
+    let scratch = null; // find's per-message arrays (several words), kept between finds
+    let ft = null; let ftN = -1; let byFold = null; // folded term table: sorted [fold, id] + fold → ids (made again when terms joined)
+    function folded() {
+      if (ft && ftN === termId.size) return ft;
+      ft = []; byFold = new Map();
+      for (const [t, id] of termId) { const f = fold(t); ft.push([f, id]); const l = byFold.get(f); if (l) l.push(id); else byFold.set(f, [id]); }
+      ft.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      ftN = termId.size;
+      return ft;
+    }
+    const PREFIX_MAX = 300; // terms one typed word may stand for (the most used first)
+    function termsOf(w, partial) {
+      const T = folded(); const out = new Map(); // id → weight
+      const st = fold(stem(w));
+      for (const f of new Set([w, st])) for (const id of byFold.get(f) || []) out.set(id, 1);
+      // a whole typed word whose stem is shorter ("rendering" → render) is exact above; a partial one ("renderi"): a term
+      // of 4+ letters it starts with
+      if (partial || w.length >= 4) for (let n = Math.min(w.length - 1, 40); n >= 4 && n >= w.length - 3; n--) for (const id of byFold.get(w.slice(0, n)) || []) if (!out.has(id)) out.set(id, 0.8);
+      if (partial || w.length >= 3) {
+        let lo = 0; let hi = T.length;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (T[m][0] < w) lo = m + 1; else hi = m; }
+        const range = [];
+        for (let i = lo; i < T.length && T[i][0].startsWith(w); i++) if (!out.has(T[i][1]) && df[T[i][1]] > 0) range.push(T[i][1]);
+        if (range.length > PREFIX_MAX) range.sort((a, b) => df[b] - df[a]).length = PREFIX_MAX;
+        for (const id of range) out.set(id, w.length >= 4 ? 0.75 : 0.6);
+      }
+      return out;
+    }
+    function find(q, { textOf, now = Date.now(), limit = 20, skip = null, minLen = 2 } = {}) {
+      const raw = String(q || '');
+      const all = foldWords(raw);
+      const partialLast = !/\s$/.test(raw);
+      // stop words count only when they're all there is ("the who" still finds The Who's chat by its words)
+      let qw = all.filter((w) => w.length >= minLen && !STOP.has(w));
+      if (!qw.length) qw = all.filter((w) => w.length >= minLen);
+      qw = [...new Set(qw)].slice(0, 8);
+      const out = { words: qw, hits: [], total: 0, messages: N, chats: byKey.size };
+      if (!qw.length || !N) return out;
+      const avg = total / N || 1;
+      const FULL = (1 << qw.length) - 1;
+      const S = slots.length;
+      // the query's words each chat's title has (its folded words kept on the slot while the title stays the same)
+      const tm = new Uint32Array(S);
+      const qst = qw.map((w) => (w.length >= 4 ? fold(stem(w)) : ''));
+      for (let sl = 0; sl < S; sl++) {
+        const c = slots[sl];
+        if (!c || c.building) continue;
+        if (!c.tw || c.tw.t !== c.sum.title) { const w = foldWords(c.sum.title); c.tw = { t: c.sum.title, w, st: w.map((x) => (x.length >= 4 ? fold(stem(x)) : '')), j: w.join(' ') }; }
+        const tw = c.tw.w;
+        let m = 0;
+        for (let i = 0; i < qw.length; i++) { const w = qw[i]; const ws = qst[i]; for (let x = 0; x < tw.length; x++) if (tw[x].startsWith(w) || (ws && c.tw.st[x] === ws)) { m |= 1 << i; break; } }
+        tm[sl] = m;
+      }
+      // each term with its weight × idf × (k1 + 1) worked out once (not per posting)
+      const words = qw.map((w, i) => {
+        const terms = [...termsOf(w, partialLast && i === qw.length - 1 && all[all.length - 1] === w)].filter(([id]) => df[id] > 0 && lists[id]).map(([id, wt]) => [id, wt * Math.log(1 + (N - df[id] + 0.5) / (df[id] + 0.5)) * (K1 + 1)]);
+        return { i, terms, n: terms.reduce((a, [id]) => a + lists[id].n, 0) };
+      });
+      // per chat: its best message (score, place) and how many of its messages match (typed: one slot each)
+      const best = new Float64Array(S); const bestPos = new Int32Array(S).fill(-1); const cnt = new Int32Array(S);
+      const kb = K1 * B / avg; const ka = K1 * (1 - B);
+      const bm = (w, c, v) => { const tf = v % 4096; return w * tf / (tf + ka + kb * c.msgs[((v / 4096) | 0) * 4 + 2]); };
+      const take = (sl, c, pos, s, mask) => {
+        cnt[sl] += 1;
+        if (mask !== FULL) s *= 0.6; // (a word only in the chat's title)
+        if (s * 1.82 <= best[sl]) return; // (its bonuses couldn't make it this chat's best)
+        const b = pos * 4;
+        if (c.msgs[b + 3] & 4) s *= 1.4; // a pinned / bookmarked message
+        s *= 1 + 0.3 * Math.exp(-Math.max(0, (now - (c.msgs[b + 1] || 0)) / DAY) / 30);
+        if (s > best[sl]) { best[sl] = s; bestPos[sl] = pos; }
+      };
+      if (qw.length === 1) {
+        // one word (the usual while typing): straight into the chats' slots, no per-message table
+        for (const [id, wt] of words[0].terms) {
+          const L = lists[id];
+          for (let j = 0; j < L.n; j += 2) { const sl = L.a[j]; const c = slots[sl]; if (!c || c.building) continue; const v = L.a[j + 1]; take(sl, c, (v / 4096) | 0, bm(wt, c, v), 1); }
+        }
+      } else {
+        // several: the rarest word first; a message joins later only when its chat's title has every word read before it.
+        // One place per message of every chat (base[slot] + its place), in typed arrays kept between finds
+        const base = new Int32Array(S + 1);
+        for (let sl = 0; sl < S; sl++) { const c = slots[sl]; base[sl + 1] = base[sl] + (c && !c.building ? c.n : 0); }
+        const M = base[S];
+        if (!scratch || scratch.sc.length < M) scratch = { sc: new Float64Array(M + 4096), cur: new Float64Array(M + 4096), mk: new Uint32Array(M + 4096), lw: new Int8Array(M + 4096) };
+        const { sc, cur, mk, lw } = scratch;
+        sc.fill(0, 0, M); mk.fill(0, 0, M); lw.fill(-1, 0, M);
+        let done = 0;
+        for (const W of words.sort((a, b) => a.n - b.n)) {
+          const bit = 1 << W.i;
+          for (const [id, wt] of W.terms) {
+            const L = lists[id];
+            for (let j = 0; j < L.n; j += 2) {
+              const sl = L.a[j]; const c = slots[sl];
+              if (!c || c.building) continue;
+              const v = L.a[j + 1]; const g = base[sl] + ((v / 4096) | 0);
+              if (!mk[g] && (tm[sl] & done) !== done) continue;
+              const s = bm(wt, c, v);
+              if (lw[g] !== W.i) { sc[g] += s; mk[g] |= bit; lw[g] = W.i; cur[g] = s; } else if (s > cur[g]) { sc[g] += s - cur[g]; cur[g] = s; }
+            }
+          }
+          done |= bit;
+        }
+        for (let sl = 0; sl < S; sl++) {
+          const c = slots[sl];
+          if (!c || c.building) continue;
+          for (let g = base[sl], e = base[sl + 1]; g < e; g++) if (mk[g] && (mk[g] | tm[sl]) === FULL) take(sl, c, g - base[sl], sc[g], mk[g]);
+        }
+      }
+      const qf = qw.join(' ');
+      const ranked = [];
+      for (let sl = 0; sl < S; sl++) {
+        const c = slots[sl];
+        if (!c || c.building || (!cnt[sl] && tm[sl] !== FULL) || (skip && skip(c.key))) continue; // (a title with every word: a row too)
+        let s = (best[sl] || 0.5) * (1 + 0.15 * Math.log2(1 + cnt[sl]));
+        let tc = 0; for (let i = 0; i < qw.length; i++) if (tm[sl] & (1 << i)) tc += 1;
+        s *= tm[sl] === FULL ? 2.2 : 1 + 0.3 * tc;
+        if (c.tw.j === qf) s *= 2; else if (c.tw.j.startsWith(qf)) s *= 1.25; // the chat's name, said whole
+        s *= 1 + 0.5 * Math.exp(-Math.max(0, (now - (c.sum.updatedAt || 0)) / DAY) / 21);
+        if (c.sum.pinned) s *= 1.3;
+        ranked.push({ c, pos: bestPos[sl], count: cnt[sl], score: s });
+      }
+      ranked.sort((x, y) => y.score - x.score);
+      out.total = ranked.length;
+      for (const r of ranked.slice(0, limit)) {
+        const m = r.pos >= 0 ? msgOf(r.c, r.pos) : null;
+        const text = m && textOf ? textOf(r.c.key, m.k) : null;
+        out.hits.push({ key: r.c.key, chatId: r.c.sum.id, agentId: r.c.sum.agentId, title: r.c.sum.title, updatedAt: r.c.sum.updatedAt, pinned: r.c.sum.pinned,
+          k: m ? m.k : null, role: m ? m.role : null, at: m ? m.at : r.c.sum.updatedAt, count: r.count, snippet: text == null ? null : snipAround(String(text), qw), unreadText: Boolean(m && textOf && text === undefined), score: Math.round(r.score * 1000) / 1000 });
+      }
+      return out;
+    }
     const termCount = () => { let n = 0; for (let i = 0; i < termId.size; i++) if (df[i] > 0) n += 1; return n; };
     // (round 83, idleburst83) the index kept between starts: snapshot() → one Buffer (a JSON head + its typed arrays),
     // createIndex(buffer) → the same index back. Building it again took the store thread a minute or more of a CPU at
@@ -245,7 +401,7 @@ const RecallCore = (() => {
       let M = 0; let Q = 0; for (const c of live0) if (c) { M += c.msgs.length; Q += c.tids.length; }
       const msgs = new Float64Array(M); const tids = new Uint32Array(Q); const tcounts = new Uint32Array(Q); M = 0; Q = 0;
       for (const c of live0) if (c) { msgs.set(c.msgs, M); M += c.msgs.length; tids.set(c.tids, Q); tcounts.set(c.tcounts, Q); Q += c.tids.length; }
-      const head = { v: 1, N, total, live, terms: [...termId.keys()], df: put(df.subarray(0, T)), llen: put(llen), posts: put(posts), msgs: put(msgs), tids: put(tids), tcounts: put(tcounts),
+      const head = { v: 2, N, total, live, terms: [...termId.keys()], df: put(df.subarray(0, T)), llen: put(llen), posts: put(posts), msgs: put(msgs), tids: put(tids), tcounts: put(tcounts),
         slots: live0.map((c) => (c ? [c.key, c.src, c.sum, c.n, c.len, c.posts, c.tids.length] : null)), extra };
       const h = Buffer.from(JSON.stringify(head), 'utf8');
       const pre = Buffer.alloc(16); pre.write('HRI1', 0, 'latin1'); pre.writeUInt32LE(h.length, 4);
@@ -255,7 +411,7 @@ const RecallCore = (() => {
     function restore(buf) {
       if (!buf || buf.length < 16 || buf.toString('latin1', 0, 4) !== 'HRI1') throw new Error('not a recall index');
       const hl = buf.readUInt32LE(4); const head = JSON.parse(buf.toString('utf8', 16, 16 + hl));
-      if (head.v !== 1) throw new Error('another version');
+      if (head.v !== 2) throw new Error('another version'); // (round 113: v2, elisions are their word)
       const base = 16 + hl + ((8 - ((16 + hl) % 8)) % 8);
       const get = (T, [at, n]) => { const bytes = n * T.BYTES_PER_ELEMENT; const ab = new ArrayBuffer(bytes); new Uint8Array(ab).set(buf.subarray(base + at, base + at + bytes)); return new T(ab); };
       const T = head.terms.length;
@@ -278,10 +434,10 @@ const RecallCore = (() => {
     }
     let extra = {};
     if (snap) extra = restore(snap);
-    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, begin, msg, end, abort, keys: () => [...byKey.keys()], size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true), snapshot, extra: () => extra,
+    return { has: (key, src) => byKey.has(key) && (src == null || slots[byKey.get(key)].src === src), add, drop, begin, msg, end, abort, keys: () => [...byKey.keys()], find, size: () => ({ chats: byKey.size, messages: N, terms: termCount() }), search, trim: () => sweep(true), snapshot, extra: () => extra,
       _bytes: () => lists.reduce((a, L) => a + (L ? L.a.byteLength : 0), 0) + slots.reduce((a, c) => a + (c ? c.msgs.byteLength + c.tids.byteLength * 2 : 0), 0) }; // (dev) its typed arrays' bytes
   }
 
-  return { tokens, stem, questionTerms, isQuestion, snippet, sentences, createIndex, DECIDE, OPEN };
+  return { fold, foldWords, snipAround, tokens, stem, questionTerms, isQuestion, snippet, sentences, createIndex, DECIDE, OPEN };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = RecallCore;
