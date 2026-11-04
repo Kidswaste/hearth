@@ -416,11 +416,12 @@ ipcMain.handle('engine:send', (_e, { agentId, chatId, session, text, options }) 
   // (round 121, sendlag121) the config read and joined with the defaults once per message, not twice (settings() did it again)
   let cfg = null; try { cfg = readConfig(); } catch { cfg = null; }
   engines.setEnginePaths(cfg?.settings?.enginePaths);
+  engines.setSpawnHelper(cfg?.settings?.spawnHelper); // (round 122, sendpath122) the process helper: on unless set to false
   const agent = (cfg || readConfig()).agents.find((a) => a.id === agentId);
   if (!agent || agent.mode !== 'native') throw new Error(`${agentId} is not a native agent`);
   const turn = powerwise.turn(chatId); // (round 39) a long turn keeps the computer awake until it ends
   crashsafe.reply(chatId, agentId, { type: 'start' }); // (round 50, crashsafe) the reply journaled as it streams
-  engines.send({ agent, chatId, session: session || {}, text, options: options || {} }, (event) => {
+  engines.send({ agent, chatId, session: session || {}, text, options: options || {}, connections: cfg?.connections }, (event) => { // (round 122: the connections from this read, not read again)
     crashsafe.reply(chatId, agentId, event);
     if (event.type === 'done' || event.type === 'error' || event.type === 'stopped') turn.end();
     send('engine:event', { chatId, ...event });
@@ -757,6 +758,11 @@ function registerAfterWindow() {
   const gameIpc = lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
   // (round 79, winstart79) ▶ Play warmed 20 s after the start (its modules, its session, the player's page), only when a
   // game was played in the last 2 weeks (HEARTH_GAME_WARM=1 / 0: always / never)
+  // (round 122, sendpath122) what the first message would load on the main process (the tool guides, Hearth's map…), one
+  // module per turn of the loop, and the process helper that starts the engines' programs: 8 s after the start
+  // (engines.js itself is usually in by then: the window's engine check loads it; if not, 12 s later anyway)
+  { const warm = (late) => { if (!engines.loaded && !late) { const t = setTimeout(() => warm(true), 12000); t.unref?.(); return; } try { engines.warm({ helper: settings().spawnHelper !== false }); } catch (err) { console.warn('engines warm:', err.message); } };
+    const t = setTimeout(() => warm(false), 8000); t.unref?.(); }
   { const t = setTimeout(async () => {
     const force = process.env.HEARTH_GAME_WARM;
     const st = force ? null : await fs.promises.stat(path.join(store.DATA_DIR, 'game-cache', 'last-play')).catch(() => null);

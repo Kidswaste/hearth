@@ -215,15 +215,22 @@ const WinPolish = (() => {
     return { command: comspec, args: ['/d', '/s', '/c', `"${line}"`], options: { windowsVerbatimArguments: true }, via: 'cmd', lossy: args.some((a) => /[\r\n]/.test(String(a))), long: line.length > 8000 };
   }
   // child_process.spawn through plan(): same options otherwise (env merged when the plan sets one)
-  function spawn(bin, args, opts = {}) {
+  // (round 122, sendpath122) spawnPlan: what spawn() runs, as data { command, args, options, via } (via: only where a
+  // plan applies, Windows / the Mac), so engines.js's process helper (spawnhelper.js) starts exactly the same thing
+  function spawnPlan(bin, args, opts = {}) {
     // (round 33, macpolish) the Mac: an npm copy runs with its own Node when a Dock launch has none on PATH
-    if (process.platform === 'darwin') { let M = null; try { M = require('./macpolish'); } catch { /* a test copy without it */ } return M ? M.spawn(bin, args, opts) : cp.spawn(bin, args, opts); }
-    if (process.platform !== 'win32') return cp.spawn(bin, args, opts);
-    const p = plan(bin, args, { env: opts.env || process.env });
+    let p = null;
+    if (process.platform === 'darwin') { let M = null; try { M = require('./macpolish'); } catch { /* a test copy without it */ } if (!M) return { command: bin, args, options: opts }; p = M.plan(bin, args, { env: opts.env || process.env }); }
+    else if (process.platform !== 'win32') return { command: bin, args, options: opts };
+    else p = plan(bin, args, { env: opts.env || process.env });
     const options = { ...opts, ...p.options };
     if (p.extraEnv) options.env = { ...(opts.env || process.env), ...p.extraEnv };
-    const child = cp.spawn(p.command, p.args, options);
-    child.hearthVia = p.via;
+    return { command: p.command, args: p.args, options, via: p.via };
+  }
+  function spawn(bin, args, opts = {}) {
+    const p = spawnPlan(bin, args, opts);
+    const child = cp.spawn(p.command, p.args, p.options);
+    if (p.via) child.hearthVia = p.via;
     return child;
   }
 
@@ -371,6 +378,6 @@ const WinPolish = (() => {
     return hit ? { text: hit[1], fix: hit[2], action: hit[3] } : null;
   }
 
-  return { _drives, envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, cleanPath, trashCheck, warmDrives, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
+  return { _drives, envGet, binDirs, candidates, codexRuntime, codexRuntimeStatus, lookedIn, readShim, findNode, quoteArg, cmdLine, plan, spawn, spawnPlan, cleanPath, trashCheck, warmDrives, trashError, plainError, dropStack, PKG, _driveCache: driveCache };
 })();
 module.exports = WinPolish;

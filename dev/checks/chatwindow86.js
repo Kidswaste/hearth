@@ -40,7 +40,7 @@ const OFF = Boolean(window.CW86_OFF);
 const out = { mode: OFF ? 'off (whole)' : 'windowed', problems: [] };
 // (wake: find and jump draw an older block in place, and that block's first layout — chatwindow72/76's, the same with
 // the setting off — is 35–75 ms here on its own: measured, budgeted apart)
-const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, calcReply: 120, sendHold: 20 }, window.CW_BUDGET || {});
+const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, calcReply: 120, sendHold: 12 }, window.CW_BUDGET || {});
 // (round 121, sendlag121) the main process while a message is sent and its reply streams (send, reply2, reply3): each
 // hold of its loop (mainlag-probe.js stalls: ms beyond the tick, own = without the wait for a CPU) matched to the CPU
 // profile's busy stretches over it (HEARTH_LOOPLAG_MIN=8: from 8 ms). A hold fails when its OWN time is over sendHold
@@ -48,6 +48,9 @@ const BUDGET = Object.assign({ task: 60, wake: 100, mainBlock: 100, heapMB: 40, 
 // isn't the app's is listed apart (known): starting the engine's process
 // (spawn: the OS copying a big process, ≈ 3–25 ms, every app that starts a CLI pays it), the test probes' own wrappers,
 // a GC alone, Electron's own internals. A hold with no busy stretch over it (off the CPU) is listed, not failed.
+// (round 122, sendpath122) sendHold 20 → 12: the prompt is built from one read of each input (cached between messages)
+// and the engine's program starts from the process helper (spawnhelper.js), so a send leaves no app hold of 8 ms here
+// (the spawn stays listed as known: it is what a helper failure falls back to)
 const KNOWN = /\bspawn\b|winpolish\.js|mainlag-probe\.js|powerwisemain\.js:3\d|\(garbage collector\)|browser_init|node_init|\(program\)|TimersList|processTimers|listOnTimeout/;
 const RARE = 'zanzibar84quokka';
 const ID = 'claude-giant0';
