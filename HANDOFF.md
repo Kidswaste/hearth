@@ -85,7 +85,8 @@ owner-facing notes.
   when a chat's folder holds Hearth's source (`isHearthSource()`: `engines.js` and `mcp/hearth-map.js` exist there).
 - **File access** per chat or per AI (`access.js`, `access-rules.js`, `mcp/access-mcp.js`): levels are read, write and
   full. Claude asks Hearth through the permission tool; Astra runs in Codex's sandbox (writes only in the folders, no
-  network).
+  network). Hearth's data folder is locked for any chat whose folders cover it (`datalock.js`, round 119): refused,
+  no card, on both engines (Astra's app-server asks Hearth before its edits and commands on such chats).
 - Moving work between AIs: `handoff-core.js` (a short brief, for free). One undo for AI changes: `aiundo-core.js`.
 
 ## Tool servers (`mcp/`)

@@ -349,19 +349,24 @@ const Access = (() => {
   // ---------- the permission check (mcp/access-mcp.js → HubBridge 'access_check') ----------
   const allowed = (updatedInput) => ({ ok: true, value: { behavior: 'allow', updatedInput } });
   const denied = (message) => ({ ok: true, value: { behavior: 'deny', message } });
-  async function check({ tool, input = {}, id, agentId, chatId, cwd }) {
+  async function check({ tool, input = {}, id, agentId, chatId, cwd, locked = [] }) {
     // the check itself is not a tool the model may use
     if (/^mcp__access__/.test(String(tool))) return denied('That tool is Hearth\'s own permission check; don\'t call it.');
     const chat = chatId && typeof Native !== 'undefined' ? await Native.load(chatId) : null;
     const acc = effective(chat, agentOf(agentId || chat?.agentId));
     agentId ||= chat?.agentId;
     const d = await paths();
-    const c = R.classify({ tool, input, level: acc.level, folders: hereOnly(acc.folders), cwd: cwd || d.cwd, home: d.home, mac: d.mac });
+    // (round 119, datalock119) Hearth's data folder: the ones engines.js found (a Hearth source folder's data/), and this
+    // copy's own whenever the chat's folders contain it. Refused outright: no card, no note offering more access.
+    const folders = hereOnly(acc.folders);
+    const locks = [...(Array.isArray(locked) ? locked : []), ...(d.data && R.insideAny(R.norm(d.data, '', d.home), folders.map((f) => R.norm(f, '', d.home))) ? [d.data] : [])];
+    const c = R.classify({ tool, input, level: acc.level, folders, cwd: cwd || d.cwd, home: d.home, mac: d.mac, locked: locks });
     const cmdTool = tool === 'Bash' || tool === 'PowerShell'; // (winshell) Claude Code on Windows runs commands with PowerShell
     const detail = cmdTool ? String(input.command || '') : tool === 'Edit' ? `- ${short(input.old_string, 400)}\n+ ${short(input.new_string, 400)}` : tool === 'Write' ? `${String(input.content || '').length} characters` : JSON.stringify(input).slice(0, 600);
     const base = { id, tool, action: c.action, what: c.what, target: c.targets?.[0] || '', risk: c.risk, detail: cmdTool ? detail : '' };
     if (c.verdict === 'deny') {
       log(chatId, { ...base, result: 'refused', why: c.why });
+      if (c.locked) return denied(c.why);
       if (!c.password && (c.action === 'write' || c.action === 'run')) refused(chatId, { kind: c.action === 'write' ? 'level' : 'run', target: c.targets?.[0] || '' });
       if (c.password) { passwordCard(agentId, chatId, String(input.command || '')); return denied(`${c.why}. Don't retry it: ask the user to run it themselves in a Terminal window (Hearth never types passwords).`); }
       return denied(`${c.why}.`);

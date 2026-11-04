@@ -17,7 +17,9 @@ const deny = (message) => ({ ok: true, value: JSON.stringify({ behavior: 'deny',
 async function permission(args) {
   const { tool_name: tool, input = {}, tool_use_id: id } = args || {};
   // the chat this run answers and where the engine runs (engines.js sets both): the hub routes the card by them
-  const r = await callHub('access_check', { tool, input, id, agentId: process.env.HUB_AGENT_ID || '', chatId: process.env.HUB_ACCESS_CHAT || '', cwd: process.env.HUB_ACCESS_CWD || '' });
+  // (round 119, datalock119) locked: the Hearth data folders this chat's folders cover (engines.js dataLocksOf)
+  let locked = []; try { locked = JSON.parse(process.env.HUB_ACCESS_LOCKED || '[]'); } catch { /* none */ }
+  const r = await callHub('access_check', { tool, input, id, agentId: process.env.HUB_AGENT_ID || '', chatId: process.env.HUB_ACCESS_CHAT || '', cwd: process.env.HUB_ACCESS_CWD || '', locked: Array.isArray(locked) ? locked.filter((x) => typeof x === 'string') : [] });
   if (!r || !r.ok) return deny(`Hearth couldn't check this (${(r && r.error) || 'no answer'}), so it was not allowed.`);
   const v = r.value || {};
   if (v.behavior === 'allow') return { ok: true, value: JSON.stringify({ behavior: 'allow', updatedInput: v.updatedInput || input }) };

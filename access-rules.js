@@ -92,6 +92,23 @@ const AccessRules = (() => {
   // Names that usually hold secrets: reading them would put keys into the chat (asks even inside the folders).
   const SECRET_FILE = /(^|\/)(\.env(\.[\w.-]+)?|\.npmrc|\.netrc|\.pgpass|id_(rsa|ed25519|ecdsa|dsa)(\.pub)?|[^/]*\.(pem|key|p12|pfx|keychain(-db)?)|credentials(\.json)?|secrets?\.(json|ya?ml|toml))$|(^|\/)\.(ssh|aws|gnupg|kube)\/|\/Keychains\//i;
 
+  // (round 119, datalock119) Hearth's data folder (the owner's chats, settings, memory, keys, sync state) when a chat's
+  // folders cover it (a Hearth source folder's data/, or the running copy's data folder): refused outright, no card.
+  // Two parts stay open: workspace/ (the engines' own scratch folder, where they run) and attachments/ (read only:
+  // the pictures and files the owner attached, which Claude opens from there).
+  const LOCK_MSG = 'Hearth\'s data folder is off limits: your chats and settings live there.';
+  function lockOf(p, locks, write) {
+    for (const L of locks || []) {
+      if (!inside(p, L)) continue;
+      if (inside(p, `${L}/workspace`) || (!write && inside(p, `${L}/attachments`))) return '';
+      return L;
+    }
+    return '';
+  }
+  // the path-like pieces of one command word (inline code, -Path:x, a=b/c…), for the data-folder check only
+  const pathPieces = (w) => String(w || '').split(/[\s'"`(),;=|<>{}]+/).map((x) => x.replace(/^-\w+:/, '')).filter((x) => x && !/^-/.test(x) && !/^[a-z][\w+.-]*:\/\//i.test(x) && looksPath(x));
+  const NO_SCAN = /^(echo|printf|write-output|write-host|write|git)$/; // text, not files (git: messages; its paths ask anyway)
+
   // ---------- secrets never shown, logged or sent back ----------
   function redact(text) {
     return String(text ?? '')
@@ -201,8 +218,10 @@ const AccessRules = (() => {
     const resolve = (p) => norm(ctx.ps ? String(p).replace(/^\$(home|env:userprofile)(?=[\\/]|$)/i, '~') : String(p).replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), ctx.base, ctx.home);
     const outside = (paths) => paths.map(resolve).filter((p) => p && !insideAny(p, ctx.folders) && !/^\/dev\/(null|stdout|stderr|tty)$/.test(p));
     const pathArgs = (all = false) => args.filter((a) => !isFlag(a) && (all || looksPath(a)));
+    // (round 119, datalock119) every place this command reads or writes, inside the folders too (ctx.seen: the data-folder check)
+    const note = (ps, write) => { if (ctx.seen) for (const x of ps) { const p = resolve(x); if (p) ctx.seen.push({ p, write }); } };
 
-    if (CD.has(name)) { ctx.base = resolve(args.find((a) => !isFlag(a)) || ctx.home || '~'); return; }
+    if (CD.has(name)) { ctx.base = resolve(args.find((a) => !isFlag(a)) || ctx.home || '~'); if (ctx.seen) ctx.seen.push({ p: ctx.base, write: false }); return; }
     if (PASSWORD.has(name) || (name === 'security' && /unlock|add-generic|find-generic|find-internet|dump-keychain/.test(args.join(' '))) || (name === 'git' && /credential/.test(sub))) {
       out.push({ verdict: 'deny', risk: 'high', action: 'password', password: true, why: `${name} can ask for a password, and Hearth never handles passwords` }); return;
     }
@@ -231,15 +250,17 @@ const AccessRules = (() => {
     }
     if (DELETE.has(name) || (name === 'find' && args.some((a) => a === '-delete' || ((a === '-exec' || a === '-execdir') && /^(rm|unlink|shred)$/.test(cmdName(args[args.indexOf(a) + 1] || '')))))) {
       const targets = name === 'find' ? [args.find((a) => !isFlag(a)) || '.'] : pathArgs(true);
+      note(targets, true);
       const out0 = outside(targets);
       const plain = name !== 'find' && targets.length > 0 && !targets.some(hasGlob) && !ctx.complex;
       out.push({ verdict: 'ask', risk: out0.length || !plain ? 'high' : 'low', action: 'delete', targets: targets.map(resolve), plain, outsideTargets: out0,
         why: out0.length ? 'deletes files outside the chat\'s folders' : 'deletes files' });
       return;
     }
-    if (name === 'trash' || name === 'gio' && sub === 'trash') { const o = outside(pathArgs(true)); out.push(o.length ? { verdict: 'ask', risk: 'low', action: 'delete', targets: o, why: 'moves files outside the folders to the Trash' } : { verdict: 'allow', action: 'delete', why: 'to the Trash (recoverable)' }); return; }
+    if (name === 'trash' || name === 'gio' && sub === 'trash') { note(pathArgs(true), true); const o = outside(pathArgs(true)); out.push(o.length ? { verdict: 'ask', risk: 'low', action: 'delete', targets: o, why: 'moves files outside the folders to the Trash' } : { verdict: 'allow', action: 'delete', why: 'to the Trash (recoverable)' }); return; }
     if (MOVE.has(name)) {
       const t = pathArgs(true);
+      note(t, true);
       const o = outside(t);
       out.push({ verdict: 'ask', risk: o.length ? 'high' : 'low', action: 'move', targets: t.map(resolve), why: o.length ? 'moves files across or outside the chat\'s folders' : 'moves / renames files (it can overwrite)' });
       return;
@@ -277,7 +298,7 @@ const AccessRules = (() => {
       return;
     }
     if (READONLY.has(name)) {
-      if (name === 'sed' && args.some((a) => /^-i|^--in-place/.test(a))) { const o = outside(pathArgs()); if (o.length) out.push({ verdict: 'ask', risk: 'high', action: 'write', targets: o, why: 'edits files outside the chat\'s folders' }); return; }
+      if (name === 'sed' && args.some((a) => /^-i|^--in-place/.test(a))) { note(pathArgs(), true); const o = outside(pathArgs()); if (o.length) out.push({ verdict: 'ask', risk: 'high', action: 'write', targets: o, why: 'edits files outside the chat\'s folders' }); return; }
       if (name === 'awk' && /system\(|print\s*>/.test(args.join(' '))) { out.push({ verdict: 'ask', risk: 'low', action: 'run', why: 'awk that writes files or runs commands' }); return; }
       const ps = pathArgs().filter((a) => !(ctx.ps && /^\$[\w:]+(\.\w+)*$/.test(a))); // a PowerShell variable ($_.Name) isn't a file
       const secret = ps.map(resolve).filter((p) => SECRET_FILE.test(p));
@@ -291,6 +312,7 @@ const AccessRules = (() => {
       if (name === 'ffmpeg' || name === 'convert' || name === 'magick' || name === 'sips') t = t.slice(-1);
       if (/^(cp|copy|ln|install|copy-item)$/.test(name) && t.length > 1) { const src = outside(t.slice(0, -1)); if (src.length) out.push({ verdict: 'ask', risk: 'low', action: 'read', targets: src, why: 'copies from outside the chat\'s folders' }); t = t.slice(-1); }
       if (name === 'chmod') t = t.slice(1);
+      note(t, true);
       const o = outside(t);
       if (o.length) out.push({ verdict: 'ask', risk: 'high', action: 'write', targets: o, why: 'writes outside the chat\'s folders' });
       return;
@@ -310,10 +332,13 @@ const AccessRules = (() => {
       const seg = t.segs[i];
       // `curl … | sh`: downloading and running
       if (t.segs[i - 1]?.join === '|' && SHELLS.has(cmdName(seg.words[0] || '')) && t.segs[i - 1].words.some((x) => NETWORK.has(cmdName(x)))) out.push({ verdict: 'ask', risk: 'high', action: 'install', why: 'downloads and runs a script' });
+      // (round 119, datalock119) the paths a command names anywhere (inline code too), from where it runs
+      if (local.seen && seg.words.length && !NO_SCAN.test(cmdName(seg.words[0]))) for (const w of seg.words) for (const x of pathPieces(w)) { const p = norm(x, local.base, local.home); if (p) local.seen.push({ p, write: false }); }
       commandFindings(seg.words, local, out);
       for (const r of seg.redirects) {
-        if (r.op === '<') continue;
         const p = norm(r.target, local.base, local.home);
+        if (local.seen && p && !/^nul$/i.test(r.target)) local.seen.push({ p, write: r.op !== '<' });
+        if (r.op === '<') continue;
         if (/^\/dev\/(null|stdout|stderr|tty)$/.test(p) || /^nul$/i.test(r.target)) continue;
         if (!insideAny(p, local.folders)) out.push({ verdict: 'ask', risk: 'high', action: 'write', targets: [p], why: 'writes a file outside the chat\'s folders' });
       }
@@ -334,7 +359,8 @@ const AccessRules = (() => {
   const ACTION_WORD = { read: 'Read', write: 'Write', delete: 'Delete', move: 'Move', run: 'Run', install: 'Install', network: 'Use the network', publish: 'Publish', system: 'Change the system', apps: 'Control apps', secrets: 'Read secrets', password: 'Needs a password' };
 
   // The decision for one tool call. folders: the chat's folders (absolute); cwd: where the engine runs (relative paths).
-  function classify({ tool, input = {}, level = 'off', folders = [], cwd = '', home = '', mac = null } = {}) {
+  // locked: Hearth data folders this chat must never read or change (round 119, datalock119; engines.js dataLocks).
+  function classify({ tool, input = {}, level = 'off', folders = [], cwd = '', home = '', mac = null, locked = [] } = {}) {
     winHost = isWinPath(String(home || ''));
     // (round 33) a Mac: its home is /Users/<name> (or main.js said so with the disks' info: mac:volumes)
     macHost = !winHost && (Boolean(mac) || /^\/Users\/[^/]+/.test(String(home || '')));
@@ -344,11 +370,14 @@ const AccessRules = (() => {
     const L = LEVELS.includes(level) ? level : 'off';
     const r = (o) => ({ verdict: 'allow', risk: 'low', targets: [], where: '', ...o, tool, level: L });
     const where = (ps) => [...new Set(ps.map((p) => dirName(p)))].slice(0, 3).join(', ');
+    const lk = (Array.isArray(locked) ? locked : []).map((f) => norm(f, '', home)).filter(Boolean);
+    const lockedOut = (p, write, what) => r({ verdict: 'deny', risk: 'high', action: write ? 'write' : 'read', what, targets: [p], where: dirName(p), why: LOCK_MSG, locked: true });
     if (L === 'off') return r({ verdict: 'deny', risk: 'low', action: 'read', what: `${tool}`, why: 'File access is off for this chat' });
     const file = input.file_path || input.notebook_path || input.path || '';
     if (READ_TOOLS.has(tool)) {
       const p = file ? norm(file, base, home) : (fs0[0] || base);
       const what = tool === 'Read' ? `Read ${baseName(p)}` : `${tool === 'Grep' ? 'Search' : 'List'} ${input.pattern ? `"${String(input.pattern).slice(0, 40)}"` : ''} in ${baseName(p)}`.replace(/\s+/g, ' ');
+      if (lockOf(p, lk, false)) return lockedOut(p, false, what);
       if (SECRET_FILE.test(p)) return r({ verdict: 'ask', risk: 'high', action: 'secrets', what, targets: [p], where: dirName(p), why: 'this file usually holds keys or passwords', grant: `secrets:${p}` });
       if (insideAny(p, fs0)) return r({ action: 'read', what, targets: [p], where: dirName(p) });
       return r({ verdict: 'ask', risk: 'low', action: 'read', what, targets: [p], where: dirName(p), why: 'outside the chat\'s folders', grant: `read:${dirName(p)}` });
@@ -356,6 +385,7 @@ const AccessRules = (() => {
     if (WRITE_TOOLS.has(tool)) {
       const p = norm(file, base, home);
       const what = `${tool === 'Write' ? 'Write' : 'Edit'} ${baseName(p)}`;
+      if (p && lockOf(p, lk, true)) return lockedOut(p, true, what);
       if (rank(L) < rank('write')) return r({ verdict: 'deny', action: 'write', what, targets: [p], where: dirName(p), why: 'This chat can only read files (the user can allow edits in ⋯ AI setup → Files on this computer)' });
       if (!p) return r({ verdict: 'ask', risk: 'high', action: 'write', what, why: 'no file named' });
       if (insideAny(p, fs0)) return r({ action: 'write', what, targets: [p], where: dirName(p), backup: p });
@@ -366,8 +396,14 @@ const AccessRules = (() => {
       const what = `Run: ${redact(cmd).replace(/\s+/g, ' ').slice(0, 140)}`;
       if (rank(L) < rank('full')) return r({ verdict: 'deny', action: 'run', what, why: 'This chat can\'t run commands (the user can choose Full in ⋯ AI setup → Files on this computer)' });
       const found = [];
+      const seen = lk.length ? [] : null;
       // (winshell) Claude Code on Windows runs commands through its PowerShell tool: PowerShell's quoting and verbs
-      const sh = classifyShell(cmd, { base, folders: fs0, home: norm(home), cwd: base, complex: false, ps: tool === 'PowerShell' }, found);
+      const sh = classifyShell(cmd, { base, folders: fs0, home: norm(home), cwd: base, complex: false, ps: tool === 'PowerShell', seen }, found);
+      if (seen) {
+        for (const f of found) for (const t of f.targets || []) seen.push({ p: t, write: /^(write|delete|move)$/.test(f.action) });
+        const hit = seen.find((s) => lockOf(s.p, lk, s.write));
+        if (hit) return lockedOut(hit.p, hit.write, what);
+      }
       const worst = found.reduce((a, f) => (!a || ORDER[f.verdict] > ORDER[a.verdict] || (ORDER[f.verdict] === ORDER[a.verdict] && f.risk === 'high' && a.risk !== 'high') ? f : a), null);
       const targets = [...new Set(found.flatMap((f) => f.targets || []))];
       if (!worst || worst.verdict === 'allow') return r({ action: 'run', what, where: sh.base && insideAny(sh.base, fs0) ? sh.base : '', targets });
@@ -386,6 +422,6 @@ const AccessRules = (() => {
     return r({ verdict: 'ask', risk: /mcp__/.test(tool) && !/(get|list|search|read|fetch|find|view)/i.test(tool) ? 'high' : 'low', action: /^Web/.test(tool) ? 'network' : 'run', what: `Use ${tool.replace(/^mcp__([^_]+(?:_[^_]+)*)__/, '$1 · ')}`, why: 'a tool this chat wasn\'t given', grant: `tool:${tool}` });
   }
 
-  return { classify, tokenize, norm, inside, insideAny, redact, LEVELS, LEVEL_LABEL, LEVEL_HINT, ACTION_WORD, rank, READ_TOOLS, WRITE_TOOLS, SECRET_FILE, baseName, dirName };
+  return { classify, LOCK_MSG, lockOf, tokenize, norm, inside, insideAny, redact, LEVELS, LEVEL_LABEL, LEVEL_HINT, ACTION_WORD, rank, READ_TOOLS, WRITE_TOOLS, SECRET_FILE, baseName, dirName };
 })();
 if (typeof module !== 'undefined') module.exports = AccessRules;
