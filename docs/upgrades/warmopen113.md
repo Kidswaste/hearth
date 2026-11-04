@@ -139,6 +139,25 @@ pass, ≈ 20–45 ms a switch, against 0.3–0.55 s of window CPU and 1.7–3.3 
 scene's own start (software GL) plus the preview page's start; nothing else in Hearth's part was both cheap and safe.
 On the faster box, 25 of 27 switches had no window task over 50 ms, before and after.
 
+## The perfguard A/B on the finished branch
+`node dev/perfguard.js --ab fdd0147 --only app --runs 4 --lock` (the whole app part, every section, 4 warm opens a
+launch; 27 min, a calm box: load ≤ 1.8, calibration 28.8 vs 31.4 ms, never waiting for a CPU). **✓ no regression**, 25
+rows ok:
+
+| metric | base `fdd0147` | this branch | change | p |
+|---|---:|---:|---:|---:|
+| **Project warm open (Hearth's part)** | 629 ms | 523 ms | −106 ms | 0.68 |
+| Project warm open: window CPU | 437 ms | 436 ms | −1 ms | 0.6 |
+| Project cold open (Hearth's part) | 260 ms | 200 ms | −61 ms | 0.9 |
+| Project switch (Hearth's part) / window CPU | 365 / 383 ms | 348 / 388 ms | −18 / +6 ms | 0.42 / 0.5 |
+| Long chat opened / its CPU | 138 / 64.6 ms | 117 / 58.6 ms | −21 / −6 ms | |
+| Lab tool call, end to end / CPU | 10 / 160 ms | 9.5 / 157 ms | | |
+| Still Lab scene: draws a second | 0.3/s | 0.4/s | +0.1/s | 0.21 |
+| Idle on a chat: window / every process | 0 / 1.4 % | 0.05 / 1.35 % | | |
+| Window heap after GC | 32.5 MB | 32.6 MB | +0.1 MB | 0.07 |
+
+The Lab's park and timeline looks moving after a frame changed neither the still scene's draws nor idle CPU.
+
 ## For Codex
 No Codex-owned file touched. One idea left for you (`project-workspace.js` `loading()`): the loading card's
 `showModal()` restyles every element of the window to make it inert (12–21 ms here) and again at `close()` (≈ 15–20
@@ -151,7 +170,22 @@ the card holds focus and Esc, so it's yours to weigh.
 - The scene's own page work (≈ 2.6 s of a 3.3 s switch here) is software GL; on the owner's GPU it is a few frames.
 
 ## Checks
-CHECKS_SECTION
+All under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package`.
+- `node dev/run-checks.js --exact projopen86 projopen109 desk89 projects projaudit108 labload94 lazy unit:boot-test`:
+  **7/8**. projopen86, projopen109, desk89, projects, labload94, lazy and `unit:boot-test` pass (first screen
+  unchanged: no file added to it; the changes are in the `lab` group's files and chat-scenes.js, already loaded where
+  they were).
+  - **projaudit108 fails its `start` part's own precondition** ("the Lab group not loaded yet when the switch began":
+    it was already loaded), the same failure projopen109.md saw once. **Not this round's**: it fails the same way on
+    this round's base (`98f439f`) and on round 111's (`fdd0147`), each run from its own checkout; it failed 2 of 2 here
+    after the container restart, on a box about twice as fast as before (the Lab's code is in before the check first
+    looks). The check's other parts (`pc`, `fresh`, `giant`) pass. Worth a look by whoever owns projaudit108: the
+    precondition, not the app.
+- `node dev/run-checks.js release`: **306/310**, the 3 known failures (Codex's, `KNOWN_FAIL`), 1 opt-in skipped, and
+  one ✖: `unit:aside95-test` "giant: conflictTheirs: the stall is at least 4× shorter than round 94's" (306 → 84 ms,
+  3.7×). A timing ratio in a store / sync test that nothing here touches; run again alone right after, it passed. No
+  other ✖ line; 0 `/tmp/hearth-*` folders left.
+- The perfguard A/Bs above (both: no regression).
 
 ## Files
 - `dev/perfguard.js`: `--probe`, `--warm` (4), the A/B's load-aware wall rows (with their note printed).
