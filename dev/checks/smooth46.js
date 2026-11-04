@@ -196,14 +196,14 @@ if (H.activeId !== claude.id || !H.surfaces.get(claude.id)?.el.classList.contain
   for (let i = 0; i < 300; i++) H.chats.push({ id: `s46f-${i}`, agentId: claude.id, title: i % 25 === 0 ? `S46 neon filler ${i}` : `S46 filler ${i}`, updatedAt: at0 - 5000 - i, pinned: false });
   H.chats = H.chats.slice(); // (a new list: the model sorts it again)
   let asks = 0;
-  const hook = () => { asks += 1; return false; };
-  Panel.hooks.skip.push(hook);
+  const hook = () => { asks += 1; return true; }; // (round 121, listtidy121) the skip hook is gone: the scope hook is asked after the search the same way
+  Panel.hooks.scope.push(hook);
   Panel.render(); await settle();
   const per = [];
   for (const q of ['n', 'ne', 'neo', 'neon']) { asks = 0; Panel.setFilter(q); Panel.flush(); per.push(asks); await settle(); }
   const shown = document.querySelectorAll('#chat-groups .item[data-key^="s46f-"]').length;
   Panel.setFilter(''); Panel.flush();
-  Panel.hooks.skip.splice(Panel.hooks.skip.indexOf(hook), 1);
+  Panel.hooks.scope.splice(Panel.hooks.scope.indexOf(hook), 1);
   H.chats = H.chats.filter((c) => !String(c.id).startsWith('s46f-'));
   Panel.render(); await settle();
   n.search = { chats: 300, skipAsksPerLetter: per, neonRows: shown };

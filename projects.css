@@ -1,16 +1,7 @@
-/* Projects (round 23): a project's group in the chats list, Home's cards and project page, Search everything.
+/* Projects (round 23): Home's cards and project page, Search everything.
    One color per project (--pj, from the makes' palette); nothing animates per frame, no backdrop filters. */
 
-/* ---------- the chats list ---------- */
-.pj-group { border-radius: 8px; }
-.pj-group > .group-head .group-toggle { gap: 6px; }
-.pj-group .pj-mark { color: var(--pj); font-size: 0.95em; line-height: 1; text-shadow: 0 0 7px color-mix(in srgb, var(--pj) 50%, transparent); }
-.pj-group .group-name { font-weight: 650; }
-.pj-group .pj-st { color: color-mix(in srgb, var(--pj) 70%, var(--muted, #999)); font-variant-numeric: tabular-nums; }
-.pj-group .pj-more { opacity: 0.55; }
-.pj-group:hover .pj-more { opacity: 1; }
-.item.pj-row .chat-ident.pj-ident { color: color-mix(in srgb, var(--pj) 80%, var(--muted, #999)); font-size: 0.85em; }
-.show-more.pj-more-projects, .show-more.pj-all { color: var(--muted, #999); }
+/* (round 121, listtidy121) a project's group in the chats list is gone (the list shows one project's chats) */
 
 /* ---------- the Lab's sketch browser ---------- */
 .pj-sb-tag { margin-left: 4px; color: var(--pj); font-weight: 400; }

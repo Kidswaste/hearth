@@ -15,21 +15,17 @@ const Panel = (() => {
   const PAGE = 40; // chats shown per agent before "Show more"
   const expanded = new Map(); // agent id -> how many to show
   // row(rowEl, item, agent) after a chat row is built, render() after the list is drawn (chat-scenes.js)
-  // (round 11, makes.js) skip(chatSummary) → true keeps a chat out of its agent's group (it shows in its make's group);
-  // top(root, { row, itemOf, q }) draws groups above the agents' (each make with its rooms)
-  // (round 23, projects.js) view(chatSummary, view) → true / false for a view it knows (undefined: not its own; its
-  // label(view) names it on the chip), menu(view, setView) → rows for the ⏷ menu, itemMenu(item, agent) → rows for a
-  // chat's right-click menu
+  // (round 23, projects.js) itemMenu(item, agent) → rows for a chat's right-click menu
+  // (round 121, listtidy121) the old skip / top (makes' and projects' groups above the agents), view (“Only one
+  // project”) and menu (“Group by project”) hooks are gone: the list is one project's chats, under their AIs
   // (round 42) a row built once is kept while its chat shows the same things: row hooks run when it is built, render
   // hooks after every draw (and after a long group brings other rows near the screen)
   // (round 116, projchats116) scope(chatSummary | null, agent) → false keeps a chat out of the list: only the open
   // project's chats show (projchats.js; null: a website's group). Until that file loads, the ids it last showed.
-  const hooks = { row: [], render: [], skip: [], top: [], view: [], menu: [], itemMenu: [], scope: [] };
+  const hooks = { row: [], render: [], itemMenu: [], scope: [] };
   const early = (() => { const s = store.get('projchats.early', null); return s && Array.isArray(s.ids) ? new Set(s.ids) : null; })();
   const outOfScope = (c, agent) => (hooks.scope.length ? hooks.scope.some((fn) => { try { return fn(c, agent) === false; } catch { return false; } }) : Boolean(early && !(c && early.has(c.id))));
   const fromHooks = (list, ...a) => list.flatMap((fn) => { try { return fn(...a) || []; } catch (err) { console.warn(err); return []; } });
-  const viewName = (v) => { for (const fn of hooks.view) { try { const l = fn.label?.(v); if (l) return l; } catch { /* its own trouble */ } } return v; };
-  const skipped = (c) => !view && hooks.skip.length > 0 && hooks.skip.some((fn) => { try { return fn(c); } catch { return false; } });
   const itemOf = (c) => ({ key: c.id, title: c.title, chatId: c.id, pinned: c.pinned, updatedAt: c.updatedAt, ...metaOf(c.id) });
 
   const el = (tag, cls, text) => {
@@ -56,7 +52,6 @@ const Panel = (() => {
     if (v === 'busy') return Native.isBusy(c.id);
     if (v.startsWith('tag:')) return (metaOf(c.id).tags || []).includes(v.slice(4).replace(/^#/, ''));
     if (v.startsWith('folder:')) return (metaOf(c.id).folder || '').toLowerCase() === v.slice(7);
-    for (const fn of hooks.view) { try { const r = fn(c, v); if (r !== undefined) return r; } catch { /* its own trouble */ } }
     return agent.name.toLowerCase() === v || agent.id === v; // an agent's name: only its chats
   }
 
@@ -173,9 +168,9 @@ const Panel = (() => {
   function listFor(agent, q) {
     if (agent.mode === 'native') {
       const base = (inc && inc.lists.get(agent.id)) || model().get(agent.id) || [];
-      // (round 46, smooth46) the search first: a letter typed rules out most chats before the view and the projects'
-      // grouping are asked about each of them (the same chats pass)
-      return base.filter((c) => hit(c, q) && inView(c, agent) && !skipped(c) && !outOfScope(c, agent));
+      // (round 46, smooth46) the search first: a letter typed rules out most chats before the view and the open
+      // project's scope are asked about each of them (the same chats pass)
+      return base.filter((c) => hit(c, q) && inView(c, agent) && !outOfScope(c, agent));
     }
     if (view && view.toLowerCase() !== agent.name.toLowerCase()) return [];
     if (outOfScope(null, agent)) return []; // (round 116, projchats116) a website's pages aren't a project's chats
@@ -656,20 +651,15 @@ const Panel = (() => {
     const want = [];
     if (view) {
       const v = view;
-      want.push(bit(`chip:${v}:${viewName(v)}`, () => {
+      want.push(bit(`chip:${v}`, () => {
         const chip = el('div', 'panel-view');
-        chip.append(el('span', null, `Showing: ${viewName(v)}`));
+        chip.append(el('span', null, `Showing: ${v}`));
         const x = el('button', null, '×');
         x.title = 'Show all of this project’s chats'; // (round 116, projchats116) the list is one project's
         x.addEventListener('click', () => setView(null));
         chip.append(x);
         return chip;
       }));
-    }
-    if (!view && hooks.top.length) {
-      const top = document.createDocumentFragment();
-      for (const fn of hooks.top) { try { fn(top, { row, itemOf, q, collapsed, toggleGroup }); } catch (err) { console.warn(err); } }
-      want.push(...top.childNodes);
     }
     const lists = new Map();
     let groups = 0;
@@ -730,9 +720,8 @@ const Panel = (() => {
       else {
         try { activeKey = H.surfaces.get(id)?.webview?.getURL(); } catch { /* webview not ready yet */ }
       }
-      // (round 11) a make's group holds rows of several agents: each row names its own (data-agent)
       for (const row of group.querySelectorAll('.item')) {
-        const k = row.dataset.agent ? H.activeChat[row.dataset.agent] : activeKey;
+        const k = activeKey; // (round 121, listtidy121) every row is its group's AI's (no make / project groups)
         const on = row.dataset.key === k || (row.dataset.key === '__draft' && !k);
         if (row.classList.contains('active') !== on) row.classList.toggle('active', on);
         if (on !== (row.getAttribute('aria-current') === 'true')) { if (on) row.setAttribute('aria-current', 'true'); else row.removeAttribute('aria-current'); } // (round 42) rows kept between draws: a11y.js only sees new ones
@@ -824,7 +813,6 @@ const Panel = (() => {
         ...Object.keys(SORTS).map((k) => ({ label: `${sortBy() === k ? '✓ ' : ''}Sort: ${{ recent: 'latest first', oldest: 'oldest first', title: 'by title' }[k]}`, action: () => { store.set('panel.sort', k); render(); } })),
         ...folders.map((f) => ({ label: `${view === `folder:${f.toLowerCase()}` ? '✓ ' : ''}📁 ${f}`, action: () => setView(`folder:${f.toLowerCase()}`) })),
         ...tags.map((t) => ({ label: `${view === `tag:${t}` ? '✓ ' : ''}#${t}`, action: () => setView(`tag:${t}`) })),
-        ...fromHooks(hooks.menu, view, setView),
       ]);
     });
     search.after(btn);

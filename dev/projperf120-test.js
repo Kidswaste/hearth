@@ -40,7 +40,7 @@ const BUDGET = {
 function fakeWindow(stored, chatList) {
   const kv = { projects: clone(stored) }; const local = new Map();
   const counts = { writes: 0, carefulReads: 0, kvSets: 0, barPaints: 0, soon: 0 };
-  const hooks = { scope: [], top: [], skip: [], menu: [], render: [], itemMenu: [], view: [] };
+  const hooks = { scope: [], row: [], render: [], itemMenu: [] }; // (round 121, listtidy121) panel.js's hooks now: no top / skip / view / menu
   const listeners = new Map();
   const node = (cls) => ({ cls, style: { setProperty() {} }, children: [], prepend(n) { this.children.unshift(n); }, replaceChildren(...k) { if (this.cls === 'pc-bar') counts.barPaints += 1; this.children = k; }, append(...k) { this.children.push(...k); } });
   const head = node('panel-head');
@@ -143,14 +143,10 @@ function timed(name, n, budget, fn) {
   c = { ...counts };
   await PCh.keep();
   ok(counts.carefulReads - c.carefulReads === 1 && !PCh.projectIdOf('new-1'), 'a chat with no project: read carefully, left for its grace');
-  // Projects' / makes' old list groups, added by their DOMContentLoaded handlers after projchats.js ran
-  hooks.top.push(() => {}); hooks.skip.push(() => false);
+  // (round 121, listtidy121) Projects' / makes' old list groups are gone at their source (round 120 took them out here)
   c = { ...counts };
-  renderHook();
-  ok(!hooks.top.length && !hooks.skip.length && counts.soon > c.soon, 'old project / make groups added later are taken out at the next draw (and the list drawn again)');
-  hooks.top.push(() => {}); hooks.menu.push(P.panelMenu);
-  fw.fire('DOMContentLoaded');
-  ok(!hooks.top.length && !hooks.menu.includes(P.panelMenu), '… and at DOMContentLoaded (the lazy loader runs those after the group\'s files)');
+  fw.fire('DOMContentLoaded'); renderHook();
+  ok(!P.panelSkip && !P.panelTop && !P.panelMenu && !P.panelView && Object.keys(hooks).sort().join() === 'itemMenu,render,row,scope' && counts.soon === c.soon, 'no old project groups: Projects has no list hooks, nothing is added or drawn again');
 
   // ---------- the rule: due() is true exactly when a sweep would change something ----------
   let seed = 120; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };

@@ -22,9 +22,10 @@
 //     early-ids note (localStorage) and the bar are made again only when the projects store or the scope changed,
 //     and written / repainted only when they differ; a chat's project is looked up in an index (made again after a
 //     change); the keeper (after sync, every 2 minutes) first asks whether a sweep would change anything at all
-//     (ProjChatsCore.due) and skips its careful read of the whole store and the sweep when not; and Projects' and
-//     makes' old groups in the list (their top / skip hooks, which their files add at DOMContentLoaded, AFTER this
-//     file ran) are taken out again then: they made every draw of 2,000 chats cost ½ s
+//     (ProjChatsCore.due) and skips its careful read of the whole store and the sweep when not
+//   - (round 121, listtidy121) Projects' and makes' old groups in the list (their top / skip / menu hooks, which made
+//     every draw of 2,000 chats cost ½ s) are gone at their source, and panel.js has no such hooks any more: nothing
+//     to take out here
 window.ProjChats = (() => {
   const K = ProjChatsCore;
   const P = Projects;
@@ -289,22 +290,10 @@ window.ProjChats = (() => {
   }
 
   // ---------- wiring ----------
-  // the list: only the open project's chats (website chats aren't project chats: not listed). Projects' and makes'
-  // own groups in the list are gone (one project at a time), and so is the “Group by project / Only one project” menu.
+  // the list: only the open project's chats (website chats aren't project chats: not listed)
   function inScope(c) { if (!ok) return true; return Boolean(c && ids.has(c.id)); }
   Panel.hooks.scope?.push(inScope);
-  // (round 120, projperf120) Projects' (projects-cmds.js) and makes' own wiring adds these at DOMContentLoaded, which
-  // the lazy loader runs after every file of the group is in, so after this file: taken out again then, and at a
-  // draw if anything added them later (one cheap look; the list is drawn again without them)
-  function unhook() {
-    let n = 0;
-    for (const k of ['top', 'skip']) n += Panel.hooks[k]?.splice(0).length || 0;
-    const m = Panel.hooks.menu; const i = m ? m.indexOf(P.panelMenu) : -1; if (i >= 0) { m.splice(i, 1); n += 1; }
-    return n;
-  }
-  unhook();
-  addEventListener('DOMContentLoaded', () => { if (unhook()) (Panel.soon || Panel.render)(); });
-  Panel.hooks.render.push(() => { if (Panel.hooks.top?.length || Panel.hooks.skip?.length) { unhook(); (Panel.soon || Panel.render)(); } watch(); follow(); });
+  Panel.hooks.render.push(() => { watch(); follow(); });
   Native.hooks.newChat.push(onNewChat);
   addEventListener('hearth:projects', (e) => { gen += 1; if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });
   document.addEventListener('hearth:activate', () => setTimeout(follow, 0));

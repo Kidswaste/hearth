@@ -5,8 +5,8 @@
 //     chats and 3 scenes are about “Stoop Ronin”: make it a project?") from names, links and timing;
 //   - things join by themselves once there's a project: a scene linked to a project's chat (chat-scenes.js event), a
 //     screenshot or render made while a project's chat / scene is in front of you, a make's new rooms and outputs;
-//   - the chats list groups a project's chats (collapsible, above the agents; ⏷ filters to one project; Group by project
-//     on / off), and the Lab's sketch picker groups scenes the same way (small hooks in panel.js, makes.js, three.js);
+//   - the Lab's sketch picker groups scenes by project (a small hook in three.js); (round 121, listtidy121) the chats
+//     list's project groups are gone: it shows one project's chats (projchats.js);
 //   - Home (projects-home.js: one rail entry, /home) and Search everything (projects-search.js: Ctrl/⌘+Shift+K) read
 //     the sources below, cached (thumbnails are the ones the Lab and chat-scenes already keep: nothing new is stored).
 // Data: data/kv/projects.json { v, list: [project], dismissed: [suggestion keys] } (small: names, refs and times; no
@@ -324,8 +324,6 @@ const Projects = (() => {
     for (const m of list) { const before = JSON.stringify(data.list.find((x) => x.make === m.id) || null); const p = fromMake(m); if (p && JSON.stringify(p) !== before) any = true; }
     if (any) changed(null, 'make');
   }
-  // a project made from a make shows the make's rooms in its own group (makes.js leaves its group out)
-  const hidesMake = (makeId) => Boolean(grouping() && data.list.some((p) => p.make === makeId && p.status !== 'archived'));
 
   // ---------- joining by themselves ----------
   // a scene linked to a project's chat (a director chat's scene) joins the project
@@ -468,77 +466,9 @@ const Projects = (() => {
     return x;
   }
 
-  // ---------- the chats list: a project's chats in its own group ----------
-  const grouping = () => store.get('projects.group', true) !== false;
-  function setGrouping(on) { store.set('projects.group', Boolean(on)); Panel.render(); }
-  const MAX_GROUPS = 8;
-  const PER_GROUP = 12;
-  // a make's room shows under its make, unless the make's project shows it
-  function roomElsewhere(chatId) {
-    try { const r = typeof Makes !== 'undefined' && Makes.roomOf(chatId); return Boolean(r && r.part.own && !r.make.dismissed && !hidesMake(r.make.id)); } catch { return false; }
-  }
-  const chatsOf = (p) => p.items.filter((x) => x.type === 'chat').map((x) => summary(x.ref)).filter((c) => c && !roomElsewhere(c.id) && !(typeof ChatUX !== 'undefined' && ChatUX.metaOf(c.id).archived));
-  const panelSkip = (c) => Boolean(loaded && projectOfChat(c.id) && grouping() && !roomElsewhere(c.id) && chatsOf(projectOfChat(c.id)).length); // (round 42) the index first: grouping() reads localStorage, once per chat of a big list
-  function panelTop(root, { row, itemOf, q, collapsed, toggleGroup }) {
-    if (!loaded || !grouping()) return;
-    const list = live().filter((p) => p.status !== 'archived' && chatsOf(p).length);
-    let shown = 0;
-    for (const p of list) {
-      if (shown >= MAX_GROUPS && !q) break;
-      let chats = chatsOf(p).filter((c) => projectOfChat(c.id) === p).sort((a, b) => (b.pinned - a.pinned) || b.updatedAt - a.updatedAt);
-      if (q && !p.name.toLowerCase().includes(q)) chats = chats.filter((c) => c.title.toLowerCase().includes(q));
-      if (!chats.length) continue;
-      shown += 1;
-      const key = `proj:${p.id}`;
-      const closed = collapsed.has(key) && !q;
-      const mk = p.make && typeof Makes !== 'undefined' ? Makes.get(p.make) : null;
-      const st = mk ? Makes.core.statusOf(mk) : null;
-      const pct = mk ? Makes.core.pctOf(mk) : 0;
-      const kind = mk ? (st === 'planned' ? 'planned' : st === 'done' ? '✓' : st === 'stuck' ? 'stuck' : pct ? `${pct} %` : Makes.core.STATUS_LABEL[st]) : p.status === 'active' ? String(chats.length) : C.STATUS[p.status].toLowerCase();
-      const group = el('div', { class: `group pj-group${mk ? ` mk-group mk-${st}` : ''}`, dataset: { id: key, project: p.id, ...(mk ? { make: mk.id } : {}) } });
-      tint(group, p.ident.color); group.style.setProperty('--agent', p.ident.color);
-      const toggle = el('button', { class: 'group-toggle', type: 'button', title: `${p.name} · project · ${C.countText(p)}${p.notes ? `\n${C.cap(p.notes, 160)}` : ''}\nRight-click: open its Home page, continue, filter, rename…`, on: { click: () => toggleGroup(key) } },
-        el('span', { class: 'caret', text: closed ? '▸' : '▾' }), el('span', { class: 'mk-mark pj-mark', text: p.ident.glyph }), el('span', { class: 'group-name', text: p.name }),
-        el('span', { class: `group-kind pj-st${mk ? ' mk-st' : ''}`, text: kind }));
-      const more = el('button', { class: 'group-add pj-more', type: 'button', text: '⋯', title: 'This project: its page, continue, show only its chats, rename…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 2, menu(p)); } } });
-      const head = el('div', { class: 'group-head' }, toggle, more);
-      head.addEventListener('contextmenu', (e) => { e.preventDefault(); showMenu(e.clientX, e.clientY, menu(p)); });
-      group.append(head);
-      if (!closed) {
-        for (const c of chats.slice(0, PER_GROUP)) {
-          const agent = H.agent(c.agentId);
-          if (!agent) continue;
-          const r = row(agent, itemOf(c));
-          r.dataset.agent = agent.id;
-          r.classList.add('pj-row');
-          // under its project's name the row says the rest of its title ("Lab", "Neon test")
-          const t = r.querySelector('.item-title');
-          if (t && t.textContent.startsWith(`${p.name} · `)) t.textContent = t.textContent.slice(p.name.length + 3);
-          if (!r.querySelector('.chat-ident')) r.prepend(el('span', { class: 'chat-ident pj-ident', text: agent.dock ? '◭' : agent.engine === 'codex' ? 'A' : '✳', title: agent.name }));
-          if (mk) { const part = mk.parts.find((x) => x.chatId === c.id); if (part) { r.classList.add('mk-room'); r.dataset.makePart = part.id; } }
-          group.append(r);
-        }
-        if (chats.length > PER_GROUP) group.append(el('button', { class: 'show-more pj-all', type: 'button', text: `${chats.length - PER_GROUP} more in ${p.name} ›`, on: { click: () => Panel.setView(`project:${p.id}`) } }));
-      }
-      root.append(group);
-    }
-    if (!q && list.length > shown) root.append(el('button', { class: 'show-more pj-more-projects', type: 'button', text: `${list.length - shown} more projects ›`, on: { click: () => openHome() } }));
-  }
-  // ⏷ → "▣ <project>": only its chats (under their agents)
-  function panelView(c, v) {
-    if (!v.startsWith('project:')) return undefined;
-    const p = get(v.slice(8));
-    return Boolean(p && C.has(p, 'chat', c.id));
-  }
-  panelView.label = (v) => (v.startsWith('project:') ? `${get(v.slice(8))?.ident.glyph || '▣'} ${get(v.slice(8))?.name || 'a project'}` : null);
-  function panelMenu(view, setView) {
-    const ps = live().filter((p) => p.items.some((x) => x.type === 'chat')).slice(0, 10);
-    return [
-      '-',
-      { label: `${grouping() ? '✓ ' : ''}Group by project`, action: () => setGrouping(!grouping()) },
-      ...(ps.length ? [{ label: 'Only one project', items: () => ps.map((p) => ({ label: `${view === `project:${p.id}` ? '✓ ' : ''}${p.ident.glyph} ${p.name}`, action: () => setView(`project:${p.id}`) })) }] : []),
-    ];
-  }
+  // (round 121, listtidy121) the chats list's old project groups (top / skip hooks, Group by project, Only one project,
+  // the project:<id> view) are gone: the list shows one project (projchats.js). Removed here: grouping, setGrouping,
+  // hidesMake, panelSkip, panelTop, panelView, panelMenu. A stored projects.group setting is left as it is (never read).
 
   // ---------- the Lab's sketch picker (tools/three.js asks; small hooks) ----------
   // [{ label, ids }]: each project's scenes under its name, the others after; null while no project holds a scene
@@ -585,7 +515,7 @@ const Projects = (() => {
     return [
       { label: '⌂ Open its page', action: () => openHome(p.id) },
       { label: '↻ Continue where you left off', action: () => continueIn(p) },
-      { label: 'Show its chats', action: () => (window.ProjChats ? ProjChats.setScope(p.id) : Panel.setView(`project:${p.id}`)) }, // (round 116, projchats116) the chats list shows one project
+      { label: 'Show its chats', action: () => window.ProjChats?.setScope(p.id) }, // (round 116, projchats116) the chats list shows one project // (round 121, listtidy121)
       { label: '✦ Three.js banner / logo…', action: () => ProjectFrontpage.edit(p) },
       { label: '⇩ Prepare for offline…', action: () => Offline.prepare(p) },
       { label: 'Add', items: () => addMenu(p) },
@@ -637,10 +567,11 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, hidesMake,
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, // (round 121, listtidy121) hidesMake: gone
+   
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt, bundle,
-    grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu, sketchGroups, sketchBrowse, sketchMenu,
+    sketchGroups, sketchBrowse, sketchMenu, // (round 121, listtidy121) grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu: gone
     Src, warm, lookFor, look: () => look, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
     _data: () => data,
   };

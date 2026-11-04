@@ -1,15 +1,17 @@
 // Projects (round 23): chat commands and wiring. Everything Home and the menus do is here as a command too:
 //   /project new <name> · add [chat | scene | board | <path>] [to <project>] · remove … · open <project> · continue
-//   rename <project> = <name> · status <active|paused|done|archived> · note <text> · suggest [n] · group on|off
-//   filter <project> | off · delete <project> · list        /projects · /home [project] · /everything <words>
-// Wiring: the chats list (Panel.hooks: skip, top, view, menu), makes (a make with rooms is a project), chat-scenes
+//   rename <project> = <name> · status <active|paused|done|archived> · note <text> · suggest [n]
+//   (round 121, listtidy121: group / filter only answer that the chats list shows one project now)
+//   delete <project> · list        /projects · /home [project] · /everything <words>
+// Wiring: the chats list (Panel.hooks: itemMenu), makes (a make with rooms is a project), chat-scenes
 // (a project chat's scene joins it: the 'hearth:scene-link' event), captures and renders made while a project is in
 // front of you, Ctrl/⌘+Shift+K (renderer.js handleShortcut), the palette, the keys sheet.
 (() => {
   const P = Projects;
   const C = ProjectsCore;
   const base = (p) => String(p || '').split(/[\\/]/).pop();
-  const VERBS = { new: 'a new project (this chat comes along)', add: 'this chat / scene / board / a path', remove: 'take something out', open: 'its page on Home', continue: 'where you left off', rename: 'a new name', status: 'active, paused, done, archived', note: 'add a line to its notes', suggest: 'projects found by names and links', group: 'group the chats list by project (on / off)', filter: 'only one project\'s chats', delete: 'forget the grouping (things stay)', list: 'every project' };
+  // (round 121, listtidy121) group / filter: no longer offered (the chats list shows one project); they answer one line
+  const VERBS = { new: 'a new project (this chat comes along)', add: 'this chat / scene / board / a path', remove: 'take something out', open: 'its page on Home', continue: 'where you left off', rename: 'a new name', status: 'active, paused, done, archived', note: 'add a line to its notes', suggest: 'projects found by names and links', delete: 'forget the grouping (things stay)', list: 'every project' };
   const lineOf = (p, i) => `${i != null ? `${i + 1}. ` : ''}${p.ident.glyph} **${p.name}** · ${C.countText(p)}${p.status !== 'active' ? ` · ${C.STATUS[p.status].toLowerCase()}` : ''}`;
   // "<what> to <project>" / "<what> from <project>"
   const split = (s, word) => { const m = new RegExp(`^(.*?)\\s+${word}\\s+(.+)$`, 'i').exec(s); return m ? [m[1].trim(), m[2].trim()] : [s.trim(), '']; };
@@ -33,7 +35,7 @@
   function register() {
     if (!Commands.get('project')) {
       Commands.register({
-        name: 'project', area: 'Projects', args: '[new <name> | add [chat|scene|board|<path>] [to <project>] | open <project> | continue | rename … | status … | note … | suggest | group on|off | filter <project>]',
+        name: 'project', area: 'Projects', args: '[new <name> | add [chat|scene|board|<path>] [to <project>] | open <project> | continue | rename … | status … | note … | suggest]', // (round 121, listtidy121)
         desc: 'Projects: a home for a piece of work (its chats, Lab scenes, boards, renders, files). new · add this chat / the scene / the board · open its page · continue where you left off · suggest (no tokens) · rename · status · notes',
         keywords: 'project projects group folder home workspace collection organise organize stoop',
         examples: ['/project new Stoop Ronin', '/project add', '/project add scene to Stoop Ronin', '/project continue', '/project suggest', '/project status done'],
@@ -41,10 +43,9 @@
           const s = String(a || '');
           if (!/\s/.test(s)) return Object.keys(VERBS).filter((v) => v.startsWith(s.toLowerCase())).map((v) => ({ value: `${v} `, hint: VERBS[v] }));
           const verb = s.split(/\s+/)[0].toLowerCase();
-          if (['open', 'continue', 'delete', 'filter', 'rename'].includes(verb)) return P.live().slice(0, 10).map((p) => ({ value: `${verb} ${p.name}${verb === 'rename' ? ' = ' : ''}`, hint: C.countText(p) }));
+          if (['open', 'continue', 'delete', 'rename'].includes(verb)) return P.live().slice(0, 10).map((p) => ({ value: `${verb} ${p.name}${verb === 'rename' ? ' = ' : ''}`, hint: C.countText(p) })); // (round 121, listtidy121) filter: gone
           if (verb === 'add' || verb === 'remove') return ['chat', 'scene', 'board', 'render'].map((w) => ({ value: `${verb} ${w}`, hint: w === 'chat' ? 'this chat (with its scene)' : `the ${w} on screen` }));
           if (verb === 'status') return Object.keys(C.STATUS).map((k) => ({ value: `status ${k}` }));
-          if (verb === 'group') return ['on', 'off'].map((v) => ({ value: `group ${v}` }));
           return [];
         },
         run: async (args, ctx) => {
@@ -108,8 +109,7 @@
             if (!lastSugg.length) return 'No suggestions: nothing shares a name (or a link) with enough other things yet.';
             return `${lastSugg.map((x, i) => `${i + 1}. ${x.why}`).join('\n')}\n/project suggest <n> makes one a project.`;
           }
-          if (verb === 'group') { const on = !/^(off|no|0|false)$/i.test(rest[0] || ''); P.setGrouping(on); return on ? 'The chats list groups chats by project.' : 'The chats list groups chats by agent only.'; }
-          if (verb === 'filter') { if (/^(off|all|none)?$/i.test(restText)) { Panel.setView(null); return 'Showing every chat.'; } const p = P.find(restText); if (!p) return 'Which project?'; Panel.setView(`project:${p.id}`); return `Showing only ${p.name}'s chats (/project filter off).`; }
+          if (verb === 'group' || verb === 'filter') return 'Chats now live in one project each: open a project to see its chats.'; // (round 121, listtidy121) the old grouped list is gone
           if (verb === 'delete') { const p = P.find(restText); if (!p) return 'Which project? /project delete <project>'; P.removeProject(p); return `Deleted the project “${p.name}” (its chats, scenes and files stay).`; }
           if (verb === 'list') return P.live().length ? P.live().slice(0, 15).map(lineOf).join('\n') : 'No projects yet.';
           return `Use /project ${Object.keys(VERBS).join(' | ')}.`;
@@ -151,10 +151,7 @@
   // ---------- wiring ----------
   window.addEventListener('DOMContentLoaded', () => {
     register();
-    Panel.hooks.skip?.push(P.panelSkip);
-    Panel.hooks.top?.push(P.panelTop);
-    Panel.hooks.view?.push(P.panelView);
-    Panel.hooks.menu?.push(P.panelMenu);
+    // (round 121, listtidy121) the chats list's old project groups (skip / top / view / menu hooks): gone
     // a chat's right-click menu in the chats list: "Project ›" (the chat, with its scene)
     Panel.hooks.itemMenu?.push((item) => (item.chatId ? [P.projectMenu('chat', item.chatId, item.title)] : []));
     addEventListener('hearth:scene-link', (e) => P.sceneLinked(e.detail?.chatId, e.detail?.sketchId));
@@ -163,7 +160,7 @@
     if (window.Lazy) window.Lazy.when('renders', () => Renders.onChange((j) => { try { P.onRenderJob(j); } catch (err) { console.warn(err); } }));
     Keys.add([
       { area: 'Projects', keys: 'Ctrl+Shift+K', what: 'Search everything: projects, chats, scenes, boards, renders, files, commands (Tab: one kind)', run: () => ProjectsSearch.open() },
-      { area: 'Projects', keys: 'Right-click a project', what: 'In the chats list (or ⋯ on its row) and on Home: its page, continue, only its chats, add, rename, status, look, notes' },
+      { area: 'Projects', keys: 'Right-click a project', what: 'On Home: its page, continue, its chats, add, rename, status, look, notes' }, // (round 121, listtidy121)
     ]);
     try {
       AppUI.addAction?.('Home: your projects', () => P.openHome());
