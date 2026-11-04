@@ -267,7 +267,7 @@ const AppUI = (() => {
     p.input.focus();
     const n = ++palFresh;
     // (round 37, appsearch) the first opening loads Find anything; what's typed by then is searched in it
-    if (window.Lazy && !Lazy.isIn('appsearch')) Lazy.load('appsearch').then(() => { AppSearch.warm(); if (!p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }).catch(() => {});
+    if (window.Lazy && !Lazy.isIn('appsearch')) Lazy.load('appsearch').then(() => setTimeout(() => { AppSearch.warm(); if (!p.box.isConnected) return; p.items = paletteItems(); paletteRender(); })).catch(() => {}); // (round 113: its rows in the task after its code)
     if (!p.items.length) { p.items = paletteItems(); paletteRender(); return; } // the first opening: all at once
     paletteRender();
     setTimeout(() => { if (n !== palFresh || !p.box.isConnected) return; p.items = paletteItems(); paletteRender(); }, 0);

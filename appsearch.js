@@ -245,8 +245,12 @@ const AppSearch = (() => {
     tidy(items);
     buildFixed(items);
     const lab = inLab();
-    liveIx = C.build([...menuItems(lab), ...liveItems(items)], { vocab: V });
-    chatIndex(items);
+    // (round 113, search113) the very first opening: the fixed rows now, the menus and chats in the next task (one task
+    // held them all: the first Ctrl/⌘+K's 90–130 ms)
+    if (!liveIx) { liveIx = C.build([], { vocab: V }); setTimeout(() => { if (base !== items) return; liveIx = C.build([...menuItems(inLab()), ...liveItems(items)], { vocab: V }); chatIndex(items); refresh(); }); } else {
+      liveIx = C.build([...menuItems(lab), ...liveItems(items)], { vocab: V });
+      chatIndex(items);
+    }
     last.liveMs = Math.round((performance.now() - t0) * 10) / 10;
     last.items = fixedIx.items.length + liveIx.items.length + chatIx.rows.length;
     labOn = false;
