@@ -62,6 +62,7 @@ const Updater = (() => {
     checking = (async () => {
       try { last = await api().status({ fetch }); } catch (err) { last = { ok: false, message: err.message }; }
       if (last?.swapped) swapped(last.swapped); // (round 37) the main side says it once
+      if (last?.tidied) toast(last.tidied, { timeout: 16000 }); // (round 122, updatesafe122) an older Hearth's update tidied at this start (kept-from-updates/), once
       checkedAt = Date.now();
       paint();
       if (!loud) window.Notify?.update?.(last); // (round 44, notify) "A Hearth update is ready", once per new set of changes, while you're elsewhere
@@ -187,6 +188,8 @@ const Updater = (() => {
     const more = s.behind > 25 ? el('p', { class: 'hint', text: `…and ${s.behind - 25} more.` }) : null;
     const notes = [
       s.dirty ? `${s.dirty} file${s.dirty === 1 ? '' : 's'} in this copy changed by hand: kept (put aside in a named stash and back again).` : '',
+      // (round 122, updatesafe122) an edited file this update removes: said before, kept as a plain file after
+      s.plan?.removedEdits?.length ? `${s.plan.removedEdits.length === 1 ? `${s.plan.removedEdits[0]}, which you edited, is` : `${s.plan.removedEdits.length} files you edited are`} removed by this update: your version${s.plan.removedEdits.length === 1 ? ' is' : 's are'} kept in the kept-from-updates folder in Hearth's folder.` : '',
       s.plan?.collide?.length ? `${s.plan.collide.length === 1 ? `${s.plan.collide[0]}, which you added by hand, has` : `${s.plan.collide.length} files you added by hand have`} the same name as a new file: the update's goes in, yours is kept in a named stash.` : '',
       s.plan?.diverged ? `This copy has ${s.ahead} change${s.ahead === 1 ? '' : 's'} of its own: combined with main (if they clash, Hearth offers to keep them on a side branch).` : '',
       s.branch && s.branch !== 'main' ? `This copy is on the branch "${s.branch}": main is pulled into it.` : '',

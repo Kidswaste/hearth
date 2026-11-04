@@ -216,7 +216,23 @@ function* restoreSteps({ dir, stash, from = '', to = '' }) {
   yield ['reset', '-q'];
   const own = [];
   const others = clash.filter((f) => !OWNER_FILES.includes(f));
-  if (others.length) yield ['checkout', 'HEAD', '--', ...others];
+  // (round 122, updatesafe122) the owner's version of every clashing file goes into a folder they can open
+  // (kept-from-updates/<date> (from to to)/, beside a README) before the update's version is put in place. A file the
+  // update REMOVED (round 116 removed ~340: quest*, the music studio) is not in HEAD: one such name made the single
+  // `checkout HEAD -- …` below fail for EVERY file, so a clashing projects.js kept its conflict marks; and the removed
+  // file stayed in the app folder with the owner's edit. Now: the files HEAD has are checked out, a removed one's copy
+  // left by the apply goes once its kept copy is written (it is in the stash too)
+  const inHead = new Set(others.length ? ls(yield ['ls-tree', '-r', '--name-only', 'HEAD', '--', ...others]) : []);
+  const aside = others.length ? yield* keepAside(dir, stash, others, from, to) : null;
+  const back = others.filter((f) => inHead.has(f));
+  if (back.length) yield ['checkout', 'HEAD', '--', ...back];
+  const removed = others.filter((f) => !inHead.has(f));
+  for (const f of removed) {
+    if (!aside?.files.includes(f)) continue; // not kept: never removed (it stays where the apply left it)
+    const want = (yield ['rev-parse', '--verify', '-q', `${stash.sha}:${f}`]).out;
+    const now = fs.existsSync(path.join(dir, f)) ? (yield ['hash-object', '--', f]).out : '';
+    if (want && now === want) { try { fs.unlinkSync(path.join(dir, f)); rmEmptyDirs(dir, f); } catch (err) { console.warn(`update: ${f} not removed`, err.code || err.message); } }
+  }
   if (clash.includes('theme.css') && moved(dir)) {
     // (round 55, configsafe) moved: the tracked theme.css is the update's; the owner's CSS from the stash goes into
     // data/theme.css while that one is still the repo's own (an owner's data CSS is never written over)
@@ -242,7 +258,73 @@ function* restoreSteps({ dir, stash, from = '', to = '' }) {
     if (b.length || clash.includes(CONFIG_FILE)) own.push(CONFIG_FILE);
   }
   const kept = clash.filter((f) => !own.includes(f));
-  return { ok: false, kept: kept.length || clash.length ? kept : ['(see the stash)'], own, during };
+  return { ok: false, kept: kept.length || clash.length ? kept : ['(see the stash)'], own, during, ...(aside?.files.length ? { aside: { ...aside, removed: removed.filter((f) => aside.files.includes(f)) } } : {}) };
+}
+// (round 122, updatesafe122) the owner's own version of files an update couldn't put back, as plain files in Hearth's
+// folder: kept-from-updates/<date> (abc1234 to def5678)/<the same path>, a README.txt saying what they are. Written by
+// git from the stash itself (`restore --source` into that folder: the exact bytes, the checkout's line endings; the
+// index is not touched), one by one so one odd file doesn't stop the others. Never in data/ (updates don't write
+// there). → { dir: 'kept-from-updates/…' (relative, '/'), files: [kept] }
+const KEPT_DIR = 'kept-from-updates';
+function* keepAside(dir, stash, files, from, to) {
+  const has = new Set(ls2(yield ['ls-tree', '-r', '--name-only', stash.sha, '--', ...files]));
+  const want = files.filter((f) => has.has(f) && !OWN.test(f));
+  if (!want.length) return { dir: '', files: [] };
+  let rel = `${KEPT_DIR}/${branchStamp()} (${String(from || '').slice(0, 7) || 'before'} to ${String(to || '').slice(0, 7) || 'after'})`;
+  for (let i = 2; fs.existsSync(path.join(dir, ...rel.split('/'))) && i < 50; i += 1) rel = rel.replace(/( #\d+)?$/, ` #${i}`);
+  const abs = path.join(dir, ...rel.split('/'));
+  try { fs.mkdirSync(abs, { recursive: true }); } catch (err) { console.warn('update: kept-from-updates not made', err.code || err.message); return { dir: '', files: [] }; }
+  const done = [];
+  for (const f of want) {
+    let r = yield ['--work-tree', abs, 'restore', '--source', stash.sha, '--worktree', '--', f];
+    if (!r.ok || !fs.existsSync(path.join(abs, f))) {
+      // an older git (no `restore`, before 2.23): the text from the stash
+      r = yield ['show', `${stash.sha}:${f}`];
+      if (r.ok) { try { fs.mkdirSync(path.dirname(path.join(abs, f)), { recursive: true }); fs.writeFileSync(path.join(abs, f), `${r.out}\n`); } catch { r = { ok: false }; } }
+    }
+    if (r.ok && fs.existsSync(path.join(abs, f))) done.push(f);
+  }
+  if (!done.length) { rmEmptyDirs(dir, `${rel}/x`); return { dir: '', files: [] }; } // nothing written: no empty folder (the stash keeps them)
+  try {
+    fs.writeFileSync(path.join(abs, 'README.txt'), [
+      'Your own edits that a Hearth update could not put back.',
+      '',
+      `On ${stamp()}, Hearth updated from ${String(from || '').slice(0, 7)} to ${String(to || '').slice(0, 7)}. You (or an AI working on Hearth for you)`,
+      'had changed the files in this folder. The update either removed them or changed the same lines, so Hearth uses the',
+      'update\'s version and kept yours here, exactly as it was. Nothing in this folder is used by Hearth.',
+      '',
+      `A copy is also in git's stash "${stash.name || ''}".`,
+      'To redo an edit on the new version, open the file here, compare it with the one in Hearth\'s folder, and ask an AI',
+      'in Hearth to bring the change over. You can delete this folder when you no longer need it.',
+      '',
+    ].join(process.platform === 'win32' ? '\r\n' : '\n'));
+  } catch { /* the files are what matter */ }
+  return { dir: rel, files: done };
+}
+const ls2 = (r) => (r?.ok && r.out ? r.out.split('\n').filter(Boolean) : []);
+// a folder left empty by removing a file (a folder that still holds anything is never touched)
+function rmEmptyDirs(dir, f) {
+  let d = path.dirname(path.join(dir, f));
+  while (d.length > dir.length && path.resolve(d) !== path.resolve(dir)) {
+    try { if (fs.readdirSync(d).length) break; fs.rmdirSync(d); } catch { break; }
+    d = path.dirname(d);
+  }
+}
+// (round 122, updatesafe122) said once after an update whose stash didn't come back whole, in plain words: files the
+// update removed vs edits that clashed, where the owner's versions are (the folder, the stash)
+function keptNote(back, stashName0) {
+  const a = back?.aside || null;
+  const removed = a?.removed || [];
+  const clashed = (back?.kept || []).filter((f) => !removed.includes(f));
+  const list = (xs) => (xs.length > 6 ? `${xs.slice(0, 6).join(', ')} and ${xs.length - 6} more` : xs.join(', '));
+  const where = a?.dir ? `the folder "${a.dir}" in Hearth's folder` : '';
+  const out = [];
+  if (removed.length) out.push(`The update removed ${list(removed)}, which you had edited (Hearth doesn't use ${removed.length === 1 ? 'that file' : 'those files'} any more).`);
+  if (clashed.length) out.push(`Your own edits to ${list(clashed)} clashed with the update: the file${clashed.length === 1 ? ' has' : 's have'} the new version.`);
+  const n = a?.files?.length || 0;
+  if (out.length && where) out.push(`Your version${n === 1 ? ' is' : 's are'} kept, exactly as ${n === 1 ? 'it was' : 'they were'}, in ${where}${stashName0 ? ` (and in the stash "${stashName0}")` : ''}.`);
+  else if (out.length && stashName0) out.push(`Your edits are kept in the stash "${stashName0}" (\`git stash list\`).`);
+  return out.join(' ');
 }
 // (round 56, fixes56) the owner's settings live in data/ (configsafe): a stash applied into the tracked config.json /
 // theme.css hands their content to data/ right away (a byte-for-byte copy kept in data/.configsafe first; config.json:
@@ -478,9 +560,9 @@ function swapSync({ dir, gitBin = 'git', pending, log = () => {} }) {
   const changed = git('diff', '--name-only', pending.from, pending.to).out.split('\n').filter(Boolean);
   writeState(dir, 'last', { from: pending.from, to: pending.to, at: Date.now(), branch: pending.branch || BRANCH });
   writeState(dir, 'journal', null);
-  return { ok: true, from: pending.from, to: pending.to, files: changed.slice(0, 200), changed: changed.length, restart: changed.some(mainSide), kept, own: back.own || [], stash: back.ok ? null : stash, keptFiles: files };
+  return { ok: true, from: pending.from, to: pending.to, files: changed.slice(0, 200), changed: changed.length, restart: changed.some(mainSide), kept, own: back.own || [], stash: back.ok ? null : stash, keptFiles: files, ...(back.aside ? { aside: back.aside } : {}) }; // (round 122, updatesafe122) + aside: the kept-from-updates folder
 }
 // a file the main process loads (a restart, not a reload): same rule as updatermain's needsRestart without index.html
 const mainSide = (f) => /(^|\/)(main|preload|[\w-]*main|engines|store|appshell|winmac|storework|sync-engine|sync-merge|chromeguard|updatesafe-core)\.js$|^mcp\/|^package\.json$/.test(f);
 
-module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, signIn, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, stamp, branchStamp, gitDirOf, stateDir, readState, readStateStatus, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
+module.exports = { ORIGIN_URL, BRANCH, OWN, WIN_MAX, classify, gitLine, explain, installGit, signIn, tooLong, stashName, OWN_EDITS, bringConfig, OWNER_FILES, restoreSteps, runSteps, runStepsAsync, mergeConfigFile, ownNote, keptNote, keepAside, rmEmptyDirs, KEPT_DIR, stamp, branchStamp, gitDirOf, stateDir, readState, readStateStatus, writeState, startSwap, swapSync, cleanPartialSync, gitSync, gitEnv, mainSide };
