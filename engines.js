@@ -453,7 +453,7 @@ function promptParts(agent, session = null) {
   if (acc) add('access', accessLine(agent, acc));
   // (round 116, astraparity116) working on Hearth's own code (a chat's folder is a Hearth source folder): a short map of
   // the codebase, the same for both engines. Only then: chats in the owner's other folders get nothing extra.
-  if (ownCode(agent, acc, folder)) add('hearthCode', HEARTH_CODE_GUIDE);
+  if (ownCode(agent, acc, folder)) add('hearthCode', hearthMap().CODE); // (round 118, selfmap118) the text lives in mcp/hearth-map.js (CODE), read there on demand too
   if (folder && agent.engine === 'codex') {
     add('folder', agent.codexFiles === 'edit'
       ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
@@ -478,12 +478,7 @@ function promptParts(agent, session = null) {
 }
 // (round 116, astraparity116) "knows its own wrapper": a folder of the chat holds Hearth's source (engines.js and the hub's
 // tool servers sit there), the running copy or another checkout. Fixed text, no file of the owner's is read into it.
-const HEARTH_CODE_GUIDE = 'This folder is Hearth\'s own source (the app you are running in). Plain-JS Electron, no build step, no framework. '
-  + 'main.js is the main process, renderer.js + index.html the window, preload.js exposes window.hub. A feature is usually name.js (window), '
-  + 'namemain.js (main-process IPC), name-core.js (pure logic, unit-tested) and name.css. engines.js drives both AIs (Claude = Claude Code, '
-  + 'Astra = Codex): prompts, tools, sessions. mcp/*-mcp.js are Hearth\'s tool servers (three, chat, board…); tools/ holds the Lab and tool views. '
-  + 'Checks are dev/*-test.js (node dev/run-checks.js --exact <name>); HANDOFF.md and docs/upgrades/ explain past rounds. '
-  + 'Read the code around a change first, keep its style and its "(round N)" comments, never put secrets in code or prompts.';
+// (round 118, selfmap118) The map itself is mcp/hearth-map.js CODE (one text for Claude and Astra, also help hearthcode); it points to HANDOFF.md.
 function isHearthSource(dir) {
   try { return fs.existsSync(path.join(dir, 'engines.js')) && fs.existsSync(path.join(dir, 'mcp', 'hearth-map.js')); } catch { return false; }
 }
@@ -1812,7 +1807,7 @@ module.exports = {
   send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, HEARTH_CODE_GUIDE, CODEX_DEV_MIN, codexDevOk, usedBin },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };

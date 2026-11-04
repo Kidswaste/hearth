@@ -1,46 +1,30 @@
 # Hearth
 
-(formerly "Agent Hub"; the folder and data stay where they were.) **Start or restart it with the "Hearth" shortcut on the desktop or in the Start menu**: if it's already open, it restarts cleanly. The tray menu and Ctrl+K also have Restart.
+Hearth is a desktop app (Windows and macOS) for chatting with **Claude** and **Astra** (ChatGPT's Codex) on your own
+subscriptions, with no API keys. Your chats live in **projects** and sync between your computers through your cloud
+drive. Hearth knows its own code: give a chat access to Hearth's folder and it can add features or fix bugs in the app.
+It also has the **Three.js Lab**, a 3D and motion editor that the AIs drive completely.
 
-Claude, Astra (ChatGPT) and any AI website in one window, plus workspaces for Forgeheart,
-Three.js and After Effects. No API keys, nothing extra to pay.
-
-**Launch:** double-click `Agent Hub.cmd` (or Settings → App → create Start menu & desktop shortcuts).
-**Everything it does:** see [FEATURES.md](FEATURES.md) (119 features, with what's been tested).
+- **Start:** the "Hearth" shortcut on the desktop or in the Start menu (it restarts a running copy cleanly), or
+  `Agent Hub.cmd`. On a Mac, see `mac/README.md`.
+- **What it does:** [FEATURES.md](FEATURES.md).
+- **How it is built** (for an AI or a developer working on it): [HANDOFF.md](HANDOFF.md).
 
 ## The basics
-- **Rail (left):** your agents, then the tools (⚒ Forgeheart, ◭ Three.js Lab, Ae After Effects). Right-click for options, ＋ to add an agent or site.
-- **Native agents** chat through the official Claude Code / Codex engines in your desktop apps, on your subscriptions.
-  Attach files and screenshots, edit/retry messages, pin chats, switch model per chat, type `/` for saved prompts.
-- **Website agents** are the real sites with your logins, plus a navigation bar.
-- **Directors** live inside their tools: **Video Director** in Video Review (describe how the render should look; it watches frames and steers the AE scripts) and **Three Director** in the Three.js Lab (describe a scene; it writes and checks the code). Toggle them with the 💬 button in the tool header.
-- **Three.js Lab sliders**: 🎚 Sliders lists every number and color in a sketch; ⚡ ones change instantly, ↻ ones rebuild the scene when you let go. Press **Save to code** to keep them.
-- **Visualizers**: load a track with 🎵 (or drop it on the preview), pick 9:16 on the preview for 1080×1920, shape it with the sliders (♪ links a slider to the music, ＋ Save look, 🎲 shuffle) and ⏺ Record to an MP4.
-- **Ctrl+K** opens the command palette: every agent, chat, tool and action (`?word` searches inside messages).
-
-## Shortcuts
-| Keys | Action |
-|---|---|
-| Ctrl+K | Command palette |
-| Ctrl+1 … 9 | Switch agent |
-| Ctrl+Tab | Previous agent/tool |
-| Ctrl+N | New native chat |
-| Ctrl+F | Find in the current view |
-| Ctrl+J | Notes |
-| Ctrl+\\ | Chats panel |
-| Ctrl+G | All agents side by side |
-| Ctrl+Shift+Space | Ask all agents |
-| Ctrl + / − / 0 | Text size |
-| Ctrl+, | Settings |
-| Ctrl+/ | All shortcuts |
-| Ctrl+Alt+H | Show/hide the hub from anywhere (changeable) |
+- **Rail (left):** your AIs and chats, then the tools: Projects, the Three.js Lab, the mood board, Commands.
+- **Chats** run through the official Claude Code and Codex engines. You can attach files and screenshots, edit or
+  retry messages, switch the model per chat, hand a chat to the other AI, and give a chat access to a folder (it asks
+  before risky actions, and deletes go to the Trash).
+- **The Three Director** sits beside the Lab: describe a scene and it builds it in layers. You then shape it with
+  sliders, looks, the timeline and frame sizes, and render it to a video file.
+- **Ctrl/⌘+K** finds every chat, command and setting. Type `/` in a chat for commands.
 
 ## Where things live
-- `config.json`: agents, settings, theme (edited in-app; hot-reloads). `theme.css`: your CSS.
-- `data/`: chats, notes, tasks, sketches, memory, usage, deleted chats (`data/trash`, 30 days). Back it up from Settings.
-- `tools/`: the Forgeheart, Three.js Lab and After Effects workspaces.
+- `data/` (inside Hearth's folder): your chats, projects, scenes, memory, settings (`data/config.json`) and tool data.
+  Updates never touch it. Deleted chats wait in `data/trash` for 30 days, and deleted files go to the system Trash.
+- Backups: Settings › This computer & sync › Backups.
 
 ## Troubleshooting
-- Native Claude not signed in: click **Sign in** in the chat.
-- Engine problems: `data/engine.log`.
-- A chat deleted by mistake: Ctrl+K → "Recently deleted chats".
+- An engine isn't working: `/doctor` checks Claude Code and Codex and offers the fix.
+- Engine logs: `data/engine.log`.
+- Sync: the chip at the bottom of the rail opens the sync panel.
