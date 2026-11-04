@@ -250,6 +250,7 @@ const Projects = (() => {
     let n = 0;
     if (type === 'chat') for (const o of data.list) if (o !== p && C.removeItem(o, 'chat', ref)) n += 1; // (round 116, projchats116) a chat is in one project: adding it is a move
     for (const it of links ? withLinks(type, ref, name) : [{ type, ref, name }]) if (C.addItem(p, it)) n += 1;
+    if (type === 'chat' && typeof ProjChatsCore !== 'undefined' && ProjChatsCore.landed(p, String(ref))) n += 1; // (round 118, projsync118) moved back in here: its old “moved out” record is done with
     if (n) changed(p, 'add');
     return n;
   }
@@ -311,7 +312,7 @@ const Projects = (() => {
     // its name follows the make's while the owner hasn't renamed the project
     if (p.mkName !== m.name) { if (p.name === p.mkName) p.name = C.cap(m.name, 48); p.mkName = m.name; n += 1; }
     for (const part of rooms) {
-      if (part.chatId && summary(part.chatId)) for (const it of withLinks('chat', part.chatId, summary(part.chatId).title)) if (C.addItem(p, it)) n += 1;
+      if (part.chatId && summary(part.chatId) && !data.list.some((o) => o !== p && C.has(o, 'chat', part.chatId))) for (const it of withLinks('chat', part.chatId, summary(part.chatId).title)) if (C.addItem(p, it)) n += 1; // (round 118, projsync118) a room's chat moved to another project stays there (was added back at every start: two projects, the keeper took it out again)
       if (part.boardId && C.addItem(p, { type: 'board', ref: part.boardId, name: '' })) n += 1;
     }
     for (const o of m.outputs || []) if (C.addItem(p, { type: o.kind === 'still' ? 'capture' : 'render', ref: o.path, name: base(o.path), at: o.at })) n += 1;

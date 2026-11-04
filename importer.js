@@ -171,7 +171,7 @@ async function importFile(filePath, agentFor, { dryRun = false, onProgress } = {
   try {
     const files = tempDir ? findConversationFiles(tempDir) : [filePath];
     if (!files.length) throw new Error('No conversations.json found in that file.');
-    const summary = { imported: 0, skipped: 0, duplicates: 0, alreadyThere: 0, empty: 0, failed: 0, messages: 0, sources: {}, counts: {}, titles: [], first: null, last: null, dryRun, files: files.length };
+    const summary = { imported: 0, skipped: 0, duplicates: 0, alreadyThere: 0, empty: 0, failed: 0, messages: 0, sources: {}, counts: {}, titles: [], ids: [], first: null, last: null, dryRun, files: files.length };
     let recognized = false;
     const seen = new Set();
     const parsed = [];
@@ -211,6 +211,7 @@ async function importFile(filePath, agentFor, { dryRun = false, onProgress } = {
           });
         }
         summary.imported += 1;
+        if (!dryRun) summary.ids.push(id); // (round 118, projsync118) the window puts them in the open project
         summary.messages += chat.messages.length;
         summary.sources[source] = agentId;
         summary.counts[source] = (summary.counts[source] || 0) + 1;
