@@ -46,6 +46,8 @@ const DirectorSwitch = (() => {
   // other agents that have the Lab's tools (a plain Claude / Astra with threeTools): they work in their own chat view
   const labAgents = () => H.agents().filter((x) => x.mode === 'native' && !x.dock && x.threeTools && x.enabled !== false);
   const guestChats = (x, sceneId) => (sceneId ? H.chats.filter((c) => c.agentId === x.id && links()[c.id]?.sketch === sceneId).sort((p, q) => (q.updatedAt || 0) - (p.updatedAt || 0)) : []);
+  // the Lab on screen (H.activeId is the director's own id while its docked chat has the focus)
+  const inLab = () => H.activeId === 'tool:three' || H.surfaceIdFor?.(H.activeId) === 'tool:three';
   const busy = (id) => Boolean(id && Native.isBusy?.(id));
   const unread = (id) => Boolean(id && H.unreadChats?.has(id));
   const markText = (id) => [busy(id) ? '◌ working…' : '', unread(id) ? '● new reply' : ''].filter(Boolean).join(' · ');
@@ -247,15 +249,15 @@ const DirectorSwitch = (() => {
   // ---------- keys, Ctrl/⌘+K ----------
   document.addEventListener('keydown', (e) => {
     if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey || e.code !== 'KeyA' || e.repeat) return;
-    if (H.activeId !== 'tool:three' || !DirectorDock.entry('three')) return;
+    if (!inLab() || !DirectorDock.entry('three')) return;
     e.preventDefault();
     cycle();
   });
   // (registered once AppUI is there: this file can run before appui.js, dev/lazy-manifest.js's old order)
   const register = () => {
     try {
-      Keys.add({ area: 'Director dock', keys: 'Alt+Shift+A', what: 'Director: switch AI (Claude ⇄ Astra, each its own chat about this scene)', when: () => H.activeId === 'tool:three', run: () => cycle() });
-      AppUI.addAction?.('Director: switch AI', () => { if (H.activeId !== 'tool:three') activate('tool:three'); setTimeout(() => { const a = director(); if (a) show(a); setTimeout(() => open(), 120); }, 60); }, 'Alt+Shift+A');
+      Keys.add({ area: 'Director dock', keys: 'Alt+Shift+A', what: 'Director: switch AI (Claude ⇄ Astra, each its own chat about this scene)', when: inLab, run: () => cycle() });
+      AppUI.addAction?.('Director: switch AI', () => { if (!inLab()) activate('tool:three'); setTimeout(() => { const a = director(); if (a) show(a); setTimeout(() => open(), 120); }, 60); }, 'Alt+Shift+A');
     } catch { /* the keys sheet / palette are optional */ }
   };
   if (typeof AppUI !== 'undefined') register(); else document.addEventListener('DOMContentLoaded', register, { once: true });

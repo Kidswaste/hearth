@@ -268,7 +268,9 @@ const DirectorDock = (() => {
   // (in a tool with a docked director).
   document.addEventListener('keydown', (e) => {
     if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
-    const toolId = H.isTool?.(H.activeId) ? H.activeId.slice(5) : null;
+    // (round 114, directorswitch) H.activeId is the director's own id while its docked chat has the focus: its tool then
+    const sid = H.surfaceIdFor?.(H.activeId) || H.activeId;
+    const toolId = H.isTool?.(sid) ? sid.slice(5) : null;
     const a = toolId && attached.get(toolId);
     if (!a) return;
     if (e.code === 'KeyZ' && toolId === 'three') { e.preventDefault(); undoEdit(); } else if (e.code === 'KeyY' && toolId === 'three') { e.preventDefault(); redoEdit(); } else if (e.code === 'KeyD') { e.preventDefault(); setCollapsed(a.s, !store.get(`dockCollapsed.${toolId}`, false)); }
