@@ -15,8 +15,9 @@ const Recall = (() => {
   // asks the store thread; while it is still reading chats it answers on what it has, and is asked again
   async function ask(q, onPartial) {
     let r = null;
-    for (let i = 0; i < 40; i++) {
-      r = await window.hub.recall({ q, budgetMs: 250 });
+    // (round 113, search113) 40 ms asks (a 250 ms one held every save behind it), more of them
+    for (let i = 0; i < 250; i++) {
+      r = await window.hub.recall({ q, budgetMs: 40 });
       if (!r?.left) break;
       onPartial?.(r);
     }
@@ -26,6 +27,8 @@ const Recall = (() => {
   async function jump(h) {
     close();
     if (!H.agent(h.agentId)) { toast('That chat\'s AI isn\'t here any more', { type: 'error' }); return; }
+    // (round 113, search113) a project's chat opens in its project (chatfind.js open: Projects.openChat, then the message)
+    try { await Lazy.load('chatfind'); await ChatFind.open(h); return; } catch (e) { console.warn('recall: jump', e); }
     Native.open(h.agentId, h.chatId);
     for (let i = 0; i < 30; i++) { if (Native.jumpTo(h.agentId, h.k)) return; await new Promise((r) => setTimeout(r, 100)); }
   }

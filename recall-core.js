@@ -196,7 +196,16 @@ const RecallCore = (() => {
       const out = { terms, decisions: [], open: [], mentions: [], chats: byKey.size, messages: N };
       if (!terms.length || !N) return out;
       const avg = total / N || 1;
-      const acc = new Map(); // `${key}\n${pos}` → { c, key, pos, s, matched }
+      // (round 113, search113) one place per message of every chat in typed arrays kept between asks (was a Map with a
+      // string key per matching message, and the title's words made again per message: ≈ 0.3–0.4 s of the store thread
+      // for a common word on 2,200 chats); the same sums in the same order, the same ties (first seen first)
+      const S = slots.length;
+      const base = new Int32Array(S + 1);
+      for (let sl = 0; sl < S; sl++) { const c = slots[sl]; base[sl + 1] = base[sl] + (c && !c.building ? c.n : 0); }
+      const M = base[S];
+      if (!rscratch || rscratch.sc.length < M) rscratch = { sc: new Float64Array(M + 4096), hit: new Uint16Array(M + 4096) };
+      const { sc, hit } = rscratch;
+      const seenG = [];
       for (const t of terms) {
         const id = termId.get(t);
         const n = id === undefined ? 0 : df[id];
@@ -204,31 +213,47 @@ const RecallCore = (() => {
         const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
         const L = lists[id];
         for (let i = 0; i < L.n; i += 2) {
-          const c = slots[L.a[i]];
+          const sl = L.a[i]; const c = slots[sl];
           if (!c || c.building) continue;
           const v = L.a[i + 1]; const pos = Math.floor(v / 4096); const tf = v % 4096;
           const mlen = c.msgs[pos * 4 + 2];
-          const key = `${c.key}\n${pos}`;
-          let a = acc.get(key);
-          if (!a) { a = { c, key: c.key, pos, s: 0, matched: 0 }; acc.set(key, a); }
-          a.s += idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * mlen / avg));
-          a.matched += 1;
+          const g = base[sl] + pos;
+          if (!hit[g]) { seenG.push(g); sc[g] = 0; }
+          sc[g] += idf * (tf * (K1 + 1)) / (tf + K1 * (1 - B + B * mlen / avg));
+          hit[g] += 1;
         }
       }
-      const titleHas = (c) => { const tt = new Set(tokens(c.sum.title)); return terms.some((t) => tt.has(t)); };
-      const ranked = [...acc.values()].map((a) => {
-        const m = msgOf(a.c, a.pos);
-        const cover = a.matched / terms.length;
-        const ageDays = Math.max(0, (now - (m.at || 0)) / DAY);
-        let s = a.s * (0.35 + 0.65 * cover * cover);
+      const slotOf = (g) => { let lo = 0; let hi = S - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (base[m] <= g) lo = m; else hi = m - 1; } return lo; };
+      const titleIs = new Map(); // slot → its title has one of the words
+      const titleHas = (sl, c) => { let h = titleIs.get(sl); if (h === undefined) { const tt = new Set(tokens(c.sum.title)); h = terms.some((t) => tt.has(t)); titleIs.set(sl, h); } return h; };
+      const scored = new Float64Array(seenG.length);
+      const gs = new Int32Array(seenG.length);
+      let sl = 0;
+      seenG.forEach((g, i) => {
+        if (!(g >= base[sl] && g < base[sl + 1])) sl = slotOf(g);
+        const c = slots[sl]; const pos = g - base[sl];
+        const b = pos * 4; const f = c.msgs[b + 3];
+        const cover = hit[g] / terms.length;
+        const ageDays = Math.max(0, (now - (c.msgs[b + 1] || 0)) / DAY);
+        let s = sc[g] * (0.35 + 0.65 * cover * cover);
         s *= 1 + 0.4 * Math.exp(-ageDays / 30);
-        if (a.c.sum.pinned) s *= 1.2;
-        if (m.mark) s *= 1.6;
-        if (m.dec) s *= 1.5; else if (m.open) s *= 1.1;
-        if (m.role === 'user') s *= 1.1;
-        if (titleHas(a.c)) s *= 1.15;
-        return { ...a, m, score: s };
-      }).sort((x, y) => y.score - x.score).slice(0, limit * 4);
+        if (c.sum.pinned) s *= 1.2;
+        if (f & 4) s *= 1.6;
+        if (f & 8) s *= 1.5; else if (f & 16) s *= 1.1;
+        if ((f & 3) === 0) s *= 1.1;
+        if (titleHas(sl, c)) s *= 1.15;
+        scored[i] = s; gs[i] = g;
+        hit[g] = 0; // (the arrays left clean for the next ask)
+      });
+      // the best limit × 4 (score, then first seen: what a stable sort of them all gave), without sorting them all
+      const K = limit * 4; const top = [];
+      for (let i = 0; i < seenG.length; i++) {
+        const s = scored[i];
+        if (top.length >= K && s <= scored[top[top.length - 1]]) continue;
+        let at = top.length; while (at > 0 && scored[top[at - 1]] < s) at -= 1;
+        top.splice(at, 0, i); if (top.length > K) top.pop();
+      }
+      const ranked = top.map((i) => { const g = gs[i]; const s0 = slotOf(g); const c = slots[s0]; const pos = g - base[s0]; return { c, key: c.key, pos, m: msgOf(c, pos), score: scored[i] }; });
       const per = new Map();
       for (const r of ranked) {
         const text = textOf ? textOf(r.key, r.m.k) : null;
@@ -251,6 +276,7 @@ const RecallCore = (() => {
     // land on it), how many of its messages match, ranked by how well (BM25, exact > start of a word), how recent,
     // 📌 pinned, and whether the chat's title names it. skip(key) leaves a chat out (a .prev copy). No text is read here:
     // textOf(key, k) gives the snippet's text for the rows kept (by its bytes for a long chat: storework.js).
+    let rscratch = null; // search's per-message arrays (round 113), kept between asks
     let scratch = null; // find's per-message arrays (several words), kept between finds
     let ft = null; let ftN = -1; let byFold = null; // folded term table: sorted [fold, id] + fold → ids (made again when terms joined)
     function folded() {

@@ -285,23 +285,21 @@ const AppSearch = (() => {
     const n = ++deepSeq;
     deepTimer = setTimeout(async () => {
       let rows = [];
+      // (round 113, search113) the messages from chatfind (recall's index searched as you type: the start of a word, every
+      // word, each row with its project, landing on the message), not the whole-text search (≈ 0.3–0.5 s of the store
+      // thread per ask on 2,200 chats)
       try {
-        const r = await window.hub.recall?.({ q, budgetMs: 40, limit: 6 });
-        const hits = [...(r?.decisions || []), ...(r?.open || []), ...(r?.mentions || [])].slice(0, 5);
-        rows = hits.map((h, i) => msgRow(h.agentId, h.chatId, h.title, h.snippet, h.k, 0.9 - i * 0.05));
-        if (!rows.length) {
-          const s = await window.hub.searchChatText?.(q);
-          rows = (s || []).slice(0, 5).map((h, i) => msgRow(h.agentId, h.id, h.title, h.snippet, null, 0.85 - i * 0.05));
-        }
+        const r = await window.hub.chatFind?.({ q, budgetMs: 30, limit: 5 });
+        rows = (r?.hits || []).filter((h) => h.k != null).slice(0, 5).map((h, i) => msgRow(h, 0.9 - i * 0.05));
       } catch { /* no store thread here */ }
       if (deepCache.size > 60) deepCache.clear();
       deepCache.set(q.toLowerCase(), rows);
       if (n === deepSeq && rows.length) refresh();
     }, 180);
   }
-  function msgRow(agentId, chatId, title, snippet, k, score) {
-    const who = H.agent(agentId)?.name || '';
-    return { item: { id: `msg:${chatId}:${k ?? ''}`, kind: 'msg', label: String(snippet || title || '').replace(/\s+/g, ' ').trim().slice(0, 120), hint: '', path: `${title || 'Chat'}${who ? ` · ${who}` : ''}`, run: () => jumpChat(agentId, chatId, k) }, score };
+  function msgRow(h, score) {
+    const who = H.agent(h.agentId)?.name || '';
+    return { item: { id: `msg:${h.chatId}:${h.k ?? ''}`, kind: 'msg', label: String(h.snippet || h.title || '').replace(/\s+/g, ' ').trim().slice(0, 120), hint: '', path: `${h.project ? `◆ ${h.project.name} › ` : ''}${h.title || 'Chat'}${who ? ` · ${who}` : ''}`, run: () => (window.Lazy ? Lazy.load('chatfind') : Promise.resolve()).then(() => ChatFind.open(h)) }, score };
   }
   async function jumpChat(agentId, chatId, k) {
     if (!H.agent(agentId)) throw new Error('That chat\'s AI isn\'t here any more');
