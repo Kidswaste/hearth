@@ -64,21 +64,24 @@ const ChatUX = (() => {
     for (const m of list.querySelectorAll('mark.find-hit')) { parents.add(m.parentNode); m.replaceWith(document.createTextNode(m.textContent)); }
     for (const p of parents) p?.normalize();
   }
+  const lowText = new WeakMap();
   function markAll(list, q, near) {
     const hits = [];
     if (!q) return hits;
     const needle = q.toLowerCase();
     const nodes = [];
-    // (round 113, search113) a common word in the drawn part of a giant chat: hundreds of messages had all their matches
-    // marked at once (1.1–1.2 s of the window); the 30 messages nearest where you are are marked, the others are stand-ins
-    // (their index) marked when you step to them
+    // (round 113, search113) a common word in the drawn part of a long chat: every match was marked at once (557 marks in
+    // 27 messages of 40 KB: 1.1–1.2 s of the window; "t": 23,000). The messages nearest where you are are marked, about
+    // 200 marks in all; the other messages with it are stand-ins (their index), marked when you step to them
     const ix = (r) => Number(r.dataset?.index ?? -1);
-    let roots = [...list.children].filter((r) => r.textContent.toLowerCase().includes(needle));
-    if (roots.length > 30) {
-      near ??= ix(roots[roots.length - 1]);
-      const keep = new Set(roots.filter((r) => ix(r) >= 0).sort((a, b) => Math.abs(ix(a) - near) - Math.abs(ix(b) - near)).slice(0, 30));
-      for (const r of roots) if (ix(r) >= 0 && !keep.has(r)) hits.push({ index: ix(r) });
-      roots = roots.filter((r) => ix(r) < 0 || keep.has(r));
+    const has = []; let total = 0; const end = list.lastElementChild;
+    // (each message's lowered text kept while it is the same node: a key re-read 40 drawn messages of 40 KB; never the
+    // last one, a reply may be streaming into it)
+    for (const r of list.children) { let t = lowText.get(r); if (t == null) { t = r.textContent.toLowerCase(); if (r !== end) lowText.set(r, t); } let n = 0; for (let i = t.indexOf(needle); i >= 0 && n < 400; i = t.indexOf(needle, i + needle.length)) n += 1; if (n) has.push([r, n]); }
+    if (near == null) near = ix(has[has.length - 1]?.[0] || {});
+    const roots = [];
+    for (const [r, n] of has.sort((a, b) => Math.abs(ix(a[0]) - near) - Math.abs(ix(b[0]) - near))) {
+      if (!roots.length || ix(r) < 0 || total + n <= 200) { roots.push(r); total += n; } else hits.push({ index: ix(r) });
     }
     // (round 35, streamrender) only the messages whose text has it are walked: in a 1,200-message chat every text node
     // was tested (two closest() each), ≈ 250 ms a search here
@@ -92,7 +95,7 @@ const ChatUX = (() => {
       const text = node.nodeValue;
       const lower = text.toLowerCase();
       let i = lower.indexOf(needle);
-      if (i < 0) continue;
+      if (i < 0 || hits.length > 600) continue; // (one message alone with thousands: its first 600)
       const frag = document.createDocumentFragment();
       let from = 0;
       while (i >= 0) {

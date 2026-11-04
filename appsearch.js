@@ -109,10 +109,12 @@ const AppSearch = (() => {
     } catch { /* no notes in this copy */ }
   }
   function buildFixed(base) {
-    const sig = `${base.length}|${switches?.length || 0}|${news?.length || 0}`;
+    const sig = `${base.filter((it) => !(it.chat || /\schat$/.test(it.kind || ''))).length}|${switches?.length || 0}|${news?.length || 0}`; // (round 113: a new chat doesn't make the fixed rows again)
     if (fixedIx && sig === fixedSig) return;
     fixedSig = sig;
-    fixedIx = C.build([...settingsItems(), ...aiItems(), ...helpItems(), ...(news || []), ...actionItems(base)], { vocab: V });
+    // (round 113, search113) in slices: made at once it was the first Ctrl/⌘+K's 120–150 ms task (≈ 1,500 rows)
+    if (fixedIx) fixedIx.stale = true;
+    fixedIx = sliced([...settingsItems(), ...aiItems(), ...helpItems(), ...(news || []), ...actionItems(base)], (ix) => { last.buildMs = Math.round(ix.ms); });
   }
 
   // ---------- the live sources ----------
@@ -176,26 +178,36 @@ const AppSearch = (() => {
   // (round 113, search113) the chats by title in an index of their own, kept while the chats list stays the same: every
   // opening made them again with the menus (2,200 chats on the heavy profile: a 110–180 ms task on each Ctrl/⌘+K). A
   // new list is indexed in slices of ≤ 8 ms (the most recent first, the rest in idle moments; the rows join as they're in)
-  const chatIx = { sig: '', ix: null, rows: [], at: 0, done: true, ms: 0 };
   const FIELDS = [['label', 1], ['tags', 0.6], ['hint', 0.5], ['path', 0.4]];
+  // an index C.build would make, made in slices of ≤ 8 ms: the first one now, the rest in idle moments (the rows join as
+  // they're in: refresh). The same words, weights and labels as C.build (searched by C.search)
+  function sliced(rows, onDone) {
+    const ix = { items: [], post: new Map(), vocab: [], labels: [], labelLen: [], memo: new Map(), V, at: 0, done: false, ms: 0 };
+    const list = rows.filter((it) => it && it.label);
+    const slice = () => {
+      if (ix.stale) return;
+      const t0 = performance.now();
+      while (ix.at < list.length && performance.now() - t0 < 8) {
+        const it = list[ix.at++]; const i = ix.items.push(it) - 1;
+        for (const [f, w] of FIELDS) for (const t of C.words(it[f])) { let m = ix.post.get(t); if (!m) { m = new Map(); ix.post.set(t, m); } if ((m.get(i) || 0) < w) m.set(i, w); }
+        const lw = C.words(it.label); ix.labels.push(lw.join(' ')); ix.labelLen.push(lw.length);
+      }
+      ix.vocab = [...ix.post.keys()].sort(); ix.memo.clear(); ix.ms += performance.now() - t0;
+      if (ix.at < list.length) { (window.requestIdleCallback || setTimeout)(slice, { timeout: 60 }); return; }
+      ix.done = true; onDone?.(ix); refresh();
+    };
+    slice();
+    return ix;
+  }
+  // (round 113, search113) the chats by title in an index of their own, kept while the chats list stays the same: every
+  // opening made them again with the menus (2,200 chats on the heavy profile: a 110–180 ms task on each Ctrl/⌘+K)
+  const chatIx = { sig: '', ix: null, rows: [] };
   function chatIndex(items) {
     const rows = chatRows(items);
     let sig = String(rows.length); for (const r of rows) sig += `\n${r.id}`;
     if (sig === chatIx.sig) { for (let i = 0; i < rows.length; i++) chatIx.rows[i].run = rows[i].run; return; } // (the same chats: this opening's actions)
-    Object.assign(chatIx, { sig, rows, at: 0, done: false, ms: 0, ix: { items: [], post: new Map(), vocab: [], labels: [], labelLen: [], memo: new Map(), V } });
-    chatSlice(8);
-  }
-  function chatSlice(ms) {
-    const t0 = performance.now(); const x = chatIx; const ix = x.ix;
-    while (x.at < x.rows.length && performance.now() - t0 < ms) {
-      const it = x.rows[x.at++]; const i = ix.items.push(it) - 1;
-      for (const [f, w] of FIELDS) for (const t of C.words(it[f])) { let m = ix.post.get(t); if (!m) { m = new Map(); ix.post.set(t, m); } if ((m.get(i) || 0) < w) m.set(i, w); }
-      const lw = C.words(it.label); ix.labels.push(lw.join(' ')); ix.labelLen.push(lw.length);
-    }
-    ix.vocab = [...ix.post.keys()].sort(); ix.memo.clear();
-    x.ms += performance.now() - t0;
-    if (x.at < x.rows.length) { const me = x.ix; (window.requestIdleCallback || setTimeout)(() => { if (chatIx.ix === me) chatSlice(8); }, { timeout: 60 }); return; }
-    x.done = true; last.chatIndexMs = Math.round(x.ms); refresh();
+    if (chatIx.ix) chatIx.ix.stale = true;
+    Object.assign(chatIx, { sig, rows, ix: sliced(rows, (ix) => { last.chatIndexMs = Math.round(ix.ms); }) });
   }
   function liveItems(base) {
     const out = [];
