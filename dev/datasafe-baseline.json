@@ -309,6 +309,13 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
+   "file": "parityprobe.js",
+   "kind": "read",
+   "fn": "run",
+   "call": "readFileSync(fileB, 'utf8')",
+   "why": "the Astra check reads its own test file in a throwaway temp folder (null = Astra did not write it, reported as ✗); nothing of the owner's is written from it"
+  },
+  {
    "file": "projects.js",
    "kind": "kv",
    "store": "projects",
