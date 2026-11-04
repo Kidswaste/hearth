@@ -10,7 +10,7 @@
 //              · Chromium's helpers stopping (the GPU process, the network / audio services), a window's page crashing,
 //                a window not answering
 //              · programs Hearth runs stopping on their own: gone(name, …) from engines.js (Claude / Astra), codex-server.js
-//                (Astra's app-server), creative-vstmain.js (the VST plugin host), aemain.js (the After Effects bridge)
+//                (Astra's app-server), aemain.js (the After Effects bridge)
 //   live     data/bugbutton/live.json: the ring on disk (written a moment after a problem, at once for the main process's
 //            own errors), so a run that ends badly still has it at the next start
 //   saved    data/bugbutton/saved.json: the last 3 reports kept after Hearth closed unexpectedly (safetynet's session

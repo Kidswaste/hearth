@@ -28,9 +28,8 @@
   const curveText = (c) => { if (!c) return ''; const p = []; if (c.thr) p.push(`threshold ${pct(c.thr)}`); if (c.gam && c.gam !== 1) p.push(`punch ${c.gam}×`); if (c.att) p.push(`attack ${c.att} ms`); if (c.rel) p.push(`release ${c.rel} ms`); if (c.inv) p.push('inverted'); return p.length ? ` (${p.join(', ')})` : ''; };
   const reactions = (l) => l.layers().flatMap((L) => (L.ctl?.controls?.() || []).filter((c) => c.followsMusic).map((c) => `${c.label}${l.layers().length > 1 ? ` [${L.name}]` : ''} → ${ThreeAudio.label(c.followsMusic.band)} ${Math.round(c.followsMusic.amount * 100)}%${curveText(c.followsMusic.c)}`));
 
-  // (round 74, checkhealth74) since round 64 the Audio doctor's /audio (audiodoctor.js, a boot stand-in) took the name
-  // first and this one was never registered (nor /hear): it goes in as /hear (alias /audio-now) and the doctor's /audio
-  // hands "names" and a bare /audio with the Lab on screen to it (window.LabHear)
+  // (round 74, checkhealth74) /audio, or /hear when another module holds /audio (round 116, slim116: the music studio's
+  // Audio doctor that held it is gone, so this is /audio again, with /hear and /audio-now as aliases)
   const hearWhat = 'What the Lab hears now: hits (kick / snare / hats / vocals), the 8 bands, loudness, brightness, beat and bar with how sure, the key; "names" lists every feature a slider or sketch can use; "sync" how the pictures follow the sound (your speakers\' delay, the sound output)';
   // (round 77, labaudio77) /hear sync: the preview's song clock in plain words (tools/three-sandbox.html "the song's
   // clock"): what it follows, how late the speakers play, the sound card's drift, the output and its recoveries
@@ -49,7 +48,7 @@
     ].filter(Boolean).join('\n');
   }
   const audioName = Commands.get('audio') ? 'hear' : 'audio';
-  reg(audioName, hearWhat, '[names|sync]', window.LabHear = async (args = '') => {
+  reg(audioName, hearWhat, '[names|sync]', async (args = '') => {
     const l = await lab();
     if (/^sync$/i.test(args.trim())) return syncText();
     if (/^names?|list$/i.test(args.trim())) return ThreeAudio.GROUPS.map(([g, list]) => `**${g}**: ${list.map(([n, lb]) => `${n} (${lb})`).join(' · ')}`).join('\n') + '\nIn a sketch: audio.feat.kickOn, audio.env(\'kickOn\', 5, 300), audio.chroma, audio.keyName; onHit(\'kickOn\', fn).';

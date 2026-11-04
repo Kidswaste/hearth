@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // (round 85, manifest85) the lazy manifest is byte-stable and complete: dev/lazy-manifest.js --check runs twice (it
 // writes nothing), each run must find lazy-data.js / lazy-meta.js up to date and the lazy build equal to the old order,
-// no file may throw while the old order loads (follow-hook.js before FollowCore, projbundle.js before Projects), and
+// no file may throw while the old order loads (a hook file before the core it needs, projbundle.js before Projects), and
 // the two runs must produce the same bytes for both files (--emit). A flapping manifest made /help, Ctrl/⌘+K and the
 // keys sheet lose a command's words after a merge.
 //   node dev/lazymanifest-test.js            (≈ 1 min: two recordings + two lazy builds in the headless app)

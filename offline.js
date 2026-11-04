@@ -572,8 +572,7 @@ const Offline = (() => {
     button.dataset.download = '1';
     dialog.append(el('h2', { text: `Take ${project.name} offline` }), status, body,
       el('details', {}, el('summary', { text: 'What works on the train?' }),
-        el('p', { class: 'hint', text: 'Saved scenes, local audio, drawing, storyboards and notes work offline. Astra, Claude, Auto-improve and AI feedback need a connection. Sent messages can queue and send automatically when you reconnect; keep ideas in Notes if you want to choose when to send.' }),
-        el('p', { class: 'hint', text: 'On Mac, open your DAW and Serum 2 / Vital once while online. Plug-ins, licenses and external sample libraries must be installed locally; this check does not verify them.' })),
+        el('p', { class: 'hint', text: 'Saved scenes, local audio, drawing, storyboards and notes work offline. Astra, Claude, Auto-improve and AI feedback need a connection. Sent messages can queue and send automatically when you reconnect; keep ideas in Notes if you want to choose when to send.' })), // (round 116, slim116) no Serum 2 / Vital line: the music studio is gone
       el('div', { class: 'dialog-actions' }, button, el('button', { type: 'button', text: 'Close', on: { click: () => dialog.close() } })));
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog); dialog.showModal(); void run(false);

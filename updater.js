@@ -253,26 +253,9 @@ const Updater = (() => {
   // null (≤ 2.5 s, else the usual note); openSinceAway() = the digest any time (Settings › What's new…, Ctrl/⌘+K)
   let justUpdated = false;
   const loadWn = () => (typeof Lazy !== 'undefined' ? Lazy.load('whatsnew') : Promise.resolve());
-  const sinceAway = (j) => Promise.race([toursAfterUpdate(j).then((c) => c || loadWn().then(() => WhatsNew.afterUpdate(j, { goBack }))), new Promise((res) => setTimeout(() => res(null), 2500))]).catch((err) => { console.warn('whatsnew', err); return null; });
-  // (round 71, whatsnew71) the rounds the owner missed brought the 1-minute tours (trynew.js, rounds 66–70): then ONE calm
-  // card "Since you were last here: N updates — take the 1-minute tours?" (Take the tours · Later · What changed) stands
-  // for the digest, once. seenAtBoot: what this computer had seen as Hearth started (before anything marks it).
-  let seenAtBoot = null;
-  const noTours = () => Boolean(window.SMOKE_SAVES && !store.get('trynew.test', null)) || typeof Lazy === 'undefined';
+  const sinceAway = (j) => Promise.race([loadWn().then(() => WhatsNew.afterUpdate(j, { goBack })), new Promise((res) => setTimeout(() => res(null), 2500))]).catch((err) => { console.warn('whatsnew', err); return null; });
+  // (round 116, slim116) the 1-minute tours of rounds 61–70 (trynew.js) left with the quests and the music studio
   const indexRounds = async () => { try { return (await (await fetch('docs/patch-notes/index.txt', { cache: 'no-store' })).text()).split('\n').map((l) => Number((/^round-(\d+)\.md$/.exec(l.trim()) || [])[1]) || 0).filter(Boolean); } catch { return []; } };
-  async function toursAfterUpdate(j) {
-    if (noTours()) return null;
-    const got = (j?.files || []).map((f) => Number((/^docs\/patch-notes\/round-(\d+)\.md$/.exec(f) || [])[1]) || 0).filter(Boolean);
-    const seen = seenAtBoot ?? (got.length ? Math.min(...got) - 1 : null);
-    if (seen == null || store.get('trynew.since71', null)) return null;
-    const rounds = await indexRounds();
-    await Lazy.load('trynew');
-    return TryNew.since({ seen, rounds, j, goBack });
-  }
-  async function toursAtStart(seen, rounds) {
-    if (noTours() || store.get('trynew.since71', null)) return false;
-    try { await Lazy.load('trynew'); return TryNew.offerSince({ seen, rounds }); } catch { return false; }
-  }
   const openSinceAway = () => loadWn().then(() => WhatsNew.open()).catch((err) => toast(err.message, { type: 'error' }));
   // Hearth updated some other way (pulled by hand): the newest round's notes vs what this computer saw, cheaply
   // (index.txt only); the group loads only when there is something new
@@ -284,21 +267,13 @@ const Updater = (() => {
     const seen = store.get('whatsnew.seen', null);
     if (seen == null) { store.set('whatsnew.seen', top); return; } // the first start with it: from here on
     if (top <= Number(seen)) return;
-    if (await toursAtStart(Number(seen), rounds)) return; // (round 71, whatsnew71) the tours card stands for the digest
     loadWn().then(() => WhatsNew.atStart()).catch(() => {});
-  }
-  // (round 64, newtour64) ✦ Try what's new: ONE Hints offer, ever, of the hands-on paths through rounds 61–63; the group
-  // loads only for it (not in a test copy unless a check asks: store trynew.test)
-  function tryNewAtStart() {
-    if (store.get('trynew.offer', null) || window.Hints?.seen?.('trynew:offer') || window.Hints?.off?.() || (window.SMOKE_SAVES && !store.get('trynew.test', null))) return;
-    if (typeof Lazy !== 'undefined') Lazy.load('trynew').then(() => TryNew.offer()).catch(() => {});
   }
   // (round 29) the patch-notes reader (patchnotes.js, its own lazy group)
   const patchNotes = (file) => (typeof Lazy !== 'undefined' ? Lazy.load('patchnotes') : Promise.resolve()).then(() => PatchNotes.open(file)).catch((err) => toast(err.message, { type: 'error' }));
   function start() {
-    try { const v = store.get('whatsnew.seen', null); seenAtBoot = v == null ? null : Number(v) || 0; } catch { /* fine */ } // (round 71, whatsnew71)
     afterUpdate();
-    const ready = () => { restoreView(); afterSwap(); setTimeout(() => sinceAwayAtStart(), 4000); setTimeout(() => tryNewAtStart(), 60000); };
+    const ready = () => { restoreView(); afterSwap(); setTimeout(() => sinceAwayAtStart(), 4000); };
     if (performance.getEntriesByName('hearth:ready').length) ready(); else addEventListener('hearth:ready', ready, { once: true });
     AppUI.addAction?.('Patch notes: what changed, round by round', () => patchNotes());
     AppUI.addAction?.('Go back to the previous Hearth version (before the last update)', () => goBack());

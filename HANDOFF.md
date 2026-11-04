@@ -151,9 +151,16 @@ Round 67 (direction, taste, honesty; plan + per-stream notes in docs/upgrades/ro
 - Moodboard qualities (moodqualities67.md): `board-qualities.js`; a plain drag sends measured qualities with the tile's
   "What I like" line first, the actual picture is opt-in (Picture / right-click); distance slider per board; Mix card.
 - Credits (credits67.md): `credits(-core).js`, kv `credit-log`, Lab toolbar Credits button, Copy, "How it was made" reel.
-- Finish lines (finishlines67.md): `tools/three-finish(-core).js`, Lab extras key `finish`, ⚑ chip, Polish this → a
-  side quest through `QuestHud.write` + `QuestCore.trackSide` and `hub.questGuide`.
+- Finish lines (finishlines67.md): `tools/three-finish(-core).js`, Lab extras key `finish`, ⚑ chip, Polish this → three
+  small steps (round 116: no more side quest).
 - Testing on Windows: `dev/smoke.js` works with `ELECTRON` set to `electron\electron.exe` (the copy is renamed, so it
   never makes shortcuts; the login item is left alone). Round 67 checks: `dev/round67-test.js`, `dev/direction-test.js`,
   `dev/credits-test.js`, `dev/finishline-test.js`, `dev/moodqualities-test.js`; in-app `dev/checks/direction67.js`,
   `credits.js`, `finishline.js`, `moodqualities67.js`, `astra-collab.js` (via `node dev/astra-smoke.js collab`).
+
+Slim (round 116, docs/upgrades/slim116.md): Hearth is a chat wrapper for Claude and Astra in projects with cloud sync, plus
+the Three.js Lab the AIs control. The Life tab (quests, Paris, outings, shows, reminders, rewards…) and the music studio
+(Sound desk, VST hosting, live set, park jam, sound bank…) were removed as code. Their stores in the data folder are left
+exactly as they are (sync still carries them for an older Mac); the app no longer reads or writes them. The Creative board
+(materials, drawing, storyboard, tiles) stays. `node dev/slim116-test.js` keeps every reference resolving and nothing
+naming the removed modules.

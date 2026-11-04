@@ -1,6 +1,6 @@
 // 💡 Quick idea's small window (round 71, quickidea71). Type, or hold 🎙 and talk, then click where it goes:
-// 🎵 Music (Sound desk › Sessions) · ✦ Quest (Sidequest's saved ideas) · 📁 Project (a recent project's notes) ·
-// 💬 Later (the 💡 Ideas inbox). Enter saves to the place used last time; Esc closes (the words stay for next time).
+// 📁 Project (a recent project's notes) · 💬 Later (the 💡 Ideas inbox) (round 116, slim116: 🎵 Music and ✦ Quest left
+// with the music studio and the Life tab). Enter saves to the place used last time; Esc closes (the words stay for next time).
 // The microphone opens only while 🎙 is held and closes on release; the memo is a WAV made here (Web Audio, 16-bit
 // mono) and written by the main side into Hearth's data folder. Nothing is uploaded or sent to an AI.
 (() => {
@@ -10,10 +10,10 @@
   let info = { last: { dest: 'later' }, projects: [], dests: C.DESTS }, memo = null, saving = false, player = null;
 
   // ---------- where it goes ----------
-  const lastOk = () => { const l = C.target(info.last); return l.dest !== 'project' || info.projects.some((p) => p.id === l.projectId) ? l : { dest: 'later' }; };
+  const lastOk = () => { const l = C.target(info.last); return C.CHOICES.includes(l.dest) && (l.dest !== 'project' || info.projects.some((p) => p.id === l.projectId)) ? l : { dest: 'later' }; };
   function paintDests() {
     const last = lastOk();
-    dests.replaceChildren(...C.ORDER.map((d) => {
+    dests.replaceChildren(...C.CHOICES.map((d) => {
       const b = document.createElement('button'); b.type = 'button'; b.className = `dest${last.dest === d ? ' last' : ''}`; b.dataset.dest = d;
       const t = document.createElement('span'); t.className = 't'; t.textContent = `${C.DESTS[d].icon} ${C.DESTS[d].name}`;
       const s = document.createElement('span'); s.className = 's';

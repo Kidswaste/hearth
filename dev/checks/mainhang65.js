@@ -71,7 +71,7 @@ try {
   for (const r of rows) { const b = r.getBoundingClientRect(); if (b.width) { await J.mouse('mouseMoved', b.left + b.width / 2, b.top + b.height / 2, { button: 'none' }); await wait(80); } }
   if (rows.length) did.push(`hovered ${rows.length} rows`);
   // the ✦ tracker, a tool or two, then back
-  for (const t of ['tool:quests', 'tool:notes', 'tool:board']) { if (H.surfaces?.has?.(t) || (window.Tools?.get?.(t.slice(5)))) { activate(t); await wait(900); did.push(t); } }
+  for (const t of ['tool:notes', 'tool:board']) { if (H.surfaces?.has?.(t) || (window.Tools?.get?.(t.slice(5)))) { activate(t); await wait(900); did.push(t); } }
   activate(claude.id); await wait(400);
   // a new chat and a message to the fake engine
   Native.newChat(claude.id); await wait(300);

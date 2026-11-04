@@ -55,7 +55,7 @@ html = html.replace(tag('lazy.js'), '').replace(tag('lazy-data.js'), '');
 // (round 85, manifest85) the files go back in the order lazy.js registers the stand-ins at run time, and never before a
 // group they need. Each group used to be put right after its `at` file, so groups sharing one came out reversed
 // (projbundle before projects: "Projects is not defined") and a group placed earlier than one it needs (`after`)
-// ran first (questjournal's follow-hook.js before follow's follow-core.js: "FollowCore is not defined"): their files
+// ran first (a group's hook file before the core file of the group it needs: "… is not defined"): their files
 // threw while the copy loaded and what they register was missing from the recording.
 //  1. same `at`: one after the other, in the order of the lazy-at.js tags (lazy.js Lazy.at), then LazyData.GROUPS
 //  2. a group whose `after` group(s) still land later moves right after the last of them (as lazy.js loads it: after)

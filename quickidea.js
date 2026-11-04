@@ -1,14 +1,13 @@
 // 💡 Quick idea (round 71, quickidea71), the main window's side. The small window (tray › 💡 Quick idea…, or Ctrl+Alt+I
 // from any app: quickidea-window.js) saves an idea through the main process (quickideamain.js, the only writer of the
 // inbox, kv 'quick-ideas'); this file:
-//   · puts a ✦ Quest / 📁 Project idea in its place, quietly (the main process asks with 'tray:ideas'; the window never
-//     comes forward): a saved idea in Sidequest (Codex's QuestCore.saveIdea, through the ✦ tracker's careful writer
-//     QuestHud.write: the Studio's own mutate when it's open) or one line in a project's notes (Projects.setNotes).
-//     A Move to… takes it out of the old place first (an idea already made into a quest stays a quest);
+//   · puts a 📁 Project idea in its place, quietly (the main process asks with 'tray:ideas'; the window never
+//     comes forward): one line in a project's notes (Projects.setNotes). A Move to… takes it out of the old place first.
+//     (round 116, slim116) the ✦ Quest and 🎵 Music places left with the Life tab and the music studio: an idea saved
+//     there before stays exactly as it was (its row says so; Move to… puts it in a project or Later);
 //   · the 💡 Ideas inbox: every idea, newest first, with ▶ for a voice memo, Move to… and Delete (to the inbox's Trash:
-//     Restore, or Empty the Trash: voice memos then go to the computer's Trash). Reached from the rail's ⋯, the ✦ quest
-//     tracker (its ⋯ More and a "💡 N ideas waiting" row), the small window's "💡 All ideas", Ctrl/⌘+K and /idea;
-//   · 🎵 Music ideas in the Sound desk's Sessions panel (tools/bouncelog.js asks sessionsSection).
+//     Restore, or Empty the Trash: voice memos then go to the computer's Trash). Reached from the rail's ⋯, the small
+//     window's "💡 All ideas", Ctrl/⌘+K and /idea.
 // Lazy group 'quickidea' (tier use): nothing loads before the first idea or the first look at the inbox.
 const QuickIdeas = (() => {
   const C = QuickIdeaCore;
@@ -24,12 +23,9 @@ const QuickIdeas = (() => {
   const list = async () => (lastList = await op({ op: 'list' }));
 
   // ---------- putting an idea in its place ----------
-  async function questWrite(fn) { await Lazy.load('questhud'); return QuestHud.write(fn); }
   async function project(id) { await Lazy.load('projects'); await Projects.ready(); const p = Projects.get(id); if (!p) throw Error('That project isn’t there any more. Move the idea somewhere else.'); return p; }
   async function unplace(pl) {
-    if (pl?.dest === 'quest' && pl.questIdea) {
-      await questWrite((s) => { const k = (s.ideas || []).find((x) => x.id === pl.questIdea); if (k && !k.questId) s.ideas = s.ideas.filter((x) => x !== k); }); // made into a quest already: it stays a quest
-    } else if (pl?.dest === 'project' && pl.projectId && pl.line) {
+    if (pl?.dest === 'project' && pl.projectId && pl.line) { // (round 116, slim116) a ✦ Quest place is left as it was (the quest journal is no longer touched)
       await Lazy.load('projects'); await Projects.ready(); const p = Projects.get(pl.projectId);
       if (p) { const r = C.removeNote(p.notes, pl.line); if (r.removed) { Projects.setNotes(p, r.notes); await Projects.flush(); } }
     }
@@ -37,10 +33,7 @@ const QuickIdeas = (() => {
   async function place(i) {
     if (i.placed && !C.sameTarget(i.placed, i.to)) { await unplace(i.placed); await op({ op: 'placed', id: i.id, placed: null }); }
     const t = i.to;
-    if (t.dest === 'quest') {
-      const q = C.questIdea(i); const r = await questWrite((s) => QuestCore.saveIdea(s, q));
-      return op({ op: 'placed', id: i.id, placed: { dest: 'quest', questIdea: r.result.id } });
-    }
+    if (!C.CHOICES.includes(t.dest)) throw Error('That place is gone from Hearth. Move the idea to a project or Later.'); // (round 116, slim116) ✦ Quest / 🎵 Music
     if (t.dest === 'project') {
       const p = await project(t.projectId), line = C.noteLine(i);
       Projects.setNotes(p, C.addNote(p.notes, line)); await Projects.flush();
@@ -71,7 +64,7 @@ const QuickIdeas = (() => {
     else toast(`Moved to ${C.label(now?.to || to)} · ${C.whereWords(now?.to || to)}`, { timeout: 2600 });
   }
   async function remove(i) {
-    if (i.placed && (i.placed.dest === 'quest' || i.placed.dest === 'project')) await unplace(i.placed);
+    if (i.placed && i.placed.dest === 'project') await unplace(i.placed);
     await op({ op: 'trash', id: i.id }); failed.delete(i.id); await list(); paint();
     toast('Idea moved to the inbox’s Trash.', { timeout: 5000, action: { label: 'Undo', fn: () => restore(i).catch((err) => toast(calmError(err), { type: 'error' })) } });
   }
@@ -80,9 +73,7 @@ const QuickIdeas = (() => {
   // ---------- going there ----------
   async function openWhere(i) {
     const t = i.to; close();
-    if (t.dest === 'quest') { await Lazy.load('questhud'); await QuestHud.openStudio(null, 'catalog'); setTimeout(() => { const f = document.querySelector('.qj-catalog-kept'); if (f) { f.open = true; f.scrollIntoView?.({ block: 'start' }); } }, 120); return; } // Life › Find a quest › Saved ideas
     if (t.dest === 'project') { await Lazy.load('projects'); return Projects.openHome(t.projectId); }
-    if (t.dest === 'music') { await Lazy.load('creative'); return BounceLog.run(''); }
     return open();
   }
 
@@ -90,7 +81,7 @@ const QuickIdeas = (() => {
   async function recentProjects() { try { await Lazy.load('projects'); await Projects.ready(); return Projects.live().slice(0, 8); } catch { return []; } }
   async function moveItems(i) {
     const ps = await recentProjects();
-    return C.ORDER.map((d) => {
+    return C.CHOICES.map((d) => {
       if (d === 'project') return { label: `${C.DESTS.project.icon} Project`, items: ps.length ? ps.map((p) => ({ label: `📁 ${p.name}`, checked: i.to.dest === 'project' && i.to.projectId === p.id, action: () => moveTo(i, { dest: 'project', projectId: p.id, projectName: p.name }).catch((err) => toast(calmError(err), { type: 'error' })) })) : [{ label: 'No projects yet', disabled: true }] };
       return { label: `${C.DESTS[d].icon} ${C.DESTS[d].name} · ${C.DESTS[d].where}`, checked: i.to.dest === d, action: () => moveTo(i, { dest: d }).catch((err) => toast(calmError(err), { type: 'error' })) };
     });
@@ -128,7 +119,7 @@ const QuickIdeas = (() => {
     if (trash) acts.append(btn('Restore', () => restore(i).then(() => list()).then(paint), 'qi-restore', 'Back in the inbox, and back where it went'));
     else {
       if (failed.has(i.id)) acts.append(btn('Try again', () => { failed.delete(i.id); return deliver(); }, 'qi-retry'));
-      acts.append(btn('Move to…', (e) => { const b = e.currentTarget.getBoundingClientRect(); return moveItems(i).then((items) => showMenu(b.left, b.bottom + 4, items)); }, 'qi-move', 'Put it somewhere else: 🎵 Music, ✦ Quest, 📁 a project or 💬 Later'));
+      acts.append(btn('Move to…', (e) => { const b = e.currentTarget.getBoundingClientRect(); return moveItems(i).then((items) => showMenu(b.left, b.bottom + 4, items)); }, 'qi-move', 'Put it somewhere else: 📁 a project or 💬 Later'));
       acts.append(btn('Delete', () => remove(i), 'qi-del', 'To the inbox’s Trash (Restore brings it back)'));
     }
     r.append(acts);
@@ -177,17 +168,6 @@ const QuickIdeas = (() => {
   }
   function close() { try { dlg?.close(); } catch { /* gone */ } }
 
-  // ---------- 🎵 Music ideas in the Sound desk › Sessions (tools/bouncelog.js) ----------
-  async function sessionsSection(panel) {
-    if (!panel?.isConnected) return;
-    const st = await list().catch(() => null); if (!st || !panel.isConnected) return;
-    panel.querySelector('.qi-sessions')?.remove();
-    const music = st.ideas.filter((i) => i.to.dest === 'music');
-    const sec = el('section', { class: 'qi-sessions' }, el('div', { class: 'bl-head' }, el('strong', { text: '💡 Ideas for music' }), el('span', { class: 'bl-dim', text: music.length ? 'Saved with 💡 Quick idea → 🎵 Music, newest first.' : 'None yet: tray menu › 💡 Quick idea… → 🎵 Music keeps one here.' })));
-    if (music.length) sec.append(el('ul', { class: 'qi-list' }, music.slice(0, 40).map((i) => row(i))));
-    panel.append(sec);
-  }
-
   // ---------- chat (secondary: everything above is a click) ----------
   async function run(args = '') {
     const a = String(args).trim();
@@ -196,18 +176,18 @@ const QuickIdeas = (() => {
     const w = C.parseWords(a); let to = { dest: w.dest || 'later' };
     if (w.dest === 'project') { const ps = await recentProjects(); if (!ps.length) throw Error('No projects yet: the idea needs one.'); to = { dest: 'project', projectId: ps[0].id, projectName: ps[0].name }; }
     const r = await op({ op: 'save', text: w.text, to });
-    if (r.idea.to.dest === 'quest' || r.idea.to.dest === 'project') await deliver();
+    if (r.idea.to.dest === 'project') await deliver();
     return `Saved to ${r.label} · ${r.where}.`;
   }
   if (typeof Commands !== 'undefined' && !Commands.get('idea')) {
-    Commands.register({ name: 'idea', args: '[words | music: … | quest: … | project: … | later: … | new]', area: 'App', desc: '💡 Ideas: the inbox (Move to…, Delete), or save an idea (to Later unless you say where); new opens the small Quick idea window',
-      complete: (a) => [['new', 'the small Quick idea window'], ['list', 'the 💡 Ideas inbox'], ['music: ', 'save to Sound desk › Sessions'], ['quest: ', 'save to Sidequest’s saved ideas'], ['project: ', 'save to your latest project’s notes'], ['later: ', 'save to the inbox']].filter(([v]) => v.startsWith(String(a || '').toLowerCase())).map(([v, d]) => ({ value: v, desc: d })),
-      examples: ['/idea', '/idea quest: a sunrise walk to Buttes-Chaumont', '/idea new'], keywords: 'idea ideas inbox quick note jot capture voice memo later tray inspiration',
+    Commands.register({ name: 'idea', args: '[words | project: … | later: … | new]', area: 'App', desc: '💡 Ideas: the inbox (Move to…, Delete), or save an idea (to Later unless you say where); new opens the small Quick idea window',
+      complete: (a) => [['new', 'the small Quick idea window'], ['list', 'the 💡 Ideas inbox'], ['project: ', 'save to your latest project’s notes'], ['later: ', 'save to the inbox']].filter(([v]) => v.startsWith(String(a || '').toLowerCase())).map(([v, d]) => ({ value: v, desc: d })),
+      examples: ['/idea', '/idea project: a sunrise palette for the intro', '/idea new'], keywords: 'idea ideas inbox quick note jot capture voice memo later tray inspiration',
       run: (a) => run(a) });
   }
   try { AppUI.addAction?.('💡 Quick idea…', () => op({ op: 'open' }).catch((err) => toast(calmError(err), { type: 'error' }))); AppUI.addAction?.('💡 Ideas inbox', () => open().catch((err) => toast(calmError(err), { type: 'error' }))); } catch { /* no palette */ }
   window.hub?.quickIdea?.onChanged?.(() => { if (dlg) list().then(paint).catch(() => {}); });
 
-  return { open, close, deliver, run, sessionsSection, moveTo, remove, restore, list: () => list(), _state: () => ({ last: lastList, failed: Object.fromEntries(failed), open: Boolean(dlg) }) };
+  return { open, close, deliver, run, moveTo, remove, restore, list: () => list(), _state: () => ({ last: lastList, failed: Object.fromEntries(failed), open: Boolean(dlg) }) };
 })();
 window.QuickIdeas = QuickIdeas;

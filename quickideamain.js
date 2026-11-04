@@ -3,7 +3,7 @@
 // one change at a time: quickidea-core.js has its shape) and the voice memos (<Hearth data>/quick-ideas/Idea <date>.wav,
 // recorded in the small window while 🎙 is held, written here; nothing is uploaded, nothing is sent anywhere).
 // Loaded on first use (main.js keeps one handler line); the window is made when first opened and closed for good after
-// 10 minutes hidden. The main window never comes forward: a saved Quest / Project idea is put in its place by the main
+// 10 minutes hidden. The main window never comes forward: a saved Project idea is put in its place by the main
 // window's page in the background (quickidea.js, asked with 'tray:ideas').
 const fs = require('fs');
 const path = require('path');

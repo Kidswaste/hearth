@@ -57,9 +57,6 @@ const GUARDED = {
   'meshy-library': 'Meshy generations: items are updated in place while a generation runs (re-reading mid-task would drop that); only grows',
   assets: 'the asset library index (assets.js, several main-side writers): a removal may come back; never lost',
   'forge-patches': 'Forge Debug patches (tools/forge-game.js): saved whole; one deleted may come back — rare',
-  'quest-journal': 'Codex\'s journal (tools/quest-journal.js mutate(), questhud / showprep / showsync read with status): not changed here (For Codex)',
-  'quest-journal-before-restore': 'Codex\'s journal backup: written once before a restore, never read back into memory',
-  'sidequest-outings-v1': 'Codex\'s outing notebook (tools/outing-desk.js): not changed here (For Codex)',
   'creative-playground': 'Codex\'s creative playground notebook: not changed here (For Codex)',
   'credit-log': 'the creative-direction session\'s file (credits.js): it merges on save; not touched here',
 };

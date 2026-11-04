@@ -625,6 +625,16 @@ const ThreeLab = (() => {
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
     const labMoreBtn = btn('⋯', 'More: variations, all formats, a batch, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
+    // (round 64, clickfirst64) ▶ Playtest (notes and the hitch map) at the end of Capture & playtest (round 116, slim116: moved here from clickfirst.js)
+    function playtestRows() {
+      const say = (t) => { if (t && typeof t === 'string') toast(t, { timeout: 4000 }); };
+      const run = (fn) => () => Promise.resolve().then(fn).catch((err) => toast(window.calmError ? calmError(err) : String(err?.message || err), { type: 'error' }));
+      const gm = () => Lazy.load('gamemode');
+      return ['▶ Playtest',
+        ['✎ Playtest log', 'Your F8 notes with their pictures · a click jumps back there', run(async () => { await gm(); return PlayNotes.open(); })],
+        ['● Record the hitch map', 'Off by default · while on, ▶ Play records where it stutters', run(async () => { await gm(); say(await HitchMap.set(!HitchMap.isOn())); }), store.get('hitchmap.on', false) === true],
+        ['▦ Hitch map', 'The last recording of this scene', run(async () => { await gm(); return HitchMap.open(); })]];
+    }
     function labMoreItems() {
       const v = store.get('three.version', ThreeData.VERSIONS[0]);
       // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
@@ -635,12 +645,12 @@ const ThreeLab = (() => {
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
         ...fix,
-        [typeof ClickFirst !== 'undefined' ? 'Capture & playtest' : 'Capture', typeof ClickFirst !== 'undefined' ? 'Screenshot, contact sheet, playtest log, hitch map' : 'Screenshot, copy, contact sheet', [ // (round 64, clickfirst64) + ▶ Playtest at its end
+        ['Capture & playtest', 'Screenshot, contact sheet, playtest log, hitch map', [ // (round 64, clickfirst64) + ▶ Playtest at its end
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
           ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
-          ...(typeof ClickFirst !== 'undefined' ? ClickFirst.labRows() : [])]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (clickfirst.js) // (round 8) the Lab reaches the whole capture menu
+          ...playtestRows()]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (round 116, slim116: here since clickfirst.js left with the quests) // (round 8) the Lab reaches the whole capture menu
         ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],

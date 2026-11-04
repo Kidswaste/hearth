@@ -5,7 +5,7 @@
 //   change, and at once when the window is hidden; no timers otherwise).
 //   Listens from outside, editing none of these: the time machine (hearth:tm → ThreeHistory._doc: the version's `by`
 //   and kind), the slider panel (trusted 'change' events inside .tweaks: moves saved into the code or not), the Sound
-//   desk (WorkbenchVST.api.on('params'): source desk / editor = the owner's hands, ai-chat / preset-hover = AI), the
+//   desk (until round 116: the Sound desk's params events; source desk / editor = the owner's hands, AI otherwise), the
 //   recordings (document hearth:quest-week: park-jam, park-song, live-set).
 const Credits = (() => {
   const C = CreditsCore;
@@ -78,22 +78,8 @@ const Credits = (() => {
     const id = here();
     if (id) { const name = nameOf(id); withLog((L) => C.noteMoves(L, id, name, 1)); }
   }, true);
-  // the Sound desk (Codex's tools/workbench-vst.js, loaded on first use): its params events say whose hands moved what
-  let deskOn = false;
-  function hookDesk() {
-    if (deskOn || typeof WorkbenchVST === 'undefined' || typeof WorkbenchVST.api?.on !== 'function') return;
-    deskOn = true;
-    WorkbenchVST.api.on('params', (ev) => {
-      const source = ev?.source;
-      if (!['desk', 'editor', 'ai-chat', 'preset-hover', 'preset', 'undo'].includes(source)) return;
-      let instrument = '';
-      try { instrument = WorkbenchVST.api.current()?.name || ''; } catch { /* no instrument open */ }
-      const id = here(); const name = id ? nameOf(id) : '';
-      // a knob gesture is one move, however many controls it touched
-      withLog((L) => C.noteSound(L, id, name, { source, instrument, changed: 1 }));
-    });
-  }
-  window.Lazy?.when?.('creative', hookDesk);
+  // (round 116, slim116) the Sound desk is gone: nothing to hook (its old totals stay in the log)
+  function hookDesk() {}
   // recordings made in Park mode / Loop song / Live set
   document.addEventListener('hearth:quest-week', (e) => {
     const d = e.detail || {};

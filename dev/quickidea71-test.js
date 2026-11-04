@@ -1,7 +1,7 @@
 // (round 71, quickidea71) 💡 Quick idea, Node only: the routing (where an idea goes, the last-used place Enter saves to,
 // Move to… / Delete / Restore / Empty the Trash, what is "pending" for the main window to put in place), the store (a
-// damaged file throws and is never read as empty, damaged rows are dropped, the caps), Sidequest's saved idea through
-// Codex's REAL QuestCore.saveIdea, a project's notes line (added, taken out exactly, the 4,000-character limit), the
+// damaged file throws and is never read as empty, damaged rows are dropped, the caps; ideas saved to 🎵 Music / ✦ Quest
+// before round 116 are still read as they were: slim116), a project's notes line (added, taken out exactly, the 4,000-character limit), the
 // recent projects, the WAV encoder / checker, the key comparison, /idea's words, and the main process's side
 // (quickideamain.js) on a throwaway folder with a fake store: saves with and without a voice memo, a store that can't be
 // read refuses and leaves no file behind, a project that's gone, the Trash and its voice memos.
@@ -12,7 +12,6 @@ const os = require('os');
 const path = require('path');
 const Module = require('module');
 const C = require('../quickidea-core');
-const QC = require('../tools/quest-core');
 let checks = 0;
 const pending = [];
 const test = (name, fn) => { const r = fn(); if (r && typeof r.then === 'function') { pending.push(r.then(() => { checks++; console.log('✓ ' + name); })); return; } checks++; console.log('✓ ' + name); };
@@ -89,23 +88,6 @@ test('text is cleaned: control characters, Windows line ends, 2,000 characters',
   assert.ok(C.title({ text: 'word '.repeat(60), at: NOW }, 40).endsWith('…'));
 });
 
-// ---------- Sidequest (Codex's real QuestCore) ----------
-test('✦ Quest: a saved idea QuestCore.saveIdea accepts, with a path from the words; the journal still validates', () => {
-  const s = QC.validate(QC.initial());
-  const cases = [['make a loop from kitchen sounds\nsave eight bars', 'music'], ['a shader with the cover palette', 'visual'], ['Clink: a boss that copies the player', 'game'], ['sunrise walk to Buttes-Chaumont', 'life']];
-  for (const [text, path] of cases) {
-    const q = C.questIdea(C.make({ text, to: { dest: 'quest' } }, NOW)); assert.equal(q.path, path, text);
-    const idea = QC.saveIdea(s, q); assert.equal(idea.title, q.title); assert.ok([5, 15, 30].includes(idea.minutes));
-  }
-  assert.equal(s.ideas[0].goal, 'save eight bars', 'the second line is the finish line');
-  const memo = C.questIdea(C.make({ text: '', to: { dest: 'quest' }, memo: { file: '/d/Idea.wav', seconds: 6 } }, NOW));
-  QC.saveIdea(s, memo); assert.equal(memo.path, 'music'); assert.match(memo.goal, /voice memo/);
-  const long = C.questIdea(C.make({ text: 'x'.repeat(1900), to: { dest: 'quest' } }, NOW)); assert.ok(long.title.length <= 150 && long.goal.length <= 500); QC.saveIdea(s, long);
-  QC.validate(s);
-  // taken out again on a Move to… (only while it's still an unused idea)
-  const k = s.ideas[0]; s.ideas = s.ideas.filter((x) => x !== k); QC.validate(s);
-});
-
 // ---------- a project's notes ----------
 test('📁 Project: one line added under the notes, taken out exactly on a Move to…, 4,000 characters', () => {
   const i = C.make({ text: 'boss intro\nwith the drums from Tuesday', to: { dest: 'project', projectId: 'p', projectName: 'Clink' } }, NOW);
@@ -140,9 +122,11 @@ test('the key: Control+Alt+I = ctrl+alt+i = Alt+Ctrl+I; it can’t be the show /
   assert.ok(C.sameKey('Control+Alt+I', 'alt+ctrl+i')); assert.ok(C.sameKey('CmdOrCtrl+Alt+I', 'Control+Option+I'));
   assert.ok(!C.sameKey('Control+Alt+I', 'Control+Alt+H')); assert.ok(!C.sameKey('', '')); assert.equal(C.DEFAULT_KEY, 'Control+Alt+I');
 });
-test('/idea words: "quest: …", "music › …", plain words go to Later', () => {
-  assert.deepEqual(C.parseWords('quest: a sunrise walk'), { dest: 'quest', text: 'a sunrise walk' });
-  assert.deepEqual(C.parseWords('Music › bass idea'), { dest: 'music', text: 'bass idea' });
+test('/idea words: "project: …", "later › …", plain words go to Later (round 116: no more "quest:" / "music:")', () => {
+  assert.deepEqual(C.parseWords('project: a sunrise palette'), { dest: 'project', text: 'a sunrise palette' });
+  assert.deepEqual(C.parseWords('Later › bass idea'), { dest: 'later', text: 'bass idea' });
+  assert.deepEqual(C.parseWords('quest: a sunrise walk'), { dest: null, text: 'quest: a sunrise walk' });
+  assert.deepEqual(C.CHOICES, ['project', 'later']);
   assert.deepEqual(C.parseWords('just words: with a colon'), { dest: null, text: 'just words: with a colon' });
 });
 

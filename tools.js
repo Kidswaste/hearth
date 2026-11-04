@@ -16,13 +16,10 @@ const Tools = (() => {
   // the rail", once: `placed` remembers it, so ticking it back in (⋯ › Put tools back, Settings) keeps it in the rail
   function placeNew(t) {
     const fresh = [...registry.values()].filter((x) => x.offRail && !(t.placed || []).includes(x.id));
-    // Sidequest Studio was automatically hidden by its first release. Promote it once
-    // for existing installs too; any later choice to hide it remains respected.
-    const studio = registry.has('quests') && !t.studioRailV1;
-    if ((!fresh.length && !studio) || !H.config) return t;
+    if (!fresh.length || !H.config) return t; // (round 116, slim116) Sidequest Studio's one-time promotion left with the Life tab
     const ids = fresh.map((x) => x.id);
-    const hidden = new Set([...(t.hidden || []), ...ids]); if (studio) hidden.delete('quests');
-    H.config.tools = { ...t, ...(studio ? { studioRailV1: true } : {}), placed: [...(t.placed || []), ...ids], hidden: [...hidden] };
+    const hidden = new Set([...(t.hidden || []), ...ids]);
+    H.config.tools = { ...t, placed: [...(t.placed || []), ...ids], hidden: [...hidden] };
     saveConfig();
     return H.config.tools;
   }

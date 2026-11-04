@@ -15,7 +15,7 @@ const SlowCardCore = (() => {
 
   // where the owner was, in their words (jank.js areas)
   const AREA = { chat: 'a chat', Lab: 'the Lab', board: 'the mood board', menus: 'a menu', dialogs: 'a dialog', 'Commands page': 'the Commands page',
-    apps: 'an app window', rail: 'the rail', start: 'Hearth starting up', Forge: 'Forgeheart', quests: 'Sidequest Studio', creative: 'the Sound desk',
+    apps: 'an app window', rail: 'the rail', start: 'Hearth starting up', Forge: 'Forgeheart', creative: 'the Creative board',
     home: 'Projects', capture: 'a capture', three: 'the Lab', options: 'Settings' };
   const where = (a) => AREA[a] || (a ? `the ${a} page` : 'Hearth');
   // what an IPC channel does, in the owner's words (the longest match wins; unknown ones keep their name)
@@ -24,16 +24,16 @@ const SlowCardCore = (() => {
     [/^kv:|^data:/, 'reading or saving app data'], [/^config:/, 'your settings'], [/^(chats?|store|history|chatkeep|attachments?)[:-]/, 'your chats'],
     [/^(sync|cloud|icloud)/, 'cloud sync'], [/^usage|^tokenaudit|^usagelimits/, 'token counts'], [/^memory/, 'memory'], [/^notes?:/, 'notes'],
     [/^(game|gameready|playbudget|gpu52)/, '▶ Play'], [/^(capture|renders|motion|stage)/, 'capture and renders'],
-    [/^(creative-vst|soundbank|audiodoctor|bouncelog|vst)/, 'the Sound desk'], [/^board/, 'the mood board'],
+    [/^board/, 'the mood board'],
     [/^(fs|files?|reach|dragdrop|fw|diskcalm|refs)[:-]/, 'files on disk'], [/^(engine|codex|astra|claude|connectors?|connections)/, 'the AI engines'],
-    [/^(update|updater)/, 'updates'], [/^(backup|safetynet|crashsafe|datasafe)/, 'backups and safety copies'], [/^(shows|showsync)/, 'the shows list'],
-    [/^(quest|weekquest|questguide)/, 'quests'], [/^(native|window|big|power|volume|notify)/, 'the window and system'], [/^voice/, 'voice'],
+    [/^(update|updater)/, 'updates'], [/^(backup|safetynet|crashsafe|datasafe)/, 'backups and safety copies'],
+    [/^(native|window|big|power|notify)/, 'the window and system'], [/^voice/, 'voice'],
     [/^(chrome|cview|apps?)[:-]/, 'the built-in browser'], [/^(deploy|remote|interop|adobe|ae)/, 'connections to other apps'], [/^(two|twocopies)/, 'the other Hearth copy'],
   ];
   function plainIpc(ch) { const s = String(ch || ''); for (const [re, w] of IPC) if (re.test(s)) return w; return s ? `“${s}”` : 'something'; }
   // what a renderer file is, in short (jank-report.js has the long list; the card only needs the gist)
   const FILE = [[/^tools\/three|^tools\/cut|three-sandbox/, 'the Lab'], [/^native|^panel|^chat-|^md\.js|^director-dock/, 'the chat view'], [/^board/, 'the mood board'],
-    [/^tools\/quest|^quest|^weekquest/, 'quests'], [/^tools\/(creative|workbench|preset|soundbank)/, 'the Sound desk'], [/^jank/, 'the smoothness watch'],
+    [/^tools\/(creative|workbench)/, 'the Creative board'], [/^jank/, 'the smoothness watch'],
     [/^renderer\.js|^ui\.js|^tools\.js/, 'the app shell'], [/^sync/, 'cloud sync'], [/^lazy/, 'feature loading']];
   function plainFile(f) { const s = String(f || ''); for (const [re, w] of FILE) if (re.test(s)) return w; return s ? s.replace(/\.js$/, '') : ''; }
 

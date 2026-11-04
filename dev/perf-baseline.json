@@ -2464,7 +2464,6 @@
    "window: (anon) native.js:1312": 32,
    "main: createWindow main.js:187": 31,
    "window: (anon) lazy.js:337": 26,
-   "main: (anon) showsync-venues.js:1": 24,
    "window: querySelector": 21,
    "main: spawn": 19,
    "window: suggest projects-core.js:210": 19,
