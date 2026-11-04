@@ -6,7 +6,7 @@ const names = new Set(Commands.list().map((d) => d.name));
 out.aliasShadow = Commands.list().flatMap((d) => d.aliases.filter((a) => names.has(a.toLowerCase()) && a.toLowerCase() !== d.name).map((a) => `${d.name}~${a}`));
 // Names a stream's file defines (`name: '…'` / reg('…')) that now resolve to another area's command, so that
 // stream's version is only reachable under its fallback name (alt / alias / fx-…) or shared through `when`.
-const files = { 'addons-cmds.js': ['Prompts', 'Notes', 'Memory', 'Kit', 'Agents', 'Forge', 'Data'], 'tools/three-fx-cmds.js': ['Three.js Lab'], 'tools/three-cmds.js': ['Three.js Lab'], 'meter.js': ['Meter'], 'look.js': ['Look'] };
+const files = { 'addons-cmds.js': ['Prompts', 'Notes', 'Memory', 'Kit', 'Agents', 'Forge', 'Data'], 'tools/three-fx-cmds.js': ['Three.js Lab'], 'tools/three-cmds.js': ['Three.js Lab'], 'meter.js': ['Meter'], 'meter-cmds.js': ['Meter'], 'look.js': ['Look'] };
 out.elsewhere = [];
 for (const [f, areas] of Object.entries(files)) {
   let src = '';
