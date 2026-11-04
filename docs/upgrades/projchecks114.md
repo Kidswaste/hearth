@@ -98,7 +98,9 @@ The step fails with **"…the Lab is on Start Beta's scene, and stays on it" ✖
 `labload94` with 3 busy CPUs beside it (`smoke.js --burn 3`) failed **1 of 4**. The view was taken by
 **`ask appsearch.js:450 < runItem`**: the Enter ran "Ask Claude: Three.js Lab" instead of the Lab row (the check's new
 `activate` trace names it). Two other tries (10 starts each in one app, the same Ctrl/⌘+K › "Three.js Lab" › Enter)
-failed 1 of 10 and 0 of 10. The race is that narrow.
+failed 1 of 10 and 0 of 10, so the race is narrow. In the failed start, Enter changed nothing on screen. That try's list
+recording looked at the wrong list (Projects home has a `.palette-list` too; fixed in the check), so it isn't
+explained. It wasn't seen again in the 7 labload94 runs after the fix, 3 of them with 3 busy CPUs.
 
 ### Why
 The first Ctrl/⌘+K after a start loads Find anything's code (`appsearch`, a lazy group). Until it's in, the palette
@@ -141,7 +143,21 @@ that since round 74. A Home signature would remove the 20–50 ms redraw this ro
 ## Checks
 All under `flock /tmp/hearth-run.lock`, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package`.
 
-RESULTS_HERE
+- Each fixed check 3 times (`BIGPROFILE70=1 node dev/run-checks.js --exact projsearch81 labload94 projaudit108
+  projopen109`, three runs): **4/4, 4/4, 4/4**.
+  - projsearch81 took 51–53 s.
+  - labload94 took 48–53 s.
+  - projaudit108 (pc, fresh, start, giant) took 211–212 s. Its start's switch was ready in 2.9–4.1 s.
+  - projopen109 took 234–235 s. Its card part missed 0 of 22 each run, and its ⋯ / row parts missed 0 of 66.
+- labload94 3 more times with 3 busy CPUs beside it (`smoke.js --burn 3`): 3/3.
+- `node dev/run-checks.js --exact projects desk89 projopen109 search113 labload94 lazy` (`BIGPROFILE70=1`): **6/6**.
+- Unit, by hand:
+  - `boot-test`: 3117 checks pass. First screen: 64 scripts, **1694 / 1696 KB**.
+  - `appsearch-test`: 10/10.
+  - `desk89-test`: 100/100.
+- `node dev/run-checks.js release`: **308/311**. The other 3 are the known failures in KNOWN_FAIL (Codex's tests:
+  playback-volume, quest-chat-service, questguide-flp), and 1 opt-in check was skipped. The full output has **no ✖
+  line**. It took 30 min and left 0 `/tmp/hearth-*` folders.
 
 ## Files
 - `desk-paint.js`: `held()` covers a pressed project card.
