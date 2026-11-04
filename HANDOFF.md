@@ -87,6 +87,8 @@ owner-facing notes.
   full. Claude asks Hearth through the permission tool; Astra runs in Codex's sandbox (writes only in the folders, no
   network). Hearth's data folder is locked for any chat whose folders cover it (`datalock.js`, round 119): refused,
   no card, on both engines (Astra's app-server asks Hearth before its edits and commands on such chats).
+  The doctor's **Check Astra works like Claude** (`parityprobe.js` + `parityprobe-ui.js`, round 120) proves both on the
+  owner's real Codex in temp folders and copies a report with the raw approval shapes Codex sent.
 - Moving work between AIs: `handoff-core.js` (a short brief, for free). One undo for AI changes: `aiundo-core.js`.
 
 ## Tool servers (`mcp/`)

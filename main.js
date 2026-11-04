@@ -822,6 +822,7 @@ function registerAfterWindow() {
   require('./connectionsmain').register(ipcMain, { readConfig }); // (round 26) the owner's own MCP servers: Test, and what engines.js hands each AI
   lazyIpc('hooksmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 26) hooks: "when a file appears in a folder" (fs.watch, only while a hook asks; round 29: loaded then)
   lazyIpc('tokenauditmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 36) ⋯ AI setup → Spending: where each AI's fixed tokens go (reads only)
+  lazyIpc('parityprobe.js', (m, ipc) => m.register(ipc, { engines, readConfig, settings, send })); // (round 120, astraprobe120) Check Astra works like Claude: a few short messages in temp folders, only when the owner presses it
   lazyIpc('usagelimitsmain.js', (m, ipc) => m.register(ipc, { engines, settings, dataDir: store.DATA_DIR })); // (round 48) ⏳ Usage left: Claude Code's own local /usage (no model request, 0 tokens), when the Usage window opens
   lazyIpc('costcoachmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR })); // (round 43) 🧭 Cost coach: the last 7 days of replies as compact records (reads only)
   lazyIpc('scenesafemain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, configPath: CONFIG_PATH, syncmain })); // (round 43) 🛟 Recover lost scenes: every copy of the Lab's scenes still on this computer, the cloud folder, backups (reads only)

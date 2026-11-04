@@ -281,6 +281,7 @@ const EngineHealth = (() => {
   function actionsFor(r, ctx) {
     const acts = problems(r).map((p) => ({ label: p.label, run: () => fix(p.engine, p.action) }));
     acts.push({ label: 'Test both (a few tokens)', title: 'Sends "Reply with just: OK" to one Claude and one Astra agent (lean: no tools, low effort)', run: () => testBoth(ctx) });
+    acts.push({ label: 'Check Astra works like Claude', title: 'Asks first, then sends Astra a few short messages in throwaway folders: its instructions, its edit tool, Hearth\'s data lock', run: () => Lazy.load('parityprobe').then(() => ParityProbe.start()) }); // (round 120, astraprobe120)
     acts.push({ label: 'Check again', run: () => runDoctor('', ctx) });
     return acts;
   }
