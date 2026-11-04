@@ -1,166 +1,147 @@
-You're picking up development of **Agent Hub**, my personal desktop app at `C:\Users\quent\agent-hub` (git repo, Windows 11). I'm talking to you from inside it, and you have file access to that folder: read files before changing them, make focused edits, and list what you changed. You can't run commands, so tell me what to run or check. Changes to renderer files show up after restarting the app; `config.json` and `theme.css` hot-reload. Before a big change, remind me to commit in git so it's easy to undo.
+# Hearth: handoff for an AI working on Hearth itself
 
-## What it is
-One window for all my AI agents, with no API keys and no extra cost:
-- **Native agents** (Claude, Astra): the hub's own chat UI. Messages go through the official CLIs that ship with my desktop apps, using my subscription logins:
-  - Claude Code (`%APPDATA%\Claude\claude-code\<ver>\<hash>\claude.exe`), my Claude Max login.
-  - Codex (`%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe`), my ChatGPT login.
-  - `engines.js` picks the newest binary automatically.
-- **Website agents**: real sites in Electron `<webview>`s, each with its own persistent login partition.
+Hearth is the owner's desktop app: **an AI chat wrapper (Claude and Astra, in projects, with cloud sync) that knows its
+own code and can edit itself, plus a Three.js editor (the Lab) that the AIs fully control.** It runs on Windows and
+macOS. The owner doesn't write code: they describe what they want, and you read, edit and say what to check.
 
-## Stack and files
-Electron v44.5.1 (unpacked in `electron/`, gitignored), plain JS, no npm, no build step. Launch with `Agent Hub.cmd`.
-- `main.js`: window, IPC, webview popup/permission rules, Ctrl shortcuts forwarded from webviews, chat import dialog, `fs.watchFile` hot-reload of config/theme.
-- `engines.js`: spawns the CLIs and parses their JSONL into delta, tool, done, error and stopped events. Also builds the system prompt (persona + memory + auto-memory instruction), connector allow/deny lists, zero-cost connector discovery, and logs to `data/engine.log`.
-- `store.js`: `data/chats/*.json`, `data/web-history.json`, `data/memory.json` (atomic writes).
-- `importer.js`: claude.ai and ChatGPT export importers (zip via `tar.exe`), deduped by hashed id.
-- Renderer modules (plain scripts sharing the global `H` state): `renderer.js` (core, rail, surfaces, layout, ask-all), `native.js` (chat UI, streaming, `<remember>` tags, imported-chat context), `panel.js` (chats grouped by agent, search, paging), `manager.js` (add/edit agent dialog, presets, connectors), `memory.js`, `md.js` (safe Markdown), `start.js` (wiring).
-- `config.json` holds agents, layout, theme, `settings` (app options) and `tools` (rail order/hidden). It's edited in-app and hot-reloads. `theme.css` holds user CSS. `app.css` + `features.css` hold base styles driven by CSS variables.
-- Main-process helpers: `appshell.js` (icon drawn in code, window memory, tray, global hotkey, startup, shortcuts, right-click menus, downloads), `fsapi.js` (list/read/write/search/watch/zip/recycle/diff IPC), `aemain.js` (After Effects: locate, run ExtendScript via `AfterFX.exe -r` in one undo group, install scripts, output templates from prefs, aerender with progress).
-- Renderer foundation: `ui.js` (`el()`, toasts, `Modal`, `Tabs`, `DataTable`, `CodeEditor`, `highlight`, `dropZone`, `store` = localStorage), `tools.js` (tool registry; tools mount lazily), `appui.js` (settings, themes, palette, find, zoom, Ctrl+Tab, notifications, downloads, usage, trash), `notes.js` (Notes + Prompts), `kit.js` (color + easing tools).
-- Tools: `tools/forge.js` (Forgeheart workspace), `tools/three.js` + `tools/three-data.js` + `tools/three-sandbox.html` (Three.js Lab), `tools/ae.js` + `tools/ae-data.js` (After Effects kit). Full list in `FEATURES.md`.
-- Forge Debug (live game): `tools/forge-game.js` owns a persistent `<webview>` (partition `persist:forgeheart-debug`) shown beside any agent with `gameTools: true, companion: 'forge-game'`. Claude gets tools through `mcp/forge-game-mcp.js` (stdio MCP server run with the hub's Electron as Node, config written to `data/mcp-forgeheart.json`, passed with `--mcp-config`, allowed as `mcp__forgeheart`). The MCP server calls `gamebridge.js` (HTTP on 127.0.0.1, random port + token in `data/game-bridge.json`), which asks the renderer to run the call in the game. The game's globals are top-level script bindings (`S`, `C`, `FOES`, `spawnFoe`, `startStage`, `stats`, `window.__fhDbg`), reached with indirect eval. Saved patches live in `data/kv/forge-patches.json` and re-apply after each load. The debug build path is `settings.forgeDebugBuild` (default: Desktop `forgeheart_music_test5.html`).
-- Look: `forge-skin.css` (scoped to `html[data-skin="forge"]`, set by theme preset `forgeheart`; font extracted from the game into `assets/oxanium.ttf`). Importance colors: gold active, orange attention, violet AI working, red stop/error, blue info; rainbow = live. Keep it presentation-only.
-- Look v2: `look.css` + `look.js`. Presets live in `appui.js` `THEMES` (`look: 'v2'` + `vars` retint the CSS variables; `fx` = default toggles); `look.js` applies them as `<html data-look/data-tex/data-motion/data-density/data-corners>` and inline variables when renderer.js writes `data-skin`; choices are stored in config.json `theme.preset`, `theme.fx` and `theme.saved`. Forgeheart Classic is `forge-skin.css` alone. New UI should use the variables (`--surface`, `--line`, `--fh-gold`, `--fh-ai`…) or the `.m-chrome/.m-gold/.m-glass/.m-forged/.m-molten` classes.
-- The `ae` tool is now **Video Review** (`tools/review.js`): render library from `settings.videoDirs` (default Desktop + Documents\Codex), player, A/B, notes in `data/kv/video-notes.json` with frame grabs in `data/attachments`, "Send feedback to Claude" via `Native.setDraft` + `Native.attachPaths`. The old AE tabs sit in a Toolkit drawer in `tools/ae.js`. Since the video stream rework: pure helpers in `tools/video-data.js` (formats, safe zones, export presets → ffmpeg args, timecodes, versions, note export, `pipeline()` for a node view), chat commands in `tools/video-cmds.js`, styles in `tools/video.css`; library extras in `data/kv/video-library.json` (fav, tags, Lab recordings, exports) and `video-meta.json`; ffmpeg/ffprobe IPC (`video:*`) and Mac osascript live in `aemain.js`.
-- Directors: agents with `dock: '<toolId>'` are hidden from the rail and mounted in that tool's right-hand dock (`tools.js` `syncDock`, `renderer.js` `H.surfaceIdFor`/`railAgents`). Toolsets in `engines.js` `HUB_TOOLSETS` (`gameTools`, `videoTools`, `threeTools`), each an MCP server in `mcp/` built on `mcp/common.js`, all going through `gamebridge.js` and routed in the renderer by tool-name prefix with `bridge.js` (`forge_`, `video_`/`ae_` → `tools/review.js`, `three_` → `tools/three.js`). `videodirector` docks in `ae`, `threedirector` in `three`. Director calls auto-load their tool and add `.capturing` to its surface so hidden views still render. Three's `api.director` is set only after saved sketches load (an earlier race overwrote a user sketch).
-- Directors round 2: MCP servers send no instructions; tool guides live in the system prompt (`engines.js` buildPrompt: `mcp/three-guide.js` CORE for lean, FULL for `agent.toolMode = 'full'`, forge/chat `guide` exports), because the CLI may drop MCP instructions when `--system-prompt` replaces its own. Lean three-lab lists 12 tools + `three_do { cmd }` (bridge.js maps it to the old `three_<cmd>` name; `forge_patch { action }` likewise; `three_do help` is answered inside the MCP server via `local`). `mcp/common.js` formats results as "key: value" text (`fmtValue`). `tools/three-director.js` handles the frequent three_ tools first (compact reports, diffs, atomic multi-layer edits, screenshot options, read/screenshot dedupe per reply, the director's undo history) using `director.codeOf`. `director-dock.js` (strip, chips, collapse) is attached from `tools.js` syncDock; `director-cmds.js` holds the commands. Codex agents with `hubTools: true` get the same servers via `-c mcp_servers.<name>.*`. Cost report: `mcp/cost.js` (IPC `director:cost`, `/director-cost`, `dev/director-cost.js`). Tests: `dev/director-mcp-test.js`, `dev/checks/director-*.js` (fake engines with the `mcp` keyword make real MCP calls).
-- Lab sliders: `tools/three-tweaks.js` scans sketch code for number/color literals (skipping strings, comments, regexes, template literals, `for (...)` headers and index brackets) and runs an instrumented copy where literal i becomes `__tv(i)` (same line numbers). The sandbox reports which values are read after setup (live) via `tweak-reads`; a SyntaxError from the instrumented run falls back to the raw code. `tweak({...})` is a sandbox global returning getter-backed live values. Save rewrites literals in place (`applyValues`). Only runs instrumented while the panel is visible.
-- Lab media/visualizers: `tools/three-media.js` (analysis: decoded at 22 kHz, then `tools/three-music-core.js` in a Worker — the same file is `MusicCore` on the page and the inline fallback, `ThreeMedia._test.core` / `node dev/music-test.js` for tests: spectral-flux onsets, comb-autocorrelation tempo + Ellis DP beats + a straight-grid fit (`analysis.grid` { bpm, anchor = bar 1, straight, tempoConf, downbeatConf }; the player uses it as the auto grid until the user sets one, `downIndex` for played songs), band onsets `analysis.onsets` { kick, snare, hats }, labeled `sections` with `conf`, `style` → trigger preset; `wave` 3-band peaks stay in the player; `tools/three-music.js` = auto preset, Make it react, live beat-lock light / tap latency, the music commands; `stage()` exact frame sizes with `&dpr=1`; `player()` transport, overview canvas, recording). The sandbox owns the media element, AnalyserNode and MediaRecorder, and exposes `audio`/`media` globals. Hot re-runs (`hot-run`) tear down renderers/window listeners/timers/DOM per generation and re-import the module, so music keeps playing. Since round 6 ("live", docs/upgrades/live.md) `run()` in tools/three.js has four paths: `hot` (one layer, `hot-layer` with `fx` 'xfade' / 'reveal'), `sync` (only layers whose sent code changed, tracked in `ranCode`), in place (`swap-layers`: a whole new stack in the same page, for scene switches and ▶ Run) and a reload only when the page must change (`box.stale`: three.js version / pixel ratio; Stage; Restart; page not up), which re-sends the media (`player.attach`) and covers the preview with a picture of the scene until the sandbox posts `stack-drawn`. The sandbox posts `drawn` per layer generation; `ThreeLab.live.counts()` and `dev/checks/live.js` count reloads vs in-place runs. Per-sketch looks and music links live in `data/kv/three-lab-extras.json`. Per-song beat grids and hit markers live in `data/kv/three-beatmaps.json` ({ path: { grid: { bpm, anchor, bpb }, marks: { kick, snare, hit } } }) and reach the sandbox as `media-map`; loop points per song in localStorage `three.loop:<path>`. The grid/snap math (`gridBeats`, `snapTime`, `parseTime`) is exposed as `ThreeMedia._test` for unit tests. `fs:read` with `encoding: 'buffer'` returns bytes; `write` accepts Uint8Array.
-- Lab layers: `sketch.layers` = [{ id, name, code, slot, color, visible, opacity, blend, in, out, fadeIn, fadeOut, x, y, scale, rotate }] (bottom first; sketches without it get one layer 'main' = sketch.code, kept in sync with layer 0). Panel + templates in `tools/three-layers.js`; tracks + overview in the player (`setTracks`). In the sandbox every layer's module runs from its own blob URL; renderers, window listeners, timers/rAF and tweak() calls are attributed to a layer from the call stack (Error.stackTraceLimit 80) or the running callback's context, so `hot-layer` / `remove-layer` affect one layer. Layers draw into stacked `.lab-layer` boxes (CSS opacity / mix-blend-mode / transform, z = order); WebGL contexts are forced to alpha and cleared transparent unless the layer sets its own clear color, so recordings/screenshots can merge them with a 2D canvas (`composite()`). Since round 56 they don't keep their last frame (preserveDrawingBuffer only for canvases the page can't draw again): anything that reads a layer canvas calls `glFresh(cv)` first, and the layers' frame callbacks run bottom first in one batch (`lqFlush`); see docs/upgrades/labcanvas56.md. Slider values: layer slot × 10000 + index; keys `${layerId}|${call}.${key}`; history per layer under `${sketchId}:${layerId}` ('main' keeps `${sketchId}`). Test without touching the user's hub: copy the app (robocopy without electron/data/.git), rename package.json "name", disable tray/hotkey/login item in the copy's appshell, run `electron.exe <copy> --remote-debugging-port=9444`.
-- Keyframes: `layer.keys = { opacity|x|y|scale|rotate|'s:<slider key>': [{ t, v, ease: 'ease'|'linear'|'hold' }] }` (math in `ThreeLayers.evalKeys`, copied in the sandbox). Layer props sent to the sandbox carry `keys` (transform/opacity) and `sliderKeys` ({ sandboxIndex: { call, key, num, keys } }); the sandbox's compositor tick (registered before any layer, so it runs first each frame) evaluates them at the song time and writes TV / the tweak() values. Editing an animated value in the UI auto-keys at the playhead (time captured at drag start); the director's update_layer sets base values directly (`direct`).
-- Filter layers: a layer whose code calls `filter(type, P)` (sandbox global; shaders in `FILTER_DEFS` in three-sandbox.html, templates in `ThreeLayers.FILTERS`). Each frame it draws all active layers below it into a 2D canvas (`compositeBelow`), uploads it as a texture and renders the effect opaque in its own box; P keys become `u_<key>` uniforms (colors → vec3, booleans → 0/1, choices → index via `choices`). Datamosh uses ping-pong render targets; Found footage draws a REC overlay canvas. When testing in the copy, launch it with `--disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-background-timer-throttling --disable-features=CalculateNativeWinOcclusion`, or a minimized window stops drawing.
-- The app is called **Hearth** (window title, tray, shortcuts, AppUserModelId 'Hearth'); package.json "name" stays "agent-hub" on purpose, since it decides the profile folder (localStorage etc.). The icon is drawn in code (`appshell.drawIcon`, flame + embers + rainbow rim) into data/hearth-icon.png / .ico (multi-size). The Desktop / Start menu "Hearth.lnk" runs electron.exe "<app>" --restart: a running copy gets --restart through 'second-instance' and calls `appshell.restartApp()` (app.relaunch + clean quit); with nothing running it just starts.
-- Feature usage: `usage.js` counts clicks on buttons / menu items / palette actions, shortcuts, opened agents and tools, and agents' hub tool calls in `data/kv/ui-usage.json` ({ since, items: { 'Area › Label': { n, first, last } }, days, hidden }). Buttons get `use-hot` / `use-warm` (highlighted) or, after 14 days of tracking, `use-cold` (faded); `hidden` keys are hidden everywhere (Ctrl+K → Your usage). Stable names come from `data-feature`. The user wants features they never use reworked or removed: check this file now and then.
-- Mac: the code runs on macOS too. `engines.js` finds claude / codex on a Mac (PATH + Homebrew + ~/Library/Application Support/Claude/claude-code + Codex.app) or uses Settings → Engines paths (`settings.enginePaths`); `main.js` sets a Mac menu bar (⌘C/⌘V) and dock icon, treats ⌘ like Ctrl for forwarded shortcuts; `ui.js` makes ⌘ count as Ctrl in the renderer; `aemain.js` finds AE in /Applications and runs scripts with osascript (untested). `portable.js`: Settings → "Pack Hearth for a Mac…" zips the app + data + config (no electron/), and on every start `fixMovedPaths()` rewrites saved paths that pointed into an old data folder (`data/hearth-origin.json`). `mac/setup-mac.sh` downloads Electron 44.5.1 for the Mac, renames / re-icons it and makes ~/Applications/Hearth.app (launcher with --restart). `mac/install-mac.sh` is the full install: moves the folder to ~/Library/Application Support/Hearth and makes /Applications/Hearth.app (renamed Electron, CFBundleIdentifier left as Electron's) whose Contents/Resources/app is a stub (package.json name "agent-hub" so the profile stays, `boot.js` requires the folder's main.js), so data and git pulls never touch the signed bundle; there `app.isPackaged` is true and `app.getAppPath()` is the stub, not the Hearth folder (use __dirname). tar: Windows uses System32\tar.exe (Git's GNU tar can't write zips).
-- Tool data lives in `data/kv/<name>.json` via `hub.kvGet/kvSet` (each save keeps `<name>.prev.json`). Deleted chats go to `data/trash` for 30 days.
+You reach this file because a chat has file access to Hearth's folder (see "Working on Hearth" below). Read the code
+around a change before you edit it. `docs/upgrades/` holds one note per past round; `docs/patch-notes/` holds the
+owner-facing notes.
 
-## Key decisions (keep these)
-- **Token frugality is the #1 priority.** Past CLI attempts burned tokens and gave bad results.
-  - Claude runs with `--setting-sources project --tools "" --disable-slash-commands --system-prompt <short>` and `--strict-mcp-config` unless connectors are on.
-  - Codex runs with `--ignore-user-config --ignore-rules`, about 19 features disabled, and `model_instructions_file`.
-  - Measured: plain Claude reply ≈ 764 input tokens. Codex ≈ 4.5k, mostly cached. Gmail read-only query ≈ 19k.
-- Every reply shows its token usage. Codex reports cumulative totals, so the hub shows per-turn deltas.
-- Connectors are per agent: Off, Read-only or Full. Read-only uses a tool-name regex plus `--disallowedTools`.
-- No automating or scraping the websites' answers (terms of service). Ask-all only types into website chat boxes.
-- Never handle my passwords. Sign-in opens the CLI's own login window.
-- File access (Claude agents only) is opt-in per agent: a folder picked in the agent editor. It enables Read/Edit/Write/Glob/Grep with `--restricted --add-dir <folder> --permission-mode acceptEdits`, has no command running, and writes outside the folder are blocked (tested). Sessions stay in `data/workspace` so chats still resume after the folder changes.
-- Astra (Codex) file access is also opt-in per agent (same folder field). Codex can only look at files through its shell tool, so file access re-enables `shell_tool` and relies on Codex's OS sandbox: `read-only` by default (it can read the whole disk, writes nothing), `codexFiles: "edit"` = `workspace-write` with only that folder writable and no network. The sandbox is passed with `-c` on resumed runs too. Everything else that grows tokens for Astra (web search, talk-back MCP tools, suggestions, Codex features) is opt-in; collaborations / second opinions run `lean` (no tools). See `astra.js` and docs/upgrades/astra.md.
-- Memory is added to every prompt, so keep it short. Agents save facts via `<remember>…</remember>`, which the hub strips and shows with an Undo.
-- The Three.js sandbox iframe has `sandbox="allow-scripts"` without same-origin, so sketch code (which can come from chats) can't reach `window.hub`. Perf stats hook `WebGLRenderer.render` through a prototype setter because three assigns `this.render` in its constructor.
-- Destructive tool actions go to the Recycle Bin (`shell.trashItem`), never permanent deletes; the Forgeheart project folder is read-mostly.
-- aerender can exit 0 after an error, so failures are detected from its log ("aerender Error" lines).
-- When editing files from PowerShell, never round-trip through `Get-Content`/`Set-Content` without `-Encoding utf8`: it garbles ×, →, emoji. Use `[IO.File]::ReadAllText/WriteAllText`.
+## Stack
+- Electron (unpacked in `electron/`, gitignored), plain JavaScript, **no build step and no npm packages**.
+  `package.json` names the app `agent-hub` on purpose: the name decides the profile folder.
+- Start: `Agent Hub.cmd` on Windows, `mac/install-mac.sh` and `mac/setup-mac.sh` on a Mac.
+- The folder is its own git repository. `updatermain.js` updates it from origin/main. Hand edits go into a named stash
+  and are put back afterwards, and `data/` is never touched.
+- The usual shape of a feature: `name.js` (the window), `namemain.js` (the main process: IPC), `name-core.js` (pure
+  logic that loads in Node and is unit-tested) and `name.css`. Comments carry `(round N, stream)` tags; keep them.
 
-- Chat commands: `commands.js` is the registry (areas, recent, `run`, `closest`); the chat's own commands live in `chat-cmds.js`, chat extras (find in chat, view prefs, tags / folders in `data/kv/chat-meta.json`, bookmarks in `data/kv/chat-bookmarks.json`, snippets in `data/kv/chat-snippets.json`) in `chat-ux.js`. `Native.hooks` (render, message, event, mark, send) and the `Native` chat API let other modules extend the chat. Style commands (/tone, /persona, /lang) prefix the next message once per engine session; nothing is added to the system prompt.
-- Testing chats without real engines: `node dev/smoke.js --fake-engines --script dev/checks/chat-cmds.js` (fake CLIs in `dev/fake-*.js`; keywords in a message pick thinking / tools / code / errors / slow streaming).
+## Processes
+- **Main process**: `main.js`. It loads the first-screen modules, defers others with `later()` (required on first use)
+  and with `lazyIpc('xmain.js', …)` (the IPC channels are read from the file's source and the module loads on its
+  first call; `dev/boot-test.js` checks this). The big pieces:
+  `store.js` (data), `engines.js` (the AIs), `syncmain.js` (sync), `gamebridge.js` (the local bridge for tool
+  servers), `fsapi.js` (files, the Trash), `appshell.js` (tray, icon, shortcuts, restart), `updatermain.js`.
+- **Store thread**: `storework.js` is a worker thread that `store.js` starts. It handles JSON writes (to a temp file,
+  then a rename) and chat search.
+- **Window** (one renderer process): `index.html` loads plain scripts that share globals. `renderer.js` holds the
+  core (`H`: config, rail, surfaces), `start.js` wires it up, and `preload.js` exposes `window.hub` (every IPC call
+  the page may make). Feature modules are IIFE globals (`Native`, `Tools`, `HubBridge`, `Lazy`…).
+- **Engines**: each reply spawns the official Claude Code CLI, or talks to a Codex app-server (`codex-server.js`, one
+  private stdio server per chat; `codex exec` is the fallback). See Engines.
+- **Tool servers**: `mcp/*-mcp.js` are stdio MCP servers that each engine run starts with Electron as Node. They
+  reach the app through `gamebridge.js` (HTTP on 127.0.0.1, with a random token in `data/game-bridge.json`), and
+  `bridge.js` in the window routes each call by tool-name prefix (`three_`, `chat_`, `board_`, `forge_`…).
+- **Workers**: `chatparse-worker.js`, `assets-thumb-worker.js`, `capture-worker.js`, `tools/three-music-core.js`
+  (music analysis) and a few more under `tools/`.
 
-## Known gaps / not verified
-- The Codex "ChatGPT apps" toggle is untested.
-- Read-only blocking of write tools hasn't been tested live.
-- Real claude.ai/ChatGPT export files haven't been imported yet (only synthetic ones).
-- Ask-all into website agents needs logged-in sites and may break when a site's DOM changes (`inputSelector` override exists).
-- No plugins/skills yet. Proposed approach: an opt-in per-chat "Workshop" switch that gives Claude file/code tools in a sandbox folder.
-- Feature pack items marked ○ in `FEATURES.md` (tray, notifications, downloads, running scripts inside AE, a real aerender render, backup clean/restore, CSV save…) were built and code-checked but not exercised live.
+## Windows and pages
+- The main window (`main.js`): the rail (agents and tools), one "surface" per agent or tool, and directors docked
+  beside their tool (`tools.js` `syncDock`).
+- The Lab's sandbox `tools/three-sandbox.html`: an iframe with `allow-scripts` and no same-origin, so scene code (which
+  chats write) can never reach `window.hub`. The same page opens as the Stage window (`stage:open` in `main.js`) and
+  as the backstage that runs a chat's scene off screen (`tools/three-backstage.js`).
+- App windows (`appsmain.js`, `apps-window.html`), ▶ Play's game window (`gamemodemain.js`), the board's offscreen
+  snapshots (`boardmain.js`), the capture indicator (`capturemain.js`), the phone remote page served over the LAN
+  (`remotemain.js`, `remote-page.html`), the second-copy card (`twocopies.html`).
 
-## Night build (2026-10-08)
-Thirteen parallel streams landed overnight; `docs/upgrades/README.md` is the overview and each `docs/upgrades/<stream>.md`
-lists what shipped. Key shared pieces: `commands.js` (chat command registry: `when` for context-shared names, `override`,
-duplicate warnings), `nodes.js` (generic node editor + adapters `tools/three-nodes.js`, `nodes-shader.js`, `nodes-video.js`,
-`nodes-code.js`), `meter.js`, `look.js` / `look.css` / `polish.css`, `astra.js` (collaboration), `director-*.js` +
-`tools/three-director.js`, `chat-ux.js` / `chat-cmds.js`. Headless testing in a cloud container: `node dev/smoke.js`
-(Xvfb + Linux Electron at /opt/hearth-electron, SwiftShader WebGL, three.js served from an npm copy, `--fake-engines`
-answers chats with `dev/fake-claude.js` / `dev/fake-codex.js`); checks live in `dev/checks/`.
+## The store and sync
+- Everything the owner makes lives in `data/` inside Hearth's folder (gitignored, never touched by updates):
+  `data/chats/<id>.json`, `data/kv/<name>.json` (tool stores; `hub.kvGet` / `hub.kvSet`, each save keeps
+  `<name>.prev.json`), `data/memory.json`, `data/config.json` and `data/theme.css` (`configsafe-core.js` moved them
+  there; the repo's `config.json` and `theme.css` are only defaults), `data/attachments/`, `data/workspace/`.
+- **A read that failed is never "empty"** (`datasafe-core.js`, `scenesafe-core.js`, `store.js`). An unreadable file is
+  reported, a store read with a fallback is merged with the disk before it is saved, and nothing unreadable is saved
+  over. `storeack-core.js` handles stores that the other computer's version replaces while the app holds them.
+- **Projects** (`projects-core.js`, `projects.js`, `projects-home.js`, kv `projects`): every chat belongs to exactly
+  one project (`projchats-core.js`). A project groups chats, Lab scenes, boards, renders and files.
+- **Sync** (`sync-engine.js`, `syncmain.js`, `sync-merge.js`, `sync-kinds.js`, `sync-own.js`, `cloud-files.js`): the
+  data folder is mirrored to `<cloud drive>/Hearth/` (iCloud Drive, Google Drive, Dropbox, OneDrive) with three-way
+  merges. A field changed on both sides becomes a conflict with both versions kept. Secrets never sync
+  (`sync-hard.js`), and paths are stored in a portable form. Turning a kind off never deletes anything. The window side
+  is `sync.js` and `sync-panel.js`.
+- Backups: `backupautomain.js` (daily zips, each checked). Crash safety: `safetynet-core.js`, `crashsafe-core.js`.
 
-Perf (round 3, docs/upgrades/perf.md): renderer scripts in `index.html` are `defer` (order kept; code that needs
-"after every script" uses DOMContentLoaded / load, not a timeout). Don't poll `H.activeId` / `H.activeChat`: listen
-for the window event `hearth:view` (start.js). Hidden surfaces are `visibility: hidden`, so `offsetParent` doesn't
-mean "on screen": use `el.checkVisibility({ visibilityProperty: true })`. `node dev/perf-report.js --budget
---startup-only` guards startup (dev/perf-budget.json).
+## Lazy groups
+- The first screen loads only what it needs. `lazy-data.js` lists the groups (files, css, `after`, tier `soon` / `use`)
+  and, below a marker, what each group registers (commands, Ctrl/⌘+K lines, keys, tool prefixes, rail tools). That
+  part is written by `node dev/lazy-manifest.js`. `lazy.js` registers stand-ins at once and loads a group on first use.
+  `lazy-at.js` marks where a group's files used to sit in `index.html`. `docs/lazy-groups.md` explains why each group
+  exists. The Lab's code is the `lab` group; `lab-intent.js` decides when it loads.
+- If you add a window file, put it in a group (or in `index.html` if the first screen needs it) and rerun the manifest.
 
-Scenes (round 4, docs/upgrades/scenes.md): each docked director chat owns a Lab sketch (`chat-scenes.js`, kv `chat-scenes`).
-Director runs get `HUB_CHAT_ID` (engines.js) → `hubChatId` in every hub call (mcp/common.js) → `ctx.chatId` for bridge
-handlers; `tools/three.js` routes a call to its chat's sketch, running it in `tools/three-backstage.js` (hidden sandbox) when
-it isn't the one on screen. Sketch data API for other modules: `ThreeLab.scenes`; events `hearth:sketch`, `hearth:lab-ready`.
+## Engines (Claude and Astra)
+- `engines.js` finds the engines (`installs.js`, `winpolish.js`, `macpolish.js`), builds each run, parses the stream
+  into delta / tool / done / error events, and logs to `data/engine.log`. `engine-health.js` and `engine-watch.js`
+  handle install, sign-in and update checks.
+- **Claude** = Claude Code: `claudeArgs()` (`-p`, stream-json, `--setting-sources project`, `--disable-slash-commands`,
+  `--system-prompt` = Hearth's prompt, only the tools the chat's access allows).
+- **Astra** = Codex: `codexServerPlan()` / `codexArgs()`. Codex keeps its own base instructions and gets Hearth's
+  prompt as developer instructions; no AGENTS.md is read. Astra's chat side: `astra.js` and `astra-workspace.js`.
+- **The prompt**: `promptParts()` builds named parts, with stable ones first so they stay cached: role, tool-set guides,
+  `access`, `hearthCode`, `folder`, memory and answer length. Both engines get the same parts except the deliberate
+  differences in `dev/astraparity116-test.js`. `hearthCode` (the text is `CODE` in `mcp/hearth-map.js`) is added only
+  when a chat's folder holds Hearth's source (`isHearthSource()`: `engines.js` and `mcp/hearth-map.js` exist there).
+- **File access** per chat or per AI (`access.js`, `access-rules.js`, `mcp/access-mcp.js`): levels are read, write and
+  full. Claude asks Hearth through the permission tool; Astra runs in Codex's sandbox (writes only in the folders, no
+  network).
+- Moving work between AIs: `handoff-core.js` (a short brief, for free). One undo for AI changes: `aiundo-core.js`.
 
-## How to test changes
-Syntax check: `electron\electron.exe --check <file>` with `ELECTRON_RUN_AS_NODE=1`. For UI checks, launch with `--remote-debugging-port=9333` and drive the page through CDP `Runtime.evaluate` (return `JSON.stringify(...)` so results serialize). Test with throwaway data and clean it up; never edit or delete the user's chats, sketches or Forgeheart files in tests.
+## Tool servers (`mcp/`)
+- Tool sets are `HUB_TOOLSETS` in `engines.js`: `three-mcp.js` (the Lab), `chat-mcp.js` (ask the owner, second
+  opinion, `chat_open`), `board-mcp.js` (mood board), `capture-mcp.js` (screenshots and the frame reader),
+  `adobe-mcp.js`, `deploy-mcp.js`, `apps-mcp.js` (app windows, Meshy), `forge-game-mcp.js` (the Forgeheart debug
+  game). `access-mcp.js` is Claude's permission prompt. They share `mcp/common.js`, and `mcp/cost.js` measures what
+  each set costs per message.
+- Servers send no instructions of their own (an engine may drop them). Guides live in the prompt: `mcp/three-guide.js`
+  (CORE every message, topics on demand with `three_do help`) and `mcp/hearth-map.js` (the app map, on demand).
+  Opt-in sets wake when needed (`toolwake.js`).
 
-Start by asking me what I want to change next.
+## The Lab (Three.js editor the AIs control)
+- `tools/three.js` (the Lab surface), `tools/three-data.js`, `tools/three-layers.js`, `tools/three-tweaks.js`
+  (sliders), `tools/three-sandbox.html` (runs scenes), `tools/three-cmds.js` (the /commands), `tools/three-seq.js`
+  (the sequence), `tools/three-export.js` (renders).
+- A scene (a "sketch") is a stack of layers, each a complete ES module, with sliders (`tweak()`), keyframes, filters,
+  a look, a song and a frame size. Scenes live in kv `three-sketches`, guarded by `tools/three-scenesafe.js`.
+- The AI side: the Three Director (and any chat with `threeTools`) calls `three_*` tools. `bridge.js` sends them through
+  `tools/three-txn.js` (one call applies whole or not at all; one reply is one undo step) to `tools/three-director.js`
+  (fast paths, short results) or the Lab's own handlers. Each director chat owns its scene (`chat-scenes.js`). A scene
+  that isn't on screen runs backstage. Crew helpers: `tools/three-crew.js`. Claude and Astra take turns with `jam.js`.
+- Other rail tools: Projects (`projects-home.js`), the mood board (`board.js`), Commands (`cmdpage.js`), ⋯ AI setup
+  (`options.js`), the Creative board (`tools/creative-playground.js`), Forgeheart (`tools/forge.js`,
+  `tools/forge-game.js`).
 
-Brain (round 6, docs/upgrades/brain.md): `mcp/hearth-map.js` is the app map (topics read through `three_do help` /
-`hearth_help`, one `LINE` in the Three Director prompt). The node tool is on for Three directors unless
-`agent.nodesTool === false` (`engines.js nodesOn` → `HUB_NODES_TOOL=1`); `three_nodes` routes by chat and edits a
-backstage scene's graph as data (`runOnData` in tools/three-nodes.js). `director-task.js` keeps per-chat task state
-(kv `director-tasks`, fed by `HubBridge.onResult` and `Native.hooks.send`) and `DirectorTask.handover` (called from
-`Astra.beforeSend`) restarts the session with the task state when `chat.sessionEngine` changed or `chat.handoffNext`
-is set (`Astra.switchDirector`, used by `/director-engine`, `/handoff` in a director chat and the ⚇ menu). It also
-serves `three_do task` and `three_do run` (allow-listed command areas). Fake engines: `direct: <ask>` keyword.
+## Checks
+- `dev/run-checks.js` is the runner. `node dev/run-checks.js --exact <name>` runs single checks; `unit:<name>` is a
+  Node test `dev/<name>.js`, and the `UNIT` list holds them all. Groups (`qa`, `release`, …) are listed by `--list`.
+- `dev/smoke.js` starts a throwaway copy of the app (empty data, its own profile) for `dev/checks/*.js`; with
+  `--fake-engines`, chats are answered by `dev/fake-*.js`. `node dev/boot-test.js` checks lazy IPC and the lazy groups.
+- Prompt budgets: `dev/promptdiet-test.js`, `dev/tokens-test.js`, `dev/astraparity116-test.js`. File references and
+  leftovers: `dev/slim116-test.js`. This map: `dev/selfmap118-test.js`.
+- The owner wants few, targeted checks: run the ones that cover your change, not a whole release.
 
-Lab frames (round 8, docs/upgrades/labframes.md): `tools/three-frames.js` (`ThreeFrames`) makes the Lab timeline frame-exact
-on video footage through `player.hooks` in tools/three-media.js (seek / snap / keys / draw / messages / undo); the clock comes
-from FrameRead.info (ffprobe) or a decoder measurement, the sandbox keeps the presented frame with requestVideoFrameCallback
-(`media.frame`, `media.onFrame`, `media-clock` / `media-cuts` / `media-frame` messages) and plays the cut list, which is the
-video's own CutData edit in kv video-cuts (read / written through `VideoCut.editFor` / `storeEdit`). Commands in
-`tools/three-frames-cmds.js`, footage layers in `tools/three-frames-templates.js`, director: `three_media_control`
-frame / step / read and `three_do footage`. Tests: `node dev/make-lab-footage.js`, then `dev/checks/labframes*.js`.
+## Rules (keep these)
+- **Deletes go to the Trash**, never permanent: `shell.trashItem` (`fsapi.js`), deleted chats wait in `data/trash/`
+  for 30 days, a chat's `rm` is done by Hearth with the Trash, and Astra's deletes go through `.hearth-trash/`.
+- **A store read failure is never "empty"** (above). Never save over something that couldn't be read.
+- **Secrets are never in prompts, code, logs or sync**: `AccessRules.redact`, secret file names ask first, and Hearth
+  never handles passwords (sign-ins run in the engine's own window or a terminal).
+- **The owner's data is not code**: never edit `data/`, and never delete or migrate old stores. Removed features leave
+  their data in place.
+- **Token frugality**: everything in the prompt is paid on every message. Guides are read on demand, and opt-in tool
+  sets stay off until needed.
+- **No automatic upload or silent install**: publishing, installs and paid calls are shown first and wait for the
+  owner's click.
+- **Codex-owned files** get only minimal, marked edits from other streams: `projects*`, `project-workspace*`,
+  `sync-engine.js`, `cloud-files.js`, `astra*`, `codex-*`, `workbench-*`, `engine-watch.js`.
+- Scope: round 116 removed two areas (`docs/upgrades/slim116.md`). Don't bring them back, and keep `dev/slim116-test.js`
+  passing.
 
-Orb (round 10, docs/upgrades/orb.md): a new director chat's scene is `ThreeNodes.orbScene(tint)` (two node layers, keys on the
-Orb layer's sliders). One clock per scene: the song (`extras[id].media`), else the scene's own timeline (`extras[id].timeline =
-{ len, fps, time }`), played as a silent in-memory WAV by `player.loadClock` (path `scene:<sketch id>`, its cues / markers in
-three-beatmaps under that name); `sceneMedia(id)` in tools/three.js picks one on every scene switch (and `ThreeLab.scenes.mediaUp`
-when the Lab sequence leaves). Node code reads the scene's time with `sceneTime()` = sandbox `layer.scene` (clip time in a sequence).
-
-Sync (round 10, docs/upgrades/sync.md): `sync-engine.js` (main process, plain Node: one `pass()` compares this computer's
-file, the cloud copy in `<drive>/Hearth/files/` and the base = last common version, hashes cached by size + mtime in
-`data/sync/state.json`, JSON bases in `data/sync/base/`; push / pull / merge / delete-to-trash / rename with temp + rename
-checked right before the rename, big files in resumable `.hearth-part-*` pieces; per-computer journal and machine record
-in `Hearth/.sync/`, conflicts in `Hearth/.sync/conflicts/`, synced trash in `Hearth/trash/<day>/`), `sync-merge.js` (pure:
-what syncs (`localOnly`, `ignoredName`), `merge3`, path forms `hearth-data:/…` / `hearth-cloud:/…` / `hearth-home:/…` so
-paths are relative to the data folder, the portable part of config.json (`app/config.json` in the mirror), drive
-detection), `syncmain.js` (settings in data/sync/settings.json, per computer; watchers + debounce, IPC `sync:*`,
-`ready()` before the window, the store write guard: `store.setBeforeWrite` merges a save of an older in-memory version
-with what just arrived; `guardConfig` in config:save), `sync.js` / `sync.css` (dot, menu, setup, conflicts, trash,
-Settings section, `/sync`; chats arriving → `Native.forget` + refresh). Tests: `node dev/sync-test.js` (two computers +
-a temp cloud, fuzz with `--fuzz N --seed S`), `dev/checks/sync.js`; `sh dev/run-checks.sh sync`. Never point tests at a
-real drive. New data in `data/` syncs by default; add a path to `LOCAL_FILES` / `LOCAL_DIRS` in sync-merge.js if it is
-per-computer.
-
-configsafe (round 55, docs/upgrades/configsafe.md): the owner's config lives in `data/config.json` and their CSS in
-`data/theme.css`; the tracked `config.json` / `theme.css` are read-only defaults (Hearth never writes them; `main.js`
-`readConfig` = `configsafe-core.effective(own, defaults)`: agents by id, `defaultsSeen` keeps removed defaults removed).
-Moved once at the start (`configsafe-core.migrate`), tracked files back to HEAD after (`updatermain.settle`). Readers
-outside main.js use `configsafe-core.ownFile` / `readEffective`, never `path.join(__dirname, 'config.json')`.
-
-Round 67 (direction, taste, honesty; plan + per-stream notes in docs/upgrades/round67-plan.md, patch notes round-67.md):
-- Astra / Swarm (astrafix67.md): `collab-eyes.js` gives lean collaboration seats and /ask-astra a fresh frame of the host
-  chat's own scene + its layer list (read-only HubBridge calls, nothing recorded); council's round-2 critiques reach the
-  chair (`synthesize(…, { notes })`); `codex-server.js` names blocked Hearth tools on the final event (`blocked`), shown
-  under the reply by native.js; Codex servers for `collab-` / `jam-` / `crew-` ids close at turn end; agent editor box
-  `threeTools` ("Can see and change the Lab scene"); Swarm in the Lab needs no partner (missions.js).
-- After Effects jobs (aemain.js `runJob`, IPC `ae:job` / `ae:jobs` / `ae:job-done`; adobe.js `aeJob` / `jobResult` /
-  `waitJob`, event `hearth:ae-job`): the script is wrapped by adobe-data `wrap()` (errors as text, no AE alert), returns
-  a job id at once and answers later; the result file is checked only while a job is out (backoff to 3 s, 30 min max).
-  `adobe_do { app: "aftereffects", action: "script" | "job", job, wait }`. Chat code's Run in After Effects uses it too.
-- ✦ Direction (direction67.md): `tools/three-direction(-core).js`, lazy group `labdirection`. Try 4 ways =
-  `ThreeCrew.plan(chat, { n: 4, angles: DirCore.TRY_ANGLES })`; Mark it up; plain sliders (`DirCore.plain` over named
-  sliders, `VarCore.byLayer` + `ctlOf().setMany`); vision card in Lab extras key `direction` with drift from
-  `BoardVibe.distance` on `hearth:tm-thumb`. Time machine branches: versions carry `p` (the version they grew from),
-  `heads` per scene in three-history.js, a restore grows from the version it went back to; `TMCore.parentOf / tips /
-  lineOf`, `ThreeHistory.branches(id)`; ⑂ in the strip.
-- Moodboard qualities (moodqualities67.md): `board-qualities.js`; a plain drag sends measured qualities with the tile's
-  "What I like" line first, the actual picture is opt-in (Picture / right-click); distance slider per board; Mix card.
-- Credits (credits67.md): `credits(-core).js`, kv `credit-log`, Lab toolbar Credits button, Copy, "How it was made" reel.
-- Finish lines (finishlines67.md): `tools/three-finish(-core).js`, Lab extras key `finish`, ⚑ chip, Polish this → three
-  small steps (round 116: no more side quest).
-- Testing on Windows: `dev/smoke.js` works with `ELECTRON` set to `electron\electron.exe` (the copy is renamed, so it
-  never makes shortcuts; the login item is left alone). Round 67 checks: `dev/round67-test.js`, `dev/direction-test.js`,
-  `dev/credits-test.js`, `dev/finishline-test.js`, `dev/moodqualities-test.js`; in-app `dev/checks/direction67.js`,
-  `credits.js`, `finishline.js`, `moodqualities67.js`, `astra-collab.js` (via `node dev/astra-smoke.js collab`).
-
-Slim (round 116, docs/upgrades/slim116.md): Hearth is a chat wrapper for Claude and Astra in projects with cloud sync, plus
-the Three.js Lab the AIs control. The Life tab (quests, Paris, outings, shows, reminders, rewards…) and the music studio
-(Sound desk, VST hosting, live set, park jam, sound bank…) were removed as code. Their stores in the data folder are left
-exactly as they are (sync still carries them for an older Mac); the app no longer reads or writes them. The Creative board
-(materials, drawing, storyboard, tiles) stays. `node dev/slim116-test.js` keeps every reference resolving and nothing
-naming the removed modules.
+## Working on Hearth (self-edit)
+- There is no special mode. The owner gives a chat file access to Hearth's folder (⋯ AI setup › Files, or `/access`).
+  `engines.js` sees that the folder is Hearth's source and adds the `hearthCode` part, the same text for Claude and
+  Astra. Directors can also read it with `three_do help hearthcode`.
+- At the read and write levels Claude can't run commands, so tell the owner what to run. A changed window file shows
+  after a restart (Restart in the tray menu or Ctrl/⌘+K), and so does a main-process file.
+- List the files you changed. A big change: suggest a git commit first.
