@@ -129,6 +129,7 @@ UNIT.push('quest-atlas-fit-test', 'quest-chat-test', 'quest-deck-test', 'quest-f
 UNIT.push('routine-accounting-test', 'routine-allowance-test', 'routine-controls-test', 'scene-recording-test', 'showsync-syndicated-test', 'showsync-venues-test', 'visual-feedback-test', 'vst-host-test', 'workbench-story-test', 'workbench-test'); // Codex's
 UNIT.push('playback-volume-test', 'quest-chat-service-test', 'questguide-flp-test'); // Codex's, failing: see KNOWN_FAIL
 UNIT.push('vst-live-test'); // Codex's, needs real plugins: see UNIT_OPT_IN
+UNIT.push('astraparity116-test'); // (round 116, astraparity116) Claude and Astra get the same Hearth: Codex keeps its base instructions (Hearth's prompt as developer instructions), the same tools / guides except the named deliberate ones, the chat's own engine decides
 // (round 106) needs a real machine: runs only when its variable is set, else "skipped (opt-in …)" on its line
 const UNIT_OPT_IN = {
   'vst-live-test': ['HEARTH_VST_PYTHON', 'the path of a Python with Pedalboard / sounddevice, and Serum 2 / Vital installed (Windows audio device; real plugins, muted output)'],

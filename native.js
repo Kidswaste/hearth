@@ -2062,8 +2062,9 @@ const Native = (() => {
     let full = text;
     for (const a of atts.filter((x) => x.kind === 'text')) full += `\n\n${a.wrapped || `<file name="${a.name}">\n${a.content}\n</file>`}`; // wrapped: attachlean's trimmed / referenced form
     const files = atts.filter((x) => x.kind === 'file');
+    // (round 116, astraparity116) "read-only commands" vs "Read tool" by the chat's own engine (the AI switcher's Astra chat of a Claude director)
     // (round 72, labbridge72) a Lab chat is told how a file reaches its scene (a GLB / video it can't open as text)
-    if (files.length) full += `\n\n[Attached files, open them with your ${H.agent(agentId)?.engine === 'codex' ? 'read-only commands' : 'Read tool'}${labChat(agentId) ? '; three_do references {action: "add", path} puts one in your scene' : ''}]\n${files.map((f) => f.path).join('\n')}`;
+    if (files.length) full += `\n\n[Attached files, open them with your ${(chatOf(agentId)?.engine || H.agent(agentId)?.engine) === 'codex' ? 'read-only commands' : 'Read tool'}${labChat(agentId) ? '; three_do references {action: "add", path} puts one in your scene' : ''}]\n${files.map((f) => f.path).join('\n')}`;
     const images = atts.filter((x) => x.kind === 'image').map((x) => x.path);
     return { full, images, meta: atts.map((a) => ({ kind: a.kind, name: a.name, ...(a.tokens ? { tokens: a.tokens, ref: a.ref } : {}), ...(a.leanMeta ? { lean: a.leanMeta } : {}) })) };
   }

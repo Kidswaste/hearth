@@ -389,8 +389,11 @@ function promptParts(agent, session = null) {
   // ---- head ----
   // (round 31, tokensaver) a lean Three Director's role is set by its own part below: no second "You are…" line
   if (!agent.systemPrompt && !leanDirector(agent)) {
+    // (round 116, astraparity116) Astra's line also says where it is (Hearth, the user's desktop app) and that Markdown
+    // renders, like Claude's: without it Astra answered as a bare terminal agent that didn't know it ran inside Hearth
+    // ("Use tools for requested work" went: Codex's own base instructions, kept now, say how and when)
     add('role', agent.engine === 'codex'
-      ? `You are ${agent.name}, a practical collaborator. Be concise and conversational; answer directly. Use tools for requested work.`
+      ? `You are ${agent.name}, in the user's desktop app (Hearth). Be concise; answer directly; Markdown when it helps.`
       : `You are ${agent.name}, in the user's desktop app. Answer directly, no preamble or recap; Markdown when it helps.`);
   }
   if (gameTools(agent)) {
@@ -416,7 +419,9 @@ function promptParts(agent, session = null) {
   if (agent.dock && agent.progressTag) add('progress', 'During long work, now and then write <progress pct="40" note="what\'s next"/> (hidden; it drives the user\'s progress bar).');
   // (round 46, promptdiet) one role line for both modes; 'full' then sends the whole guide (which carries the core and every
   // topic) instead of a long second how-to that said the same things again (≈ 590 tokens a message)
-  const role = (agent.engine === 'codex' && !agent.dock ? 'When the user asks for Three.js Lab work, act as their visual director.' : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`} in the user's desktop app.`) + ' Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance).';
+  // (round 116, astraparity116) an undocked Astra with the Lab's tools had no "You are…" line at all (leanDirector drops
+  // the role part): it now says who and where it is, like Claude's
+  const role = (agent.engine === 'codex' && !agent.dock ? `You are ${agent.name} in the user's desktop app (Hearth); when the user asks for Three.js Lab work, act as their visual director.` : `You are ${agent.name === 'Three Director' ? 'the Three Director' : `${agent.name}, the Three Director`} in the user's desktop app.`) + ' Prefer good-looking defaults (tone mapping, environment light, smooth motion, sensible performance).';
   // (round 22, labcrew) a crew helper: the sketch rules in five lines, no app map (its brief says what to explore)
   if (sets.includes('threeTools') && agent.toolMode === 'crew') {
     add('director', 'SKETCH = layers (bottom first), each a complete ES module: import * as THREE from \'three\'; its own WebGLRenderer (alpha: true above the bottom layer) appended to document.body, sized to innerWidth/innerHeight, renderer.setAnimationLoop((now) => …).\n'
@@ -446,6 +451,9 @@ function promptParts(agent, session = null) {
   if (rules.length) add('instructions', `The user's standing instructions (always follow them):\n${rules.join('\n')}`);
   const acc = accessOf(agent);
   if (acc) add('access', accessLine(agent, acc));
+  // (round 116, astraparity116) working on Hearth's own code (a chat's folder is a Hearth source folder): a short map of
+  // the codebase, the same for both engines. Only then: chats in the owner's other folders get nothing extra.
+  if (ownCode(agent, acc, folder)) add('hearthCode', HEARTH_CODE_GUIDE);
   if (folder && agent.engine === 'codex') {
     add('folder', agent.codexFiles === 'edit'
       ? `You can read and edit files in the project folder ${folder}: look with short read-only commands (ls, cat, rg, sed -n) and edit with apply_patch. `
@@ -467,6 +475,20 @@ function promptParts(agent, session = null) {
   // (round 35, concise) the answer length, last: switching it leaves everything before it cached
   add('answers', answerLine(agent));
   return parts.filter((p) => p[1]);
+}
+// (round 116, astraparity116) "knows its own wrapper": a folder of the chat holds Hearth's source (engines.js and the hub's
+// tool servers sit there), the running copy or another checkout. Fixed text, no file of the owner's is read into it.
+const HEARTH_CODE_GUIDE = 'This folder is Hearth\'s own source (the app you are running in). Plain-JS Electron, no build step, no framework. '
+  + 'main.js is the main process, renderer.js + index.html the window, preload.js exposes window.hub. A feature is usually name.js (window), '
+  + 'namemain.js (main-process IPC), name-core.js (pure logic, unit-tested) and name.css. engines.js drives both AIs (Claude = Claude Code, '
+  + 'Astra = Codex): prompts, tools, sessions. mcp/*-mcp.js are Hearth\'s tool servers (three, chat, board…); tools/ holds the Lab and tool views. '
+  + 'Checks are dev/*-test.js (node dev/run-checks.js --exact <name>); HANDOFF.md and docs/upgrades/ explain past rounds. '
+  + 'Read the code around a change first, keep its style and its "(round N)" comments, never put secrets in code or prompts.';
+function isHearthSource(dir) {
+  try { return fs.existsSync(path.join(dir, 'engines.js')) && fs.existsSync(path.join(dir, 'mcp', 'hearth-map.js')); } catch { return false; }
+}
+function ownCode(agent, acc = accessOf(agent), folder = fileFolder(agent)) {
+  return (acc ? acc.folders : folder ? [folder] : []).some(isHearthSource);
 }
 function buildPrompt(agent, session = null) {
   return promptParts(agent, session).map((p) => p[1]).join('\n\n');
@@ -676,8 +698,29 @@ function prunePrompts() {
 }
 prunePrompts();
 
+// (round 116, astraparity116) How Astra gets Hearth's prompt. Before, it REPLACED Codex's own base instructions
+// (model_instructions_file / thread baseInstructions): those are what teach Codex its tools (shell, apply_patch, the
+// plan), how to edit files and how to work step by step, and without them Astra was "incredibly limited". Now Codex keeps
+// its base instructions and Hearth's prompt goes in as developer instructions (Claude's --system-prompt keeps its tool
+// descriptions in the tool list, so it never lost that). Falls back to the old way when:
+//   · the Codex copy in use is known to be older than CODEX_DEV_MIN (an older Codex ignores the key: the prompt would be
+//     lost silently, which is worse than the old way);
+//   · `codex exec` and the prompt is too long for one command-line value (Windows caps a whole command at 32,767
+//     characters; the MCP servers' values ride in the same line): the file again;
+//   · HEARTH_CODEX_PROMPT=base (the owner's escape hatch, /doctor shows the flags).
+const CODEX_DEV_MIN = '0.60.0';
+const CODEX_DEV_ARG_MAX = 20000;
+function codexVersion() {
+  try { const bin = usedBin.codex; return bin ? Installs.data().versions?.[Installs.binKey(bin)]?.semver || null : null; } catch { return null; }
+}
+function codexDevOk() {
+  if (process.env.HEARTH_CODEX_PROMPT === 'base') return false;
+  const v = codexVersion();
+  return !v || Installs.cmp(v, CODEX_DEV_MIN) >= 0;
+}
 function codexArgs(agent, session, options = {}) {
-  const file = promptFile(agent, session);
+  const text = buildPrompt(agent, session);
+  const asDev = codexDevOk() && text.length <= CODEX_DEV_ARG_MAX;
   const folder = fileFolder(agent);
   const acc = accessOf(agent);
   const edit = (Boolean(folder) && agent.codexFiles === 'edit') || Boolean(acc && acc.level !== 'read');
@@ -694,7 +737,9 @@ function codexArgs(agent, session, options = {}) {
   for (const feature of disabled) args.push('--disable', feature);
   const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
   args.push(
-    '-c', `model_instructions_file=${tomlStr(file)}`,
+    ...(asDev ? ['-c', `developer_instructions=${tomlStr(text)}`] : ['-c', `model_instructions_file=${tomlStr(promptFile(agent, session))}`]),
+    // no AGENTS.md: Hearth's cwd is its own workspace (or, without the sandbox, the chat's folder), and Claude's chats
+    // don't read CLAUDE.md files either; Hearth's own code gets its short map in the prompt instead (hearthCode)
     '-c', 'project_doc_max_bytes=0',
     '-c', `web_search="${web}"`,
   );
@@ -738,7 +783,10 @@ function codexServerPlan(agent, session, options = {}) {
   const servers = [];
   for (let i = 0; i < old.length; i++) {
     if (old[i] === '-c' || old[i] === '--disable') {
-      const flag = old[i]; const value = old[++i]; args.push(flag, value);
+      const flag = old[i]; const value = old[++i];
+      // (round 116, astraparity116) the prompt goes in the thread's own fields below, never on the command line
+      if (/^(developer_instructions|model_instructions_file)=/.test(value)) continue;
+      args.push(flag, value);
       const match = /^mcp_servers\.([^.]+)\./.exec(value);
       if (match && !servers.includes(match[1])) servers.push(match[1]);
     }
@@ -759,8 +807,12 @@ function codexServerPlan(agent, session, options = {}) {
   const sandboxPolicy = open ? { type: 'dangerFullAccess' } : edit
     ? { type: 'workspaceWrite', writableRoots: acc ? acc.folders : [folder], networkAccess: false }
     : { type: 'readOnly' };
-  return { args, cwd, servers,
-    thread: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: buildPrompt(agent, session), developerInstructions: '', ...(model ? { model } : {}) },
+  // (round 116, astraparity116) Codex keeps its base instructions (no baseInstructions: the model's own); Hearth's prompt
+  // is the developer instructions. threadLegacy: the old way, for a server that refuses developerInstructions (codex-server.js)
+  const prompt = buildPrompt(agent, session);
+  const thread = { cwd, approvalPolicy: 'never', sandbox, ...(codexDevOk() ? { developerInstructions: prompt } : { baseInstructions: prompt, developerInstructions: '' }), ...(model ? { model } : {}) };
+  return { args, cwd, servers, thread,
+    threadLegacy: { cwd, approvalPolicy: 'never', sandbox, baseInstructions: prompt, developerInstructions: '', ...(model ? { model } : {}) },
     turn: { cwd, approvalPolicy: 'never', sandboxPolicy, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(summary ? { summary } : {}), skillMentions: options.skillMentions, input: [...(options.images || []).map((p) => ({ type: 'localImage', path: p })), ...require('./codex-capabilities').mentions(options.appMentions, agent.chatgptApps)] },
   };
 }
@@ -1760,7 +1812,7 @@ module.exports = {
   send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // for tests (dev/astra-engine-test.js)
-  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs },
+  _test: { lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, HEARTH_CODE_GUIDE, CODEX_DEV_MIN, codexDevOk, usedBin },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };

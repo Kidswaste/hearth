@@ -144,9 +144,9 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   ok('Stop ends a run as stopped and keeps its session id');
   r = await turn({ ...astra, systemPrompt: 'orig' }, 'hi', {}, { persona: 'You are a strict reviewer.', lean: true });
   const args = lastArgs('fake-codex-astra');
-  const file = args.configs.model_instructions_file.replace(/^"|"$/g, '').replace(/\\\\/g, '\\');
-  assert(/strict reviewer/.test(fs.readFileSync(file, 'utf8')));
-  ok('a persona run writes its own instructions file');
+  // (round 116, astraparity116) the prompt rides as developer instructions (Codex keeps its own base instructions)
+  assert(/strict reviewer/.test(JSON.parse(args.configs.developer_instructions)) && !args.configs.model_instructions_file);
+  ok('a persona run sends its own developer instructions');
   const once = await engines.once({ agent: astra, text: 'quick question', options: { lean: true, effort: 'low' } });
   assert(once.ok && /effort low/.test(once.text) && once.usage);
   ok('once() returns text and usage with per-run options');

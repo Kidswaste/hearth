@@ -219,10 +219,12 @@
     run: async (args, ctx) => {
       const a = directorFor(ctx);
       if (!a) return 'No director set up yet (`/director-setup`).';
-      if (!args) return `${a.name} runs on **${a.engine === 'codex' ? 'Astra (Codex)' : 'Claude'}**${a.engine === 'codex' ? `, hub tools ${a.hubTools ? 'on' : 'off'}` : ''}.`;
+      // (round 116, astraparity116) the open chat's own engine (a chat the AI switcher made for the other AI), not the director's
+      const eng = (typeof Astra !== 'undefined' && Astra.chatEngine ? Astra.chatEngine(a) : null) || a.engine;
+      if (!args) return `${a.name} runs on **${eng === 'codex' ? 'Astra (Codex)' : 'Claude'}**${eng === 'codex' ? `, hub tools ${a.hubTools || eng !== a.engine ? 'on' : 'off'}` : ''}${eng !== a.engine ? ' in this chat' : ''}.`;
       const codex = /^(astra|codex|gpt|chatgpt)$/i.test(args);
       if (!codex && !/^claude$/i.test(args)) return 'claude or astra';
-      if ((a.engine === 'codex') === codex) return `${a.name} already runs on ${codex ? 'Astra' : 'Claude'}.`;
+      if ((eng === 'codex') === codex) return `${a.name} already runs on ${codex ? 'Astra' : 'Claude'}${eng !== a.engine ? ' in this chat' : ''}.`;
       // same chat, same scene: the other engine picks up from the task state Hearth keeps (director-task.js)
       if (typeof Astra !== 'undefined' && Astra.switchDirector) Astra.switchDirector(a, codex ? 'codex' : 'claude');
       else await saveAgent(a, { engine: codex ? 'codex' : 'claude', model: undefined, effort: a.effort, ...(codex ? { hubTools: true } : {}) });

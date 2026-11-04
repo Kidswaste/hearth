@@ -139,7 +139,9 @@ const F = require('./fake-common');
   if (process.env.FAKE_TOKEN_LOG || F.switches().seenLog) {
     const cfg = (k) => { const c = argv.find((x, i) => argv[i - 1] === '-c' && x.startsWith(`${k}=`)); try { return c ? JSON.parse(c.slice(k.length + 1)) : null; } catch { return c ? c.slice(k.length + 1) : null; } };
     let system = '';
-    try { system = require('fs').readFileSync(cfg('model_instructions_file'), 'utf8'); } catch { /* none */ }
+    // (round 116, astraparity116) Hearth's prompt rides as developer_instructions now; the instructions file is the fallback
+    system = cfg('developer_instructions') || '';
+    if (!system) { try { system = require('fs').readFileSync(cfg('model_instructions_file'), 'utf8'); } catch { /* none */ } }
     F.logRun('codex', { system, prompt, prior: state.chars, text, thinking, model: argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : null, effort: cfg('model_reasoning_effort'), session: threadId });
   }
   state.turns += 1;
