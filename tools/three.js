@@ -2728,20 +2728,54 @@ const ThreeLab = (() => {
       if (!L) return false;
       if (layersOf().length <= 1) { toast('A sketch keeps at least one layer', { type: 'error' }); return false; }
       if (confirm && !(await Modal.confirm('Delete layer?', `"${L.name}" will be removed from "${current.name}".`, { ok: 'Delete', danger: true }))) return false;
-      const at = layersOf().indexOf(L);
-      current.layers = layersOf().filter((x) => x !== L);
-      controllers.get(id)?.destroy?.();
-      controllers.delete(id);
-      delete layerMods[id];
-      box.send({ type: 'remove-layer', id, fade: true }); // its last picture fades out
-      ranCode.delete(id);
+      return Boolean(removeLayers([id]));
+    }
+    // (round 116, layerdelete116) one or several layers out as ONE step: the toast's Undo and the Lab's Ctrl/⌘+Z put them
+    // all back where they were (the owner's typing in the selected one included). A chat deleting every layer leaves an
+    // empty layer (a scene always has one), taken away again by the Undo. who: the AI that did it, for the toast.
+    function removeLayers(ids, { who = null } = {}) {
+      if (!current) return null;
+      const s = current;
+      const gone = [...new Set(ids)].map((id) => layerById(id)).filter(Boolean);
+      if (!gone.length) return null;
+      persist(); // the code in the editor is in its layer (and comes back with it)
+      const was = layersOf().slice();
+      const keep = was.filter((L) => !gone.includes(L));
+      const wasSel = selId;
+      let blank = null;
+      if (!keep.length) { blank = newLayer({ name: 'Empty layer', code: ThreeLayers.EMPTY_CODE }); keep.push(blank); }
+      current.layers = keep;
+      for (const L of gone) {
+        controllers.get(L.id)?.destroy?.();
+        controllers.delete(L.id);
+        delete layerMods[L.id];
+        box.send({ type: 'remove-layer', id: L.id, fade: true }); // its last picture fades out
+        ranCode.delete(L.id);
+      }
       box.send({ type: 'tweak-mods', mods: mergedMods() });
-      if (selId === id) selectLayer(layersOf()[Math.min(at, layersOf().length - 1)].id);
+      if (blank) run({ hot: true, layer: blank.id });
+      if (!layerById(selId)) { const at = was.indexOf(layerById(wasSel) || gone[0]); selectLayer(keep[Math.min(was.slice(0, Math.max(0, at)).filter((L) => keep.includes(L)).length, keep.length - 1)].id); }
       for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
       touch();
       renderLayers();
-      toast(`Deleted "${L.name}"`, { action: { label: 'Undo', fn: () => { current.layers.splice(at, 0, L); touch(); selectLayer(L.id); run({ hot: true, layer: L.id }); for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) }); } } });
-      return true;
+      const label = gone.length === 1 ? `"${gone[0].name}"` : `${gone.length} layers`;
+      let undone = false;
+      const undo = () => {
+        if (undone || current !== s) return false;
+        undone = true;
+        const drop = blank && blank.code === ThreeLayers.EMPTY_CODE && layerById(blank.id); // (still blank: nobody wrote in it)
+        if (drop) { current.layers = layersOf().filter((L) => L !== blank); box.send({ type: 'remove-layer', id: blank.id }); controllers.get(blank.id)?.destroy?.(); controllers.delete(blank.id); }
+        for (const L of gone) if (!layerById(L.id)) { const at = was.indexOf(L); current.layers.splice(was.slice(0, at).filter((x) => layerById(x.id)).length, 0, L); }
+        touch();
+        for (const L of gone) run({ hot: true, layer: L.id });
+        if (gone.some((L) => L.id === wasSel) || !layerById(selId)) selectLayer(layerById(wasSel)?.id || gone[0].id);
+        for (const x of layersOf()) box.send({ type: 'layer-props', id: x.id, props: layerProps(x) });
+        renderLayers();
+        return true;
+      };
+      toast(`${who ? `${who} deleted` : 'Deleted'} ${label}`, { timeout: who ? 9000 : 4500, action: { label: 'Undo', fn: undo } });
+      window.LabDirect?.push?.(null, `Deleted ${label}`, () => undo()); // the Lab's own Ctrl/⌘+Z
+      return { removed: gone.map((L) => L.name), ...(blank ? { left: `"${blank.name}" (a scene keeps one layer: a blank one to start from)` } : {}) };
     }
     function reorderLayers(idsBottomFirst) {
       const byId = new Map(layersOf().map((L) => [L.id, L]));
@@ -5170,11 +5204,14 @@ ${code}
         if (list.length) ensureTimeline(); // no song: the keys play on the scene's own timeline
         return { layer: L.name, property: prop.replace(/^s:/, ''), keyframes: list.length, ...report() };
       },
-      async removeLayer(ref) {
-        const L = findLayer(ref);
-        if (!L) throw new Error(`No layer "${ref}".`);
-        if (!(await removeLayer(L.id, { confirm: false }))) throw new Error('A sketch keeps at least one layer.');
-        return { removed: L.name, ...report() };
+      // (round 116, layerdelete116) refs: one layer or a list (one undo step); the last one leaves an empty layer
+      async removeLayer(refs, { who = null } = {}) {
+        if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
+        const { list, error } = ThreeLayers.pickLayers(layersOf(), refs, selId);
+        if (error) throw new Error(error);
+        const r = removeLayers(list.map((L) => L.id), { who });
+        if (!r) throw new Error('Nothing was deleted.');
+        return { removed: r.removed.length === 1 ? r.removed[0] : r.removed, ...(r.left ? { left: r.left } : {}), ...report() };
       },
       // ---------- the running sketch: evaluate code inside it, press keys / click (play-testing) ----------
       evalInSketch: (code) => sandboxCall({ type: 'eval', code }, 6000),
@@ -5681,6 +5718,8 @@ ${frag}\`,
   // here as before; another chat's runs backstage (tools/three-backstage.js), so no chat edits another's scene.
   let inflight = 0; let idleWaiters = [];
   const settle = () => { if (inflight) return; const w = idleWaiters; idleWaiters = []; for (const fn of w) fn(); };
+  // (round 116, layerdelete116) who made a call, for the owner's toast ("Astra deleted …")
+  const aiName = (chatId) => { const c = chatId && (H.chats || []).find((x) => x.id === chatId); const a = c && H.agent?.(c.agentId); return a ? (a.engine === 'codex' ? 'Astra' : a.name || 'Claude') : 'The AI'; };
   async function handleTool(tool, args, ctx = {}) {
     if (!tabs) Tools.shown(Tools.get('three')); // load the Lab in the background if needed
     if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
@@ -5731,10 +5770,10 @@ ${frag}\`,
     // the director's fast loop (tools/three-director.js): compact results, batches, diffs, screenshot options, undo
     if (typeof ThreeDirector !== 'undefined') { const r = await ThreeDirector.handle(tool, args, d, ctx); if (r) return r; }
     // (round 37, directorlean) the Lab's own answers, trimmed for the model (small pictures, one-line transport)
-    const r = await labCall(tool, args, d);
+    const r = await labCall(tool, args, d, ctx);
     return typeof ThreeDirector !== 'undefined' && ThreeDirector.trim ? ThreeDirector.trim(tool, args, r) : r;
   }
-  async function labCall(tool, args, d) {
+  async function labCall(tool, args, d, ctx = {}) {
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
     if (tool === 'three_set_code') {
       if (!String(args.code || '').trim()) return { ok: false, error: 'No code given.' };
@@ -5855,7 +5894,7 @@ ${frag}\`,
       return { ok: false, error: 'action must be list, add, rename, remove or palette' };
     }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
-    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
+    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layers ?? args.layer ?? args.name, { who: args._owner && args._owner === window.LabChatLink?.ownerToken ? null : aiName(ctx.chatId) }) }; // (round 116) layers: several in one step
     if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
     if (tool === 'three_set_frame') {
       if (!ThreeMedia.SIZES.some((x) => x.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((x) => x.id).join(', ')}` };

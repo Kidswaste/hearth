@@ -65,7 +65,7 @@ const DirectorTask = (() => {
         return `edited ${names.length ? names.map(L).join(', ') : `"${L(v.layer || a.layer)}"`}`;
       }
       case 'three_update_layer': return `changed layer ${L(a.layer)}: ${[...Object.keys(a.settings || {}), a.code != null ? 'code' : null, a.order != null ? 'order' : null].filter(Boolean).join(', ') || 'settings'}`;
-      case 'three_remove_layer': return `removed layer ${L(a.layer)}`;
+      case 'three_remove_layer': { const n = [].concat(v.removed ?? a.layers ?? a.layer ?? 'selected'); return `removed layer${n.length > 1 ? 's' : ''} ${n.map((x) => `"${L(x)}"`).join(', ')}`; } // (round 116) several at once
       case 'three_nodes': { const c = cap(a.command, 60); return /^layer\b/i.test(c) ? `added node layer (${c.replace(/^layer\s*/i, '') || 'default preset'})` : `nodes: ${c}`; }
       case 'three_keyframes': return a.clear ? `cleared keyframes ${L(a.layer)}.${a.property}` : `keyframes ${L(a.layer)}.${a.property} (${(a.keys || []).length})`;
       case 'three_animate': return `animated ${L(a.layer)}: ${a.preset}`;

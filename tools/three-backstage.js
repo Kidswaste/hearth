@@ -436,15 +436,32 @@ function makeBackstage(opts = {}) {
         await settle(wait);
         return { added: L.name, ...report() };
       },
-      async removeLayer(ref) {
-        const L = must(ref);
+      // (round 116, layerdelete116) one layer or a list, as the Lab on screen: one step with a toast's Undo for the owner
+      // (and the reply's ↶ in the dock); the last one leaves an empty layer
+      async removeLayer(refs, { who = null } = {}) {
         const Ls = layersOf(s());
-        if (Ls.length < 2) throw new Error('A sketch keeps at least one layer.');
-        Ls.splice(Ls.indexOf(L), 1);
+        const { list, error } = ThreeLayers.pickLayers(Ls, refs, selId());
+        if (error) throw new Error(error);
+        const was = Ls.slice();
+        for (const L of list) Ls.splice(Ls.indexOf(L), 1);
+        let blank = null;
+        if (!Ls.length) { blank = ThreeLayers.defaults({ name: 'Empty layer', code: ThreeLayers.EMPTY_CODE, color: ThreeLayers.COLORS[0], slot: 0 }); Ls.push(blank); }
         changed();
+        const label = list.length === 1 ? `"${list[0].name}"` : `${list.length} layers`;
+        if (!quiet) {
+          let undone = false;
+          toast(`${who || 'The AI'} deleted ${label} in "${s().name}"`, { timeout: 9000, action: { label: 'Undo', fn: () => {
+            const now = s() && layersOf(s());
+            if (undone || !now) return;
+            undone = true;
+            if (blank && blank.code === ThreeLayers.EMPTY_CODE && now.includes(blank)) now.splice(now.indexOf(blank), 1);
+            for (const L of list) if (!now.some((x) => x.id === L.id)) now.splice(was.slice(0, was.indexOf(L)).filter((x) => now.some((y) => y.id === x.id)).length, 0, L);
+            changed();
+          } } });
+        }
         await load(s());
         await settle(1);
-        return { removed: L.name, ...report() };
+        return { removed: list.length === 1 ? list[0].name : list.map((L) => L.name), ...(blank ? { left: `"${blank.name}" (a scene keeps one layer: a blank one to start from)` } : {}), ...report() };
       },
       selectLayer(ref) { const L = must(ref); return { selected: L.name, note: 'Backstage: the selection is only for your next calls (the owner\'s selected layer stays).', ...d.getCode() }; },
       // (round 72, labbridge72) a layer's named tweak() controls read from its code; a move is written into the code (saved:
@@ -703,7 +720,7 @@ function makeBackstage(opts = {}) {
     if (tool === 'three_layers') return { ok: true, value: d.layers() };
     if (tool === 'three_get_code') return { ok: true, value: d.getCode() };
     if (tool === 'three_add_layer') return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, props: args.settings || {} }, args.wait) };
-    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layer) };
+    if (tool === 'three_remove_layer') { const c = route.chatId && (H.chats || []).find((x) => x.id === route.chatId); const a = c && H.agent?.(c.agentId); const own = args._owner && args._owner === window.LabChatLink?.ownerToken; return { ok: true, value: await d.removeLayer(args.layers ?? args.layer ?? args.name, { who: own ? 'You' : a ? (a.engine === 'codex' ? 'Astra' : a.name || 'Claude') : null }) }; } // (round 116) layers: several in one step
     if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
     if (tool === 'three_eval') { const r = await d.evalInSketch(String(args.code || '')); return r.ok ? { ok: true, value: r.value } : r; }
     if (tool === 'three_console') return { ok: true, value: d.report() };

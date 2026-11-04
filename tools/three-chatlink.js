@@ -154,7 +154,7 @@ const LabChatLink = (() => {
   }
   async function undo(job) {
     let r;
-    if (job.how === 'added') r = await HubBridge.call('three_remove_layer', { layer: job.layerId }, { chatId: job.chatId });
+    if (job.how === 'added') r = await HubBridge.call('three_remove_layer', { layer: job.layerId, _owner: ownerToken }, { chatId: job.chatId });
     else {
       const now = codeNow(job.sceneId, job.layerId);
       if (now == null) throw new Error('That layer isn\'t in the scene any more.');

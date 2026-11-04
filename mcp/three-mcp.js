@@ -48,12 +48,13 @@ const CORE_TOOLS = [
 
 
 const MORE_TOOLS = [
-  { name: 'three_layers', description: 'The layers (bottom first): selected, visibility, opacity, blend, time range on the song, transform, placements, sliders.', inputSchema: obj({}) },
+  { name: 'three_layers', description: 'The layers (bottom first): selected, visible, opacity, blend, time range, transform, placements, sliders.', inputSchema: obj({}) },
   { name: 'three_select_layer', description: 'Select a layer (code tools then default to it). Returns its code.', inputSchema: obj({ layer: LAYER_D }, ['layer']) },
   { name: 'three_update_layer', description: 'Change a layer: settings { in, out (s on the song, null = whole song), fadeIn, fadeOut, opacity 0..1, blend (normal|add|screen|lighten|overlay|soft-light|multiply|darken|difference|exclusion|color-dodge), x, y (% of frame), scale, rotate (deg), visible, name }, order ("top", "bottom", n), and/or code (complete module).',
     inputSchema: obj({ layer: LAYER, settings: { type: 'object' }, order: {}, code: { type: 'string' }, wait: { type: 'number' } }, ['layer']) },
   { name: 'three_undo', description: 'Undo your last code change (force: true even if the layer changed since).', inputSchema: obj({ force: { type: 'boolean' } }) },
-  { name: 'three_remove_layer', description: 'Remove a layer (the user can undo it).', inputSchema: obj({ layer: LAYER }, ['layer']) },
+  // (round 116, layerdelete116) one or several (one undo step); the last one leaves an empty layer, never a refusal
+  { name: 'three_remove_layer', description: 'Delete a layer, or several: layers [...] (one undo for the user).', inputSchema: obj({ layer: LAYER, layers: { type: 'array' } }) },
   { name: 'three_keyframes', description: 'Animate a layer property over the song (replaces its keys; clear: true removes them). property: opacity, x, y, scale, rotate or a slider (key or label). keys [{ time (s), value, ease: ease|linear|hold|curve, c? }].',
     inputSchema: obj({ layer: LAYER, property: { type: 'string' }, keys: { type: 'array', items: { type: 'object' } }, clear: { type: 'boolean' } }, ['layer', 'property']) },
   { name: 'three_animate', description: 'Animation preset on a layer (over its time, the loop or the song): fadeIn, fadeOut, popIn, slideLeft, slideRight, slideUp, slideDown, zoom, spin, pulse (beats), shake (kicks), blink (snares).',
@@ -95,9 +96,9 @@ const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 's
 const DO_TOOL = {
   name: 'three_do',
   description: `Lab actions: {cmd, ...args, shot: true adds a picture}. help {topic}: a cmd's args, a guide topic or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
-batch {ops: [{cmd, ...}]} calls in one, in order · undo {force} your last edit
+batch {ops: [{cmd, ...}]} in one call · undo {force} your last edit
 Look: contact_sheet {count|times} the song as one picture · input {actions} play-test · play {game, script} a game
-Layers: layers select_layer remove_layer update_layer keyframes animate looks references
+Layers: layers select_layer remove_layer {layer|layers} update_layer keyframes animate looks references
 Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop
 Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
 run {command} a chat command`,
