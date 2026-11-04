@@ -61,14 +61,17 @@ await section('2. create from a chat (the chats list)', async () => {
 loose = { id: `pa91-loose-${Date.now().toString(36)}`, agentId: claude.id, title: 'Loose idea chat', createdAt: Date.now(), updatedAt: Date.now(), messages: [{ role: 'user', at: 1, text: 'a loose idea' }] };
 await window.hub.saveChat(loose); Native.adopt(loose, { openIt: false });
 await click('.space-chats');
+// (round 116, projchats116) a chat has one project: the loose chat goes to "Earlier chats" (the keeper), and the chats
+// list shows the open project's chats, so open that one first; Move to project… › ＋ New project… then MOVES it
+if (window.ProjChats) { const host = Projects.live()[0]; Projects.add(host, 'chat', loose.id, loose.title); await until(() => ProjChats.projectIdOf(loose.id) === host.id, 4000); ProjChats.setScope(host.id); }
 const rowSel = `#chat-groups .item[data-key="${CSS.escape(loose.id)}"]`;
 await until(() => J.visible(document.querySelector(rowSel)), 8000);
 await click(rowSel, { right: true });
-const pjMenu = await pickMenu(/^Project›?$/);
+const pjMenu = await pickMenu(/^(Project|Move to project…)›?$/);
 const newFromChat = pjMenu && await pickMenu(/^＋ New project…$/);
 const typed = newFromChat && await answer('Audit Delta');
 await until(() => byName('Audit Delta'), 4000);
-step('chat › right-click › Project › ＋ New project… makes a project with the chat in it', Boolean(typed && byName('Audit Delta')?.items.some((x) => x.type === 'chat' && x.ref === loose.id)), { pjMenu, newFromChat, typed, items: byName('Audit Delta')?.items });
+step('chat › right-click › Move to project… › ＋ New project… makes a project with the chat in it (and only there)', Boolean(typed && byName('Audit Delta')?.items.some((x) => x.type === 'chat' && x.ref === loose.id) && (!window.ProjChats || ProjChats.projectIdOf(loose.id) === byName('Audit Delta')?.id)), { pjMenu, newFromChat, typed, items: byName('Audit Delta')?.items });
 });
 
 // ---------- 3. create from a Lab scene (Sketches) ----------
