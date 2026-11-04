@@ -45,7 +45,8 @@
 //   launches, 3; in A/B: per side) · --starts N (cold starts, 5; in A/B: per block, 3) · --sync N (sync runs, 3; in A/B:
 //   per side) · --rounds N (A/B: startup blocks per side, 3) · --no-confirm · --lock (each app-launching step takes
 //   /tmp/hearth-run.lock itself: for a run NOT already under `flock /tmp/hearth-run.lock`) · --file <baseline json> ·
-//   --keep-base (A/B: keep the base worktree)
+//   --keep-base (A/B: keep the base worktree) · (round 113) --probe <sections> (the app part: only those probe sections,
+//   e.g. projects) · --warm N (project warm opens a launch, 4: 2 before round 113)
 // Exit: 0 no regression · 1 regressed (or a part measured nothing) · 3 inconclusive (too loaded to tell, or a change
 // too close to call) · 2 the guard itself failed.
 // App-launching steps: 1 cold-start series (7 short launches) + RUNS app launches (A/B: 2 × (ROUNDS series + RUNS)).
@@ -73,6 +74,9 @@ const FRESH_FIXTURE = opt('--fresh-fixture', '/tmp/hearth-perf93-fresh'); // (ro
 const N = { labcold: Number(opt('--labcold', 4)), many: Number(opt('--many', 2)), fresh: Number(opt('--fresh', 3)), runs: Number(opt('--runs', 3)), starts: Number(opt('--starts', AB ? 3 : 5)), sync: Number(opt('--sync', 3)), rounds: Number(opt('--rounds', 3)) };
 const PARTS = (opt('--only', 'startup,app,sync')).split(',').map((s) => s.trim()).filter(Boolean);
 const LOCK = has('--lock');
+// (round 113, warmopen113) --probe <sections> (the app part's sections only, e.g. `projects`) and --warm N (warm opens a
+// launch, 2): one app row A/B'd in ≈ 1 min a launch. The other sections' rows aren't measured, so aren't judged.
+const PROBE = { sections: opt('--probe') ? opt('--probe').split(',').map((s) => s.trim()).filter(Boolean) : null, warm: Number(opt('--warm', 4)) };
 const CALIB = path.join(DEV, 'perfguard-calib.js');
 const EXIT = { ok: 0, regressed: 1, error: 2, inconclusive: 3 };
 
@@ -247,7 +251,7 @@ function trimTmp(dir, keepName) {
 // one app launch (dev/perfguard-probe.js, this checkout's, against side.root's app)
 function appLaunch(m, tag, i, side = THIS, div = N.runs) {
   const dir = path.join(OUT, `app${tag}-${i}`); fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
-  const lib = path.join(OUT, 'calib-lib.js'); fs.writeFileSync(lib, `${BENCH_SRC}\n`);
+  const lib = path.join(OUT, 'calib-lib.js'); fs.writeFileSync(lib, `${BENCH_SRC}\nconst PERFGUARD_OPTS = ${JSON.stringify(PROBE)};\n`);
   log(`app${side === THIS ? '' : ` [${side.name}]`}: launch ${i} (dev/perfguard-probe.js on the heavy profile, ≈ 2–2.5 min)…`);
   const t0 = Date.now();
   const r = sh([path.join(DEV, 'smoke.js'), '--app', side.root, '--fake-engines', '--data', FIXTURE, '--wait', '1000', '--check-timeout', '600000', '--tmp', path.join(dir, 'tmp'), '--lib', lib, '--script', path.join(DEV, 'perfguard-probe.js'), '--shot', path.join(dir, 'end.png')], path.join(dir, 'calib.json'));
@@ -493,6 +497,17 @@ function judgeAB(mb, mn) {
     else if (delta > tol && (p < 0.2 || ci[0] > 0)) verdict = 'unsure'; // a change worth a look that the samples can't settle
     rows.push({ k, d, bm: rnd(bm), nm: rnd(nm), delta: rnd(delta), tol: rnd(tol), p, ci, nb: x.length, nn: y.length, launches: [xc.length, yc.length], verdict });
   }
+  // (round 113, warmopen113) load-aware as compare mode has been since round 82: a wall time "unsure" (over the line,
+  // not told apart from the noise) whose CPU twin is ok or better is the box's waits, not Hearth's work: ok, with a
+  // note. Round 112's project warm open (+478 ms, p 0.06, its CPU +128 ms p 0.3, the new side's box busier) was that:
+  // re-run with 32 + 32 samples it was −24 ms (p 0.37). A significant wall regression is still judged as before.
+  for (const r of rows) {
+    if (r.verdict !== 'unsure' || r.d.kind !== 'wall' || !r.d.cpu) continue;
+    const twin = rows.find((x) => x.k === r.d.cpu);
+    if (!twin || !['ok', 'better'].includes(twin.verdict)) continue;
+    r.note = `over the line, but within the noise and by waiting, not work (its CPU time, ${twin.d.label}, is ${twin.verdict}: ${twin.delta >= 0 ? '+' : ''}${twin.delta} ms, p ${rnd(twin.p)})`;
+    r.verdict = 'ok';
+  }
   return rows;
 }
 
@@ -561,6 +576,7 @@ function writeReport(rep) { fs.writeFileSync(path.join(OUT, 'report.json'), `${J
     log(`\nperfguard A/B: new (${mach.commit}${mach.dirty ? ' + changes' : ''}) vs base (${AB} = ${base.sha}); every sample of each side, base and new launched in turn.`);
     log(`Regressed = Mann–Whitney p ≤ ${ALPHA}, the 95 % interval of the median difference above 0, and the difference over max(10 %, floor).\n`);
     log(table(rows, true));
+    for (const r of rows.filter((x) => x.note)) log(`  ok: ${r.d.label}: ${r.note}`); // (round 113)
     log('\nthe box:');
     for (const part of PARTS) log(`  ${part.padEnd(8)} base: ${calibLine(box[part].base)}\n  ${''.padEnd(8)} new:  ${calibLine(box[part].new, box[part].factor)}${gate[part].length ? `\n  ${''.padEnd(8)} ✖ too loaded to tell: ${gate[part].join('; ')}` : ''}`);
     if (reg.length) {

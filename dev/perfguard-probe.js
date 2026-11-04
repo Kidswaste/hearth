@@ -4,7 +4,7 @@
 // perfguard.js compares them with dev/perf-baseline.json.
 //   project.coldOpen   the first project opened since this start (Clink, opened once in the session before), Hearth's
 //                      part: the click → ready, minus the scene's own GPU work in its page (projects72 / coldopen73)
-//   project.warmOpen   ‹ Projects → the Clink card again (×2)
+//   project.warmOpen   ‹ Projects → the Clink card again (×4; ×2 before round 113: the row's wall time swings 0.5–2.8 s)
 //   project.switch     the name ▾ → another project (×6), Hearth's part
 //   chat.switch        a list row clicked (real mouse) → the long chat drawn at the next frame (×8)
 //   chat.clickHandler  the window's own handlers for that click (pointer / mouse / click events, capture → bubble)
@@ -106,7 +106,10 @@ const calib = async () => {
   return { at: new Date().toISOString(), single: md('total'), cpu: md('cpu'), gc: md('gc'), layout: md('layout') };
 };
 R.calib = {};
-const section = async (name, fn) => { const t0 = Date.now(); try { await fn(); } catch (err) { R.problems.push(`${name}: ${String(err?.message || err).slice(0, 300)}`); if (prof) await profStop(name); } R.notes[`${name}Secs`] = Math.round((Date.now() - t0) / 100) / 10; };
+// (round 113, warmopen113) perfguard --probe <sections>: only those sections run (e.g. `projects`), and --warm N warm
+// opens instead of 2 (PERFGUARD_OPTS from perfguard.js's --lib); a narrow A/B of one row in minutes, not an hour
+const PG = typeof PERFGUARD_OPTS === 'object' && PERFGUARD_OPTS ? PERFGUARD_OPTS : {};
+const section = async (name, fn) => { if (PG.sections && !PG.sections.includes(name)) return; const t0 = Date.now(); try { await fn(); } catch (err) { R.problems.push(`${name}: ${String(err?.message || err).slice(0, 300)}`); if (prof) await profStop(name); } R.notes[`${name}Secs`] = Math.round((Date.now() - t0) / 100) / 10; };
 window.hub.openExternal = () => {};
 await until(() => document.querySelector('#panel .item') || document.querySelector('#agent-buttons .space-button'), 'app', 1500);
 // quiet first: no window long task for 3 s (≤ 40 s), so each launch starts measuring from the same calm
@@ -137,7 +140,7 @@ await section('projects', async () => {
   card('pjbp0').dispatchEvent(new PointerEvent('pointerenter', { bubbles: false })); await wait(300);
   await profStart();
   add('project.coldOpen', await timed('pjbp0', () => card('pjbp0').click())); add('project.coldOpenCpu', lastCpu);
-  for (let i = 0; i < 2; i++) { await toProjects(); await wait(300); add('project.warmOpen', await timed('pjbp0', () => card('pjbp0').click())); add('project.warmOpenCpu', lastCpu); }
+  for (let i = 0; i < (PG.warm || 4); i++) { await toProjects(); await wait(300); add('project.warmOpen', await timed('pjbp0', () => card('pjbp0').click())); add('project.warmOpenCpu', lastCpu); }
   for (let r = 0; r < 2; r++) for (const id of ['pjbp1', 'pjbp2', 'pjbp0']) {
     await wait(250);
     add('project.switch', await timed(id, () => { document.querySelector('.workspace-project-name').click(); const name = Projects.get(id).name; menuItem(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).click(); }));
