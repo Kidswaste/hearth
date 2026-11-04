@@ -183,6 +183,8 @@ fixture in the unit test has a realistic vocabulary, and there each find takes p
     Clink open". This happens in the Projects home before any search runs, so it is a known failure that predates this
     round. Find in this project itself is measured by `search113` (Clink's Desk: "sohne" found, no long task).
 
+- `node dev/run-checks.js release` (under the lock): **308/311 passed, no ✖**. The other three are the known failures listed in KNOWN_FAIL (Codex's tests: playback-volume, quest-chat-service and questguide-flp). One opt-in check was skipped. No /tmp/hearth-* folder was left behind.
+
 ## Caveats
 - Alt+F still folds case only, not accents. The window's marks and the store thread's find (chatwin-core `findHit`) would
   have to change together.
