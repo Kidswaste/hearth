@@ -357,8 +357,8 @@ const Declutter = (() => {
     { label: 'Typed actions…', key: 'Ctrl+;', tip: 'A bar to type an action by its name', action: () => (window.Lazy?.isIn && !Lazy.isIn('cmdbar') ? Lazy.load('cmdbar').then(() => CmdBar.toggle()).catch(() => AppUI.palette()) : typeof CmdBar !== 'undefined' ? CmdBar.toggle?.() : AppUI.palette()) },
     { label: 'Panels', items: [
       { label: '☰ Chats panel', key: 'Ctrl+\\', checked: H.panelOpen, action: () => handleShortcut({ key: '\\' }) },
-      { label: '🗒 Notes', key: 'Ctrl+J', action: () => Notes.toggle() },
-      { label: '🧠 Memory', action: () => MemoryEditor.open() },
+      { label: '🗒 Notes', key: 'Ctrl+J', action: () => Lazy.load('notes').then(() => Notes.toggle()) }, // (round 118, startup118: both load after the start)
+      { label: '🧠 Memory', action: () => Lazy.load('memory').then(() => MemoryEditor.open()) },
       { label: '▦ All side by side', key: 'Ctrl+G', checked: H.grid, action: () => handleShortcut({ key: 'g' }) },
       { label: '⌨ Ask-all bar', key: 'Ctrl+B', checked: !document.getElementById('broadcast')?.classList.contains('hidden'), action: () => handleShortcut({ key: 'b' }) },
     ] },

@@ -26,7 +26,8 @@ $('grid-btn').addEventListener('click', () => handleShortcut({ key: 'g' }));
 $('bar-btn').addEventListener('click', () => handleShortcut({ key: 'b' }));
 $('config-btn').addEventListener('click', () => AppUI.openSettings());
 $('palette-btn').addEventListener('click', () => AppUI.palette());
-$('notes-btn').addEventListener('click', () => Notes.toggle());
+$('notes-btn').addEventListener('click', () => Lazy.load('notes').then(() => Notes.toggle()));
+$('memory-btn').addEventListener('click', () => Lazy.load('memory').then(() => MemoryEditor.open())); // (round 118, startup118) Notes and the memory editor load after the start (lazy groups notes, memory)
 $('chat-search').addEventListener('input', (e) => Panel.setFilter(e.target.value));
 // Checks the export first (what's new, duplicates, empty chats), then imports with progress (addons-cmds.js).
 $('import-btn').addEventListener('click', () => (window.Lazy ? Lazy.load('addons') : Promise.resolve()).then(() => Addons.importChats())); // (round 18: addons-cmds.js loads after the first screen)

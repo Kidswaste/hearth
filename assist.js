@@ -401,7 +401,7 @@ const Assist = (() => {
   const clearSteps = (agentId) => { for (const id of ['three']) { const e = typeof DirectorDock !== 'undefined' && DirectorDock.entry(id); if (e && (!agentId || e.agentId === agentId)) e.chips.querySelector('.as-next')?.remove(); } };
   function onReplyDone(ev, chat) {
     if (ev?.type !== 'done' || !chat || typeof DirectorDock === 'undefined') return;
-    if (window.Jam?.running?.()) return;
+    if (Lazy.isIn('jam') && window.Jam?.running?.()) return; // (round 118, startup118: lazy group 'jam')
     for (const id of ['three']) {
       const e = DirectorDock.entry(id);
       if (e && e.agentId === chat.agentId) setTimeout(() => showSteps(id, chat.agentId, stepsFor(id)), 60);

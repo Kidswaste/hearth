@@ -364,7 +364,7 @@ const KeysUI = (() => {
       { area: G, keys: 'Ctrl+Tab', what: 'The agent or tool before (again: further back)', run: () => AppUI.switchRecent(false) },
       { area: G, keys: 'Ctrl+N', what: 'New chat', run: sc('n') },
       { area: G, keys: 'Ctrl+F', what: 'Find in the current view', run: () => AppUI.find() },
-      { area: G, keys: 'Ctrl+J', what: 'Notes', run: () => Notes.toggle() },
+      { area: G, keys: 'Ctrl+J', what: 'Notes', run: () => Lazy.load('notes').then(() => Notes.toggle()) }, // (round 118, startup118: Notes loads after the start)
       { area: G, keys: 'Ctrl+\\', what: 'Show / hide the chats panel', run: sc('\\') },
       { area: G, keys: 'Ctrl+G', what: 'All agents side by side', run: sc('g') },
       { area: G, keys: 'Ctrl+B', what: 'Show / hide the ask-all bar', run: sc('b') },
@@ -531,7 +531,7 @@ const KeysUI = (() => {
       { area: 'Effects picker', keys: 'Esc', what: 'Close the picker', when: inLab },
       // notes, find
       { area: 'Notes', keys: 'Ctrl+Enter', what: 'Tick / untick the checklist line under the cursor (or make it one)', sel: '.notes-panel' },
-      { area: 'Notes', keys: 'Ctrl+J', what: 'Open / close Notes', run: () => Notes.toggle() },
+      { area: 'Notes', keys: 'Ctrl+J', what: 'Open / close Notes', run: () => Lazy.load('notes').then(() => Notes.toggle()) },
       { area: 'Find', keys: 'Enter / Shift+Enter', what: 'Next / previous match (Ctrl+F opens it)', run: () => AppUI.find() },
       { area: 'Find', keys: 'Esc', what: 'Close find' },
       // node picker and presets

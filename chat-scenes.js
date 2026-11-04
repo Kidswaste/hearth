@@ -62,7 +62,7 @@ const ChatScenes = (() => {
   const busy = (chatId) => Boolean(chatId && (Native.isBusy(chatId) || workers.has(chatId) || HubBridge.log().some((e) => e.running && e.chatId === chatId)));
   // The agents on a chat's scene: its own engine, or both while a jam runs on it.
   function jamOn(chatId) {
-    const J = window.Jam;
+    const J = Lazy.isIn('jam') ? window.Jam : null; // (round 118, startup118) lazy group 'jam': no jam runs before it is in
     if (!J || !chatId) return false;
     try { return Boolean(J.activeFor?.(chatId) ?? J.isActive?.(chatId) ?? (J.chatId === chatId && J.running)); } catch { return false; }
   }
@@ -403,7 +403,7 @@ renderer.setAnimationLoop((now) => {
     const S = lab();
     if (!S || !loaded) return null;
     // a jam's turns (jam.js) run under their own ids: they work on the jam's sketch, on screen or backstage
-    const jr = chatId && window.Jam?.routeFor?.(chatId);
+    const jr = chatId && Lazy.isIn('jam') && window.Jam?.routeFor?.(chatId);
     if (jr?.sketchId && S.get(jr.sketchId)) { setTimeout(paintAll, 0); return jr; }
     // (round 22) a crew helper's turns (tools/three-crew.js) work on its own variation, on that variation's stage
     const cr = chatId && window.ThreeCrew?.routeFor?.(chatId);

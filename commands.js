@@ -435,7 +435,7 @@ const Commands = (() => {
     if (t === 'draft') { (opts.draft || ((x) => Native.setDraft(agentId, x)))(text); toast('The output is in the message box', { timeout: 1800 }); }
     else if (t === 'copy') { await navigator.clipboard.writeText(text); toast('Output copied', { timeout: 1600 }); }
     else if (t === 'send') await Native.sendText(agentId, text);
-    else if (t === 'note' || t === 'notes') { await Notes.append(text); toast('Output saved to Notes', { timeout: 1800 }); }
+    else if (t === 'note' || t === 'notes') { await Lazy.load('notes'); await Notes.append(text); toast('Output saved to Notes', { timeout: 1800 }); }
     else if (t === 'say') (opts.say || ((x) => Native.note(agentId, x)))(text);
     else if (t === 'file') { const p = await window.hub.saveFile({ defaultPath: `hearth-output-${new Date().toLocaleDateString('en-CA')}.md`, content: text }); if (p) toast(`Saved ${p.split(/[\\/]/).pop()}`, { timeout: 2000 }); }
     else if (t === 'speak') { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(text.slice(0, 4000))); }

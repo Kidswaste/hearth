@@ -54,7 +54,6 @@ const appshell = require('./appshell');
 const fsapi = later('./fsapi');
 const portable = later('./portable');
 const nowplaying = later('./nowplaying', (m) => m.pace?.(bgmain.state())); // (Lab → live sound: "what's playing")
-const aemain = later('./aemain');
 const gamebridge = later('./gamebridge');
 const syncmain = later('./syncmain');
 const appsmain = later('./appsmain');
@@ -739,8 +738,10 @@ function registerAfterWindow() {
   });
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
-  aemain.registerIpc(ipcMain, () => win, () => settings().aePath);
-  require('./boardmain').registerIpc(ipcMain, () => win); // mood board: file import, website snapshots
+  // (round 118, startup118) After Effects / video tools and the mood board's main side: required on their first call
+  lazyIpc('aemain.js', (m, ipc) => m.register(ipc, () => win, () => settings().aePath)); // After Effects scripting, ffmpeg probes / transcodes
+  lazyIpc('boardmain.js', (m, ipc) => m.register(ipc)); // mood board: file import, website snapshots
+  lazyIpc('boardpinsmain.js', (m, ipc) => m.register(ipc, () => win)); // (round 14) the Pinterest window: pick pins onto the board
   require('./capturemain').register(ipcMain, () => win, settings); // screenshots / recordings of Hearth itself, frame reader
   lazyIpc('rendersmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // the render queue: pause / resume / cancel ffmpeg jobs (round 29: on first use)
   lazyIpc('renderfastmain.js', (m, ipc) => m.register(ipc, () => win, settings)); // (round 41, renderfast) Lab exports stream their frames into ffmpeg (on first use)

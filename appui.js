@@ -521,7 +521,7 @@ const AppUI = (() => {
     });
     window.hub.onContextAction((what, text) => {
       if (what === 'ask') draftToClaude(`About this:\n\n> ${text.replace(/\n/g, '\n> ')}\n\n`);
-      if (what === 'note') Notes.append(text);
+      if (what === 'note') Lazy.load('notes').then(() => Notes.append(text)); // (round 118, startup118: Notes and the memory editor load after the start)
     });
 
     addAction('New chat with Claude', () => { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id); } }, 'Ctrl+N');
@@ -530,9 +530,9 @@ const AppUI = (() => {
     addAction('Find in current view', find, 'Ctrl+F');
     addAction('Toggle side-by-side grid', () => handleShortcut({ key: 'g' }), 'Ctrl+G');
     addAction('Toggle chats panel', () => handleShortcut({ key: '\\' }), 'Ctrl+\\');
-    addAction('Notes', () => Notes.toggle(), 'Ctrl+J');
+    addAction('Notes', () => Lazy.load('notes').then(() => Notes.toggle()), 'Ctrl+J');
     addAction('Prompt library', () => Prompts.manage());
-    addAction('Memory', () => MemoryEditor.open());
+    addAction('Memory', () => Lazy.load('memory').then(() => MemoryEditor.open()));
     addAction('Token usage', usageDialog);
     addAction('Recently deleted chats', trashDialog);
     addAction('Downloads', downloadsDialog);
