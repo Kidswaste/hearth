@@ -9,7 +9,7 @@ const assert = require('assert');
 
 const ROOT = path.join(__dirname, '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'astra-engine-'));
-for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'spawnhelper.js', 'spawnhelper-child.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); // (round 122: the engines' programs start through the process helper here)
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
 engines.setEnginePaths({ codex: path.join(__dirname, 'fake-codex-astra.js'), claude: path.join(__dirname, 'fake-claude-astra.js') });
@@ -168,8 +168,13 @@ function turn(agent, text, session = {}, options = {}, onStart) {
   ok('unknown optional Claude flags are dropped and the turn retried');
   // each run gets its own tool-server file, removed when that run ends (a retry used to lose the shared one)
   const mf = (a) => a[a.indexOf('--mcp-config') + 1];
+  // (round 122, sendpath122) the same content is the same file, held by each run: one run letting go never removes it under the other
   const f1 = mf(T.claudeArgs({ ...claude, chatTools: true, hubChatId: 'c1' }, {}, {})), f2 = mf(T.claudeArgs({ ...claude, chatTools: true, hubChatId: 'c1' }, {}, {}));
-  assert(f1 && f2 && f1 !== f2 && fs.existsSync(f1) && fs.existsSync(f2));
+  assert(f1 && f2 && f1 === f2 && fs.existsSync(f1) && T.mcpRuns.get(f1).n === 2);
+  T.releaseMcpFile(f1);
+  assert(fs.existsSync(f1) && T.mcpRuns.get(f1).n === 1);
+  const f3 = mf(T.claudeArgs({ ...claude, chatTools: true, hubChatId: 'c2' }, {}, {}));
+  assert(f3 && f3 !== f1 && fs.existsSync(f3));
   assert.strictEqual(T.lastErrorLine('boot\nError: Invalid MCP configuration:\nMCP config file not found: /x.json\n'), 'Error: Invalid MCP configuration:\nMCP config file not found: /x.json');
   r = await turn({ ...claude, chatTools: true }, 'hello again');
   assert.strictEqual(r.end.type, 'done', JSON.stringify(r.end));

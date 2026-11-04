@@ -20,8 +20,29 @@ const CtxCore = (() => { try { return require('./context-core'); } catch { retur
 // (signin111) every way the engines say "you're signed out" (offline-core.js: the chat's line uses the same test); a test
 // copy without the file: the round-110 words
 const signedOut = (() => { try { return require('./offline-core').signedOut; } catch { return (t) => /not logged in|please run \/login|codex login|unauthori[sz]ed|\b401\b|sign in again|token (expired|is invalid)|refresh token|failed to authenticate|could not be refreshed/i.test(String(t || '')); } })();
+// (round 122, sendpath122) the engines' programs started from a small helper process (spawnhelper.js): the main process
+// sends a message instead of copying itself (8–30 ms a message). On by default (Settings: spawnHelper; off: false or
+// HEARTH_SPAWN_HELPER=0); any helper failure falls back to WinPolish.spawn here, as before. A test copy without it: direct.
+const Spawner = (() => { try { const S = require('./spawnhelper'); S.configure({ spawn: (b, a, o) => WinPolish.spawn(b, a, o), plan: WinPolish.spawnPlan ? (b, a, o) => WinPolish.spawnPlan(b, a, o) : undefined, log: (l) => log(l) }); return S; } catch { return null; } })();
+const engineSpawn = (bin, args, opts) => (Spawner ? Spawner.spawn(bin, args, opts) : WinPolish.spawn(bin, args, opts));
 const Wake = (() => { try { const w = require('./toolwake'); w.setFile(path.join(DATA_DIR, 'tool-wake.json')); return w; } catch { return null; } })();
-const conns = (agent) => (Conn ? Conn.enabledFor(agent) : []);
+const conns = (agent) => (Conn ? Conn.enabledFor(agent, connList()) : []);
+// (round 122, sendpath122) one send's build reads each of its inputs once. The prompt and the arguments were built from
+// the same reads several times (config.json for the owner's connections up to 5 times, memory.json 1–3 times, each
+// chat folder's checks 4–8 times: Astra built its prompt three times). scoped(fn) runs fn with a memo that lives for that
+// one synchronous build only: nothing is kept between messages here, so what a build sees is what's on disk right then.
+let scope = null;
+function scoped(fn, preset = null) {
+  if (scope) return fn();
+  scope = new Map(preset ? Object.entries(preset) : []);
+  try { return fn(); } finally { scope = null; }
+}
+const memo = (key, fn) => {
+  if (!scope) return fn();
+  if (!scope.has(key)) scope.set(key, fn());
+  return scope.get(key);
+};
+const connList = () => memo('conns', () => Conn.list());
 
 const WORKSPACE = path.join(DATA_DIR, 'workspace');
 const PROMPTS_DIR = path.join(DATA_DIR, 'prompts');
@@ -239,7 +260,31 @@ const hubToolEnv = (agent, key) => ({ ...(key === 'openTool' ? { HUB_CHAT_ONLY: 
 // One file per run, removed when that run ends: a retry of the same chat (a lost session, an option the CLI doesn't
 // know) starts while the previous run is still closing, and a shared file was deleted under the new run
 // ("Invalid MCP configuration: … not found").
-const mcpConfigFile = (agent) => path.join(DATA_DIR, 'mcp-runs', `${agent.id}-${String(agent.hubChatId || 'once').replace(/[^\w-]/g, '_')}-${crypto.randomUUID().slice(0, 8)}.json`);
+// (round 122, sendpath122) reused when identical: the file is named after its content and counted (runs holding it), so
+// the next message of a chat finds it written (no write on the main process) and a retry's run holds it before the
+// closing run lets go. A file nobody holds goes 10 minutes later, at quit, or at the next start (a day old).
+const MCP_RUNS_DIR = path.join(DATA_DIR, 'mcp-runs');
+const MCP_KEEP_MS = 10 * 60000;
+const mcpRuns = new Map(); // file -> { n: runs holding it, timer }
+let mcpDirMade = false;
+const mcpConfigFile = (agent, text) => path.join(MCP_RUNS_DIR, `${agent.id}-${String(agent.hubChatId || 'once').replace(/[^\w-]/g, '_')}-${crypto.createHash('sha1').update(text).digest('hex').slice(0, 10)}.json`);
+function holdMcpFile(file, text) {
+  const run = mcpRuns.get(file);
+  if (run && fs.existsSync(file)) { run.n += 1; clearTimeout(run.timer); run.timer = null; return file; }
+  if (!mcpDirMade) { fs.mkdirSync(MCP_RUNS_DIR, { recursive: true }); mcpDirMade = true; }
+  fs.writeFileSync(file, text);
+  if (run) { run.n += 1; clearTimeout(run.timer); run.timer = null; } else mcpRuns.set(file, { n: 1, timer: null });
+  return file;
+}
+function releaseMcpFile(file) {
+  const run = mcpRuns.get(file);
+  if (!run) { fs.rm(file, { force: true }, () => {}); return; }
+  run.n = Math.max(0, run.n - 1);
+  if (run.n || run.timer) return;
+  run.timer = setTimeout(() => { if (mcpRuns.get(file) !== run || run.n) return; mcpRuns.delete(file); fs.rm(file, { force: true }, () => {}); }, MCP_KEEP_MS);
+  run.timer.unref?.();
+}
+process.on('exit', () => { for (const [file, run] of mcpRuns) if (!run.n) { try { fs.rmSync(file, { force: true }); } catch { /* next start */ } } });
 function hubMcpConfig(agent) {
   const mcpServers = {};
   for (const key of hubToolsets(agent)) {
@@ -248,11 +293,9 @@ function hubMcpConfig(agent) {
   }
   // (round 14) the permission check behind --permission-prompt-tool, for a chat with file access
   if (accessAsks(agent)) mcpServers.access = { command: process.execPath, args: [path.join(__dirname, 'mcp', 'access-mcp.js')], env: accessEnv(agent) };
-  if (Conn) Object.assign(mcpServers, Conn.claudeServers(agent)); // (round 26) the owner's connections
-  const file = mcpConfigFile(agent);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify({ mcpServers }, null, 2));
-  return file;
+  if (Conn) Object.assign(mcpServers, Conn.claudeServers(agent, connList())); // (round 26) the owner's connections
+  const text = JSON.stringify({ mcpServers }, null, 2);
+  return holdMcpFile(mcpConfigFile(agent, text), text);
 }
 
 // Codex MCP servers for the hub tool sets, as config overrides (nothing is written to the user's config).
@@ -273,7 +316,7 @@ function codexMcpArgs(agent) {
       '-c', `${p}.default_tools_approval_mode="approve"`,
     );
   }
-  if (Conn) args.push(...Conn.codexArgs(agent, tomlStr)); // (round 26) the owner's connections
+  if (Conn) args.push(...Conn.codexArgs(agent, tomlStr, connList())); // (round 26) the owner's connections
   return args;
 }
 
@@ -282,7 +325,7 @@ function codexMcpArgs(agent) {
 // A chat with its own access setting (round 14, below) replaces the agent's folder for its runs.
 function fileFolder(agent) {
   if (agent.access) return null;
-  return agent.workspace && fs.existsSync(agent.workspace) ? agent.workspace : null;
+  return agent.workspace && memo(`ws:${agent.workspace}`, () => fs.existsSync(agent.workspace)) ? agent.workspace : null;
 }
 
 // ---------- per-chat file access (round 14, access.js) ----------
@@ -301,6 +344,10 @@ const ACCESS_LEVELS = ['off', 'read', 'write', 'full'];
 const PERMISSION_TOOL = 'mcp__access__access_permission';
 function accessOf(agent) {
   const a = agent.access;
+  if (scope && a && typeof a === 'object') return memo(`acc:${JSON.stringify(a)}`, () => accessOf0(a));
+  return accessOf0(a);
+}
+function accessOf0(a) {
   if (!a || !ACCESS_LEVELS.includes(a.level) || a.level === 'off') return null;
   // (round 19) a folder stored on the other computer (a Mac path on Windows…) is this computer's same folder
   const here = (f) => { if (typeof f !== 'string' || (path.isAbsolute(f) && fs.existsSync(f))) return f; try { return require('./reachmain').localize(f)?.path || f; } catch { return f; } };
@@ -339,6 +386,9 @@ const accessEnv = (agent) => ({ ELECTRON_RUN_AS_NODE: '1', HUB_AGENT_ID: agent.i
 // (round 119, datalock119) the data folders this chat's folders cover (datalock.js): Hearth refuses any read or change
 // there, on both engines. A Hearth source folder's data/ and the running copy's data folder (DATA_DIR).
 function dataLocksOf(agent, acc = accessOf(agent), folder = fileFolder(agent)) {
+  return memo(`locks:${JSON.stringify(acc)}|${folder}`, () => dataLocksOf0(acc, folder));
+}
+function dataLocksOf0(acc, folder) {
   const out = [];
   const add = (d) => { for (const x of [d, (() => { try { return fs.realpathSync(d); } catch { return d; } })()]) if (!out.includes(x)) out.push(x); };
   for (const f of acc ? acc.folders : folder ? [folder] : []) {
@@ -395,7 +445,7 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 // session, saved with the chat): saved memory is frozen per session while it only grows (memoryFor below).
 // (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
 // reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
-function promptParts(agent, session = null) {
+function promptParts0(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
   const web = agent.engine === 'codex' && WEB_SEARCH.includes(agent.webSearch) && agent.webSearch !== 'disabled';
@@ -496,13 +546,61 @@ function promptParts(agent, session = null) {
 // tool servers sit there), the running copy or another checkout. Fixed text, no file of the owner's is read into it.
 // (round 118, selfmap118) The map itself is mcp/hearth-map.js CODE (one text for Claude and Astra, also help hearthcode); it points to HANDOFF.md.
 function isHearthSource(dir) {
-  try { return fs.existsSync(path.join(dir, 'engines.js')) && fs.existsSync(path.join(dir, 'mcp', 'hearth-map.js')); } catch { return false; }
+  return memo(`src:${dir}`, () => { try { return fs.existsSync(path.join(dir, 'engines.js')) && fs.existsSync(path.join(dir, 'mcp', 'hearth-map.js')); } catch { return false; } });
 }
 function ownCode(agent, acc = accessOf(agent), folder = fileFolder(agent)) {
   return (acc ? acc.folders : folder ? [folder] : []).some(isHearthSource);
 }
 function buildPrompt(agent, session = null) {
   return promptParts(agent, session).map((p) => p[1]).join('\n\n');
+}
+// (round 122, sendpath122) The prompt's parts, cached. Every part but the saved memory is a function of the agent as this
+// run has it (its personality, instructions, tool sets, engine, folders…), of what its folders are on this computer
+// (which exist, which hold Hearth's source or its data folder), of whether it has connections and whether this Claude
+// Code asks Hearth for permissions, and of fixed text (the tool guides, the map: loaded once per run of Hearth). Those
+// parts are kept under exactly those inputs (the agent's JSON + the folder facts read fresh for this build), so a later
+// message of the chat rebuilds only the memory (frozen per session: memoryFor, as before) and gets the same bytes the
+// whole build gives (dev/sendpath122-test.js compares them across setups and edits). Within one send the parts are
+// built once (Astra asked for its prompt three times). HEARTH_PROMPT_CACHE=0: always the whole build.
+const PROMPT_CACHE_MAX = 32;
+const promptCache = new Map(); // key -> { head: parts before the memory, answers: the last part or null }
+let promptCacheOn = process.env.HEARTH_PROMPT_CACHE !== '0';
+const promptStats = { hits: 0, misses: 0 };
+function promptParts(agent, session = null) {
+  return scoped(() => {
+    // one build per agent and session object within one send (memoryFor gives the same notes twice in a row)
+    const per = memo('parts', () => new Map());
+    const mine = per.get(agent);
+    if (mine && mine.session === session) return mine.parts.map((p) => [...p]);
+    const parts = cachedParts(agent, session);
+    per.set(agent, { session, parts: parts.map((p) => [...p]) });
+    return parts;
+  });
+}
+function promptKey(agent) {
+  const folder = fileFolder(agent);
+  const acc = accessOf(agent);
+  return JSON.stringify([agent, folder, acc, dataLocksOf(agent, acc, folder), ownCode(agent, acc, folder), accessAsks(agent), conns(agent).length > 0]);
+}
+function cachedParts(agent, session) {
+  if (!promptCacheOn) return promptParts0(agent, session);
+  let key;
+  try { key = promptKey(agent); } catch { return promptParts0(agent, session); } // (an agent JSON can't hold: built whole)
+  const hit = promptCache.get(key);
+  if (hit) {
+    promptStats.hits += 1;
+    promptCache.delete(key); promptCache.set(key, hit); // most recent last
+    const parts = hit.head.map((p) => [...p]);
+    const notes = memoryFor(agent, session);
+    if (notes) parts.push(['memory', `What you remember about the user (saved notes, keep them in mind):\n${notes}`]);
+    if (hit.answers) parts.push([...hit.answers]);
+    return parts;
+  }
+  promptStats.misses += 1;
+  const parts = promptParts0(agent, session);
+  promptCache.set(key, { head: parts.filter((p) => p[0] !== 'memory' && p[0] !== 'answers').map((p) => [...p]), answers: parts.find((p) => p[0] === 'answers') || null });
+  while (promptCache.size > PROMPT_CACHE_MAX) promptCache.delete(promptCache.keys().next().value);
+  return parts;
 }
 
 // (round 24, context) /memory relevant on: the notes leave the system prompt; chat-memory.js sends only the facts a
@@ -513,7 +611,7 @@ function buildPrompt(agent, session = null) {
 // or deleted fact applies at once. session.mem: the notes this session's prompt carries (saved with the chat).
 function memoryFor(agent, session) {
   if (agent.memoryOff) return ''; // (round 33) a mission's helper (send: options.helper)
-  const memory = getMemory();
+  const memory = memo('memory', getMemory);
   // (round 38, memorytidy) + the place scopes this AI works in (Lab facts only for the Three Directors), fixed order
   const notes = CtxCore ? CtxCore.memoryNotes(memory, agent) : [memory.shared, memory.agents?.[agent.id]].map((m) => (m || '').trim()).filter(Boolean);
   if (!notes.length || (CtxCore ? CtxCore.memoryRelevant(agent, memory) : agent.memoryWhenRelevant)) { if (session) delete session.mem; return ''; }
@@ -586,7 +684,7 @@ function claudeToolArgs(agent, options = {}, session = {}) {
   const denied = [];
   // (round 119, datalock119) Claude reads its folders without asking Hearth: its own deny rules keep it out of the data folder
   if (acc || folder) denied.push(...(dataLock()?.claudeRules(dataLocksOf(agent, acc, folder)) || []));
-  if (own) { const r = Conn.claudeRules(agent); allowed.push(...r.allowed); denied.push(...r.denied); }
+  if (own) { const r = Conn.claudeRules(agent, connList()); allowed.push(...r.allowed); denied.push(...r.denied); }
   for (const server of enabled.size ? claude?.servers || [] : []) {
     const prefix = serverPrefix(server.name);
     const mode = enabled.get(server.name);
@@ -650,7 +748,7 @@ function shownArgs(a) {
   let args = a.engine === 'codex'
     ? (a.codexTransport === 'exec' || process.env.HEARTH_CODEX_TRANSPORT === 'exec' ? codexArgs(a, {}, {}) : codexServerPlan(a, {}, {}).args)
     : claudeArgs(a, {}, {});
-  if (args.includes('--mcp-config')) fs.rm(args[args.indexOf('--mcp-config') + 1], { force: true }, () => {});
+  if (args.includes('--mcp-config')) releaseMcpFile(args[args.indexOf('--mcp-config') + 1]);
   if (Conn) args = Conn.maskArgs(args); // the owner's env values / headers never show
   return args.map((x) => (x.length > 160 ? `${x.slice(0, 157)}…` : x));
 }
@@ -671,7 +769,8 @@ function withSubagents(args, options) {
   if (a >= 0) out[a + 1] = `${out[a + 1]},Task`; else out.push('--allowedTools', 'Task');
   return out;
 }
-function claudeArgs(agent, session, options = {}) {
+function claudeArgs(agent, session, options = {}) { return scoped(() => claudeArgs0(agent, session, options)); }
+function claudeArgs0(agent, session, options = {}) {
   const args = [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     '--setting-sources', 'project', '--disable-slash-commands',
@@ -731,7 +830,8 @@ function codexDevOk() {
   const v = codexVersion();
   return !v || Installs.cmp(v, CODEX_DEV_MIN) >= 0;
 }
-function codexArgs(agent, session, options = {}) {
+function codexArgs(agent, session, options = {}) { return scoped(() => codexArgs0(agent, session, options)); }
+function codexArgs0(agent, session, options = {}) {
   const text = buildPrompt(agent, session);
   const asDev = codexDevOk() && text.length <= CODEX_DEV_ARG_MAX;
   const folder = fileFolder(agent);
@@ -793,7 +893,8 @@ function codexArgs(agent, session, options = {}) {
 
 // Reuse the same model, tool, prompt and file-access configuration as exec. Only transport
 // flags change. Each chat gets its own server because MCP environments contain HUB_CHAT_ID.
-function codexServerPlan(agent, session, options = {}) {
+function codexServerPlan(agent, session, options = {}) { return scoped(() => codexServerPlan0(agent, session, options)); }
+function codexServerPlan0(agent, session, options = {}) {
   const old = codexArgs(agent, session, { ...options, _server: true });
   const args = ['app-server', '--listen', 'stdio://', '-c', 'mcp_servers={}', '-c', 'approval_policy="never"', '-c', 'model_provider="openai"'];
   const servers = [];
@@ -1255,7 +1356,10 @@ function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } 
   if (options.visualReview) agent = { ...agent, noHubTools: true, nodesTool: false, access: { level: 'off', folders: [] }, codexFiles: undefined, fileFolder: undefined, workspace: undefined, astraNoSandbox: false, codexFeatures: [], chatgptApps: false, connectors: undefined, webSearch: 'disabled', autoMemory: false, memoryOff: true, suggestNext: false };
   return { agent, woke };
 }
-function send({ agent: agent0, chatId, session, text, options = {} }, emit, live = null) {
+// connections (optional): the owner's connections as main.js just read them for this message (config.json parsed once:
+// the build would read it again for each use)
+function send({ agent: agent0, chatId, session, text, options = {}, connections }, emit, live = null) {
+  const preset = Array.isArray(connections) ? { conns: connections } : null; // (round 122, sendpath122)
   emit = batched(emit);
   const { agent, woke } = runAgent(agent0, { chatId, session, text, options });
   const engine = agent.engine;
@@ -1283,8 +1387,8 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
   const state = { ...session };
   if (woke?.sticky.length) state.sets = woke.sticky; // the sets this session keeps (its tool list never shrinks)
   if (engine === 'codex' && agent.codexTransport !== 'exec' && process.env.HEARTH_CODEX_TRANSPORT !== 'exec') {
-    codexServers ||= new (require('./codex-server').Pool)({ spawn: WinPolish.spawn, kill, log });
-    const plan = codexServerPlan(agent, state, options);
+    codexServers ||= new (require('./codex-server').Pool)({ spawn: engineSpawn, kill, log }); // (round 122) through the helper
+    const plan = scoped(() => codexServerPlan(agent, state, options), preset); // (round 122: the build reads its inputs once)
     let toolCount = 0;
     codexServers.run({ chatId, bin, runtimeKey: Installs.binKey(bin), ...plan, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) }, session: state,
       parser: codexParser(state, agent), fallbackText: options.fallbackText, text, showThinking: agent.showThinking !== false }, (event) => {
@@ -1296,16 +1400,23 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
     return;
   }
   if (engine === 'claude') loadDropped(bin);
-  const args = engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options);
+  const args = scoped(() => (engine === 'claude' ? claudeArgs(agent, state, options) : codexArgs(agent, state, options)), preset);
   const parse = engine === 'claude' ? claudeParser(state) : codexParser(state, agent);
 
   // MCP_TOOL_TIMEOUT: a question to the user (chat_ask) can wait a long time for the answer.
   // (round 32) WinPolish.spawn: on Windows npm's claude.cmd / codex.cmd run through their Node script (Node refuses a
   // .cmd without a shell); elsewhere the plain spawn
   let child;
-  try { child = WinPolish.spawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } }); } catch (err) {
+  const mcpFile = engine === 'claude' && args.includes('--mcp-config') ? args[args.indexOf('--mcp-config') + 1] : null;
+  // (round 122, sendpath122) engineSpawn: through the process helper; a start it refuses (spawn threw) comes as an
+  // 'error' with hearthThrown, said exactly as the direct start's throw is said here
+  const couldntStart = (err) => {
     log(`${engine} ${chatId} couldn't start ${bin}: ${err.message}`);
+    if (mcpFile) releaseMcpFile(mcpFile);
     emit({ type: 'error', ...friendlyError(engine, `Couldn't start ${ENGINES[engine].label} (${err.code || err.message}).`, { bin }) });
+  };
+  try { child = engineSpawn(bin, args, { cwd: WORKSPACE, windowsHide: true, env: { ...process.env, MCP_TOOL_TIMEOUT: String(45 * 60000) } }); } catch (err) {
+    couldntStart(err);
     return;
   }
   if (child.hearthVia && child.hearthVia !== 'direct') log(`${engine} ${chatId} started ${path.basename(bin)} via ${child.hearthVia}`);
@@ -1462,15 +1573,17 @@ function send({ agent: agent0, chatId, session, text, options = {} }, emit, live
     }
   });
   child.stderr.on('data', (chunk) => { touch(); stderr = (stderr + chunk).slice(-4000); });
-  child.on('error', (err) => finish({ type: 'error', message: err.message }));
+  child.on('error', (err) => {
+    if (err?.hearthThrown) { if (finished) return; finished = true; ended = true; clearTimeout(idle); clearInterval(pulses); if (running.get(chatId) === child) running.delete(chatId); couldntStart(err); return; }
+    finish({ type: 'error', message: err.message });
+  });
   let ended = false;
   const end = (code, signal) => {
     if (ended) return;
     ended = true;
     clearInterval(pulses);
     if (running.get(chatId) === child) running.delete(chatId);
-    const mcpFile = engine === 'claude' && args[args.indexOf('--mcp-config') + 1];
-    if (args.includes('--mcp-config') && mcpFile) fs.rm(mcpFile, { force: true }, () => {});
+    if (mcpFile) releaseMcpFile(mcpFile); // (round 122: kept a while for the chat's next message, see holdMcpFile)
     if (parts.length && !skipping) { const last = parts.join(''); parts = []; handleLine(last); } // the last line may come without a newline
     log(`${engine} ${chatId} exit=${code} signal=${signal} finished=${finished} stderr=${JSON.stringify(stderr.slice(-400))}`);
     // (round 68, bugbutton68) the engine's program stopped on its own (not Stop, not the idle stop): 🪲 Something broke
@@ -1691,6 +1804,7 @@ async function doctor(agents = []) {
   // the hub's MCP tool servers (talk-back, directors) and the bridge they call
   report.mcp = Object.fromEntries(Object.values(HUB_TOOLSETS).map(({ server, script }) => [server, fs.existsSync(path.join(__dirname, 'mcp', script))]));
   report.bridge = fs.existsSync(path.join(DATA_DIR, 'game-bridge.json'));
+  report.spawnHelper = Spawner ? Spawner.stats() : null; // (round 122, sendpath122) the process helper: up, starts through it, fallbacks
   report.prompts = agents.filter((a) => a.mode === 'native').map((a) => {
     const text = buildPrompt(a);
     return { id: a.id, name: a.name, engine: a.engine, chars: text.length, tokens: Math.ceil(text.length / 4), tools: hubToolsets(a), text,
@@ -1827,18 +1941,36 @@ function discoverConnectors() {
   });
 }
 
+// (round 122, sendpath122) At an idle moment after the start (main.js): what the first message would load on the main
+// process (the tool guides, the Lab guide, Hearth's map, the folder checks' helpers, Astra's server code), one module
+// per turn of the loop, and the process helper started. The first message then pays none of it.
+function warm({ helper = true } = {}) {
+  const steps = [
+    ...Object.keys(HUB_TOOLSETS).map((k) => () => toolGuide(k)),
+    () => threeGuide(), () => hearthMap(), () => dataLock(),
+    // a first build of each kind, for nothing (no file written, nothing kept): the code it runs is compiled before a message needs it
+    () => { const a = runAgent({ id: 'hearth-warm', name: 'Warm', mode: 'native', engine: 'claude', noHubTools: true, autoMemory: false, memoryOff: true }, { chatId: 'once-warm' }).agent; buildPrompt(a, {}); claudeToolArgs(a, {}, {}); buildPrompt({ ...a, engine: 'codex' }, {}); },
+    () => require('./twocomputers-core'), () => require('./codex-capabilities'), () => require('./codex-server'),
+  ];
+  if (helper && Spawner) steps.push(() => Spawner.warm());
+  const next = () => { const step = steps.shift(); if (!step) return; try { step(); } catch { /* a test copy without it */ } setTimeout(next, 50).unref?.(); };
+  setTimeout(next, 0).unref?.();
+}
+function setSpawnHelper(on) { if (Spawner) Spawner.configure({ on: on !== false }); }
+
 module.exports = {
   codexCapabilities,
   codexWorkspace,
   codexSteer: ({ chatId, turnId, text }) => { if (!codexServers) throw new Error('No Astra reply is running.'); return codexServers.steer(chatId, turnId, text); },
   codexAnswer: ({ chatId, token, answers }) => { if (!codexServers) throw new Error('The question is no longer active.'); return codexServers.answer(chatId, token, answers); },
   getCodexUsage,
+  warm, setSpawnHelper, spawnHelper: () => Spawner?.stats() || null, // (round 122, sendpath122)
   send, stop, stopAll, login, signInByLink, stopLink, status, checkInstalls, checkEngine, fix, locate: (e) => LOCATE[e]?.() || null, onInstalls, discoverConnectors, readConnectorCache, isReadOnlyTool: (name) => READ_ONLY_TOOL.test(name), once, setEnginePaths,
   doctor, EFFORTS, CODEX_DISABLED_FEATURES,
   // (round 120, astraprobe120) "Check Astra works like Claude" (parityprobe.js): the plan a chat gets, how its prompt goes in
   codexProbe: { plan: codexServerPlan, devOk: codexDevOk, min: CODEX_DEV_MIN, useBin: (bin) => { usedBin.codex = bin; } },
   // for tests (dev/astra-engine-test.js)
-  _test: { dataLocksOf, lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
+  _test: { get promptStats() { return { ...promptStats, size: promptCache.size }; }, promptCache: (on) => { promptCacheOn = on !== false; promptCache.clear(); }, promptParts0, Spawner, mcpRuns, releaseMcpFile, dataLocksOf, lightParse, batched, withSubagents, treeCpuMs, lastErrorLine, codexArgs, codexServerPlan, claudeArgs, unsupportedFlag, get claudeDropped() { return claudeDropped; }, accessOf, accessLine, toolAccess, PERMISSION_TOOL, POLICY_BLOCKED, codexOpen, loadDropped, rememberDropped, codexParser, claudeParser, friendlyError, buildPrompt, hubToolsets, chatGuideOn, learnTooOld, Installs, TOO_OLD, NETWORK, hubToolEnv, nodesOn, LOST_SESSION, memoryFor, onlyGrew, ANSWER_LINES, runAgent, claudeToolArgs, ownCode, get HEARTH_CODE_GUIDE() { return hearthMap().CODE; }, CODEX_DEV_MIN, codexDevOk, usedBin },
   buildPrompt, promptParts, HUB_TOOLSETS, // the director cost report (mcp/cost.js); (round 36) the prompt's parts (tokenauditmain.js)
   busy: () => running.size + (codexServers?.active.size || 0), // idle persistent connections don't count as work
 };

@@ -13,7 +13,7 @@ const assert = require('assert');
 process.env.HEARTH_TEST_TERMINAL = '1'; // update / sign-in windows run headless, brew / npm / installers only echo
 const ROOT = path.join(__dirname, '..');
 const dir = require('./tmp-own').mkdtemp('robust-engine-');
-for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'offline-core.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f));
+for (const f of ['engines.js', 'store.js', 'scenesafe-core.js', 'datasafe-core.js', 'installs.js', 'winpolish.js', 'offline-core.js', 'spawnhelper.js', 'spawnhelper-child.js']) fs.copyFileSync(path.join(ROOT, f), path.join(dir, f)); // (round 122: through the process helper)
 fs.cpSync(path.join(ROOT, 'mcp'), path.join(dir, 'mcp'), { recursive: true });
 const engines = require(path.join(dir, 'engines.js'));
 const T = engines._test;
