@@ -226,7 +226,7 @@ try {
   }
   // ---------- delete → Undo, archive → Archived projects → Active ----------
   { const id = 'pjbp5'; const name = P.get(id).name; const before = JSON.stringify(P.get(id));
-    card(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 })); click(menuItem(/Delete the project/));
+    card(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 })); click(menuItem(/Delete the project/)); click(await until(() => document.querySelector('dialog[open] .danger-fill'), 'delete asks first')); /* (round 128, projmenu128) */
     await until(() => !card(id), 'card gone'); out.lifecycle.deletedCardGone = true;
     const undo = [...document.querySelectorAll('#toasts .toast button')].find((b) => b.textContent === 'Undo');
     if (need(undo, 'delete: an Undo')) { click(undo); await until(() => card(id), 'card back'); }
@@ -242,7 +242,7 @@ try {
     await toProjects(); await until(() => card(id), 'active again'); out.lifecycle.unarchived = P.get(id).status === 'active';
     // deleted again, the toast left to go: Projects › ⋯ › Recently deleted projects brings it back as it was
     const kept = JSON.stringify(P.get(id));
-    card(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 })); click(menuItem(/Delete the project/));
+    card(id).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 300, clientY: 300 })); click(menuItem(/Delete the project/)); click(await until(() => document.querySelector('dialog[open] .danger-fill'), 'delete asks first')); /* (round 128, projmenu128) */
     await until(() => !card(id), 'deleted again'); document.querySelectorAll('#toasts .toast .toast-x').forEach((x) => x.click());
     click(document.querySelector('.pj-quick-more')); click(menuItem(/^Recently deleted projects/));
     click(await until(() => menuItem(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))), 'recently deleted list'));

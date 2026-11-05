@@ -105,7 +105,7 @@ try {
     // the copy deleted from its Desk: ⋯ › Delete the project…
     const onCopy = await onDesk(copy.id);
     const del = { onCopy: Boolean(onCopy), desk: deskName() };
-    del.done = Boolean(await deskAction(/^Delete the project…/, () => !P.get(copy.id), 6000));
+    del.done = Boolean(await deskAction(/^Delete the project…/, () => { document.querySelector('dialog[open] .danger-fill')?.click(); return !P.get(copy.id); }, 6000)); // (round 128, projmenu128) it asks first: Delete
     await P.flush(); await wait(800);
     step('the copy\'s ⋯ › Delete the project… deletes it (to Recently deleted)', !P.get(copy.id) && P.trashed().some((x) => x.id === copy.id), del);
     const after = { project: P.get(p.id), code: allCode(ThreeLab.scenes.get(sid)), hist: await histCodes(sid), tm: (await ThreeHistory.list(sid)).length, refs: ThreeLab.refsOf(sid).map((r) => r.path), layers: ThreeLab.scenes.layersOf(ThreeLab.scenes.get(sid) || {}).map((x) => x.name) };

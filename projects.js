@@ -510,6 +510,7 @@ const Projects = (() => {
   // the sources the Add › submenus list, fetched when a menu opens (they're drawn at once)
   function warm() { for (const k of ['sketches', 'boards', 'renders', 'captures', 'workspace', 'downloads', 'deploys']) Src[k]().catch?.(() => {}); }
   function menu(p) {
+    if (window.ProjectMenu) return window.ProjectMenu.items(p, { where: 'menu' }); // (round 128, projmenu128) the one project menu (projmenu.js); the rows below until it's in
     warm();
     const mk = p.make && typeof Makes !== 'undefined' ? Makes.get(p.make) : null;
     return [
@@ -533,6 +534,12 @@ const Projects = (() => {
       ...(p.revived ? [{ label: 'Keep it (it was deleted on the other computer)', action: () => settleRevived(p, true) }] : []),
       { label: 'Delete the project…', danger: true, action: () => removeProject(p) },
     ].filter(Boolean);
+  }
+  // (round 128, projmenu128) the one project menu (projmenu.js, lazy group "projmenu"), with its header, at x, y
+  function openMenu(p, x, y, where = 'menu') {
+    const go = () => window.ProjectMenu.show(p, { x, y, where });
+    if (window.ProjectMenu) return go();
+    return (window.Lazy ? window.Lazy.load('projmenu') : Promise.resolve()).then(go).catch(() => showMenu(x, y, menu(p)));
   }
   // Add ›: what's in front of you, recent things of each kind
   function addMenu(p) {
@@ -570,7 +577,7 @@ const Projects = (() => {
     create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, // (round 121, listtidy121) hidesMake: gone
    
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
-    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, addMenu, renamePrompt, notesPrompt, bundle,
+    openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, openMenu /* (round 128, projmenu128) */, addMenu, renamePrompt, notesPrompt, bundle,
     sketchGroups, sketchBrowse, sketchMenu, // (round 121, listtidy121) grouping, setGrouping, panelSkip, panelTop, panelView, panelMenu: gone
     Src, warm, lookFor, look: () => look, coverOf, thumbOf, timeOf, nameOf, lastOf, gone, fileUrl, forget, onChange, changed, core: C,
     _data: () => data,

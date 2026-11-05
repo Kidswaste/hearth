@@ -24,7 +24,8 @@ window.ProjectWorkspace = (() => {
   document.addEventListener('hearth:creative-feature',()=>{if(get()&&surface==='creative'&&H.activeId==='tool:creative')remember(CreativePlayground.snapshot().feature==='vst'?'sound':'board');});
   function switcher(anchor) {
     const rect=anchor.getBoundingClientRect(),labels={overview:'Desk',chat:'Chat',scene:'Scene',board:'Creative board',sound:'Sound',moodboard:'Moodboard'};
-    showMenu(rect.left,rect.bottom+4,[...P.live().slice(0,12).map(p=>({label:`${p.ident.glyph} ${p.name}`,checked:p.id===active,hint:labels[returnPoint(p.id).tab]||'Desk',action:()=>open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});})})),'-',{label:'All projects',action:()=>home()},{label:'＋ New project',action:()=>wizard()}]);
+    const here=get(); // (round 128, projmenu128) the one project menu, one row up top (projmenu.js)
+    showMenu(rect.left,rect.bottom+4,[...(here&&P.openMenu?[{label:'This project’s menu…',key:'Ctrl+Shift+O',action:()=>setTimeout(()=>P.openMenu(here,rect.left,rect.bottom+4,'workspace'),0)},'-']:[]),...P.live().slice(0,12).map(p=>({label:`${p.ident.glyph} ${p.name}`,checked:p.id===active,hint:labels[returnPoint(p.id).tab]||'Desk',action:()=>open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});})})),'-',{label:'All projects',action:()=>home()},{label:'＋ New project',action:()=>wizard()}]);
   }
   const base = path => String(path).split(/[\\/]/).pop();
   const agentFor = tool => surfaces.has(tool) && get() ? H.agent(chatOf(get())?.agentId) : null;

@@ -242,6 +242,8 @@ await section('9. delete → Undo; delete → Deleted things › Restore', async
   const items = JSON.stringify(Projects.get(pb.id).items);
   { const d = [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯'); d?.scrollIntoView({ block: 'center' }); await wait(200); await click(d); }
   await pickMenu(/^Delete the project…$/);
+  // (round 128, projmenu128) it asks first (naming what's inside): Delete
+  await until(() => document.querySelector('dialog[open] .danger-fill'), 4000); document.querySelector('dialog[open] .danger-fill')?.click();
   await wait(400);
   step('⋯ › Delete the project… deletes it (its chats stay)', !Projects.get(pb.id) && H.chats.some((c) => c.id === loose.id));
   step('…the open Desk doesn\'t keep showing the deleted project', !/Audit Beta Two/.test(deskName()) && !/Audit Beta Two/.test(nameBtn()?.textContent || ''), { desk: deskName(), bar: nameBtn()?.textContent, at: H.activeId });

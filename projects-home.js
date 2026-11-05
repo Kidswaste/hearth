@@ -124,14 +124,15 @@ const ProjectsHome = (() => {
     const cont = el('div', { class: 'pj-continue' }, ...continueChips(p));
     const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: resume this project · right-click: more`, dataset: { project: p.id } },
       pic,
-      el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null, p.revived ? el('span', { class: 'pj-pill pj-pill-revived', text: 'Deleted elsewhere?', title: 'Deleted on your other computer, but it changed after that: open it to keep it or delete it' }) : null), // (round 76, projsync76)
+      el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null, p.revived ? el('span', { class: 'pj-pill pj-pill-revived', text: 'Deleted elsewhere?', title: 'Deleted on your other computer, but it changed after that: open it to keep it or delete it' }) : null, // (round 76, projsync76)
+        el('button', { type: 'button', class: 'ghost small pj-go pj-card-more', text: '⋯', title: 'This project’s menu', attrs: { 'aria-label': `${p.name}: menu`, 'aria-haspopup': 'menu' }, on: { click: (e) => { e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect(); P.openMenu(p, b.left, b.bottom + 4, 'home'); } } })), // (round 128, projmenu128) the one project menu
       el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
       el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
     const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
     tint(c, p.ident.color);
     c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
     c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
-    c.addEventListener('contextmenu', (e) => showMenuAt(e, P.menu(p)));
+    c.addEventListener('contextmenu', (e) => { e.preventDefault(); P.openMenu(p, e.clientX, e.clientY, 'home'); }); // (round 128, projmenu128)
     // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
     c.addEventListener('pointermove', prefetch); c.addEventListener('focus', prefetch, { once: true }); // (round 94, labload94: a pointer moving on it, not pointerenter: one resting where the cards are drawn at start isn't intent)
     // (round 74, projdesk74) the press is the click's first moment: the preview page starts loading now (let go in 4 s if no open claims it)
@@ -215,7 +216,7 @@ const ProjectsHome = (() => {
         el('div', { class: 'pj-p-actions' },
           el('button', { type: 'button', class: 'primary small', text: '▶ Scene', title: 'Resume the scene', on: { click: () => ProjectWorkspace.go('scene') } }),
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add', title: 'This chat, the scene on screen, a recent chat / scene / board / render / file…', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); P.warm?.(); showMenu(b.left, b.bottom + 4, P.addMenu(p)); } } }),
-          el('button', { type: 'button', class: 'ghost small', text: '⋯', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, P.menu(p)); } } })),
+          el('button', { type: 'button', class: 'ghost small', text: '⋯', title: 'This project’s menu', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); P.openMenu(p, b.left, b.bottom + 4, 'desk'); } } })), // (round 128, projmenu128) the one project menu
         el('div', { class: 'pj-continue' }, ...continueChips(p))));
     tint(head, p.ident.color);
     ProjectFrontpage.decorate(head.querySelector('.pj-p-cover'),p);
