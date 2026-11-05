@@ -1,0 +1,14 @@
+/* ✦ Map to the song (round 130, songmap130): the ghost plan's list under the song's row (tools/three-songmap.js) */
+.sm-panel { margin: 4px 6px; padding: 6px 8px; border: 1px dashed #c9a7ff66; border-radius: 8px; background: #c9a7ff0d; font-size: 12px; max-height: 220px; display: flex; flex-direction: column; gap: 4px; }
+.sm-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sm-head .spacer, .sm-sec-head .spacer { flex: 1; }
+.sm-list { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.sm-sec { border-top: 1px solid #ffffff12; padding-top: 3px; }
+.sm-sec-head { display: flex; align-items: center; gap: 4px; }
+.sm-item { display: flex; align-items: center; gap: 6px; opacity: 0.72; padding-left: 8px; }
+.sm-item:hover { opacity: 1; }
+.sm-dot { width: 12px; text-align: center; color: #c9a7ff; }
+.sm-keys .sm-dot { color: #ffd27a; }
+.sm-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+.sm-item button { padding: 0 6px; }
+@media (max-width: 700px) { .sm-head .sm-sum { display: none; } }

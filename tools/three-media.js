@@ -335,6 +335,11 @@ const ThreeMedia = (() => {
     // (round 27, autoedit) 🎬 a whole music video from the loaded song (tools/three-autoedit.js): shown with a song
     const videoBtn = btn('🎬', 'Make a music video from this song: a plan per section first, nothing renders until you say', () => window.AutoEdit?.open().catch((err) => toast(err.message, { type: 'error' })), 'ghost small mb-video');
     videoBtn.dataset.feature = 'Music video';
+    // (round 130, songmap130) ✦ Map to the song: cues, drop keyframes, looks and beat links proposed as ghosts on the
+    // timeline (tools/three-songmap.js, lazy group "songmap"); nothing changes until Keep
+    const mapSong = () => (window.Lazy ? Lazy.load('songmap') : Promise.resolve()).then(() => window.SongMap?.open()).catch((err) => toast(err.message, { type: 'error' }));
+    const mapBtn = btn('✦ Map', 'Map the scene to the song: cues on the sections, moves on the drops, looks per section and beat links, shown as ghosts first (keep all, a section or one at a time)', () => mapSong(), 'ghost small mb-songmap');
+    mapBtn.dataset.feature = 'Map to the song';
     const unloadBtn = btn('×', 'Remove the music (sketches get a demo beat)', () => unload(), 'ghost small mb-x');
     const playBtn = btn('▶', 'Play / pause (Space)', () => toggle(), 'primary small mb-play');
     playBtn.dataset.feature = 'Play / pause';
@@ -603,7 +608,7 @@ const ThreeMedia = (() => {
       handle,
       el('div', { class: 'mb-row mb-main' },
         group('Play', playBtn, timeEl, rateSel, vol),
-        group('Song', loadBtn, nameEl, videoBtn, unloadBtn),
+        group('Song', loadBtn, nameEl, videoBtn, mapBtn, unloadBtn),
         group('Beat', tapBtn, bpmRead, ...laneBtns),
         group('Zoom', zoomOut, zoomIn, zoomAll, zoomLoop),
         group('Loop', loopChip, loopBtn, loopBox, lockBtn),
@@ -1434,6 +1439,7 @@ const ThreeMedia = (() => {
     }
     function sectionsMenu(anchor) {
       menuAt(anchor, [
+        st.analysis?.sections?.length ? ['✦ Map the scene to the song…', 'Cues, drop moves, looks and beat links as ghosts first (/map-song)', () => mapSong()] : false, // (round 130, songmap130)
         ['Mark sections from the song', st.analysis?.sections?.[0]?.label ? `${st.analysis.sections.map((x) => x.label).join(' · ')}` : 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
         null,
         ...SECTION_NAMES.map((n) => [`${n} here`, `A "${n}" cue at the playhead (${fmtMs(now())})`, () => addCue(now(), n)]),
@@ -1447,9 +1453,9 @@ const ThreeMedia = (() => {
       let cue = null; for (const c of map.cues) if (c.t <= t + 1e-3) cue = c;
       return { energy: sec?.energy || null, cue: cue?.name || null };
     }
-    function editCues({ add = [], remove = [], clear = false } = {}) {
+    function editCues({ add = [], remove = [], clear = false, undo = true } = {}) {
       if (!D()) return false;
-      pushUndo();
+      if (undo) pushUndo(); // (round 130, songmap130) undo: false = the caller keeps its own undo step (✦ Map to the song)
       if (clear) map.cues = [];
       map.cues = map.cues.filter((c) => !remove.some((r) => (typeof r === 'number' ? Math.abs(r - c.t) < 0.02 : String(r).toLowerCase() === c.name.toLowerCase())));
       for (const a of add) {
@@ -1928,6 +1934,7 @@ const ThreeMedia = (() => {
       setProp(nameEl, 'title', st.clock ? `This scene's own timeline: ${fmtLen(D())} at ${clockFps()} fps, no song (keyframes, cues and the loop work on it, frame by frame) · click: its length` : st.path || '');
       setProp(unloadBtn, 'hidden', !st.bytes || Boolean(st.clock));
       setProp(videoBtn, 'hidden', !st.bytes || Boolean(st.clock) || !/\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(st.path || ''));
+      setProp(mapBtn, 'hidden', !st.bytes || Boolean(st.clock) || !st.analysis?.sections?.length); // (round 130, songmap130)
       setText(playBtn, st.playing ? '⏸' : '▶');
       loopBtn.classList.toggle('on', st.loop);
       setProp(zoomOut, 'disabled', locked || !D()); setProp(zoomIn, 'disabled', locked || !D());
