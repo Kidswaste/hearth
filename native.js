@@ -82,7 +82,7 @@ const Native = (() => {
     const meta = el('span', { class: 'chat-meta' });
     const modelSel = el('select', { class: 'model-select', title: 'Model for this chat' });
     const menuBtn = el('button', { class: 'ghost chat-menu-btn', text: '⋯', title: 'AI setup: who it is, its instructions and what it can use · right-click: this chat (model, rename, export…)', attrs: { 'data-feature': 'Chat options', 'aria-label': 'Chat options' } }); // (round 33, simplify3) the tooltip says what opens; usage keeps its name
-    const newBtn = el('button', { class: 'ghost', text: '＋ New chat', title: 'New chat (Ctrl+N)', on: { click: () => newChat(agentId) } });
+    const newBtn = el('button', { class: 'ghost', text: '＋ New chat', title: 'New chat (Ctrl+N)', on: { click: () => newChat(agentId, { byOwner: true }) } });
     // How much context each message sends now (the last reply's input tokens); click to compact.
     const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
     const header = el('header', { class: 'native-head' }, title, meta, ctx, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
@@ -2595,7 +2595,7 @@ const Native = (() => {
       ...[...new Set(MODEL_CHOICES[agent.engine] || [])].filter((c) => c !== agent.model).map((c) => ({ label: c, checked: cur === c, action: () => { setChatModel(agentId, c); render(agentId, { keepScroll: true }); } })),
     ]; };
     const items = chat ? [
-      { label: '＋ New chat', key: 'Ctrl+N', action: () => newChat(agentId) },
+      { label: '＋ New chat', key: 'Ctrl+N', action: () => newChat(agentId, { byOwner: true }) },
       { label: '🗜 Compact context', action: () => compactChat(agentId) },
       { label: 'Model', hint: chat.model || H.agent(agentId).model || 'default', items: modelItems },
       // (round 14) what this chat may do with your files (access.js)
@@ -2798,7 +2798,10 @@ const Native = (() => {
   // (Panel reads isDraft); opening another chat drops it, the first message turns it into the real one.
   const drafts = new Set();
   const isDraft = (agentId) => drafts.has(agentId) && !H.activeChat[agentId];
-  function newChat(agentId) {
+  // (round 125, askwhen125) opts.byOwner: the owner asked for this chat (a ＋, Ctrl/⌘+N, a menu's New chat, /new):
+  // with no project known, projchats.js asks which one. Code's new chats (the Lab, linked chats, a deleted chat's
+  // blank) pass nothing and never ask
+  function newChat(agentId, opts = {}) {
     drafts.add(agentId);
     H.activeChat[agentId] = null;
     const v = views.get(agentId);
@@ -2806,7 +2809,7 @@ const Native = (() => {
     render(agentId);
     Panel.render();
     focus(agentId);
-    for (const fn of hooks.newChat) { try { fn(agentId); } catch (err) { console.warn(err); } }
+    for (const fn of hooks.newChat) { try { fn(agentId, opts); } catch (err) { console.warn(err); } }
   }
 
   // (round 38, inputlatency) the chat box is always in view: focusing it needn't lay the page out to scroll it there

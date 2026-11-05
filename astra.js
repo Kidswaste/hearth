@@ -1281,7 +1281,7 @@ function toggleFold(hostId, m) {
       activate(H.surfaceIdFor(a.id));
       if (args) await Native.send(a.id, args);
     } });
-  R({ name: 'astra-new', area: 'Astra', desc: 'New chat with Astra', run: () => { const a = astra(); if (!a) return 'No Astra agent yet.'; activate(H.surfaceIdFor(a.id)); Native.newChat(a.id); } });
+  R({ name: 'astra-new', area: 'Astra', desc: 'New chat with Astra', run: () => { const a = astra(); if (!a) return 'No Astra agent yet.'; activate(H.surfaceIdFor(a.id)); Native.newChat(a.id, { byOwner: true }); } }); // (round 125, askwhen125)
   R({ name: 'astra-model', area: 'Astra', args: '[model] [--default]', desc: 'Switch this chat\'s model (--default: the agent\'s default)',
     complete: (a, ctx) => modelChoices(ctx.agentId).filter((x) => x.value.startsWith(a.trim())),
     run: (args, ctx) => {

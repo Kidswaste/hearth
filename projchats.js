@@ -28,6 +28,8 @@
 //     to take out here
 //   - (round 124, chatfix124) a chat made here joins its project when it is first saved (Native's send hook), not 1.2 s
 //     later: its row no longer vanishes from the list after its first message. place()'s rules are unchanged
+//   - (round 125, askwhen125) the “Which project?” window opens only for the owner's own New chat (Native.newChat(id,
+//     { byOwner: true })) with no project known; a chat code starts never asks (navigator.userActivation is not used)
 window.ProjChats = (() => {
   const K = ProjChatsCore;
   const P = Projects;
@@ -152,18 +154,21 @@ window.ProjChats = (() => {
 
   // ---------- new chats ----------
   const sceneProjectId = () => { try { const s = P.currentScene(); return s ? P.ofItem('scene', s)[0]?.id || null : null; } catch { return null; } };
-  function onNewChat(agentId) {
+  // (round 125, askwhen125) opts.byOwner: the owner asked for this new chat (Native.newChat's callers say so: the bar's,
+  // an AI's and the chat's own ＋, Ctrl/⌘+N, Home's ⋯, the tray, Ctrl/⌘+K, /new). The “Which project?” window opens
+  // only then, and only when no project is known. It used to guess from navigator.userActivation, which stays on for
+  // seconds after any click: a chat code started just after an unrelated click (a tray card's Deny, a Lab button) asked
+  function onNewChat(agentId, opts) {
     const was = pending.get(agentId);
     if (was && Date.now() - was.at < 3000) return; // chosen a moment ago (the bar's ＋ New chat, the question)
     const a = H.agent(agentId);
     const director = Boolean(a?.dock);
     // (round 116, labchat92) a chat started from the Lab ("Ask Claude about this layer", a linked chat) belongs to the
-    // scene's project, whichever AI; and the "Which project?" window only answers the owner's own press: a chat started
-    // by code (no fresh click or key) never opens a window that takes the keyboard (it goes to Earlier chats, with a note)
+    // scene's project, whichever AI. A project known (the scene's, the open one): that one, never a question
     const pid = director ? sceneProjectId() || current()?.id : current()?.id || sceneProjectId();
     if (pid) { pending.set(agentId, { pid, at: Date.now() }); return; }
     if (!ok) return; // projects not read yet: the chat goes to Earlier chats when it is made (never none)
-    if (navigator.userActivation && !navigator.userActivation.isActive) return; // placed by place(): Earlier chats + a note
+    if (!opts?.byOwner) return; // started by code: placed by place() (Earlier chats + a note), no window takes the keyboard
     ask(agentId);
   }
   // a chat in a project of your choice: the AI given, in the project given
@@ -296,7 +301,7 @@ window.ProjChats = (() => {
   const C2 = (p) => { const n = p.items.filter((x) => x.type === 'chat').length; return `${n} chat${n === 1 ? '' : 's'}`; };
   function newChatMenu(x, y) {
     const ais = H.agents().filter((a) => a.mode === 'native');
-    const go = (a) => { const p = current(); if (p) newChatIn(p.id, a.id); else { if (a.dock) Tools.openDock?.(a.dock); else activate(a.id); Native.newChat(a.id); } };
+    const go = (a) => { const p = current(); if (p) newChatIn(p.id, a.id); else { if (a.dock) Tools.openDock?.(a.dock); else activate(a.id); Native.newChat(a.id, { byOwner: true }); } };
     if (ais.length === 1) { go(ais[0]); return; }
     showMenu(x, y, ais.map((a) => ({ label: `With ${a.name}`, hint: a.dock ? 'in the Lab' : '', action: () => go(a) })));
   }

@@ -516,7 +516,7 @@ const AppUI = (() => {
     window.hub.onDownload(onDownload);
     window.hub.onTray((what) => {
       if (what === 'palette') palette();
-      if (what === 'new-chat') { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id); } }
+      if (what === 'new-chat') { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id, { byOwner: true }); } }
       if (what === 'ideas' || what === 'ideas-open') Lazy.load('quickidea').then(() => (what === 'ideas' ? QuickIdeas.deliver() : QuickIdeas.open())).catch((err) => console.warn('[quick idea]', err)); // (round 71, quickidea71) 💡
     });
     window.hub.onContextAction((what, text) => {
@@ -524,7 +524,7 @@ const AppUI = (() => {
       if (what === 'note') Lazy.load('notes').then(() => Notes.append(text)); // (round 118, startup118: Notes and the memory editor load after the start)
     });
 
-    addAction('New chat with Claude', () => { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id); } }, 'Ctrl+N');
+    addAction('New chat with Claude', () => { const a = H.claudeAgent(); if (a) { activate(a.id); Native.newChat(a.id, { byOwner: true }); } }, 'Ctrl+N');
     addAction('Settings', openSettings, 'Ctrl+,');
     addAction('Keyboard shortcuts', shortcutsHelp, 'Ctrl+/');
     addAction('Find in current view', find, 'Ctrl+F');

@@ -141,7 +141,7 @@ function showAgentMenu(id, x, y) {
   const recent = agent.mode === 'native' ? H.chats.filter((c) => c.agentId === id).slice(0, 10) : (H.history[id] || []).slice(-10).reverse();
   showMenu(x, y, [
     { label: `Open ${agent.name}`, key: H.railKey(id), action: () => activate(id) },
-    agent.mode === 'native' ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(id); Native.newChat(id); } } : null,
+    agent.mode === 'native' ? { label: 'New chat', key: 'Ctrl+N', action: () => { activate(id); Native.newChat(id, { byOwner: true }); } } : null,
     recent.length ? { label: 'Recent chats', items: () => recent.map((c) => (agent.mode === 'native'
       ? { label: (c.title || 'Untitled').slice(0, 48), hint: timeAgo(c.updatedAt || c.at || Date.now()), action: () => { activate(id); Native.open(id, c.id); } }
       : { label: (c.title || c.url).slice(0, 48), action: () => { activate(id); H.surfaces.get(id)?.webview?.loadURL(c.url); } })) } : null,
@@ -907,7 +907,7 @@ function handleShortcut({ key, shift }) {
   else if (key === 'g') { H.grid = !H.grid; applyLayout(); }
   else if (key === '\\') { H.panelOpen = !H.panelOpen; applyLayout(); }
   else if (key === 'b') { $('broadcast').classList.toggle('hidden'); applyLayout(); }
-  else if (key === 'n') { if (H.agent(H.activeId)?.mode === 'native') Native.newChat(H.activeId); }
+  else if (key === 'n') { if (H.agent(H.activeId)?.mode === 'native') Native.newChat(H.activeId, { byOwner: true }); }
   else if (key === 'r') { if (shift) { // (Ctrl/⌘+Shift+R reloads all of Hearth: one key from the Lab's Shift+R, so not while the Lab is on screen)
     // (round 74, checkhealth74) ThreeLab is a script-level const, never window.ThreeLab: this guard never held and the key reloaded Hearth in the Lab
     if ((!window.Lazy || Lazy.isIn('lab')) && typeof ThreeLab !== 'undefined' && ThreeLab.onScreen?.()) toast(WinMac.keyLabel('Ctrl/⌘+Shift+R reloads all of Hearth, so it does nothing while the Lab is open. Ctrl/⌘+K › Restart Hearth still works.'), { timeout: 5000 });
