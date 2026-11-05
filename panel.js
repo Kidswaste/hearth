@@ -691,7 +691,10 @@ const Panel = (() => {
     if (q.length >= 2) {
       const f = filter;
       want.push(bit(`deep:${f}`, () => {
-        const deep = el('button', 'show-more deep-search', `Search inside messages for “${f}”`);
+        // (round 124, chatfix124) the list above is the open project's chats (titles); the words inside messages are
+        // searched in every project's chats (Ctrl/⌘+K's ? search, round 113): said so on the button
+        const deep = el('button', 'show-more deep-search', `Search inside messages for “${f}” (every project)`);
+        deep.title = 'Opens Ctrl/⌘+K with ? (searches the words inside every chat, in every project)';
         deep.addEventListener('click', () => AppUI.palette(`?${f}`));
         return deep;
       }));

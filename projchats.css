@@ -1,5 +1,9 @@
 /* (round 116, projchats116) the open project at the top of the chats list: its name (switch, new, its page) and ＋ New chat */
 .pc-bar { margin-bottom: 8px; display: grid; gap: 6px; }
+/* (round 124, chatfix124) the bar sits in .panel-head, a flex row: it took the row and squeezed the search box beside it
+   to nothing (the chats list couldn't be searched, so "Search inside messages" never showed). Its own line now */
+.panel-head:has(> .pc-bar) { flex-wrap: wrap; }
+.panel-head > .pc-bar { flex: 0 0 100%; min-width: 0; margin-bottom: 2px; }
 .pc-row { display: flex; gap: 6px; align-items: center; }
 .pc-project { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; text-align: left; border-left: 3px solid var(--pj, var(--accent)); }
 .pc-project .pc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
