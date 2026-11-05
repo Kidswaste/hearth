@@ -26,6 +26,8 @@
 //   - (round 121, listtidy121) Projects' and makes' old groups in the list (their top / skip / menu hooks, which made
 //     every draw of 2,000 chats cost ½ s) are gone at their source, and panel.js has no such hooks any more: nothing
 //     to take out here
+//   - (round 124, chatfix124) a chat made here joins its project when it is first saved (Native's send hook), not 1.2 s
+//     later: its row no longer vanishes from the list after its first message. place()'s rules are unchanged
 window.ProjChats = (() => {
   const K = ProjChatsCore;
   const P = Projects;
@@ -222,6 +224,16 @@ window.ProjChats = (() => {
       if (K.isEarlier(p)) toast(`This chat is in “${p.name}” (no project was open). Right-click it › Move to project… to change.`, { timeout: 7000 });
     }
     if (n) refresh();
+    return n;
+  }
+  // (round 124, chatfix124) a chat made here goes into its project the moment it is first saved (its first message:
+  // Native.send makes it, saves it, then calls this, before the list is drawn again), with the project known from
+  // onNewChat / newChatIn (else the open project, else Earlier chats: place()'s rules). It used to wait for place(),
+  // 1.2 s after watch() saw it, and the list (open project's chats only) hid its row meanwhile. A chat another part of
+  // Hearth adds to a project of its own (a workspace's, a jam's) is moved there by that P.add as before.
+  function onSend(agentId, chat) {
+    if (!ok || !chat?.id || projectIdOf(chat.id)) return;
+    if (place([chat]) && known) known.add(chat.id);
   }
 
   // (round 118, projsync118) chats the owner just imported (Import past chats…): the open project's at once (else
@@ -295,6 +307,7 @@ window.ProjChats = (() => {
   Panel.hooks.scope?.push(inScope);
   Panel.hooks.render.push(() => { watch(); follow(); });
   Native.hooks.newChat.push(onNewChat);
+  Native.hooks.send?.push(onSend); // (round 124, chatfix124) (the unit tests' stand-in Native has no send hooks)
   addEventListener('hearth:projects', (e) => { gen += 1; if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });
   document.addEventListener('hearth:activate', () => setTimeout(follow, 0));
   setInterval(() => keepSoon(0), 2 * 60000);

@@ -17,14 +17,20 @@ activate(c.id); await wait(800);
 group(c.id).querySelector('.group-add').click(); await wait(400);
 ok(draftRow(c.id) && draftRow(c.id).classList.contains('active') && /New chat/.test(draftRow(c.id).textContent), 'Claude: ＋ shows a highlighted "New chat" row at once');
 ok(!group(c.id).querySelector('.none'), 'no "No chats yet" under the new row');
+// (round 124, chatfix124) the row never vanishes: from the ＋ until the reply is done, every frame shows either the
+// "New chat" row or the real chat's row (the real chat joins the open project when it is first saved, not 1.2 s later)
+const rowNow = () => Boolean(draftRow(c.id)) || [...group(c.id).querySelectorAll('.item')].some((r) => /first words/.test(r.textContent));
+let gaps = 0; let watching = true;
+(function look() { if (!watching) return; if (!rowNow()) gaps += 1; requestAnimationFrame(look); })();
+let placedAtSave = null; const atSave = (agentId, chat) => { if (placedAtSave === null) placedAtSave = ProjChats.projectIdOf(chat.id); };
+Native.hooks.send.push(atSave); // after projchats.js's own: what the chat's project is when it is first saved
 await Native.send(c.id, 'first words here'); await until(() => !Native.isBusy(H.activeChat[c.id]), 20000); await wait(400);
+watching = false; Native.hooks.send.splice(Native.hooks.send.indexOf(atSave), 1);
+out123.framesWithoutRow = gaps;
+ok(gaps === 0, `the chat's row never vanishes after its first message (${gaps} frames without it)`);
 ok(!draftRow(c.id), 'the first message turns it into the real chat');
-// (round 123, checksweep123) the real chat joins the open project a moment after it is saved (projchats.js place(),
-// 1.2 s after it shows in the list): its row comes then, highlighted
-const realAt = performance.now();
-await until(() => [...group(c.id).querySelectorAll('.item.active')].some((r) => /first words/.test(r.textContent)), 5000);
-out123.realRowMs = Math.round(performance.now() - realAt);
 ok([...group(c.id).querySelectorAll('.item.active')].some((r) => /first words/.test(r.textContent)), 'the real chat is the highlighted row');
+ok(placedAtSave === P123.id, `the real chat is in the open project when it is first saved (${placedAtSave})`);
 group(c.id).querySelector('.group-add').click(); await wait(300);
 ok(draftRow(c.id), 'a second ＋ shows a new row again');
 Native.open(c.id, H.chats.find((x) => x.agentId === c.id).id); await wait(300);

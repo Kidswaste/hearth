@@ -87,9 +87,12 @@ await until(async () => (await J.saved()).some((f) => /\.md$/.test(f)), 5000);
 step('/export md wrote a Markdown file', (await J.saved()).some((f) => /\.md$/.test(f)), await J.saved());
 
 // 6. search across chats (the chats panel box, then /search)
-const box = document.querySelector('#panel input');
+// (round 124, chatfix124) the box is the chats search, wide enough to type in: round 116's project bar beside it in
+// the panel's head had squeezed it to nothing (the typing went to the chat's composer, so nothing offered the search)
+const box = document.getElementById('chat-search');
+step('the chats panel has its search box', visible(box) && box.getBoundingClientRect().width >= 120, { width: Math.round(box?.getBoundingClientRect().width || 0) });
 if (box) { await click(box); await type('haiku'); await wait(800); }
-// titles don't mention it: the panel offers "Search inside messages" (the palette's ? mode)
+// titles don't mention it: the panel offers "Search inside messages" (the palette's ? mode: every project's chats)
 const deep = document.querySelector('#panel .deep-search');
 step('panel offers a search inside messages', visible(deep), deep?.textContent);
 if (deep) { await click(deep); await wait(1200); }
