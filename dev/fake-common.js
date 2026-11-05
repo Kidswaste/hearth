@@ -268,6 +268,25 @@ function directorPlan(prompt, msg, engine) {
   return { mcpCalls: calls, text: lines.join(' ') };
 }
 
+// (round 129, draft129) ✦ Build a first draft (projectbrief-draft.js): "Draft · build steps 2–4 of the project brief…" builds
+// each listed step as a real layer "Draft N" in the palette's colors (three_do add_layer), keys its opacity, ticks it
+// (three_do brief {done: N}), then looks once (three_screenshot). "draft-slow" in a step: a pause after each step (to Stop).
+function draftPlan(msg) {
+  if (!/^Draft · build /m.test(msg)) return null;
+  const palette = ((msg.match(/^Palette: (.+)$/m) || [])[1] || '').match(/#[0-9a-f]{6}/gi) || [];
+  const steps = [...(msg.split(/^Steps to build:$/m)[1] || '').matchAll(/^(\d+)\) (.+)$/gm)].map((m) => Number(m[1]));
+  const calls = [];
+  for (const n of steps) {
+    const name = `Draft ${n}`;
+    calls.push(['three_do', { cmd: 'add_layer', name, code: layerCode(name, n, palette[(n - 1) % (palette.length || 1)]) }]);
+    calls.push(['three_do', { cmd: 'keyframes', layer: name, property: 'opacity', keys: [{ time: 0, value: 0 }, { time: 2, value: 1, ease: 'ease' }] }]);
+    calls.push(['three_do', { cmd: 'brief', done: n }]);
+    if (/draft-slow/.test(msg)) calls.push(['sleep', 2500]);
+  }
+  calls.push(['three_screenshot', { size: 'small' }]);
+  return { mcpCalls: calls, text: `Built ${steps.length} step${steps.length === 1 ? '' : 's'} of the brief as new layers in its palette, each fading in; checked the look.` };
+}
+
 // (round 32, aicheck.js) "Check this AI": read the probe file, write a new one, list the folder, then one line. Codex
 // reads with its shell (cat), like the real one; the tool lines say what happened (the probe's code included).
 function checkPlan(msg, engine) {
@@ -341,7 +360,7 @@ function plan(prompt, engine = 'claude') {
   const comp = compPlan(msg);
   if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
   const jam = jamPlan(msg, engine);
-  const dir = jam ? null : directorPlan(prompt, msg, engine);
+  const dir = jam ? null : draftPlan(msg) || directorPlan(prompt, msg, engine); // (round 129, draft129: the draft first)
   if (dir) {
     const p = { mcp: true, mcpCalls: dir.mcpCalls };
     return { p, text: dir.text, thinking: '' };
