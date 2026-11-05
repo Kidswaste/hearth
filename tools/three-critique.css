@@ -1,0 +1,21 @@
+/* ✦ Critique this (round 130, critique130): the card above the director's chips in the dock */
+.crit-card { margin: 4px 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #15181b); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.crit-head { display: flex; align-items: center; gap: 6px; }
+.crit-head .spacer { flex: 1; }
+.crit-who { opacity: .6; font-size: 11px; }
+.crit-note { margin: 0; opacity: .8; line-height: 1.35; }
+.crit-busy::before { content: '◌ '; display: inline-block; animation: crit-spin 1.2s linear infinite; }
+@keyframes crit-spin { to { transform: rotate(360deg); } }
+.crit-err { color: var(--danger, #ff7a7a); opacity: 1; }
+.crit-cost { margin: 0; font-size: 11px; opacity: .7; }
+.crit-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.crit-chip { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; }
+.crit-chip.again { opacity: .75; }
+.crit-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.crit-title { font-weight: 600; }
+.crit-why { opacity: .8; }
+.crit-fix { opacity: .55; font-size: 11px; }
+.crit-done { font-size: 11px; opacity: .75; }
+.crit-risks { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.crit-risk.ok { opacity: .7; }
+.crit-risk.warn { color: var(--warn, #ffc23d); }

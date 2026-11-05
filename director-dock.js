@@ -54,10 +54,12 @@ const DirectorDock = (() => {
     const sum = el('span', { class: 'dd-sum' });
     const thumb = el('button', { type: 'button', class: 'dd-thumb', hidden: true, title: 'The last picture the director looked at (click to enlarge)' }, el('img', { alt: '' }));
     const undoBtn = el('button', { type: 'button', class: 'dd-btn dd-undo', text: '↶', hidden: toolId !== 'three', title: 'Undo the director\'s last code edit' });
+    // (round 130, critique130) ✦ Critique: the AI looks at the scene once and suggests 3 improvements (tools/three-critique.js)
+    const critBtn = el('button', { type: 'button', class: 'dd-btn dd-crit', text: '✦ Critique', hidden: toolId !== 'three', title: 'Critique this: the AI looks at the scene once (a few frames, the outline, the brief) and suggests 3 improvements. Shows the cost first; nothing is sent until you click' });
     const askBtn = el('button', { type: 'button', class: 'dd-btn dd-ask', text: '✦', title: 'Quick asks and dock options (right-click the dock for the same)' });
     const foldBtn = el('button', { type: 'button', class: 'dd-btn dd-fold', text: '⇥', title: 'Collapse the chat to a thin bar (double-click the divider too)' });
     const list = el('div', { class: 'dd-list', hidden: true });
-    const strip = el('div', { class: 'dd-strip', dataset: { feature: 'Director activity' } }, calls, sum, el('span', { class: 'spacer' }), thumb, undoBtn, askBtn, foldBtn, list);
+    const strip = el('div', { class: 'dd-strip', dataset: { feature: 'Director activity' } }, calls, sum, el('span', { class: 'spacer' }), thumb, critBtn, undoBtn, askBtn, foldBtn, list);
     const chips = el('div', { class: 'dd-chips', dataset: { feature: 'Director chips' } });
     const rail = el('button', { type: 'button', class: 'dd-rail', title: `Show the ${agent.name} chat` },
       el('span', { class: 'dd-rail-icon', text: agent.icon || '◆' }), el('span', { class: 'dd-rail-dot' }), el('span', { class: 'dd-rail-name', text: agent.name }));
@@ -107,6 +109,7 @@ const DirectorDock = (() => {
     document.addEventListener('pointerdown', onDocDown);
     thumb.addEventListener('click', () => viewImage(HubBridge.lastImage(), agent.id));
     undoBtn.addEventListener('click', () => undoEdit());
+    critBtn.addEventListener('click', () => Lazy.load('critique').then(() => LabCritique.open(agent.id)).catch((err) => toast(err.message, { type: 'error' })));
     askBtn.addEventListener('click', (e) => { const r = askBtn.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, menuItems()); e.stopPropagation(); });
     foldBtn.addEventListener('click', () => setCollapsed(s, true));
     rail.addEventListener('click', () => { rail.classList.remove('unread'); setCollapsed(s, false); });
