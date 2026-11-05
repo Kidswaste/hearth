@@ -152,7 +152,7 @@ const Juice = (() => {
     if (e.button !== 1) return;
     const b = e.target.closest?.('#rail .agent-btn'); const a = b && H.agents().find((x) => x.id === b.dataset.id);
     if (!a || a.mode !== 'native') return;
-    e.preventDefault(); activate(a.id); Native.newChat(a.id);
+    e.preventDefault(); activate(a.id); Native.newChat(a.id, { byOwner: true });
   });
   // the window title follows what you look at
   const retitle = () => { const a = H.agent?.(H.activeId); const t = a?.name || (String(H.activeId || '').startsWith('tool:') ? Tools.get?.(H.activeId.slice(5))?.name : ''); document.title = t ? `${t} · Hearth` : 'Hearth'; };

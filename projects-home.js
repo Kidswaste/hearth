@@ -169,7 +169,7 @@ const ProjectsHome = (() => {
       { label: `${store.get('projectFrontpage.enabled',false)?'✓ ':''}Animated frontpage`, action: () => { store.set('projectFrontpage.enabled',!store.get('projectFrontpage.enabled',false));paint(); } },
       { label: 'Customize the left rail…', action: () => WorkspaceNav.editShortcut() },
       { label: 'Shared tools & earlier work', items: () => [{label:'Creative board',action:()=>WorkspaceNav.creative('studio')},{label:'Moodboards',action:()=>activate('tool:board')}] },
-      a ? { label: 'New chat (in a project)…', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id); } } : null, // (round 116, projchats116) asks which project when none is open
+      a ? { label: 'New chat (in a project)…', key: 'Ctrl+N', action: () => { activate(a.id); Native.newChat(a.id, { byOwner: true }); } } : null, // (round 116, projchats116) asks which project when none is open // (round 125, askwhen125)
       { label: 'Open the Lab', action: () => activate('tool:three') },
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
       { label: 'Suggest projects', action: () => suggestNow() },

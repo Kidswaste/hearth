@@ -50,6 +50,9 @@ const ChatCmds = (() => {
   const ONOFF = [{ value: 'on' }, { value: 'off' }];
   const pick = (list) => (args) => list.filter((x) => has(args)(x.value || x)).map((x) => (typeof x === 'string' ? { value: x } : x));
 
+  // (round 125, askwhen125) where a command typed or picked by the owner comes from (a timer, a flow, an agent: not)
+  const OWNER_SOURCES = new Set(['chat', 'bar', 'palette', 'key', 'owner', 'commands-page']);
+
   // ---------- undo for chat actions ----------
   const undos = [];
   function pushUndo(label, fn) { undos.push({ label, fn, at: Date.now() }); if (undos.length > 20) undos.shift(); }
@@ -59,7 +62,9 @@ const ChatCmds = (() => {
   // =====================================================================================================
   R({
     name: 'new', aliases: ['n', 'new-chat'], area: 'Chat', args: '[first message]', keys: 'Ctrl+N', desc: 'Start a new chat (and send the message, if you give one)',
-    run: async (args, ctx) => { Native.newChat(ctx.agentId); if (args) await Native.send(ctx.agentId, args); },
+    // (round 125, askwhen125) typed by the owner with no first message: the owner's new chat (asks which project when
+    // none is known). With a message it is sent at once, so no window waits on it: the open project, else Earlier chats
+    run: async (args, ctx) => { Native.newChat(ctx.agentId, { byOwner: !args && OWNER_SOURCES.has(ctx.source) }); if (args) await Native.send(ctx.agentId, args); },
   });
   R({
     name: 'rename', area: 'Chat', args: '[title]', desc: 'Rename this chat (no title: asks)',

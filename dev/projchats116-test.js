@@ -6,6 +6,7 @@
 //   · a new chat lands in the open project (or the one picked), a director's in its scene's project
 //   · Move to project: the real Projects.add / “Move to project…” menu: out of the old project, into the new one
 //   · and no chat is left without a project
+//   · (round 125, askwhen125) the “Which project?” window opens only for the owner's own New chat with no project known
 // The window's files (projects.js, projchats.js) run in a small fake window (vm): no Electron, no user data.
 //   node dev/projchats116-test.js
 const assert = require('assert');
@@ -104,6 +105,7 @@ ok('Move: core move takes it out of every other project (recorded), into the new
 function fakeWindow({ stored, status = 'ok', chatList = chats }) {
   const writes = [];
   const timers = [];
+  const asked = []; const toasts = []; // (round 125, askwhen125) the “Which project?” windows opened, the notes shown
   const kv = { projects: clone(stored) };
   const local = new Map();
   const hooks = { scope: [], row: [], render: [], itemMenu: [] }; // (round 121, listtidy121) panel.js's hooks now: no top / skip / view / menu
@@ -118,11 +120,13 @@ function fakeWindow({ stored, status = 'ok', chatList = chats }) {
     setTimeout: (fn, ms) => { const t = setTimeout(fn, Math.min(ms || 0, 5)); t.unref(); timers.push(t); return t; },
     clearTimeout, setInterval: () => 0,
     addEventListener: () => {}, dispatchEvent: () => {}, CustomEvent: class { constructor(t, o) { this.type = t; this.detail = o?.detail; } },
-    document: { querySelector: () => null, addEventListener: () => {} },
+    document: { querySelector: () => null, addEventListener: () => {}, body: { append: () => {} } },
+    navigator: { userActivation: { isActive: true } }, // (round 125, askwhen125) a click a moment ago: no longer a reason to ask
     store: { get: (k, f) => (local.has(k) ? clone(local.get(k)) : f), set: (k, v) => local.set(k, v) },
-    toast: () => {}, el: () => ({}), showMenu: () => {}, Modal: {}, activate: () => {}, Tools: {}, H,
+    toast: (t) => toasts.push(String(t)), showMenu: () => {}, Modal: {}, activate: () => {}, Tools: {}, H,
     Panel: { hooks, render: () => {}, soon: () => {}, view: () => null, setView: () => {} },
-    Native: { hooks: { newChat: [] }, newChat: (id) => { for (const fn of ctx.Native.hooks.newChat) fn(id); } },
+    el: (tag, o) => ({ tag, o, append: () => {}, addEventListener: () => {}, close: () => {}, style: { setProperty: () => {} }, showModal() { asked.push(o?.attrs?.['aria-label']); } }),
+    Native: { hooks: { newChat: [] }, newChat: (id, opts = {}) => { for (const fn of ctx.Native.hooks.newChat) fn(id, opts); } },
     ChatScenes: { linkOf: () => null },
   };
   ctx.window = ctx;
@@ -136,7 +140,7 @@ function fakeWindow({ stored, status = 'ok', chatList = chats }) {
   };
   vm.createContext(ctx);
   for (const f of ['makes-core.js', 'projects-core.js', 'projects.js', 'projchats-core.js', 'projchats.js']) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
-  return { ctx, H, kv, writes, hooks, local, setStatus: (s) => { st = s; } };
+  return { ctx, H, kv, writes, hooks, local, asked, toasts, setStatus: (s) => { st = s; } };
 }
 const inP = (P, id) => clone(P.all().filter((p) => C.has(p, 'chat', id)).map((p) => p.id));
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
@@ -213,6 +217,51 @@ ok('a director\'s new chat goes to the project of the scene on screen', async ()
   w.hooks.render.forEach((f) => f());
   await tick(1300);
   assert.deepStrictEqual(inP(P, 'd-new'), ['pjA']);
+});
+
+// ---------- (round 125, askwhen125) the “Which project?” window: only for the owner's own New chat ----------
+const made = async (w, id, agentId = 'claude') => { // the chat appears in the list (its first save) and is placed
+  w.H.chats = [{ id, agentId, title: id, updatedAt: 9 }, ...w.H.chats];
+  w.H.activeChat[agentId] = id;
+  w.hooks.render.forEach((f) => f());
+  await tick(1300);
+};
+ok('askwhen125: the owner\'s New chat with no project open asks which project', async () => {
+  const w = fakeWindow({ stored: store3() });
+  await tick();
+  w.ctx.ProjChats.setScope(null);
+  w.ctx.Native.newChat('claude', { byOwner: true });
+  assert.deepStrictEqual(w.asked, ['Which project is this chat for?']);
+});
+ok('askwhen125: a chat code starts just after a click does not ask: Earlier chats, with a note', async () => {
+  const w = fakeWindow({ stored: store3() });
+  await tick();
+  w.ctx.ProjChats.setScope(null);
+  assert.strictEqual(w.ctx.navigator.userActivation.isActive, true, 'a click a moment ago');
+  w.ctx.Native.newChat('claude');
+  assert.deepStrictEqual(w.asked, [], 'no window');
+  await made(w, 'c-code');
+  assert.deepStrictEqual(inP(w.ctx.Projects, 'c-code'), [K.EARLIER_ID]);
+  assert.ok(w.toasts.some((t) => /no project was open/.test(t)), 'the note says where it went');
+});
+ok('askwhen125: a chat the Lab starts (Ask Claude about this layer) goes to the scene\'s project, no question', async () => {
+  const w = fakeWindow({ stored: store3() });
+  await tick();
+  w.ctx.ProjChats.setScope(null);
+  w.ctx.Lazy = { loaded: () => true }; w.ctx.ThreeLab = { scenes: { currentId: () => 's1' } }; // pjA's scene on screen
+  w.ctx.Native.newChat('claude');
+  assert.deepStrictEqual(w.asked, []);
+  await made(w, 'c-lab');
+  assert.deepStrictEqual(inP(w.ctx.Projects, 'c-lab'), ['pjA']);
+});
+ok('askwhen125: the owner\'s New chat with a project open goes there, no question', async () => {
+  const w = fakeWindow({ stored: store3() });
+  await tick();
+  w.ctx.ProjChats.setScope('pjB');
+  w.ctx.Native.newChat('claude', { byOwner: true });
+  assert.deepStrictEqual(w.asked, []);
+  await made(w, 'c-mine');
+  assert.deepStrictEqual(inP(w.ctx.Projects, 'c-mine'), ['pjB']);
 });
 
 (async () => {

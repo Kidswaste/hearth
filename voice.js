@@ -167,7 +167,7 @@ const Voice = (() => {
       if (r.what === 'hush') Native.stopSpeaking?.();
       else if (r.what === 'send') Native.view(agentId)?.form.requestSubmit();
       else if (r.what === 'clear') Native.setDraft(agentId, '');
-      else if (r.what === 'new') Native.newChat(agentId);
+      else if (r.what === 'new') Native.newChat(agentId, { byOwner: true }); // (round 125, askwhen125) the owner said it
       return { kind: 'do', what: r.what };
     }
     if (r?.kind === 'agent') {

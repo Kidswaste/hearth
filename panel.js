@@ -391,7 +391,7 @@ const Panel = (() => {
       const add = el('button', 'group-add', '＋');
       add.title = agent.mode === 'native' ? 'New chat' : `Open a new ${agent.name} chat`;
       add.addEventListener('click', () => {
-        if (agent.mode === 'native') { activate(agent.id); Native.newChat(agent.id); } else openWebChat(agent.id, agent.url);
+        if (agent.mode === 'native') { activate(agent.id); Native.newChat(agent.id, { byOwner: true }); } else openWebChat(agent.id, agent.url);
       });
       if (agent.missing) add.hidden = true; // (round 55) no new chat for an AI that isn't there
       head.append(toggle, add);
@@ -429,7 +429,7 @@ const Panel = (() => {
         pre.push(bit(`none:${agent.id}:${text}`, () => {
           const none = el('div', 'none', text);
           // (round 18, tidy) an empty agent offers its one action: start a chat
-          if (!q && agent.mode === 'native') { const b = el('button', 'none-new', 'New chat'); b.type = 'button'; b.title = (globalThis.macText || String)('Ctrl+N'); b.addEventListener('click', () => { activate(agent.id); Native.newChat(agent.id); }); none.append(b); }
+          if (!q && agent.mode === 'native') { const b = el('button', 'none-new', 'New chat'); b.type = 'button'; b.title = (globalThis.macText || String)('Ctrl+N'); b.addEventListener('click', () => { activate(agent.id); Native.newChat(agent.id, { byOwner: true }); }); none.append(b); }
           return none;
         }));
       }

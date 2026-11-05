@@ -374,7 +374,7 @@ const Declutter = (() => {
     if (!id) return null;
     const a = H.agent(id);
     return [
-      a?.mode === 'native' ? { label: '＋ New chat', action: () => { activate(id); Native.newChat(id); } } : null,
+      a?.mode === 'native' ? { label: '＋ New chat', action: () => { activate(id); Native.newChat(id, { byOwner: true }); } } : null,
       { label: 'Collapse / expand', action: clickIn(head, '.group-toggle') },
       { label: a?.name || 'Agent', items: () => [
         { label: 'Open', action: () => activate(id) },
