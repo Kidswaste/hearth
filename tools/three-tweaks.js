@@ -1851,6 +1851,7 @@ const ThreeTweaks = (() => {
         return it ? { key: it.key, label: labelOf(it), kind: it.kind } : null;
       },
       lock(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (locks.has(ids[i]) !== on) toggleLock(i); return true; },
+      locked(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i >= 0 && locks.has(ids[i]); }, // (round 129, looks129) the project look keeps 🔒 sliders
       fav(key, on = true) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0) return false; if (favs.has(ids[i]) !== on) toggleFav(i); return true; },
       setMotion(key, mo) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setMotion(i, mo); return true; },
       bind(key, band, amount = 0.5, c) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setBinding(i, band || null, amount, c); return true; },
