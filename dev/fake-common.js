@@ -334,6 +334,23 @@ function presetPlan(msg) {
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
   if (msg.startsWith('Give a useful second opinion and directions for ONE small improvement round.')) return {p:{},thinking:'',text:JSON.stringify({...(/Review stage: survey\./.test(msg) ? {inspect:[{after:3,before:4,reason:'Check the foreground transition'},{after:8,before:9,reason:'Check the later pose'}]} : {}),summary:'The foreground shape needs a clearer silhouette.',keep:'Keep the existing palette and overall composition.',issues:[{title:'The main shape blends into the background',evidence:[1,2],observation:'The edge and its backdrop have similar brightness in these frames.',why:'The main subject is harder to spot.',change:'Try a restrained rim light around the main silhouette.',check:'Compare the same camera angle before and after.',confidence:'tentative'}],limits:'Synthetic test response: sampled images only; audio and smoothness were not reviewed.'})};
+  // (round 130, critique130) ✦ Critique this (tools/three-critique-core.js): 4 improvements as JSON. The first slider of
+  // the outline becomes a slider fix (doubled, in range), then message fixes from a pool, skipping titles the prompt's
+  // "Earlier critiques" names (dev/checks/critique130.js: the history avoids repeats); how many pictures it got goes in a why
+  if (msg.startsWith('Critique this Lab scene')) {
+    const seen = ((prompt.split(/\[Attached image[^\]]*\]/)[1] || '').split('\n').filter((l) => /^([a-zA-Z]:[\\/]|\/)/.test(l.trim()))).length;
+    const old = (msg.match(/^Earlier critiques[^:]*: (.+)$/m) || [])[1] || '';
+    const sl = msg.match(/^- "([^"]+)"[^:\n]*: (\w+) (-?[\d.]+) \((-?[\d.]+)–(-?[\d.]+)\)/m);
+    const pool = [];
+    if (sl) { const v = +sl[3]; const mx = +sl[5]; const to = Math.min(mx, Math.round((v * 2 || mx * 0.8) * 1000) / 1000); pool.push({ title: `The drop lacks contrast: push ${sl[2]} ${v} → ${to}`, why: 'The frames look the same loud and quiet.', fix: { kind: 'slider', layer: sl[1], set: { [sl[2]]: to } } }); }
+    for (const [title, why] of [['Colours drift from the palette in the background', 'The warm tones fight the brief\'s cool palette'], ['Add a quiet breath before the drop', 'Everything moves at once, so nothing lands'], ['Move the camera slowly toward the subject', 'The view never changes across the frames'], ['Thin out the busy edges', 'Detail at the frame edges pulls the eye away'], ['Give the background some depth', 'It reads as a flat wall behind the subject']]) {
+      pool.push({ title, why: `${why} (pictures seen: ${seen}).`, fix: { kind: 'message', text: `${title}. Keep everything else.` } });
+    }
+    const novel = pool.filter((it) => !old.includes(it.title.slice(0, 40)));
+    const items = [...novel, ...pool.filter((it) => !novel.includes(it))].slice(0, 4); // (all said before: the pool again)
+    const risks = /^ {2}risks: /m.test(msg) ? [{ i: 0, ok: false, note: 'still heavy on the peak' }] : [];
+    return { p: {}, thinking: '', text: JSON.stringify({ items, risks }) };
+  }
   // (round 128, aiprep128) the project brief's one AI pass (projectbrief-core.js): a JSON brief that takes its palette from
   // the moodboard's line and says how many pictures it was given (dev/aiprep128-test.js checks none go without consent)
   if (msg.startsWith('Write the project brief')) {

@@ -1149,7 +1149,11 @@ function toggleFold(hostId, m) {
     run: (args, ctx) => { const { order, rounds, task } = parseLead(args, ctx.agentId); go(ctx, 'relay', task, order || defaultPair(ctx.agentId), { rounds: rounds || getMode(ctx.agentId).rounds || 1 }); } });
   R({ name: 'critique', aliases: ['review-by'], area: 'Collab', args: '[a→b] [rounds] <task>', desc: 'One drafts, the other reviews it, the first revises (stops early on LGTM)',
     complete: (a) => (a ? [] : [{ value: 'claude→astra 1 ', hint: 'Astra reviews Claude' }, { value: 'astra→claude 2 ', hint: 'Claude reviews Astra twice' }]),
-    run: (args, ctx) => { const { order, rounds, task } = parseLead(args, ctx.agentId); go(ctx, 'critique', task, order || defaultPair(ctx.agentId), { rounds: rounds || getMode(ctx.agentId).rounds || 1 }); } });
+    run: (args, ctx) => {
+      // (round 130, critique130) /critique alone, or in a Lab director's chat without a→b: critique the Lab scene (/lab-critique)
+      const a0 = String(args || '').trim(); const ag = H.agent(ctx.agentId);
+      if (!a0 || /^(run|history|close)$/i.test(a0) || ((ag?.dock === 'three' || ag?.threeTools) && !/→|->/.test(a0))) return Commands.exec(`/lab-critique ${/^(run|history|close)$/i.test(a0) ? a0 : ''}`.trim(), ctx.agentId).then(() => null);
+      const { order, rounds, task } = parseLead(args, ctx.agentId); go(ctx, 'critique', task, order || defaultPair(ctx.agentId), { rounds: rounds || getMode(ctx.agentId).rounds || 1 }); } });
   R({ name: 'debate', area: 'Collab', args: '[rounds] [seats] <question>', desc: 'They answer, read each other and reply for N rounds, then one merged final answer',
     complete: (a) => (a ? completeSeats(a) : [{ value: '2 ', hint: 'two rounds (default)' }, { value: '3 claude,astra@skeptic ', hint: seatHint }]),
     run: (args, ctx) => {
