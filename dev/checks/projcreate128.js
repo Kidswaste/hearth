@@ -86,7 +86,14 @@ await section('2. template + song + pictures + palette + brief', async () => {
   const house = ProjCreateCore.PALETTES.find((q) => q.name === 'House').colors;
   step('the scene starts as the Audio visualizer (the gallery\'s Spectrum crown layers)', JSON.stringify(x?.layers?.map((L) => L.name)) === JSON.stringify(crown), { have: x?.layers?.map((L) => L.name), want: crown });
   step('…in the House palette (the scene\'s palette, and its color sliders)', JSON.stringify(x?.palette) === JSON.stringify(house) && x.layers.some((L) => house.some((c) => L.code.includes(`'${c}'`))), x?.palette);
-  step('9:16, 60 fps (the project, the Render card), the song is the scene\'s song', ThreeLab.scenes.frameOf(id) === '9:16' && p.workspace.fps === 60 && store.get('three.export', {}).fps === 60 && ThreeLab.scenes.songOf(id) === SONG, { frame: ThreeLab.scenes.frameOf(id), song: ThreeLab.scenes.songOf(id) });
+  step('9:16, 60 fps on the project (the global Render default untouched), the song is the scene\'s song', ThreeLab.scenes.frameOf(id) === '9:16' && p.workspace.fps === 60 && store.get('three.export', {}).fps === undefined && ThreeLab.scenes.songOf(id) === SONG, { frame: ThreeLab.scenes.frameOf(id), song: ThreeLab.scenes.songOf(id) });
+  store.set('three.export', { fps: 25, size: '4k' }); // a last render elsewhere: the project's own size and rate win in its scene
+  LabExport.panel({ format: 'mp4', source: 'scene' }).catch(() => {});
+  await until(() => document.querySelector('dialog.sq-render-panel[open]'), 8000);
+  const rp = document.querySelector('dialog.sq-render-panel[open]');
+  const rowOn = (name) => [...(rp?.querySelectorAll('.sq-rp-row') || [])].find((r) => r.querySelector('b')?.textContent === name)?.querySelector('.sq-chip.on')?.textContent || '';
+  step('the Render card in the project\'s scene: its 60 fps and its frame (not the last render\'s 25 fps, 4K)', rowOn('Frame rate') === '60' && /^Lab frame/.test(rowOn('Size')), { fps: rowOn('Frame rate'), size: rowOn('Size') });
+  rp?.close(); store.set('three.export', {});
   await until(async () => (await Board.load(p.workspace.boardId))?.items?.length >= 2, 15000);
   const b = await Board.load(p.workspace.boardId);
   step('the pictures are on the project\'s moodboard; the files are in the project', (b?.items?.length || 0) >= 2 && [SONG, ...PICS].every((f) => p.items.some((it) => it.type === 'file' && it.ref === f)), { board: b?.items?.length });

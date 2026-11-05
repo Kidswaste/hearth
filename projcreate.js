@@ -267,7 +267,6 @@ window.ProjCreate = (() => {
     sc.setFrame(id, st.frame);
     const tl = sc.timelineOf(id);
     if (tl && tl.fps !== st.fps) sc.setTimeline(id, { ...tl, fps: st.fps });
-    store.set('three.export', { ...store.get('three.export', {}), fps: st.fps }); // the Render card's frame rate
     // footage: the scene's video (what the footage layers show) for Footage + effects, or when there's no song
     if (st.footage && (st.start === 'footage' || !st.song)) sc.setExtras(id, { media: { path: st.footage } });
     P().setWorkspace(p, { start: st.start, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(st.palette.length ? { palette: st.palette.slice(0, 16) } : {}) });

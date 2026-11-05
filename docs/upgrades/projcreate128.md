@@ -40,8 +40,12 @@ visualizer" or "9:16 · vertical · 60 fps".
 you're making> })`, then calls `ProjectBrief.open(projectId)`, which shows the plan card in the project's Lab chat. If
 that part of Hearth isn't there, the project opens as usual and a note says the brief isn't available.
 
-**Remembered on this computer**: the last size, frame rate and AI (`localStorage` `hub.projcreate.last`). The frame
-rate also becomes the Render card's frame rate.
+**Remembered on this computer**: the last size, frame rate and AI (`localStorage` `hub.projcreate.last`).
+
+**The size and frame rate belong to the project** (`p.workspace.frame` / `fps`; the frame is also its scene's). The Lab's
+Render card (tools/three-export.js `panel()`) uses them when the scene on screen is that project's; anywhere else it
+uses the last render's settings as before. Picking a frame rate in the card never changes the global Render default
+(`three.export`).
 
 Nothing is uploaded and nothing is installed. The only AI calls are ✦ Suggest a name (on click), the brief (with its
 tick) and the description (with its tick).
@@ -59,7 +63,8 @@ One app check, **dev/checks/projcreate128.js** (group `projcreate128` in dev/run
 1. Projects › ＋ New project, a name, Create project ↗: the project opens in two clicks with chat, scene and moodboard,
    the defaults (empty, 16:9, 30 fps) and no brief.
 2. Audio visualizer, a song and two pictures dropped, ✦ Suggest a palette (colors read), then House clicked, 9:16,
-   60 fps, Claude, the moodboard tick: the scene has the Spectrum crown's layers in House colors, 9:16, the song; the
+   60 fps, Claude, the moodboard tick (the global Render default stays untouched; the Render card opened in that scene
+   shows 60 fps and the Lab frame, not the last render's 25 fps / 4K): the scene has the Spectrum crown's layers in House colors, 9:16, the song; the
    moodboard has the pictures. The brief goes to a stub ProjectBrief: `prepare(id, { moodboard: true, refs, song,
    scene, notes })`, then `open(id)`.
 3. The card again: 9:16, 60 fps and Claude are remembered.
@@ -76,7 +81,8 @@ Run: `projcreate128` ✓ (58 s), `projects` ✓, `projaudit108` ✓, `projopen10
   Hearth suggest one from your pictures. Then choose the size (16:9, vertical, square, 4K) and the frame rate.
 - Choose who directs, Claude or Astra. One tick lets the AI look at your moodboard. Another has it prepare a short
   brief as soon as the project opens. "✦ Suggest a name" finds a name from what you describe.
-- Hearth remembers your last size, frame rate and AI on each computer.
+- Hearth remembers your last size, frame rate and AI on each computer. A project keeps its own size and frame rate, and
+  Render uses them inside that project.
 
 ## For Codex
 - `project-workspace.js` (round 128, projcreate128), two marked edits:
@@ -87,5 +93,7 @@ Run: `projcreate128` ✓ (58 s), `projects` ✓, `projaudit108` ✓, `projopen10
     footage before the scene first runs. Without it, nothing changes.
 - The card saves `start`, `frame`, `fps`, `aiSeesMoodboard` and (when chosen) `palette` in `p.workspace`. These are
   additive fields; `ProjectWorkspaceCore.workspace()` keeps them as they are.
+- `tools/three-export.js` (not Codex-owned) `panel()`: one marked line reads the open scene's project `fps` / `frame`
+  (through `Projects.ofItem`) before falling back to `three.export`.
 - Duplicate a project… uses `ProjBundle.duplicateProject()` (unchanged), then `Projects.rename()` and
   `ProjectWorkspace.open()`.
