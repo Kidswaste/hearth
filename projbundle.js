@@ -309,9 +309,19 @@ const ProjBundle = (() => {
   }
   // the toast after an import / a copy: what it made, what it skipped (Details lists them all)
   function done(p, text, skipped, { show = false } = {}) {
-    const action = skipped.length ? { label: 'What was skipped', fn: () => Modal.alert(`Skipped in “${p.name}”`, skipped.map((s) => `· ${s}`).join('\n')) } : { label: 'Open', fn: () => P.openHome(p.id) };
-    toast(`${text}${skipped.length ? ` · skipped ${skipped.length}` : ''}`, { timeout: 9000, action });
-    if (show) P.openHome(p.id).catch?.(() => {});
+    // (round 126, deskfix126) an import opens its project by itself: no "Open" on its note, and the note goes once the
+    // project is open. It sat over the lower right of the Desk it opened (a mouse over it kept it), so a click on the
+    // Desk's scene row there hit the note and the Lab never opened. A note that lists what was skipped stays its 9 s.
+    const action = skipped.length ? { label: 'What was skipped', fn: () => Modal.alert(`Skipped in “${p.name}”`, skipped.map((s) => `· ${s}`).join('\n')) } : show ? null : { label: 'Open', fn: () => P.openHome(p.id) };
+    const note = toast(`${text}${skipped.length ? ` · skipped ${skipped.length}` : ''}`, { timeout: 9000, action });
+    if (show) { P.openHome(p.id).catch?.(() => {}); if (!skipped.length) goneWhenOpen(note, p.id); }
+  }
+  async function goneWhenOpen(note, id) {
+    for (let i = 0; i < 600 && note?.isConnected; i += 1) {
+      const s = window.ProjectWorkspace?.state?.();
+      if (s?.project === id && s.phase !== 'opening') { if (s.phase === 'ready') note.remove(); return; }
+      await sleep(100);
+    }
   }
 
   // ---------- Duplicate project ----------

@@ -129,6 +129,7 @@
   // Which layer logged / threw (the module fills these in once layers run).
   window.__layerOfStack = () => null;
   window.__layerOfUrl = () => null;
+  window.__compileLayer = () => null; // (round 126, deskfix126) the layer whose programs the Lab is compiling ahead of its frame (set below)
   // (seqsolid) a call from a layer module that no layer runs any more (a sequence clip scrubbed past while it loaded,
   // a re-run that replaced it): what it logs or throws isn't the scene's, it's dropped
   window.__isStale = () => false;
@@ -158,7 +159,7 @@
       }
       // (round 80, laberrors80) a material's shader that didn't compile: one error in plain words, once (the dump stays in the devtools)
       if (level === 'error' && /THREE\.WebGLProgram: Shader Error/.test(text)) {
-        const r = { kind: 'shader', layer: window.__layerOfStack(st), line: null, message: HL.shaderWords(text) };
+        const r = { kind: 'shader', layer: window.__layerOfStack(st) || window.__compileLayer(), line: null, message: HL.shaderWords(text) }; // (round 126, deskfix126) compiled ahead in a gap (no layer on the stack): the renderer's layer
         if (HL.note(r)) post({ type: 'error', ...r });
         devWarn(...args.map((a) => (typeof a === 'string' ? a.replace(/^THREE\.WebGLProgram: Shader Error/, 'THREE.WebGLProgram: shader not compiled (said in the Lab in words)') : a))); return; // (the dump, for the devtools: a warning, said once in words above)
       }
@@ -971,8 +972,13 @@ function lcCheck(r, scene, camera) {
   const P = { scene, camera, rt: r.getRenderTarget?.() || null, objs, swap, lights, dark, dm: dark.map((l) => l.shadow?.map || null), glass, whole, shadow, tick: frameTick, t: now, vis: [], mats: [], lv: [], dv: [], di: [], dp: [] };
   if (r.__lcP) LC.pending = Math.max(0, LC.pending - 1);
   r.__lcP = P; LC.pending += 1; LC.found += 1; LC.hidden += objs.length; LC.swapped += swap.length; LC.lights += lights.length; LC.dark += dark.length;
-  realSetTimeout(() => lcAhead(r, P), 0); // (from inside the frame: the task right after it)
+  realSetTimeout(() => compiling(r, () => lcAhead(r, P)), 0); // (from inside the frame: the task right after it)
 }
+// (round 126, deskfix126) the Lab compiles a layer's programs ahead of its frame (lcAhead, lcSceneAhead, wgGap: tasks of
+// its own, no layer on the stack); a shader that doesn't compile there is told as that renderer's layer's, not the scene's
+let compileR = null;
+const compiling = (r, fn) => { const prev = compileR; compileR = r; try { return fn(); } finally { compileR = prev; } };
+window.__compileLayer = () => (compileR?.__layer ? pcTop(compileR.__layer) : null);
 // in the gap after the frame: the new things' programs made
 function lcAhead(r, P) {
   if (r.__lcP !== P) return;
@@ -1158,7 +1164,7 @@ function lcScene(r, scene, camera) {
   if (!need) return false;
   const P = r.__lcN = { scene, camera, rt: r.getRenderTarget?.() || null, t: now, tick: frameTick };
   LC.scenes += 1; LC.pending += 1; LC.sceneWait += 1;
-  realSetTimeout(() => lcSceneAhead(r, P), 0);
+  realSetTimeout(() => compiling(r, () => lcSceneAhead(r, P)), 0);
   return true;
 }
 function lcSceneAhead(r, P) {
@@ -1251,7 +1257,7 @@ function wgGap(J) {
   if (realNow() - J.t > WG.maxMs) { WG.late += 1; wgDone(J, true); return; }
   J.gaps += 1; WG.gaps += 1;
   const t0 = realNow(); const props = r.properties;
-  try { return wgGapWork(J, r, t0, props); } finally { J.work = (J.work || 0) + (realNow() - t0); } // (round 102: its own time, for checks)
+  try { return compiling(r, () => wgGapWork(J, r, t0, props)); } finally { J.work = (J.work || 0) + (realNow() - t0); } // (round 102: its own time, for checks)
 }
 function wgGapWork(J, r, t0, props) {
   const rt0 = r.getRenderTarget?.() || null;
