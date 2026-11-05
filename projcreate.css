@@ -1,0 +1,32 @@
+/* (round 128, projcreate128) the new-project card's parts: projcreate.js */
+.pcw{width:min(720px,calc(100vw - 36px));overflow:auto}
+.pcw .pw-field{margin-bottom:12px}
+.pcw-row{display:flex;gap:8px;align-items:center}
+.pcw-row>input{flex:1;min-width:0;padding:10px 12px;border:1px solid #ffffff1c;border-radius:10px;background:#100e1680;color:#eee3ef}
+.pcw-wrap{flex-wrap:wrap}
+.pcw-suggest{white-space:nowrap}
+.pcw-sec{border:1px solid #ffffff14;border-radius:14px;margin:0 0 10px;background:#ffffff03}
+.pcw-sec[hidden]{display:none}
+.pcw-sec>summary{cursor:pointer;display:flex;gap:12px;align-items:baseline;padding:12px 14px;list-style:none;font-size:13px}
+.pcw-sec>summary::-webkit-details-marker{display:none}
+.pcw-sec>summary::before{content:'▸';color:#e8ae7e;transition:transform .15s}
+.pcw-sec[open]>summary::before{transform:rotate(90deg)}
+.pcw-sec>summary:focus-visible{outline:2px solid #ffbd70;outline-offset:-2px;border-radius:14px}
+.pcw-sum{color:#a89aad;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.pcw-body{padding:0 14px 14px;display:flex;flex-direction:column;gap:8px}
+.pcw-body .hint{margin:0;font-size:12px;color:#a89aad}
+.pcw-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#c6baca;margin-top:4px}
+.pcw-chips{display:flex;flex-wrap:wrap;gap:6px}
+.pcw-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;border:1px solid #ffffff1f;background:#ffffff06;color:#eee3ef;font-size:12px;cursor:pointer}
+.pcw-chip:hover{border-color:#ffffff40}
+.pcw-chip.on{border-color:#ffbd70aa;background:#ffbd7018;color:#ffd4a8}
+.pcw-swatches{display:inline-flex;border-radius:4px;overflow:hidden}
+.pcw-swatches i{width:8px;height:14px}
+.pcw-palnow{display:flex;align-items:center;gap:6px;font-size:11px;color:#c6baca;margin:0;overflow-wrap:anywhere}
+.pcw-file{display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 10px;border-radius:10px;background:#ffffff0a;font-size:12px;max-width:100%}
+.pcw-file span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcw-x{border:0;background:none;color:#c6baca;cursor:pointer;padding:2px 6px}
+.pcw-drop{border:1px dashed #ffffff26;border-radius:10px;padding:10px;font-size:12px;color:#a89aad;text-align:center}
+.pcw.pcw-dragging .pcw-drop{border-color:#ffbd70;color:#ffd4a8;background:#ffbd700d}
+.pcw-pick{margin:0}
+.pcw-status{min-height:1em}
