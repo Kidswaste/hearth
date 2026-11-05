@@ -105,7 +105,7 @@ try {
   { const t0 = performance.now(); click(document.querySelector('#agent-buttons [data-space=projects]'));
     await until(() => card('pjbp0'), 'cards', 1500); await frame(); out.home = { wall: Math.round(performance.now() - t0), longest: longestSince(t0), cards: document.querySelectorAll('.pj-card').length }; }
   const P = Projects; await P.ready();
-  out.fixture = { projects: P.all().length, items: P.all().reduce((n, p) => n + p.items.length, 0), clinkItems: P.get('pjbp0')?.items.length, chats: H.chats.length };
+  out.fixture = { projects: P.all().filter((p) => p.id !== 'pj-earlier-chats').length, /* (round 125, checksweep125) round 116 puts the fixture's loose chats in an "Earlier chats" project: 40 + that one */ items: P.all().reduce((n, p) => n + p.items.length, 0), clinkItems: P.get('pjbp0')?.items.length, chats: H.chats.length };
   need(out.fixture.projects === 40, 'fixture: 40 projects');
   // ---------- cold open: the Clink card ----------
   // (round 73) the Lab mounts out of sight after the start when the last project's scene is the Lab's (tools/three-boot.js
@@ -250,7 +250,7 @@ try {
     out.lifecycle.trashRestoredSame = JSON.stringify(P.get(id)) === kept; need(out.lifecycle.trashRestoredSame, 'Recently deleted → the same project back (notes, links, look)');
     need(!P.trashed().some((x) => x.id === id), 'restored: out of Recently deleted'); }
   await P.flush();
-  const disk = await hub.kvGet('projects', null); out.lifecycle.onDisk = disk?.list?.length; need(disk?.list?.length === 40, 'projects on disk: 40');
+  const disk = await hub.kvGet('projects', null); out.lifecycle.onDisk = disk?.list?.filter((p) => p.id !== 'pj-earlier-chats').length; /* (round 125) without "Earlier chats" */ need(out.lifecycle.onDisk === 40, 'projects on disk: 40');
 } catch (err) { fails.push(`stopped: ${err.message}`); out.error = String(err.stack || err).slice(0, 600); }
 out.longTasks = longs.map((x) => x.ms).sort((a, b) => b - a).slice(0, 12).join(' ');
 out.fails = fails;
