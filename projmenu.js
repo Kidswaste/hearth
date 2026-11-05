@@ -42,7 +42,7 @@ const ProjectMenu = (() => {
   const brief = (fn) => (has('ProjectBrief') ? Promise.resolve() : window.Lazy.load('projectbrief')).then(() => fn(window.ProjectBrief));
   function briefReady(p) {
     if (!has('ProjectBrief')) return Boolean(p.brief?.text || p.brief?.at);
-    try { const s = ProjectBrief.status?.(p.id) ?? ProjectBrief.state?.(p.id); return Boolean(s === 'ready' || s?.ready || s?.at || ProjectBrief.has?.(p.id)); } catch { return false; }
+    try { return Boolean(ProjectBrief.get(p.id)); } catch { return false; } // (round 128) ProjectBrief.get → brief | null
   }
 
   // ---------- the header's one line ----------
@@ -93,8 +93,8 @@ const ProjectMenu = (() => {
     // AI: the brief (aiprep128) when it exists, and the Desk's description writer
     const bf = briefThere();
     const ai = [
-      bf ? { id: 'brief', label: briefReady(p) ? 'Refresh the brief' : 'Prepare the brief', icon: 'sparkle', tip: 'A short brief of the project the AIs read', action: go(() => brief((B) => B.prepare(p.id, { refresh: briefReady(p), from: where }))) } : null,
-      bf ? { id: 'next', label: 'Ask the AI what to do next', icon: 'tochat', action: go(() => brief((B) => (typeof B.next === 'function' ? B.next(p.id) : B.open(p.id, { ask: 'next' })))) } : null,
+      bf ? { id: 'brief', label: briefReady(p) ? (window.ProjectBrief?.stale?.(p.id) ? 'Refresh the brief (things changed)' : 'Refresh the brief') : 'Prepare the brief', icon: 'sparkle', tip: 'A short brief of the project the AIs read', action: go(() => brief((B) => B.prepare(p.id, {}).then(() => B.open(p.id)))) } : null,
+      bf ? { id: 'next', label: 'Ask the AI what to do next', icon: 'tochat', action: go(() => brief((B) => B.open(p.id))) } : null,
       ws ? { id: 'describe', label: p.workspace.description ? 'Rewrite its description with AI' : 'Write its description with AI', icon: 'pen', action: go(() => ProjectWorkspace.describe(p)) } : null,
     ].filter(Boolean);
     if (ai.length) out.push(S('AI'), ...ai);
@@ -266,7 +266,7 @@ const ProjectMenu = (() => {
       ...natives().map((a) => ({ label: a.name, checked: a.id === def, hint: a.dock ? 'in the Lab' : '', action: go(() => { setPrefs(p, { agentId: a.id }); toast(`New chats in “${p.name}” offer ${a.name} first`, { timeout: 2500 }); }) })),
     ];
   }
-  const ASPECTS = [['16:9', '1920×1080 · YouTube'], ['9:16', '1080×1920 · Shorts, Reels'], ['4:5', '1080×1350 · Instagram'], ['1:1', '1080×1080 · square'], ['21:9', '2560×1080 · cinematic'], ['4:3', '1440×1080 · TV']];
+  const ASPECTS = [['16:9', '1920×1080 · YouTube'], ['9:16', '1080×1920 · Shorts, Reels'], ['4:5', '1080×1350 · Instagram'], ['1:1', '1080×1080 · square'], ['21:9', '2560×1080 · cinematic'], ['4:3', '1440×1080 · TV'], ['4k', '3840×2160 · 4K']];
   const RATES = [24, 25, 30, 50, 60];
   async function frameDialog(p) {
     const pr = prefs(p);

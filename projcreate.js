@@ -269,6 +269,8 @@ window.ProjCreate = (() => {
     if (tl && tl.fps !== st.fps) sc.setTimeline(id, { ...tl, fps: st.fps });
     // footage: the scene's video (what the footage layers show) for Footage + effects, or when there's no song
     if (st.footage && (st.start === 'footage' || !st.song)) sc.setExtras(id, { media: { path: st.footage } });
+    // (round 128) the size, frame rate and AI are also the project's settings (p.prefs: the project menu, the Lab and Render read them)
+    p.prefs = { ...(p.prefs && typeof p.prefs === 'object' ? p.prefs : {}), aspect: st.frame, fps: st.fps, ...(st.agentId ? { agentId: st.agentId } : {}) };
     P().setWorkspace(p, { start: st.start, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(st.palette.length ? { palette: st.palette.slice(0, 16) } : {}) });
   }
   // after the project opened: the model on its turntable, a recipe, then the brief

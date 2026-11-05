@@ -604,7 +604,7 @@ const LabExport = (() => {
   async function panel({ format = null, source = null } = {}) {
     const last = opts0();
     // (round 128, projcreate128) a scene of a project made with a size and frame rate: the project's own (its frame is the scene's), else the last render's
-    const own = (() => { try { const id = ThreeLab.scenes?.currentId?.(); const p = id && window.Projects?.ofItem?.('scene', id)?.find((x) => x.workspace?.sceneId === id); return p?.workspace?.fps ? p.workspace : null; } catch { return null; } })();
+    const own = (() => { try { const id = ThreeLab.scenes?.currentId?.(); const p = id && window.Projects?.ofItem?.('scene', id)?.find((x) => x.prefs?.fps || x.workspace?.fps); if (!p) return null; return { fps: p.prefs?.fps || p.workspace?.fps, frame: p.prefs?.aspect || p.workspace?.frame }; } catch { return null; } })();
     const st = { format: format || last.format || 'mp4', size: own?.frame ? 'frame' : last.size || 'frame', custom: last.custom || '', fps: Number(own?.fps) || last.fps || 30, quality: last.quality || 'high', ss: last.ss || 1, blur: last.blur || 1, source: source || (SEQ()?.active ? 'seq' : 'scene') };
     const dlg = el('dialog', { class: 'ui-modal sq-render-panel lx-panel' });
     const chip = (on, text, title, click) => el('button', { type: 'button', class: `sq-chip${on ? ' on' : ''}`, text, title, on: { click } });
