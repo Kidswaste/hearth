@@ -315,6 +315,16 @@ function presetPlan(msg) {
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
   if (msg.startsWith('Give a useful second opinion and directions for ONE small improvement round.')) return {p:{},thinking:'',text:JSON.stringify({...(/Review stage: survey\./.test(msg) ? {inspect:[{after:3,before:4,reason:'Check the foreground transition'},{after:8,before:9,reason:'Check the later pose'}]} : {}),summary:'The foreground shape needs a clearer silhouette.',keep:'Keep the existing palette and overall composition.',issues:[{title:'The main shape blends into the background',evidence:[1,2],observation:'The edge and its backdrop have similar brightness in these frames.',why:'The main subject is harder to spot.',change:'Try a restrained rim light around the main silhouette.',check:'Compare the same camera angle before and after.',confidence:'tentative'}],limits:'Synthetic test response: sampled images only; audio and smoothness were not reviewed.'})};
+  // (round 128, aiprep128) the project brief's one AI pass (projectbrief-core.js): a JSON brief that takes its palette from
+  // the moodboard's line and says how many pictures it was given (dev/aiprep128-test.js checks none go without consent)
+  if (msg.startsWith('Write the project brief')) {
+    const pal = ((msg.match(/^ {2}palette: (.+)$/m) || [])[1] || '').match(/#[0-9a-f]{6}/gi) || [];
+    const seen = ((prompt.split(/\[Attached image[^\]]*\]/)[1] || '').split('\n').filter((l) => /^([a-zA-Z]:[\\/]|\/)/.test(l.trim()))).length;
+    const secs = ((msg.match(/^ {2}sections: (.+)$/m) || [])[1] || '').split(' · ').filter(Boolean);
+    return { p: {}, thinking: '', text: JSON.stringify({ mood: 'warm neon dusk', look: `Soft glow over dark water (pictures seen: ${seen})`, palette: pal.slice(0, 5),
+      tempo: secs.map((s) => ({ section: s.split(' ').slice(0, 2).join(' '), plan: /loud/.test(s) ? 'full bloom on the kick' : 'slow drift' })),
+      steps: ['Set the frame to 9:16', 'Add a dark gradient background layer', 'Add glowing rings that pulse on the kick', 'Grade toward the palette'], risks: ['heavy bloom on a 4K export'], questions: [] }) };
+  }
   const pre = presetPlan(msg);
   if (pre) return { p: {}, text: pre, thinking: '' };
   const fl = flowPlan(msg);

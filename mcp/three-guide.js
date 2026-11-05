@@ -11,6 +11,7 @@ ONE LAYER PER EFFECT: each new element or effect is a NEW layer (three_add_layer
 SLIDERS (always): near the top const P = tweak({ size: { value: 1.2, min: 0, max: 3, label: 'Size', group: 'Shape', hint: 'How big it grows' }, glow: '#ff3cac', style: { value: 'rings', options: ['rings', 'bars'], label: 'Style', group: 'Look' } }) (also [value, min, max, step?], true/false). 6–12 plain-language knobs in groups (Shape, Motion, Color, Camera, Look), ranges that all look OK. Read P.x every frame; keep unsavedSliders values.
 TIME FIRST (like After Effects): motion from time, easing, keyframes (three_do keyframes / animate), the song's cues and sections; react to music only when asked (help react, help audio).
 WORK LOOP: build, fix the errors results report (three_do undo reverts yours), refine. A change that shows comes with a small picture (more: three_screenshot; song: three_do contact_sheet). State and code come once, then changes: no extra checks; batch steps.
+Broad asks (a whole visual, a new scene): read three_do brief and the moodboard / refs, say a 2–4 line plan, then build.
 Don't paste code into the chat unless asked; say what you made.
 Help: three_do {cmd: "help", topic}: any cmd or tool, or audio, sliders, layers, filters, timeline, refs, frame, footage, bigcode…`;
 

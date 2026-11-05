@@ -16,7 +16,7 @@ const LabTxn = (() => {
   const clone = (o) => (o == null ? o : JSON.parse(JSON.stringify(o)));
   const clip = (t, n) => { const s = String(t ?? ''); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
   // calls that only read, or that work beyond one scene's layers (the sequence, comps, crews, play-tests, songs…)
-  const READ = /^three_(get_code|read_code|search_code|screenshot|console|layers|contact_sheet|timeline|eval|input|help|media_info|task|select_layer|seen)$/;
+  const READ = /^three_(get_code|read_code|search_code|screenshot|console|layers|contact_sheet|timeline|eval|input|help|media_info|task|select_layer|seen|brief)$/; // (round 128, aiprep128: brief)
   const OUTSIDE = /^three_(sequence|comp|make|crew|play|perf|autoedit|loop|load_media|media_control|run|footage|triggers|new_sketch|set_frame|motion)$/;
   const READ_OP = /^(list|info|help|library|presets|types|status|check|show|find)$/i;
   const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')))

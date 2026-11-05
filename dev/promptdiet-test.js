@@ -19,7 +19,8 @@ const tok = (s) => Math.round(String(s || '').length / 4);
 // Per-message ceilings (prompt + tool definitions as the engines name them + Hearth's own text in the message).
 // Before round 46: claude 333, astra 177, director 2476, directorFull 9785, directorAstra 2476, forge 1530, swarm 53,
 // keepGoing 2506. Raise one only on purpose (an opt-in the owner asked for), never to make a growth pass.
-const BUDGET = { claude: 305, astra: 165, director: 2170, directorFull: 9150, directorAstra: 2170, forge: 1195, swarmClaude: 50, swarmAstra: 50, keepGoing: 2200 };
+// (round 128, aiprep128) directorFull 9150 → 9225: full mode lists every tool, so the owner-asked project brief needs its own three_brief tool (≈ 50) + the broad-ask pre-check line in the guide (≈ 25)
+const BUDGET = { claude: 305, astra: 165, director: 2170, directorFull: 9225, directorAstra: 2170, forge: 1195, swarmClaude: 50, swarmAstra: 50, keepGoing: 2200 };
 
 (async () => {
   // ---------- 1. budgets, byte-stable ----------

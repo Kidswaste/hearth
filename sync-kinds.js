@@ -6,7 +6,7 @@
 'use strict';
 const KINDS = [
   { id: 'chats', label: 'Chats', note: 'with their attachments', re: /^(?:chats\/|attachments\/|trash\/[^/]+\.json$|kv\/chat-meta\.json$)/i },
-  { id: 'projects', label: 'Projects & scenes', note: 'Lab scenes, boards, project notes, what chats made', re: /^(?:projects\/|board\/|workspace\/|kv\/(?:projects|three-[^/]+|boards?|board-[^/]+|chat-scenes|video-cuts)\.json$)/i },
+  { id: 'projects', label: 'Projects & scenes', note: 'Lab scenes, boards, project notes, what chats made', re: /^(?:projects\/|board\/|workspace\/|kv\/(?:projects|project-briefs|three-[^/]+|boards?|board-[^/]+|chat-scenes|video-cuts)\.json$)/i },
   { id: 'captures', label: 'Lab captures', note: 'recordings and screenshots', re: /^captures\//i, big: true },
   { id: 'renders', label: 'Renders', note: 'finished videos and exports', re: /^renders\//i, big: true },
   { id: 'music', label: 'Music sketches & stems', note: 'session sketches, park takes, live sets', re: /^(?:creative-sketches|creative-park|creative-live|stems)\//i, big: true },
