@@ -1,0 +1,9 @@
+/* (round 129, looks129) the Lab's ◆ Project look strip (tools/three-projlook.js), beside 🎨: the same swatches */
+/* (its own class, not .lab-palette, which declutter.js tucks away until Alt: this strip stays in sight) */
+.lab-projlook { display: inline-flex; align-items: center; gap: 3px; padding-left: 6px; margin-left: 2px; border-left: 1px solid var(--line, #ffffff26); }
+.lab-projlook[hidden] { display: none; }
+.lab-projlook button:not(.lab-swatch) { font-size: 11px; padding: 1px 6px; }
+.lab-projlook .pl-label { font-size: 11px; opacity: 0.75; cursor: default; }
+.lab-projlook .pl-apply { font-weight: 600; }
+.lab-projlook.pl-previewing .pl-apply { outline: 1px solid var(--ui-gold, #ffd75e); }
+.lab-projlook .pl-undo, .lab-projlook .pl-more { padding: 1px 5px; }

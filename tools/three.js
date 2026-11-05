@@ -1931,6 +1931,14 @@ const ThreeLab = (() => {
       paletteBox.classList.toggle('empty', !pal.length);
       paletteBox.replaceChildren(paletteBtn, ...pal.map((c) => { const b = el('button', { class: 'lab-swatch', title: `${c}: click to copy`, on: { click: () => { navigator.clipboard.writeText(c); toast(`Copied ${c}`, { timeout: 1000 }); } } }); b.style.background = c; return b; }),
         ...(pal.length ? [btn('Recolor', 'Put these colors into the selected layer\'s color sliders', () => recolor())] : []));
+      projLook(); // (round 129, looks129)
+    }
+    // (round 129, looks129) the project's look: a strip by 🎨 when the scene is in a project with a palette (Apply, the
+    // moodboard's colors, save as a look): tools/three-projlook.js, lazy group "projlook", loaded for a project's scene
+    const projLookBox = el('span', { class: 'lab-projlook' }); projLookBox.hidden = true; // (not .lab-palette: declutter.js tucks that one away)
+    function projLook() {
+      if (window.LabProjLook) { LabProjLook.mount(projLookBox); return; }
+      if (current && typeof Projects !== 'undefined' && Projects.ofItem('scene', current.id).length && window.Lazy) Lazy.load('projlook').then(() => window.LabProjLook?.mount(projLookBox)).catch(() => {});
     }
     function setPalette(cols) {
       if (!current) return;
@@ -4539,7 +4547,7 @@ ${code}
         group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present'], [playBtn, '▶', 'Play']])),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
-        group('Assets', paletteBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
+        group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
