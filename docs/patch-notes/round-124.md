@@ -10,3 +10,9 @@
 ## 💬 New chats
 - A new chat's row no longer disappears from the list for about a second after you send its first message: it is in
   its project from the moment it's saved.
+
+## 🎛 The Lab keeps drawing
+- The Lab's guard against runaway animation loops (round 109) could mistake two frames with the same timestamp for a
+  runaway and stop a hidden page's own drawing for good: precomps came out black, gallery picks and thumbnails never
+  appeared, and the jam's preview sat at 0 fps. A frame the guard holds back now comes back once on the next frame,
+  so a page can't freeze that way; a real runaway is still stopped.
