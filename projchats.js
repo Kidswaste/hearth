@@ -276,7 +276,8 @@ window.ProjChats = (() => {
       bar.replaceChildren(el('span', { class: 'pc-wait hint', text: tries ? 'Your projects couldn’t be read yet, so every chat shows for now. Trying again every minute.' : 'Reading your projects… (every chat shows meanwhile)' }));
       return;
     }
-    const proj = el('button', { type: 'button', class: 'ghost small pc-project', title: 'The project whose chats are listed. Click: switch project, new project, its page', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); showMenu(b.left, b.bottom + 4, projectMenu()); } } },
+    // (round 128, projmenu128) an open project: its one project menu (projmenu.js; Other projects › switches); none: the switcher
+    const proj = el('button', { type: 'button', class: 'ghost small pc-project', title: p ? 'This project’s menu: open, make, look, share, settings, archive (Ctrl+Shift+O)' : 'Pick a project, or make a new one', attrs: { 'aria-haspopup': 'menu' }, on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); const now = current(); if (now && P.openMenu) P.openMenu(now, b.left, b.bottom + 4, 'bar'); else showMenu(b.left, b.bottom + 4, projectMenu()); } } },
       el('span', { class: 'pc-mark', text: p ? p.ident.glyph : '▣' }), el('span', { class: 'pc-name', text: p ? p.name : 'No project open' }), el('span', { class: 'pc-caret', text: '▾' }));
     if (p) proj.style.setProperty('--pj', p.ident.color);
     const add = el('button', { type: 'button', class: 'ghost small pc-new', text: '＋ New chat', title: p ? `A new chat in “${p.name}” (pick the AI)` : 'A new chat (asks which project first)', on: { click: (e) => { const b = e.currentTarget.getBoundingClientRect(); newChatMenu(b.left, b.bottom + 4); } } });
@@ -300,10 +301,11 @@ window.ProjChats = (() => {
   }
   const C2 = (p) => { const n = p.items.filter((x) => x.type === 'chat').length; return `${n} chat${n === 1 ? '' : 's'}`; };
   function newChatMenu(x, y) {
-    const ais = H.agents().filter((a) => a.mode === 'native');
+    const def = current()?.prefs?.agentId; // (round 128, projmenu128) the project's Default AI first
+    const ais = H.agents().filter((a) => a.mode === 'native').sort((a, b) => (b.id === def) - (a.id === def));
     const go = (a) => { const p = current(); if (p) newChatIn(p.id, a.id); else { if (a.dock) Tools.openDock?.(a.dock); else activate(a.id); Native.newChat(a.id, { byOwner: true }); } };
     if (ais.length === 1) { go(ais[0]); return; }
-    showMenu(x, y, ais.map((a) => ({ label: `With ${a.name}`, hint: a.dock ? 'in the Lab' : '', action: () => go(a) })));
+    showMenu(x, y, ais.map((a) => ({ label: `With ${a.name}`, hint: [a.id === def ? 'default' : '', a.dock ? 'in the Lab' : ''].filter(Boolean).join(' · '), action: () => go(a) })));
   }
 
   // ---------- wiring ----------

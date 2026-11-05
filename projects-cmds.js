@@ -160,7 +160,7 @@
     if (window.Lazy) window.Lazy.when('renders', () => Renders.onChange((j) => { try { P.onRenderJob(j); } catch (err) { console.warn(err); } }));
     Keys.add([
       { area: 'Projects', keys: 'Ctrl+Shift+K', what: 'Search everything: projects, chats, scenes, boards, renders, files, commands (Tab: one kind)', run: () => ProjectsSearch.open() },
-      { area: 'Projects', keys: 'Right-click a project', what: 'On Home: its page, continue, its chats, add, rename, status, look, notes' }, // (round 121, listtidy121)
+      { area: 'Projects', keys: 'Right-click a project', what: 'On Home: its menu (open, make, look, share & keep, settings, archive, delete), also its card\'s ⋯' }, // (round 121, listtidy121) // (round 128, projmenu128) the one project menu
     ]);
     try {
       AppUI.addAction?.('Home: your projects', () => P.openHome());
