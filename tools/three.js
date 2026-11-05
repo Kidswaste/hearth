@@ -3178,6 +3178,9 @@ const ThreeLab = (() => {
       ctl: () => selCtl(), layer: () => sel() || null, layerById: (id) => layerById(id), ctlOf: (id) => { const L = layerById(id); return L ? ctlFor(L) : null; },
       sketchId: () => current?.id || null, sketchName: () => current?.name || '', blackout: (on) => setBlackout(on),
       // (round 37, abcompare) a palette on the preview for a moment, not saved (null: the scene's own again)
+      // (round 130, songmap130) ✦ Map to the song (tools/three-songmap.js): a layer's keys as they are, and put back exactly
+      keysOf: (id, prop) => { const L = layerById(id); return L?.keys?.[prop] ? JSON.parse(JSON.stringify(L.keys[prop])) : []; },
+      setKeys: (id, prop, keys) => { const L = layerById(id); if (!L) return false; setKeys(L, prop, JSON.parse(JSON.stringify(keys || []))); return true; },
       peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
     };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------

@@ -20,7 +20,8 @@ const LabTxn = (() => {
   const OUTSIDE = /^three_(sequence|comp|make|crew|play|perf|autoedit|loop|load_media|media_control|run|footage|triggers|new_sketch|set_frame|motion)$/;
   const READ_OP = /^(list|info|help|library|presets|types|status|check|show|find)$/i;
   const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')))
-    || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length)); // (round 74) sliders read, none set
+    || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length)) // (round 74) sliders read, none set
+    || (tool === 'three_map_song' && !a.apply); // (round 130, songmap130) the song map as ghosts: nothing in the scene changes
   // tools whose own answer already says what changed (no second line about it)
   const SAYS = /^three_(edit_code|set_code|add_layer|update_layer|undo|sliders)$/;
   const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0 };
@@ -42,18 +43,19 @@ const LabTxn = (() => {
     let layers;
     // (round 74, labcalls74) read only: the scene isn't saved (stamped "updated now") just to be noted
     try { layers = here && ThreeLab.director.capture ? ThreeLab.director.capture({ save: false }).layers : clone(sc.layersOf(sk)); } catch { layers = clone(sc.layersOf(sk)); }
-    const vals = {};
+    const vals = {}; const links = {};
     for (const L of layers) {
       let list = null;
       if (here) { try { list = ThreeLab.director.sliders(L.id, null)?.sliders; } catch { list = null; } }
       vals[L.id] = Object.fromEntries((Array.isArray(list) ? list : scanVals(L.code)).map((x) => [x.key, x.value]));
+      if (Array.isArray(list)) { const lk = list.filter((x) => x.followsMusic).map((x) => [x.key, clone(x.followsMusic)]); if (lk.length) links[L.id] = Object.fromEntries(lk); } // (round 130, songmap130) ♪ beat links (three_do map_song sets them)
     }
     let map = null;
     try { const m = await player()?.mapAt?.(mapPath(id)); if (m) map = { cues: (m.cues || []).map((c) => ({ t: c.t, name: c.name, ...(c.looks?.length ? { looks: c.looks } : {}) })), marks: m.marks || {} }; } catch { /* no map */ }
-    return { id, name: sk.name, layers, vals, map, selId: sc.selectedOf?.(id) || null, refs: (ThreeLab.refsOf?.(id) || []).map((r) => ({ id: r.id, key: r.key })), timeline: clone(sc.timelineOf?.(id) || null), palette: clone(sk.palette || null) };
+    return { id, name: sk.name, layers, vals, links: here ? links : null, map, selId: sc.selectedOf?.(id) || null, refs: (ThreeLab.refsOf?.(id) || []).map((r) => ({ id: r.id, key: r.key })), timeline: clone(sc.timelineOf?.(id) || null), palette: clone(sk.palette || null) };
   }
   // what counts as "the scene" (the playhead's time in its timeline doesn't)
-  const sigOf = (t) => (t ? JSON.stringify([t.layers, t.vals, t.refs.map((r) => r.id), t.timeline ? t.timeline.len : null, t.palette, t.map]) : '');
+  const sigOf = (t) => (t ? JSON.stringify([t.layers, t.vals, t.refs.map((r) => r.id), t.timeline ? t.timeline.len : null, t.palette, t.map, t.links || null]) : '');
 
   // ---------- what changed, in plain words ----------
   const PROPS = ['visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
@@ -131,6 +133,9 @@ const LabTxn = (() => {
         let now = null; try { now = ThreeLab.director.sliders(L.id, null)?.sliders; } catch { continue; }
         const set = Object.fromEntries((now || []).filter((x) => x.key in want && JSON.stringify(x.value) !== JSON.stringify(want[x.key])).map((x) => [x.key, want[x.key]]));
         if (Object.keys(set).length) { try { ThreeLab.director.sliders(L.id, set); } catch { /* gone */ } }
+        // (round 130, songmap130) ♪ beat links back as they were (the sliders' own undo is left alone)
+        const ctl = t.links && ThreeLab.stageHooks?.ctlOf?.(L.id);
+        if (ctl?.link) for (const x of now || []) { const was = t.links[L.id]?.[x.key] || null; if (JSON.stringify(x.followsMusic || null) !== JSON.stringify(was) && (was ? was.how : x.followsMusic?.how)) ctl.link(x.key, was, { undo: false }); }
       }
     } else {
       sk.layers = clone(t.layers);
