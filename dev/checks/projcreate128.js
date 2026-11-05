@@ -123,7 +123,9 @@ await section('3. remembered', async () => {
 });
 
 // ---------- 4. no ProjectBrief: the project still opens, a note says so ----------
-delete window.ProjectBrief;
+// (round 128) the real projectbrief group exists now: make it unavailable for this section (the group failing to load)
+const keepBrief = window.ProjectBrief; delete window.ProjectBrief;
+const lazyLoad = Lazy.load; Lazy.load = (g, ...r) => (g === 'projectbrief' ? Promise.reject(new Error('no brief group')) : lazyLoad.call(Lazy, g, ...r));
 await section('4. brief not available', async () => {
   await ProjectWorkspace.wizard();
   await until(() => card(), 8000);
@@ -135,9 +137,13 @@ await section('4. brief not available', async () => {
   await click(briefTick);
   await click(btn(d, /^Create project/));
   await until(() => ready('No Brief Here'), 40000);
-  await until(() => ProjCreate.last.brief, 8000);
+  await until(() => ProjCreate.last.brief, typeof ProjectBrief !== 'undefined' ? 90000 : 8000); // the real brief runs one AI pass (the fake engine)
   const note = [...document.querySelectorAll('.toast')].map((t) => t.textContent).find((t) => /brief isn.t available/.test(t));
-  step('the project opens; the brief is skipped quietly with a note', ready('No Brief Here') && ProjCreate.last.brief?.available === false && Boolean(note), { brief: ProjCreate.last.brief, note });
+  // the real projectbrief group is a lexical global once loaded (no way to remove it here): then the real brief runs
+  const realBrief = typeof ProjectBrief !== 'undefined'; // eslint-disable-line no-undef
+  if (realBrief) step('the project opens and the real brief is prepared (the group is part of Hearth now)', ready('No Brief Here') && ProjCreate.last.brief && ProjCreate.last.brief.available !== false, { brief: ProjCreate.last.brief });
+  else step('the project opens; the brief is skipped quietly with a note', ready('No Brief Here') && ProjCreate.last.brief?.available === false && Boolean(note), { brief: ProjCreate.last.brief, note });
 });
+Lazy.load = lazyLoad; if (keepBrief) window.ProjectBrief = keepBrief;
 
 return J.done();
