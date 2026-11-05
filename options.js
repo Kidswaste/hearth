@@ -178,6 +178,8 @@ const Options = (() => {
     return fold('habits', sec('Habits', 'Things it does by itself.',
       sw(a.selfReview ?? Boolean(a.dock), 'Checks its own work before it answers', 'For visual work: it takes a quick look at the result and fixes what\'s off', (v) => save(a, { selfReview: v }).then(re)),
       sw(chatsOn(a) ? a.suggestNext !== false : Boolean(a.suggestNext), 'Suggests what to do next', 'Up to 3 next steps show as buttons under a reply', (v) => save(a, { suggestNext: chatsOn(a) ? (v ? undefined : false) : (v || undefined) }).then(re)),
+      // (round 129, next129) one "Next: <step>" chip under the last reply in a project's Lab chat / a Three Director (nextstep.js; this computer)
+      sw(store.get('nextstep.on', true) !== false, 'Shows a “Next:” step under the last reply', 'In a project’s Lab chat or a Three Director: one small chip with the next step (the brief’s, its own suggestion, or a quick check of the scene). A click sends it; nothing is sent without it. No AI call. This computer.', (v) => { store.set('nextstep.on', v); window.NextStep?.refresh?.(); }),
       sw(a.showThinking !== false, 'Shows its thinking', 'Its thought process shows folded under the reply', (v) => save(a, { showThinking: v ? undefined : false }).then(re)),
       // (round 35, bugbash2) since Continue lighter (round 34) nothing summarizes a chat by itself: the switch did nothing
       // (and its "shrinks long chats" line said the opposite). The offer's own row is in Spending.

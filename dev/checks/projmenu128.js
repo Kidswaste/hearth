@@ -111,6 +111,7 @@ await section('2. every row runs or is hidden', async () => {
     export: () => S.bundle.calls.length > 0, duplicate: () => S.bundle.calls.length > 0, folder: () => S.reveal.calls.some((a) => a[0] === fileRef), render: () => S.panel.calls.length > 0,
     offline: () => S.offline.calls.length > 0, versions: () => S.versions.calls.some((a) => a[0]?.id === pa.id), personality: () => S.settings.calls.length > 0, frame: () => S.form.calls.length > 0,
     access: () => menuOpen() && labels().some((t) => /^As in AI setup/.test(t)), archive: () => P.get(pa.id)?.status === 'archived', delete: () => vis(document.querySelector('dialog[open] .danger-fill')),
+    template: () => vis(document.querySelector('dialog.ptpl[open]')), // (round 129, next129) Save as a template… opens its card
     brief: () => S.brief?.calls.length > 0, next: () => (S.briefOpen?.calls.length || 0) > 0 || typeof ProjectBrief?.next === 'function',
   };
   const res = {};

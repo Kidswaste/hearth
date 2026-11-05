@@ -5,6 +5,7 @@
 //   Start from       an empty scene, one of the Lab's starting points (audio visualizer, particles, shader art, kinetic
 //                    type, 3D model showcase, footage + effects: tools/three-gallery-data.js), a copy of one of my
 //                    scenes, one of my Lab templates (labtemplates), or Duplicate a project… (projbundle); then,
+//                    (round 129, next129) My templates: projects saved as a template (projtemplates.js), with covers
 //                    optionally, one of my recipes (labrecipes) played on the new scene
 //   Music & footage  a song (the scene's song: the Lab analyses it as the project opens), footage, or skip
 //   Look             pictures for the moodboard (dropped or picked), a palette (click one, paste a Coolors link or hex
@@ -45,11 +46,11 @@ window.ProjCreate = (() => {
     agents.sort((a, b) => (b.engine === 'codex') - (a.engine === 'codex'));
     const d0 = C.defaults(store.get(KEY, {}), agents.map((a) => a.id));
     const st = {
-      start: 'empty', copyScene: '', dupProject: '', myTemplate: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
+      start: 'empty', copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
       palette: [], paletteName: '', frame: d0.frame, fps: d0.fps, agentId: defaults.agentId && agents.some((a) => a.id === defaults.agentId) ? defaults.agentId : d0.agentId,
       persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: '',
     };
-    const lists = { scenes: null, projects: null, templates: null, recipes: null, boards: null };
+    const lists = { scenes: null, projects: null, templates: null, recipes: null, boards: null, projTemplates: null };
     const d = el('dialog', { class: 'ui-modal pw-wizard pcw', attrs: { 'aria-label': 'New project' } });
     const form = el('form');
     const title = el('input', { value: defaults.name || '', placeholder: 'Name this little world', required: true, maxLength: 48, attrs: { 'aria-label': 'Project name' } });
@@ -109,6 +110,20 @@ window.ProjCreate = (() => {
         chip('⎘ Duplicate a project…', 'A copy of a whole project: its chats, scenes and moodboard', st.start === 'duplicate', choose('projects', 'duplicate')))];
       const s = C.startOf(st.start);
       if (C.STARTS.includes(s) && st.start === s.id) out.push(el('p', { class: 'hint', text: s.hint }));
+      // (round 129, next129) My templates: a project saved as a template, with its cover; ✕ asks, then the Trash
+      if (lists.projTemplates?.length) {
+        out.push(el('div', { class: 'pcw-label', text: 'My templates' }), el('div', { class: 'pcw-tpls', attrs: { role: 'group', 'aria-label': 'My templates' } }, ...lists.projTemplates.map((t) => {
+          const on = st.start === 'projtemplate' && st.projTemplate === t.id;
+          return el('div', { class: `pcw-tpl${on ? ' on' : ''}`, dataset: { tpl: t.id } },
+            el('button', { type: 'button', class: 'pcw-tpl-pick', title: ProjTemplates.describe(t), attrs: { 'aria-pressed': on ? 'true' : 'false' }, on: { click: () => set({ start: 'projtemplate', projTemplate: t.id, projTemplateName: t.name, ...ProjTemplates.cardPatch(t) }) } },
+              el('span', { class: 'pcw-tpl-img', style: t.cover ? { backgroundImage: `url("${t.cover}")` } : {}, text: t.cover ? '' : '📐' }), el('span', { class: 'pcw-tpl-name', text: t.name })),
+            el('button', { type: 'button', class: 'pcw-tpl-x', text: '✕', title: 'Delete this template… (asks first; it goes to the Trash)', attrs: { 'aria-label': `Delete the template ${t.name}` }, on: { click: async () => {
+              try { if (await ProjTemplates.remove(t)) { lists.projTemplates = lists.projTemplates.filter((x) => x.id !== t.id); if (st.projTemplate === t.id) Object.assign(st, { start: 'empty', projTemplate: '', projTemplateName: '' }); paint(); } } catch (err) { status.textContent = calmError(err); }
+            } } }));
+        })));
+        const t = st.start === 'projtemplate' && lists.projTemplates.find((x) => x.id === st.projTemplate);
+        if (t) out.push(el('p', { class: 'hint', text: `${t.name}: ${ProjTemplates.describe(t)}. A new project, with its own copies.` }));
+      }
       if (st.start === 'copy') out.push(select('Which scene?', lists.scenes, st.copyScene, (v) => { st.copyScene = v; }, 'Pick a scene'));
       if (st.start === 'mytemplate') out.push(select('Which template?', lists.templates, st.myTemplate, (v) => { st.myTemplate = v; }, 'Pick a template'));
       if (st.start === 'duplicate') out.push(select('Which project?', lists.projects, st.dupProject, (v) => { st.dupProject = v; }, 'Pick a project'), el('p', { class: 'hint', text: 'The copy keeps its own song, look and moodboard; the name above renames it.' }));
@@ -204,6 +219,8 @@ window.ProjCreate = (() => {
     document.body.append(d);
     card = { d, st, paint };
     paint();
+    // (round 129, next129) My templates: projects saved as templates (read from their folder; the Lab isn't loaded for it)
+    Lazy.load('projtemplates').then(() => ProjTemplates.list({ fresh: true })).then((l) => { lists.projTemplates = l; if (card?.d === d) paint(); }).catch((err) => console.warn('my templates', err));
     d.showModal();
     title.focus();
     return d;
@@ -230,7 +247,15 @@ window.ProjCreate = (() => {
     }
     if (st.start === 'copy' && !st.copyScene) throw Error('Pick the scene to copy, or choose another start.');
     if (st.start === 'mytemplate' && !st.myTemplate) throw Error('Pick the template, or choose another start.');
-    const files = [st.song, st.footage, ...st.pictures, st.model].filter(Boolean);
+    // (round 129, next129) a project template: its song (when it kept one) copied in, unless a song was picked here
+    st.tplMedia = null;
+    if (st.start === 'projtemplate') {
+      const t = window.ProjTemplates?.get(st.projTemplate);
+      if (!t) throw Error('Pick the template, or choose another start.');
+      if (!st.song && !st.footage) st.tplMedia = await ProjTemplates.mediaCopy(t);
+    }
+    const tplSong = st.tplMedia && C.kindOf(st.tplMedia) === 'song' ? st.tplMedia : null;
+    const files = [st.song || tplSong, st.footage, ...st.pictures, st.model].filter(Boolean);
     const p = await PW().create({
       resumeId: retryId, name: nm, brief: st.intent.trim(), persona: st.persona, agentId: st.agentId, sceneId: st.start === 'copy' ? st.copyScene : '',
       boardId: st.boardCopy, plugins: [], files, describe: st.describe, prepare: (proj) => prepare(proj, st),
@@ -243,6 +268,7 @@ window.ProjCreate = (() => {
     const sc = ThreeLab.scenes; const id = p.workspace.sceneId; const x = sc.get(id);
     if (!x) return;
     let Ls = null;
+    if (st.start === 'projtemplate') { await fromProjTemplate(p, st, x); return; } // (round 129, next129)
     if (st.start === 'mytemplate') {
       await Lazy.load('labtemplates');
       const t = (await LabTemplates.list()).find((y) => y.id === st.myTemplate);
@@ -273,11 +299,43 @@ window.ProjCreate = (() => {
     p.prefs = { ...(p.prefs && typeof p.prefs === 'object' ? p.prefs : {}), aspect: st.frame, fps: st.fps, ...(st.agentId ? { agentId: st.agentId } : {}) };
     P().setWorkspace(p, { start: st.start, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(st.palette.length ? { palette: st.palette.slice(0, 16) } : {}) });
   }
+  // (round 129, next129) a project saved as a template: its scene (layers with fresh ids, sliders, music links), its
+  // palette, size and frame rate, its song or footage when it kept one, its moodboard's notes and pictures, its brief's
+  // look and steps. The card's own choices (a palette, a size, a song picked here) win.
+  async function fromProjTemplate(p, st, x) {
+    const sc = ThreeLab.scenes; const id = x.id;
+    await Lazy.load('labtemplates');
+    const t = (await LabTemplates.list({ fresh: true })).find((y) => y.id === st.projTemplate);
+    if (!t) throw Error('That template isn’t here anymore.');
+    const r = TemplateCore.apply(t, {}, { scan: ThreeTweaks.scan, applyValues: ThreeTweaks.applyValues });
+    const fresh = ProjTemplates.freshLayers(r.layers, r.extras);
+    x.layers = fresh.layers; x.code = x.layers[0]?.code || x.code;
+    const pal = st.palette.length ? st.palette : r.palette || t.project?.palette || [];
+    if (pal.length) x.palette = pal.slice(0, 16);
+    sc.changed(id);
+    if (Object.keys(fresh.extras).length) sc.setExtras(id, fresh.extras);
+    sc.setFrame(id, st.frame);
+    const tl = sc.timelineOf(id);
+    if (tl && tl.fps !== st.fps) sc.setTimeline(id, { ...tl, fps: st.fps });
+    const foot = st.footage || (st.tplMedia && C.kindOf(st.tplMedia) === 'footage' ? st.tplMedia : null);
+    if (foot && !sc.songOf(id)) sc.setExtras(id, { media: { path: foot } });
+    st.tplRefs = (r.refs || []).filter((f) => f.path);
+    last.steps.push(`template: ${t.name} · ${x.layers.map((L) => L.name).join(', ')}`);
+    p.prefs = { ...(p.prefs && typeof p.prefs === 'object' ? p.prefs : {}), aspect: st.frame, fps: st.fps, ...(st.agentId ? { agentId: st.agentId } : {}) };
+    P().setWorkspace(p, { start: 'projtemplate', template: t.name, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(pal.length ? { palette: pal.slice(0, 16) } : {}) });
+    try { const n = await ProjTemplates.fillBoard(p, t); if (n) last.steps.push(`moodboard: ${n}`); } catch (err) { toast(`The template’s moodboard: ${calmError(err)}`, { type: 'error' }); }
+    try { const how = await ProjTemplates.fillBrief(p, t); if (how) last.steps.push(`brief: ${how}`); } catch (err) { console.warn('template brief', err); }
+  }
   // after the project opened: the model on its turntable, a recipe, then the brief
   async function after(p, st) {
     const onScreen = () => typeof ThreeLab !== 'undefined' && ThreeLab.scenes?.currentId?.() === p.workspace?.sceneId;
     if (st.start === 'model' && st.model && onScreen() && typeof ThreeModels !== 'undefined') {
       try { await ThreeModels.add(st.model); await ThreeModels.op({ op: 'turntable', speed: 1 }); last.steps.push('model'); } catch (err) { toast(`The 3D model: ${calmError(err)}`, { type: 'error' }); }
+    }
+    // (round 129, next129) a project template's references (pictures, models its layers use) on its scene
+    if (st.start === 'projtemplate' && st.tplRefs?.length && onScreen()) {
+      for (const f of st.tplRefs) { try { await ThreeLab.director.refs.add(f.path, f.key); } catch (err) { console.warn('template ref', err); } }
+      last.steps.push(`refs: ${st.tplRefs.length}`);
     }
     if (st.recipe && st.start !== 'duplicate' && onScreen()) {
       try { await Lazy.load('labrecipes'); const r = (await LabRecipes.list()).find((y) => y.id === st.recipe); if (r) { await LabRecipes.use(r); last.steps.push('recipe'); } } catch (err) { toast(`The recipe: ${calmError(err)}`, { type: 'error' }); }

@@ -613,7 +613,9 @@ const LabTemplates = (() => {
   function init() { register(); actions(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  return { open, close, saveDialog, saveCurrent, form, closeForm, create, undoCreate, list, byName, remove, rename, share, fromPack, root, splitNameArgs, last, sceneNow, // (sceneNow: round 42, labbatch)
+  // (round 129, next129) a template made elsewhere (a project's: projtemplates.js) written like Save does: media copied in, the picture
+  async function saveMade(t, thumb = null) { const ck = C.check(t); if (!ck.ok) throw new Error(ck.problems.join(' ')); const r = await write(ck.t, thumb); await list({ fresh: true }); return { id: ck.t.id, name: ck.t.name, dir: r.dir, kept: r.kept }; }
+  return { saveMade, open, close, saveDialog, saveCurrent, form, closeForm, create, undoCreate, list, byName, remove, rename, share, fromPack, root, splitNameArgs, last, sceneNow, // (sceneNow: round 42, labbatch)
     state: () => ({ picker: Boolean(pk), form: fm ? { template: fm.t.name, values: { ...fm.vals } } : null, save: Boolean(saveDlg), count: cache?.length ?? null }),
     get formApi() { return fm; } };
 })();

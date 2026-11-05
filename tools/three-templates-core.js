@@ -263,6 +263,7 @@ const TemplateCore = (() => {
     for (const r of t?.scene?.refs || []) if (r.path) out.add(r.path);
     if (t?.scene?.extras?.media?.path) out.add(t.scene.extras.media.path);
     for (const f of t?.fields || []) if (MEDIA_KINDS.has(f.kind) && f.value) out.add(f.value);
+    for (const x of t?.project?.board?.pictures || []) if (x?.path) out.add(x.path); // (round 129, next129) a project template's moodboard pictures (projtemplates.js)
     return [...out].filter((p) => typeof p === 'string' && !p.startsWith(TOKEN));
   }
   // map: absolute path → 'files/<name>' (copied into the template's folder) → the template with tokens

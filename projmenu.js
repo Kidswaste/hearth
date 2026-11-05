@@ -107,6 +107,7 @@ const ProjectMenu = (() => {
       S('Share & keep'),
       { id: 'export', label: '⇪ Export project…', hint: 'one .hearthproject file', action: go(() => P.bundle((B) => B.exportProject(p))) },
       { id: 'duplicate', label: '⧉ Duplicate project', action: go(() => P.bundle((B) => B.duplicateProject(p))) },
+      sc ? { id: 'template', label: 'Save as a template…', icon: 'grid', tip: 'Its main scene, palette, size, frame rate and brief, as a start for new projects (＋ New project › Start from › My templates)', action: go(() => window.Lazy.load('projtemplates').then(() => ProjTemplates.saveDialog(p))) } : null, // (round 129, next129)
       folderOf(p) ? { id: 'folder', label: 'Show its folder', icon: 'grid', hint: base(folderOf(p).replace(/[\\/]+$/, '')), action: go(() => showFolder(p)) } : null,
       sc ? { id: 'render', label: 'Render the main scene…', icon: 'export', tip: 'Its main scene in the Lab, then Export (video, stills, GIF…)', action: go(() => renderMain(p)) } : null,
       has('Offline') ? { id: 'offline', label: '⇩ Prepare for offline…', action: go(() => Offline.prepare(p)) } : null,
