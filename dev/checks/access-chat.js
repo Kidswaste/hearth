@@ -24,6 +24,15 @@ const dir = `${window.SMOKE_TMP || '/tmp'}/hearth-access-${Date.now().toString(3
 await fsx.write(`${dir}/a.txt`, 'alpha');
 await fsx.write(`${dir}/c.txt`, 'charlie');
 Access._setTimeout(5000);
+// (round 123, accessfix123) since round 116 every chat belongs to one project, and a new chat with no project open asks
+// "Which project is this chat for?" when the owner's press started it. This check's Native.newChat calls come within the
+// transient activation of its own real clicks (a card's Allow / Deny a few seconds earlier), so the question opened over
+// the chat: "Allow this folder" and "Run without its sandbox…" were clicked on the dialog ("covered by dialog.ui-modal
+// pc-ask"), and the opt-in's `dialog.ui-modal button.primary` was the dialog's ＋ New project…. The owner works in an
+// open project: so does this check (its chats go into a project of their own, as smooth46 / makes do)
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); await until(() => ProjChats._ok(), 20000);
+ProjChats.setScope(Projects.create({ name: 'Access check' }).id);
 activate(claude.id);
 Native.newChat(claude.id);
 await wait(300);
