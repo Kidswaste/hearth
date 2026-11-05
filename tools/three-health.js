@@ -98,7 +98,10 @@ const LabHealth = (() => {
       if (seen?.get(r.key) === sig || (r.kind === 'gpu' && seen?.has(r.key))) continue;
       if (!seen?.has(r.key) && !active(r, now) && r.kind !== 'gpu') continue; // old, quiet: not news
       (seen ||= new Map()).set(r.key, sig);
-      if (sig === 'n' && text.includes(clip(r.message, 60).replace(/…$/, ''))) continue; // its own answer already says it
+      // its own answer already says it. (round 126, deskfix126) not a shader that doesn't compile: since round 112 every
+      // Lab answer lists the scene's errors, so its quote swallowed the line, and the AI said "done" on a scene that draws
+      // nothing; it stays broken until an edit, like a NaN camera, so the line (with its layer) is said once
+      if (sig === 'n' && r.kind !== 'shader' && text.includes(clip(r.message, 60).replace(/…$/, ''))) continue;
       fresh.push(r);
     }
     if (seen) told.set(chatId, seen);
@@ -150,7 +153,7 @@ const LabHealth = (() => {
       : /^SyntaxError\b/.test(r.message) ? `a syntax error${r.line ? ` on line ${r.line}` : ''}` : `it threw an error${r.line ? ` on line ${r.line}` : ''}`;
     // (round 92, labchat92) the error itself on a line of its own (before: only "it threw an error"); two lines, so the
     // chat's error calming (errorcalm.js, one-line notes) leaves the scene's own words alone
-    const detail = r.kind === 'runtime' && !r.paused && !everyFrame(r) ? clip(r.message, 120).replace(/`/g, "'") : '';
+    const detail = (r.kind === 'runtime' && !r.paused && !everyFrame(r)) || r.kind === 'shader' ? clip(r.message, 120).replace(/`/g, "'") : ''; // (round 126, deskfix126) a shader's error too, in three_console's words
     const who = whoOf(c.agentId);
     const box = Native.note(c.agentId, `⚠ Scene error in **${layer}** · ${what}${list.length > 1 ? ` (+${list.length - 1})` : ''}${detail ? `\n\`${detail}\`` : ''}`, { id: 'scene-health', quiet: false,
       actions: [{ label: `Ask ${who} to fix`, title: 'Sends a message with the error and the code around it (you see it in the chat)', run: () => ask(c.agentId, chatId) }] });
