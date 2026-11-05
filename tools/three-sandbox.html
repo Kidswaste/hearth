@@ -555,8 +555,8 @@ const frWrap = new WeakMap();
 function realRAF(fn) {
   let w = frWrap.get(fn);
   if (!w) {
-    w = (t) => { if (t !== FR.t) { gateSeen(t); runSeen(t); FR.t = t; FR.E += 1; } if (runCount(w, t)) return; FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } }; // (labchecks109: runSeen / runCount, the runaway guard below)
-    w.__rw = -1; w.__rn = 0; w.__rt = -1; w.__rk = 0; // (labchecks109: the runaway guard's counts for this loop)
+    w = (t) => { if (t !== FR.t) { gateSeen(t); runSeen(t); FR.t = t; FR.E += 1; } if (runCount(w, t)) { runDefer(w); return; } w.__ran += 1; FR.inRaf = true; try { fn(t); } finally { FR.inRaf = false; } }; // (labchecks109: runSeen / runCount, the runaway guard below)
+    w.__rw = -1; w.__rn = 0; w.__rt = -1; w.__rk = 0; w.__ran = 0; w.__rq = false; // (labchecks109: the runaway guard's counts for this loop · round 124, labdraw124: __ran / __rq, see runDefer)
     frWrap.set(fn, w);
   }
   // (round 108, beat108) a frame held by the gate answers GATE_ID, not 0, and is held once: the page's loops keep the
@@ -620,7 +620,7 @@ function gateMs() {
 // counters and two compares per frame callback, a few divisions a second. window.__labRunaway: the checks' view
 // (dev/checks/realscene-lib.js); bug107(true) gives held frames round 107's answer again (checks only).
 const RUN = { k: 4, kf: 4, holdMs: 2000, win: 0, t0: 0, e0: 0, top: 0, topF: 0, calls: 0, hotMs: 0, lim: 0, hz: 0, tripped: false, trips: 0, at: 0, info: null, dropped: 0, bug107: false,
-  peak: 0, peakF: 0, peakCalls: 0, windows: 0 };
+  peak: 0, peakF: 0, peakCalls: 0, windows: 0, deferred: 0 }; // (round 124, labdraw124) deferred: dropped calls given their next frame (runDefer)
 function runSeen(t) {
   const dt = t - RUN.t0;
   if (dt < 1000) return;
@@ -647,6 +647,19 @@ function runCount(w, t) {
   if (w.__rk > (RUN.tripped ? 1 : RUN.kf)) { RUN.dropped += 1; return true; }
   return false;
 }
+// (round 124, labdraw124) a dropped call is never the loop's last: the page's own loops (the layers' flush, the
+// compositor, the frame counter) keep "a frame is coming" while one is asked for, so a drop that was the only call
+// pending stopped them for good (the preview froze; its pictures for the gallery, the precomps and the thumbnails came
+// back black, dim or not at all). On a software GPU a page's frames can come with the same time twice in a row, so the
+// guard tripped on its own (3 calls a second, 2 in "one frame") and then dropped the next frame of every loop. Now a
+// dropped call comes back once in the next frame, unless the loop ran meanwhile (then it asked for its own next frame
+// itself): still at most one extra call a frame per loop, so a runaway can't grow through it.
+function runDefer(w) {
+  if (w.__rq) return;
+  w.__rq = true; RUN.deferred += 1;
+  const at = w.__ran;
+  nativeRAF((t) => { w.__rq = false; if (w.__ran === at) w(t); });
+}
 function runTrip(per, calls, hz) {
   RUN.tripped = true; RUN.trips += 1; RUN.at = realNow();
   RUN.info = { loopPerSec: Math.round(per), loopPerFrame: RUN.topF, callsPerSec: Math.round(calls), screenHz: Math.round(hz), limit: Math.round(RUN.k * hz), forMs: Math.round(RUN.hotMs), held: GATE.q.length, gate: Boolean(GATE.timer) };
@@ -655,7 +668,7 @@ function runTrip(per, calls, hz) {
   post({ type: 'console', level: 'warn', text: `The preview asked for its frames far faster than the screen shows them (${RUN.info.loopPerSec} a second against ${RUN.info.screenHz}); it went back to plain frames so it keeps drawing.` });
 }
 window.__labRunaway = {
-  state: () => ({ tripped: RUN.tripped, trips: RUN.trips, info: RUN.info, dropped: RUN.dropped, peakLoopPerSec: Math.round(RUN.peak), peakLoopPerFrame: RUN.peakF, peakCallsPerSec: Math.round(RUN.peakCalls), screenHz: Math.round(RUN.hz), limit: Math.round(RUN.lim), hotMs: Math.round(RUN.hotMs), windows: RUN.windows, bug107: RUN.bug107 }),
+  state: () => ({ tripped: RUN.tripped, trips: RUN.trips, info: RUN.info, dropped: RUN.dropped, deferred: RUN.deferred, peakLoopPerSec: Math.round(RUN.peak), peakLoopPerFrame: RUN.peakF, peakCallsPerSec: Math.round(RUN.peakCalls), screenHz: Math.round(RUN.hz), limit: Math.round(RUN.lim), hotMs: Math.round(RUN.hotMs), windows: RUN.windows, bug107: RUN.bug107 }),
   // a new measure: the peaks from now (all: the trip too, back to the gated frames; checks only)
   reset: (all = false) => { RUN.peak = 0; RUN.peakF = 0; RUN.peakCalls = 0; RUN.windows = 0; RUN.dropped = 0; RUN.topF = 0; if (all) { RUN.tripped = false; RUN.info = null; RUN.hotMs = 0; } return true; },
   bug107: (on) => { RUN.bug107 = Boolean(on); return RUN.bug107; },
