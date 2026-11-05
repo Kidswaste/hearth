@@ -27,7 +27,11 @@ await window.hub.saveChat({ id, agentId: claude.id, title: 'Intro video v2', upd
 await wait(400);
 await Sync.now({ quiet: true }).catch(() => {});
 await until(() => Sync.status().state === 'synced', 20000);
-H.chats = await window.hub.listChats(); Panel.render();
+// (round 125, checksweep125) since round 116 the chats list shows the open project's chats only: open one, the chat in it
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); await until(() => ProjChats._ok(), 20000);
+const P125 = Projects.create({ name: 'Versions check' }); ProjChats.setScope(P125.id);
+H.chats = await window.hub.listChats(); Projects.add(P125, 'chat', id, 'Intro video v2', { links: false }); Panel.render(); await wait(300);
 await click('.space-chats'); // the chats list (rail › Chats)
 await until(() => J.visible(document.querySelector(`#chat-groups .item[data-key="${CSS.escape(id)}"]`)), 8000);
 const row = await until(() => document.querySelector(`#chat-groups .item[data-key="${CSS.escape(id)}"]`), 8000) && document.querySelector(`#chat-groups .item[data-key="${CSS.escape(id)}"]`);

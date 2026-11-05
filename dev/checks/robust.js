@@ -39,6 +39,12 @@ EngineHealth.notice(EngineHealth.report());
 step('no notice once it is fixed', !EngineHealth.problems().length);
 
 // 2. signed out: the failed reply has the sign-in button; it signs in in a window, then Retry answers
+// (round 125, checksweep125) since round 116 a new chat with no project open asks "Which project is this chat for?" when
+// the owner's press started it (the Update click above still counts): the question covered the sign-in button. The
+// owner works in an open project: so does this check (as aicheck and access-chat do)
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); await until(() => ProjChats._ok(), 20000);
+ProjChats.setScope(Projects.create({ name: 'Robust check' }).id);
 activate(claude.id); await wait(300);
 Native.newChat(claude.id);
 await sw({ claudeVersion: '2.1.400', claudeLoggedOut: '1' });

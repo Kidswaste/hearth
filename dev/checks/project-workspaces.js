@@ -15,7 +15,7 @@ await smoke({shot:window.SMOKE_SAVES+'/project.png'});
 await ProjectWorkspace.go('scene');check(ThreeLab.scenes.currentId()===p.workspace.sceneId,'dedicated scene');check(Native.view(c.agentId).input===input,'same composer follows');check(view.root.closest('.surface').dataset.id==='tool:three','chat beside scene');
 await ProjectWorkspace.go('board');await CreativePlayground.openFeature('story');await until(()=>document.querySelector('.wb-story-layout'),'storyboard');
 const title=document.querySelector('.wb-content input[aria-label="Storyboard title"]');title.value='Watchdog storyboard';title.dispatchEvent(new Event('change'));await WorkbenchUI.flush();
-check(WorkbenchUI.scope()===p.id,'scoped worktable');check(WorkbenchUI.snapshot().vst.projectPlugins.join()==='Vital','chosen plugin');
+check(WorkbenchUI.scope()===p.id,'scoped worktable');check(String(p.workspace.plugins)==='Vital','chosen plugin'); // (round 125, checksweep125) slim116 stopped copying the project's instruments into the worktable (vst.projectPlugins): the project keeps them
 await smoke({shot:window.SMOKE_SAVES+'/creative-board.png'});
 input.value='Keep this unsent Watchdog idea';input.dispatchEvent(new Event('input',{bubbles:true}));
 const p2=await ProjectWorkspace.create({name:'Signal garden',brief:'A playful game prototype.',persona:'builder',plugins:['Serum 2']});
