@@ -14,7 +14,7 @@
 const S113Set = (() => {
 const DAY = 864e5;
 const PROJECTS = [
-  { id: 'pj-s113-travel', name: 'Travel', chats: ['s113-kyoto', 's113-cafe'] }, // (round 127: + the café, so the chats filter finds both in one open project)
+  { id: 'pj-s113-travel', name: 'Travel', chats: ['s113-kyoto'] },
   { id: 'pj-s113-clink', name: 'Clink', chats: ['s113-intro', 's113-clink-shader'] },
   { id: 'pj-s113-old', name: 'Old archive', chats: ['s113-arch'], status: 'archived' },
 ];

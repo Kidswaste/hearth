@@ -196,8 +196,10 @@ try {
   // (back on a chat first: switching views isn't the filter's work)
   if (palInput()?.isConnected) { await key('Escape', 'Escape'); await wait(150); }
   activate(H.claudeAgent().id); await wait(1200);
-  // (round 127, checksweep127) the chats list shows the open project's chats: Travel (Kyoto + the café) opened first
-  if (window.ProjChats) { await until(() => ProjChats.projectIdOf('s113-kyoto'), 'Travel read', 400).catch(() => null); ProjChats.setScope(ProjChats.projectIdOf('s113-kyoto')); Panel.render(); await wait(600); }
+  // (round 127, checksweep127) the chats list shows the open project's chats: each chat's own project is opened before
+  // it is looked for (Kyoto's Travel, then the café's)
+  const openOf = async (id) => { if (!window.ProjChats) return; const pid = await until(() => ProjChats.projectIdOf(id), `${id}'s project`, 400).catch(() => null); if (pid) { ProjChats.setScope(pid); Panel.render(); await wait(600); } };
+  await openOf('s113-kyoto');
   await phase('panel', async () => {
     const box = document.querySelector('#chat-search');
     need(box?.checkVisibility?.({ visibilityProperty: true }) !== false, 'the chats list\'s search box is on screen');
@@ -210,16 +212,26 @@ try {
     mo.disconnect();
     const kyoto = items().some((x) => /Kyoto trip plan/.test(x));
     out.panel.kyotoRows = items().length;
-    box.select(); await type('cafe'); await wait(250);
+    box.select(); await key('Backspace', 'Backspace'); await wait(250); box.blur();
+    need(kyoto, `the chats filter: "kyoto" ${kyoto}`);
+    need(pct(times.filter((x) => x != null), 0.95) <= BUDGET.titleMs, `the chats filter: the list ${JSON.stringify(times)} ms after each key (budget ${BUDGET.titleMs})`);
+    return { keyToListMs: { '1': times[0], '2': times[1], '5': times[4], all: times }, kyoto };
+  });
+  // (round 127, checksweep127) the café's chat is in another project: that one opened (a project switch, not the filter's
+  // work: reported, not budgeted), then the filter's words
+  await phase('panelWords', async () => {
+    await openOf('s113-cafe');
+    const box = document.querySelector('#chat-search');
+    const items = () => [...document.querySelectorAll('#chat-groups .item')].map((x) => x.textContent);
+    box.focus(); box.select(); await type('cafe'); await wait(250);
     const cafe = items().some((x) => /Café Oberkampf menu/.test(x));
     box.select(); await type('oberkampf cafe'); await wait(250);
     const both = items().some((x) => /Café Oberkampf menu/.test(x));
     if (!both) out.panel.anyOrderSeen = { rows: items().slice(0, 6), groups: [...document.querySelectorAll('#chat-groups .group')].map((g) => `${g.dataset.id}${g.classList.contains('collapsed') ? ' (folded)' : ''}`).slice(0, 8) };
     box.select(); await key('Backspace', 'Backspace'); await wait(250); box.blur();
-    need(kyoto && cafe && both, `the chats filter: "kyoto" ${kyoto}, "cafe" → Café ${cafe}, "oberkampf cafe" (any order) ${both}`);
-    need(pct(times.filter((x) => x != null), 0.95) <= BUDGET.titleMs, `the chats filter: the list ${JSON.stringify(times)} ms after each key (budget ${BUDGET.titleMs})`);
-    return { keyToListMs: { '1': times[0], '2': times[1], '5': times[4], all: times }, kyoto, cafe, anyOrder: both };
-  });
+    need(cafe && both, `the chats filter: "cafe" → Café ${cafe}, "oberkampf cafe" (any order) ${both}`);
+    return { cafe, anyOrder: both };
+  }, { judge: false });
 
   // ---------- 4. open one: its project, its chat, the message ----------
   await phase('open', async () => {
