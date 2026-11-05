@@ -13,6 +13,11 @@
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 10000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const frames = (n = 2) => new Promise((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (with none open, its new chats asked "Which project is this chat for?" over AI setup's ⋯): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Connections check' }); ProjChats.setScope(P123.id);
 const fail = []; const out = {};
 const ok = (c, what) => { if (!c) fail.push(what); return Boolean(c); };
 const SECRET = 'sk-smoke-0123456789';

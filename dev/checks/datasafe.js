@@ -8,7 +8,9 @@
 //  4. 🛟 Recover…: finds a chat that is only in a backup zip; Bring back adds it next to yours
 //  5. the ways in: Settings › Backups › Recover…, Ctrl/⌘+K, /recover
 //   node dev/datasafe-test.js --make-fixture /tmp/hearth-datasafe-fixture
-//   node dev/smoke.js --data /tmp/hearth-datasafe-fixture --wait 300 --check-timeout 120000 --script dev/checks/datasafe.js --shot /tmp/datasafe.png
+//   node dev/smoke.js --data /tmp/hearth-datasafe-fixture --wait 300 --check-timeout 120000 --no-lazy-wait --script dev/checks/datasafe.js --shot /tmp/datasafe.png
+// (round 123, checksweep123) --no-lazy-wait: the files are held for the first 20 s only, and smoke's wait for the
+// background groups (the Lab's prefetch, up to 30 s) outlasted it: the settings were read again before step 1 looked
 const out = { steps: [] };
 const step = (name, ok, info) => { out.steps.push({ name, ok: Boolean(ok), ...(info === undefined ? {} : { info }) }); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

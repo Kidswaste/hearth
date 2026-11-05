@@ -453,6 +453,9 @@ const EXTRA_FLAGS = {
   'adaptive-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
   // (round 74, projdesk74) Codex's project checks that only passed when started by hand: auto-improve sends through the
   // fake engines, the Sound desk test needs the fake VST host (dev/fixtures/fake-vst-py; never real instruments)
+  // (round 123, checksweep123) Astra × Claude on the app-server transport: the fakes' paths its own runner
+  // (dev/collab-appserver-smoke.js) writes into the script; run here, it failed "Couldn't find Codex" every time
+  'collab-appserver': ['--wait', '1500', '--eval', `window.COLLAB_FAKES=${JSON.stringify({ codex: path.join(DEV, 'fake-codex-server.js').split(path.sep).join('/'), claude: path.join(DEV, 'fake-claude-astra.js').split(path.sep).join('/') })}`],
   'project-auto-improve': ['--fake-engines'],
   'project-sound': ['--fake-vst'],
 };

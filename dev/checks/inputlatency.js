@@ -112,10 +112,15 @@ applyTheme(document.getElementById('user-theme').textContent);
 
 // ---- chats: one of 300 messages, and some to click between ----
 const para = (i) => `Reply ${i}: here is **some** text with \`code\` and a [link](https://example.com).\n\n- one\n- two\n\n${i % 10 === 0 ? '```js\nconst x = 1;\nconsole.log(x);\n```' : 'Another paragraph of plain words to give it some height.'}`;
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (this check's chats go into one of their own): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Input latency check' }); ProjChats.setScope(P123.id);
 const mk = async (title, n, ago = 100000) => {
   const at0 = Date.now() - ago;
   const c = { id: `il-${Math.random().toString(36).slice(2, 7)}`, agentId: claude.id, title, createdAt: at0, updatedAt: at0, messages: Array.from({ length: n }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: i % 2 ? para(i) : `Question ${i}: what about this part?`, at: at0 + i * 100 })) };
-  await window.hub.saveChat(c); Native.save(c); return c;
+  await window.hub.saveChat(c); Native.save(c); Projects.add(P123, 'chat', c.id, title, { links: false }); return c; // (round 123, checksweep123)
 };
 const big = await mk('IL long chat', 300, 1000);
 const others = [await mk('IL chat A', 120, 50000), await mk('IL chat B', 60, 60000)];
