@@ -224,12 +224,16 @@ window.ProjectWorkspace = (() => {
       if(options.files?.length){const b=await Board.load(p.workspace.boardId);await Board.addFiles(options.files.filter(f=>/\.(png|jpe?g|webp|gif|mp4|webm)$/i.test(f)),null,b);}
       const song=options.files?.find(f=>/\.(wav|mp3|flac|ogg|m4a|aiff?)$/i.test(f));
       if(song)ThreeLab.scenes.setExtras(p.workspace.sceneId,{media:{path:song}});
+      if(options.prepare)await options.prepare(p); // (round 128, projcreate128) the new-project card's start, palette, size and footage on the scene, before it opens
       await P.flush(); await open(p.id);
       if(options.describe && options.brief) describe(p).catch(err=>toast(`Project saved. Description: ${calmError(err)}`,{type:'error'}));
       return p;
     } catch(err) { err.projectId=p.id; toast(`“${p.name}” is saved. Reopen it to resume setup.`,{timeout:8000}); throw err; }
   }
   async function wizard(defaults={}) {
+    // (round 128, projcreate128) the richer card (projcreate.js, lazy group projcreate); this one only if that group can't load
+    let rich=null;try{await Lazy.load('projcreate');rich=window.ProjCreate;}catch(err){console.warn('projcreate',err);}
+    if(rich)return rich.wizard(defaults);
     await P.ready();
     const d=el('dialog',{class:'ui-modal pw-wizard'}), form=el('form'), title=el('input',{value:defaults.name||'',placeholder:'Name this little world',required:true,maxLength:48}), brief=el('textarea',{rows:3,placeholder:'What do you want to make?',maxLength:2000}), persona=el('select'), agents=el('select'), scene=el('select',{},el('option',{value:'',text:'A fresh animated scene'}));
     Object.entries(C.PERSONAS).forEach(([id,[label]])=>persona.append(el('option',{value:id,text:label})));

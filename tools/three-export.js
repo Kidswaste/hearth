@@ -108,7 +108,10 @@ const LabExport = (() => {
   }
 
   // ---------- what gets rendered: the scene on screen, or the Lab sequence ----------
-  const frameNow = () => { const z = LAB()?.stage?.size; return z?.w && z?.h ? { w: z.w, h: z.h } : { w: 1920, h: 1080 }; };
+  // (round 128, projcreate128) without the sequence's handle (the Lab sequence not opened yet) "Lab frame" is the scene's own
+  // frame (its 9:16, 4K…), as its project set it; 1920×1080 only for a scene with none ("Fit")
+  const sceneFrame = () => { try { const id = ThreeLab.scenes?.currentId?.(); const z = id && ThreeMedia.SIZES.find((x) => x.id === ThreeLab.scenes.frameOf(id)); return z?.w ? { w: z.w, h: z.h } : null; } catch { return null; } };
+  const frameNow = () => { const z = LAB()?.stage?.size; return z?.w && z?.h ? { w: z.w, h: z.h } : sceneFrame() || { w: 1920, h: 1080 }; };
   // a layer's code with the sliders as they are now (unsaved moves too), so the export is what you see
   function liveCode(L) {
     try {
@@ -600,7 +603,9 @@ const LabExport = (() => {
   const SIZE_CHIPS = [['frame', 'Lab frame'], ['1080p', '1080p'], ['4k', '4K'], ['8k-square', '8K □'], ['custom', 'W×H…']];
   async function panel({ format = null, source = null } = {}) {
     const last = opts0();
-    const st = { format: format || last.format || 'mp4', size: last.size || 'frame', custom: last.custom || '', fps: last.fps || 30, quality: last.quality || 'high', ss: last.ss || 1, blur: last.blur || 1, source: source || (SEQ()?.active ? 'seq' : 'scene') };
+    // (round 128, projcreate128) a scene of a project made with a size and frame rate: the project's own (its frame is the scene's), else the last render's
+    const own = (() => { try { const id = ThreeLab.scenes?.currentId?.(); const p = id && window.Projects?.ofItem?.('scene', id)?.find((x) => x.workspace?.sceneId === id); return p?.workspace?.fps ? p.workspace : null; } catch { return null; } })();
+    const st = { format: format || last.format || 'mp4', size: own?.frame ? 'frame' : last.size || 'frame', custom: last.custom || '', fps: Number(own?.fps) || last.fps || 30, quality: last.quality || 'high', ss: last.ss || 1, blur: last.blur || 1, source: source || (SEQ()?.active ? 'seq' : 'scene') };
     const dlg = el('dialog', { class: 'ui-modal sq-render-panel lx-panel' });
     const chip = (on, text, title, click) => el('button', { type: 'button', class: `sq-chip${on ? ' on' : ''}`, text, title, on: { click } });
     const body = el('div', { class: 'sq-rp-body' });
