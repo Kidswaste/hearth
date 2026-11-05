@@ -94,6 +94,11 @@ await section('2. template + song + pictures + palette + brief', async () => {
   const rowOn = (name) => [...(rp?.querySelectorAll('.sq-rp-row') || [])].find((r) => r.querySelector('b')?.textContent === name)?.querySelector('.sq-chip.on')?.textContent || '';
   step('the Render card in the project\'s scene: its 60 fps and its frame (not the last render\'s 25 fps, 4K)', rowOn('Frame rate') === '60' && /^Lab frame/.test(rowOn('Size')), { fps: rowOn('Frame rate'), size: rowOn('Size') });
   rp?.close(); store.set('three.export', {});
+  // "Lab frame" is the scene's own 9:16 frame: the label and a real still render (1080×1920, not 1920×1080)
+  const label = (rowOn('Size').match(/(\d+)×(\d+)/) || []).slice(1).map(Number);
+  let still = null; try { still = await LabExport.render({ format: 'still', size: 'frame', at: 0.2, source: 'scene', quiet: true }); } catch (e) { still = { error: e.message }; }
+  const dims = still?.path ? await new Promise((r) => { window.hub.fs.read(still.path, { encoding: 'base64' }).then((b) => { const i = new Image(); i.onload = () => r([i.naturalWidth, i.naturalHeight]); i.onerror = () => r(null); i.src = `data:image/png;base64,${b}`; }, () => r(null)); }) : null;
+  step('"Lab frame" in a 9:16 project: the Render card says 1080×1920 and a still renders at 1080×1920', JSON.stringify(label) === '[1080,1920]' && JSON.stringify(dims) === '[1080,1920]' && still?.w === 1080 && still?.h === 1920, { label, dims, still: still && { w: still.w, h: still.h, error: still.error } });
   await until(async () => (await Board.load(p.workspace.boardId))?.items?.length >= 2, 15000);
   const b = await Board.load(p.workspace.boardId);
   step('the pictures are on the project\'s moodboard; the files are in the project', (b?.items?.length || 0) >= 2 && [SONG, ...PICS].every((f) => p.items.some((it) => it.type === 'file' && it.ref === f)), { board: b?.items?.length });

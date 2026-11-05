@@ -47,6 +47,12 @@ Render card (tools/three-export.js `panel()`) uses them when the scene on screen
 uses the last render's settings as before. Picking a frame rate in the card never changes the global Render default
 (`three.export`).
 
+**Fixed on the way: "Lab frame" rendered at 1920×1080.** The Render card read the Lab's frame through the Lab
+sequence's handle. Before the sequence had been opened that handle was missing, so "Lab frame" fell back to 1920×1080:
+a 9:16 scene's still came out 1920×1080, and the card said so too (checked before the fix: 1920×1080 still). Now,
+without that handle, "Lab frame" is the scene's own frame (`ThreeLab.scenes.frameOf`, which the project set), and the
+label shows the true size (tools/three-export.js `frameNow`, marked).
+
 Nothing is uploaded and nothing is installed. The only AI calls are ✦ Suggest a name (on click), the brief (with its
 tick) and the description (with its tick).
 
@@ -64,7 +70,8 @@ One app check, **dev/checks/projcreate128.js** (group `projcreate128` in dev/run
    the defaults (empty, 16:9, 30 fps) and no brief.
 2. Audio visualizer, a song and two pictures dropped, ✦ Suggest a palette (colors read), then House clicked, 9:16,
    60 fps, Claude, the moodboard tick (the global Render default stays untouched; the Render card opened in that scene
-   shows 60 fps and the Lab frame, not the last render's 25 fps / 4K): the scene has the Spectrum crown's layers in House colors, 9:16, the song; the
+   shows 60 fps and the Lab frame, not the last render's 25 fps / 4K; "Lab frame" reads 1080×1920 and a still
+   renders at 1080×1920): the scene has the Spectrum crown's layers in House colors, 9:16, the song; the
    moodboard has the pictures. The brief goes to a stub ProjectBrief: `prepare(id, { moodboard: true, refs, song,
    scene, notes })`, then `open(id)`.
 3. The card again: 9:16, 60 fps and Claude are remembered.
@@ -83,6 +90,8 @@ Run: `projcreate128` ✓ (58 s), `projects` ✓, `projaudit108` ✓, `projopen10
   brief as soon as the project opens. "✦ Suggest a name" finds a name from what you describe.
 - Hearth remembers your last size, frame rate and AI on each computer. A project keeps its own size and frame rate, and
   Render uses them inside that project.
+- Fixed: a vertical (or 4K) scene rendered on "Lab frame" came out 1920×1080 until the Lab's sequence had been
+  opened once. It now renders at the scene's own size, and the Render card shows that size.
 
 ## For Codex
 - `project-workspace.js` (round 128, projcreate128), two marked edits:
@@ -94,6 +103,7 @@ Run: `projcreate128` ✓ (58 s), `projects` ✓, `projaudit108` ✓, `projopen10
 - The card saves `start`, `frame`, `fps`, `aiSeesMoodboard` and (when chosen) `palette` in `p.workspace`. These are
   additive fields; `ProjectWorkspaceCore.workspace()` keeps them as they are.
 - `tools/three-export.js` (not Codex-owned) `panel()`: one marked line reads the open scene's project `fps` / `frame`
-  (through `Projects.ofItem`) before falling back to `three.export`.
+  (through `Projects.ofItem`) before falling back to `three.export`; `frameNow()` falls back to the scene's own frame
+  (`ThreeLab.scenes.frameOf` → `ThreeMedia.SIZES`) before 1920×1080 when the sequence's handle is missing.
 - Duplicate a project… uses `ProjBundle.duplicateProject()` (unchanged), then `Projects.rename()` and
   `ProjectWorkspace.open()`.
