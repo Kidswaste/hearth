@@ -79,7 +79,7 @@ async function storeSide() {
       if (qq.none) ok(`${why}: no row`, !r.hits.length && !ids.includes(qq.none), ids.slice(0, 5));
       if (qq.once) ok(`${why}: one row for it`, ids.filter((id) => id === qq.top).length === 1, ids);
       if (qq.k != null) ok(`${why}: lands on #${qq.k}, its words in the snippet`, r.hits[0]?.k === qq.k && new RegExp(qq.q, 'i').test(r.hits[0]?.snippet || ''), r.hits[0]);
-      if ('project' in qq) ok(`${why}: its project ${JSON.stringify(qq.project)}`, (r.hits[0]?.project?.name ?? null) === qq.project, r.hits[0]?.project);
+      if ('project' in qq) ok(`${why}: its project ${JSON.stringify(qq.project)}`, (r.hits[0]?.project?.name ?? null) === qq.project && Boolean(r.hits[0]?.project?.archived) === Boolean(qq.archived), r.hits[0]?.project); // (round 127: + archived)
     }
     ok(`each find after the catch-up: p50 ${Math.round(pct(times, 0.5))} ms, p95 ${Math.round(pct(times, 0.95))} ms of the store thread (≤ 50 ms)`, pct(times, 0.95) <= 50, times.map(Math.round));
     // 2. 1, 2 and 5 letters
