@@ -10,6 +10,7 @@
 //   compact(brief, name)           → the director's prompt part (≤ PART_MAX characters, byte-stable for one brief)
 //   full(brief, name) / toText / fromText → the whole brief (three_do brief), and the "Edit the brief" round trip
 //   prepare(projectId, opts, deps) → the whole flow with the window's reads / AI / store injected (the test's fake ones)
+//   (round 129, draft129) draftSteps / draftMessage / draftCost / draftLine: ✦ Build a first draft (projectbrief-draft.js)
 // Store: kv 'project-briefs' { v: 1, list: [{ id: projectId, brief, compact, fp, at, by, eyes, done }] } (eyes: the owner
 // allowed "Let the AI look at the moodboard" for this project) (a list of
 // objects with ids: cloud sync merges two computers' changes item by item; sync-kinds.js syncs it with the projects).
@@ -227,7 +228,44 @@ const ProjectBriefCore = (() => {
     return { ...view({ id: projectId, ...e }), usage: r.usage || null };
   }
 
-  const api = { STORE, PART_MAX, inputs, fingerprints, changed, prompt, request, parse, compact, toText, fromText, full, norm, entry, put, view, prepare, hash, redact, HEAD };
+  // ---------- ✦ Build a first draft (round 129, draft129) ----------
+  // The steps a draft builds: the brief's steps up to `upto` (1-based; all when none) that aren't ticked yet (0-based).
+  function draftSteps(b, done = [], upto = 0) {
+    const n = b?.steps?.length || 0;
+    const end = upto > 0 ? Math.min(n, Math.floor(upto)) : n;
+    const d = new Set(done || []);
+    return Array.from({ length: end }, (_x, k) => k).filter((k) => !d.has(k));
+  }
+  const DRAFT_HEAD = 'Draft · build';
+  // The one message the director gets on the owner's click (the owner's own message: no prompt part, no budget). keep:
+  // the names of the layers already in the scene (the owner's): left alone unless a step names them.
+  function draftMessage(b, name = 'this project', { steps = [], keep = [] } = {}) {
+    if (!b || !steps.length) return '';
+    const nums = steps.map((k) => k + 1);
+    const run = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+    const span = nums.length === 1 ? `step ${nums[0]}` : run ? `steps ${nums[0]}–${nums.at(-1)}` : `steps ${nums.join(', ')}`;
+    const L = [`${DRAFT_HEAD} ${span} of the project brief for "${cap(name, 40)}" in this one reply: a first draft the owner can undo in one click.`];
+    if (b.mood || b.look) L.push([b.mood && `Mood: ${b.mood}.`, b.look && `Look: ${b.look}`].filter(Boolean).join(' '));
+    if (b.palette?.length) L.push(`Palette: ${b.palette.join(' ')}`);
+    if (b.tempo?.length) L.push(`Tempo plan: ${b.tempo.map((t) => `${t.section ? `${t.section}: ` : ''}${cap(t.plan, 80)}`).join('; ')}`);
+    L.push('Steps to build:', ...steps.map((k) => `${k + 1}) ${b.steps[k]}`));
+    const keepWords = keep.length ? `Leave the layers already in the scene (${keep.slice(0, 12).map((n) => `"${cap(n, 30)}"`).join(', ')}) as they are unless a step names them.` : 'The scene starts empty or nearly: build on top.';
+    L.push(`How: for each step add NEW layers (three_do add_layer) in the palette's colors; keyframe them to the song's sections where the tempo plan says (three_do keyframes, timeline_edit cues; three_do media_info has the section times); use looks and materials where a step asks. ${keepWords} When a step has landed, tick it: three_do {"cmd": "brief", "done": N} with its number (full tool list: three_brief {"done": N}). At the end take one three_screenshot, check it against the brief, and say in 2–4 lines what you built and what to try next.`);
+    return L.join('\n');
+  }
+  // A rough cost of the draft run, from the chat's per-message base (the fixed prompt + tools + the chat so far, as
+  // director-cost / chat-cost measure it): each step ≈ 3 model round trips (add, keyframes, tick), + 2 (the look, the
+  // end); every trip re-reads the base (mostly from the cache) plus the tool results so far (≈ 500 tokens a trip).
+  function draftCost({ steps = 1, base = 9000 } = {}) {
+    const trips = Math.max(1, steps) * 3 + 2;
+    const input = Math.round(trips * base + 500 * (trips * (trips - 1)) / 2);
+    const output = Math.round(Math.max(1, steps) * 1400 + 300);
+    return { trips, input, output, cachedShare: trips > 1 ? Math.round(((trips - 1) * base / input) * 100) / 100 : 0 };
+  }
+  const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
+  const draftLine = (c, who = 'Claude', model = '') => `About ${kfmt(c.input)} tokens in (most re-read from the cache) and ${kfmt(c.output)} out · ${who}${model ? ` · ${model}` : ''}`;
+
+  const api = { STORE, PART_MAX, inputs, fingerprints, changed, prompt, request, parse, compact, toText, fromText, full, norm, entry, put, view, prepare, hash, redact, HEAD, draftSteps, draftMessage, draftCost, draftLine, DRAFT_HEAD };
   if (typeof module !== 'undefined') module.exports = api;
   return api;
 })();

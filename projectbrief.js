@@ -160,6 +160,25 @@ const ProjectBrief = (() => {
     task.finally(() => { preparing.delete(pid); paintAll(); }).catch(() => {});
     return task;
   }
+  // (round 129, draft129) seed(projectId, { look, steps, mood?, palette? }) → Promise<brief>: a brief stored without the AI
+  // (next129's "new project from a saved template"), by: 'template', no step done. Stored like any brief: synced, its
+  // inputs' fingerprints taken now (so stale() works), the plan card shows it.
+  async function seed(pid, { look = '', steps = [], mood = '', palette = [], tempo = [], risks = [], questions = [] } = {}) {
+    await ready();
+    if (!readOk) throw new Error('The project briefs couldn\'t be read, so nothing is saved over them.');
+    if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+    const p = project(pid);
+    if (!p) throw new Error('That project isn\'t here.');
+    const b = C.fromText(C.toText({ mood, look, palette, tempo, steps, risks, questions }));
+    if (!b) throw new Error('A brief needs at least one step.');
+    let fp = null;
+    try { fp = C.fingerprints(C.inputs(await gather(pid, {}, { light: true }))); } catch { /* none: never stale */ }
+    set(pid, { brief: b, compact: C.compact(b, p.name), fp, at: Date.now(), by: 'template', done: [], pictures: 0 });
+    if (fp) now.set(pid, { fp, t: Date.now() });
+    unhide(pid);
+    await write();
+    return get(pid);
+  }
   function get(pid) { if (!readP) ready(); return C.view(entry(pid)); }
   // stale(projectId) → bool: something the brief read changed since (checked in the background, at most every 15 s)
   function stale(pid) { return staleWhat(pid).length > 0; }
@@ -277,10 +296,12 @@ const ProjectBrief = (() => {
       eyesBox(pid, e),
       btn('Hide', 'Hide the plan here (/brief show brings it back)', () => hide(pid))));
     node.append(det);
+    const draft = window.BriefDraft?.row(pid, { agentId }); // (round 129, draft129) ✦ Build a first draft, its progress and ↶ Undo the draft (outside the fold: seen while it builds)
+    if (draft) node.append(draft);
     return node;
   }
   // what a card shows, so a chat's redraw keeps the same card when nothing changed
-  const keyOf = (pid) => { const e = entry(pid); return JSON.stringify([e?.at || 0, e?.edited || 0, e?.done || [], e?.eyes === true, preparing.has(pid), (now.get(pid)?.fp && e?.fp) ? C.changed(e.fp, now.get(pid).fp) : []]); };
+  const keyOf = (pid) => { const e = entry(pid); return JSON.stringify([e?.at || 0, e?.edited || 0, e?.done || [], e?.eyes === true, preparing.has(pid), (now.get(pid)?.fp && e?.fp) ? C.changed(e.fp, now.get(pid).fp) : [], window.BriefDraft?.key(pid) || '']); }; // (round 129, draft129: + the draft's state)
 
   // ---------- in the chats ----------
   function paintIn(agentId, v, chat) {
@@ -303,6 +324,8 @@ const ProjectBrief = (() => {
       if (typeof Native === 'undefined') return;
       for (const a of H.agents()) { const v = Native.view(a.id); if (v) paintIn(a.id, v, Native.current(a.id)); }
       for (const n of document.querySelectorAll('.pb-card[data-pid]:not([data-agent])')) if (n.dataset.key !== keyOf(n.dataset.pid)) n.replaceWith(card(n.dataset.pid)); // a card shown elsewhere (the wizard)
+      // (round 129, draft129) a chat view the loop above doesn't reach (the project's own chat surface keeps one per agent too): its card kept up to date, so no stale "Preparing…" or progress is left
+      for (const n of document.querySelectorAll('.pb-card[data-pid][data-agent]')) if (n.isConnected && n.dataset.key !== keyOf(n.dataset.pid)) n.replaceWith(card(n.dataset.pid, { agentId: n.dataset.agent }));
     });
   }
   if (typeof Native !== 'undefined' && Native.hooks) {
@@ -321,12 +344,14 @@ const ProjectBrief = (() => {
   window.Projects?.onChange?.(() => paintAll());
 
   // ---------- three_do brief (three_brief): the whole brief, read on demand ----------
-  if (typeof HubBridge !== 'undefined') HubBridge.register(['three_brief'], async (_tool, _args, ctx = {}) => {
+  if (typeof HubBridge !== 'undefined') HubBridge.register(['three_brief'], async (_tool, args, ctx = {}) => {
     await ready();
     if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects').catch(() => {});
     const p = projectOfChat(ctx.chatId);
     if (!p) return { ok: true, value: 'This chat is in no project, so it has no brief. For a broad ask, look at the moodboard (board_vibe) and the references (three_do references) yourself and say a short plan first.' };
     const e = entry(p.id);
+    // (round 129, draft129) {done: N}: the director ticks step N as it lands (✦ Build a first draft; any reply may)
+    if (args?.done != null && window.BriefDraft) return { ok: true, value: [].concat(args.done).map((n) => BriefDraft.tick(p.id, n, ctx.chatId)).join('\n') };
     return { ok: true, value: C.full(e?.brief || null, p.name, { at: e?.at, stale: staleWhat(p.id) }) };
   });
 
@@ -351,6 +376,6 @@ const ProjectBrief = (() => {
   if (typeof AppUI !== 'undefined') AppUI.addAction?.('Prepare a project brief (the AI looks at the moodboard, song and notes first)', () => { const p = here(); if (!p) { toast('Open a project first.'); return; } prepare(p.id).catch((err) => toast(calm(err), { type: 'error' })); });
 
   ready();
-  return { prepare, get, stale, staleWhat, card, open, edit, hide, start, setEyes, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, _: { gather, check, entry, data: () => data } };
+  return { prepare, seed, get, stale, staleWhat, card, open, edit, hide, start, setEyes, onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, _: { gather, check, entry, data: () => data, set, project, projectOfChat, agentOf, paint: paintAll } }; // (round 129, draft129: set … paint for projectbrief-draft.js)
 })();
 window.ProjectBrief = ProjectBrief;
