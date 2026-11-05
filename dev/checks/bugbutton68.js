@@ -10,7 +10,9 @@
 //     the list; Copy report for Claude (the clipboard only); Restart Hearth and Reload this page only there (Reload
 //     held back while a reply is being written); /broke too
 //   · nothing loaded before the first click (the card's code is in the lazy group 'jankwatch')
-//   node dev/smoke.js --data dev/fixtures/bugbutton68 --check-timeout 120000 --script dev/checks/bugbutton68.js
+//   node dev/smoke.js --data dev/fixtures/bugbutton68 --check-timeout 120000 --no-lazy-wait --script dev/checks/bugbutton68.js
+// (round 123, checksweep123) --no-lazy-wait: smoke's wait for the background groups (the Lab's prefetch, up to 30 s)
+// outlasted the crash note's 20 s, so the note had come and gone before the check looked (Hints' log: shown, once)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await sleep(100); } return null; };
 const out = { ok: [], bad: [], info: {} };

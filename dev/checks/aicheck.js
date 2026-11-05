@@ -31,6 +31,12 @@ const runCheck = async () => {
 const okAll = () => [...S().querySelectorAll('.aicheck-line')].every((l) => l.classList.contains('aicheck-ok'));
 
 await Lazy.load('options'); // ⋯ AI setup loads on first use (aicheck.js with it)
+// (round 123, checksweep123) since round 116 a new chat with no project open asks "Which project is this chat for?" when
+// the owner's press started it; Native.newChat right after this check's real clicks looked like one, and the question
+// covered section 4 ("click: not visible"). The owner works in an open project: so does this check (as access-chat does)
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); await until(() => ProjChats._ok(), 20000);
+ProjChats.setScope(Projects.create({ name: 'AI check' }).id);
 activate(claude.id);
 Native.newChat(claude.id);
 await wait(300);

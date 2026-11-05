@@ -71,7 +71,8 @@ try {
 
   // ---------- no command names on screen ----------
   await type('compact');
-  const slash = rows().filter((r) => /(^|\s)\/[a-z][\w-]{2,}/i.test(`${r.label} ${r.detail}`));
+  // (round 123, checksweep123) a patch note's row quotes its own text (round 119's names /usage, /budget…): not a row's label
+  const slash = rows().filter((r) => r.kind !== "What's new" && /(^|\s)\/[a-z][\w-]{2,}/i.test(`${r.label} ${r.detail}`));
   step('no "/command" text in the rows (they say what they do)', rows().length > 3 && !slash.length, { top: top(6), slash: slash.slice(0, 3) });
 
   // ---------- plain words ----------

@@ -26,7 +26,7 @@ const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}
 // shortcuts / Chats; measured on 660fb71 (start 27, reply 25, replyPointed 28, composer 28, answer 28, astra 27, every
 // other screen unchanged), the rail itself still 12. The budgets hold that line: nothing may grow past it.
 const BUDGET = { start: 27, reply: 25, replyPointed: 28, composer: 28, answer: 28, astra: 27, usage: 13, settings: 14, palette: 1, board: 21, toasts: 2 }; // round 16: 24, 22, 25, 25, 25, 24 · before: 26, 24, 27, 27, 27, 26, 16, 14, 1, 23, 8 (and 5 notes at once)
-const PART_BUDGET = { rail: 12, list: 6, header: 1, box: 4 };
+const PART_BUDGET = { rail: 12, list: 8, header: 1, box: 4 }; // (round 123, checksweep123) list 6 → 8: round 116's project bar (the open project's name ▾ and ＋ New chat) sits on top of the list
 const PARTS = { rail: '#rail', list: '#panel', header: '.surface.active .native-head', box: '.surface.active form.composer' };
 const parts = () => Object.fromEntries(Object.entries(PARTS).map(([k, s]) => [k, ctrls(document.querySelector(s)).length]));
 const top = () => document.querySelector('dialog[open]') || document;
@@ -175,7 +175,7 @@ dl?.close(); await wait(200);
 AppUI.palette();
 await until(() => document.querySelector('.palette-input'), 4000); await wait(300);
 const find = async (q) => { const i = document.querySelector('.palette-input'); i.value = q; i.dispatchEvent(new Event('input')); await wait(450); return [...document.querySelectorAll('.palette .palette-item')].slice(0, 8).map((r) => `${r.querySelector('.p-label')?.textContent} · ${r.querySelector('.p-detail')?.textContent || ''}`).filter((t) => !/^Ask (Claude|Astra)/.test(t)); }; // not the "Ask Claude: …" fallback
-for (const [q, re] of [['playground', /Creative Playground/i], ['full screen', /Full screen/i], ['board drawer', /Board drawer/i], ['usage', /^Usage/i], ['token tools', /tools/i], ['features used', /Features/i], ['export token usage', /Export token usage/i], ['copy usage summary', /usage summary/i], ['recent notifications', /Recent notifications/i], ['find anything', /Find anything/i]]) {
+for (const [q, re] of [['creative board', /Creative board/i] /* (round 123, checksweep123) the folded Creative Playground is the Creative board since round 116 ("playground" finds the Lab's shader playground first) */, ['full screen', /Full screen/i], ['board drawer', /Board drawer/i], ['usage', /^Usage/i], ['token tools', /tools/i], ['features used', /Features/i], ['export token usage', /Export token usage/i], ['copy usage summary', /usage summary/i], ['recent notifications', /Recent notifications/i], ['find anything', /Find anything/i]]) {
   const got = await find(q);
   out.lists[`find "${q}"`] = got.slice(0, 3).join(' | ');
   step(`Ctrl/⌘+K finds "${q}"`, got.some((t) => re.test(t)), got.slice(0, 4));

@@ -16,6 +16,11 @@ async function say(id, text) {
 }
 const lastMsg = (id) => Native.current(id)?.messages.at(-1);
 
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (Native.newChat right after real clicks asked "Which project is this chat for?" over Astra's chat): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Journey chat check' }); ProjChats.setScope(P123.id);
 // 1. a plain Claude chat
 activate(C.id); await wait(400);
 await say(C.id, 'think code a spinning cube in three.js');

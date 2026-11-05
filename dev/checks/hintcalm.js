@@ -5,7 +5,9 @@
 //   · none while you type in the chat box (it shows a few seconds after the last key) or while a reply streams
 //   · Settings › Hearth › Don't show tips silences tips and lines (notices still show); essential notes (an error) show
 //     at once, also while you type and with tips off; Off brings tips back
-//   node dev/smoke.js --fake-engines --check-timeout 240000 --script dev/checks/hintcalm.js --shot /tmp/hintcalm.png
+//   node dev/smoke.js --fake-engines --check-timeout 240000 --no-lazy-wait --script dev/checks/hintcalm.js --shot /tmp/hintcalm.png
+// (round 123, checksweep123) --no-lazy-wait: smoke's wait for the background groups (up to 30 s) outlasted the
+// "Hearth updated" note, which had come and gone before step 1 looked (Hints' log: update first, as it should)
 store.set('update.just', { from: 'aaaaaaa', to: 'bbbbbbb', n: 12, at: Date.now(), restart: false, note: '', files: ['docs/upgrades/quickstart.md', 'docs/upgrades/bigscreen.md'] });
 store.set('quickstart.testAuto', true);
 store.set('quickstart', {});

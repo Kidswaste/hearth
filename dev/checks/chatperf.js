@@ -23,6 +23,11 @@ const busy = (a, b) => ({ scriptMs: Math.round((b.ScriptDuration - a.ScriptDurat
   out.streamSameAsFull = bad.length ? `DIFFERENT at steps ${bad.join(', ')}` : 'same';
   if (bad.length) throw new Error(`streamed Markdown differs from the full render (steps ${bad.join(', ')})`);
 }
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (the chats list part clicks this check's chat's row): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Chat perf check' }); ProjChats.setScope(P123.id);
 // 1. one whole streamed reply (thinking, a table, a code block, 60 paragraphs), start to finish
 Native.newChat(claude.id); await wait(300);
 let muts = 0;
@@ -50,7 +55,7 @@ const mk = (n, title) => {
 };
 const big = mk(300, 'Perf long chat'); const small = mk(12, 'Perf short chat');
 await window.hub.saveChat(big); await window.hub.saveChat(small);
-Native.save(big); Native.save(small); await wait(300);
+Native.save(big); Native.save(small); Projects.add(P123, 'chat', big.id, big.title, { links: false }); Projects.add(P123, 'chat', small.id, small.title, { links: false }); await wait(300); // (round 123, checksweep123) in the open project
 await gc(); const heap0 = (await metrics()).JSHeapUsedSize;
 let t = performance.now();
 Native.open(claude.id, big.id);

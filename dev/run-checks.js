@@ -7,13 +7,13 @@
 //   sh dev/run-checks.sh                      # the quick group (qa)
 //   sh dev/run-checks.sh board capture        # groups, or check names (journey-board…)
 //   sh dev/run-checks.sh unit                 # the Node-only tests (no Electron)
-//   flock /tmp/hearth-run.lock sh dev/run-checks.sh release   # (round 105) before a release: the quick app group (qa) + every unit test
+//   flock /tmp/hearth-run.lock sh dev/run-checks.sh release   # (round 105) before a release: the quick app group (qa) + every unit test (+ core, round 123)
 //   sh dev/run-checks.sh --list               # groups and checks
 //   options: --out <dir> (logs and pictures, default <tmp>/hearth-checks) · --shots (journeys keep a picture per step) · --names (list) / --exact (run names as checks, not groups)
 //   · --fixtures-only · --stop (first failure)
 //   · --tmp-strict (fail on a /tmp/hearth-* folder the run left; on for release) · (round 106) each check runs with its own
 //   temp root (TMPDIR), removed when it ends; the end of the run names any /tmp/hearth-* folder left (dev/tmp-guard.js)
-// Groups: qa, release, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
+// Groups: qa, core (round 123), release, board, capture, journeys, chat, lab, nodes, smooth, astra, sequence, robust, motion, orb, flows, commands, sync, comp, progress, speed, renders, access, adobe, deploy, apps, eyes, pinboard, chromeview, quickstart, aicheck, offline, unit, all.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -389,7 +389,12 @@ GROUPS.all = [...new Set([...all.filter((n) => !/^astra-/.test(n)), ...GROUPS.as
 // (round 114, owner: "our testing list is too long") the release runs what the app's core needs: chats, projects, sync,
 // the Lab, speed. (round 116, slim116) the Life side (Paris, quests, outings) and the music studio are gone from the app,
 // and their checks with them, so the "extra" group they had moved to is gone too: a release is the qa group + every unit test.
-GROUPS.release = [...new Set([...GROUPS.qa, ...GROUPS.unit])];
+// (round 123, checksweep123) the app checks of what the app is now (chats in projects, the engines, access, data safety,
+// sync, the Lab's start, the first run). Since round 116 three app checks broke unseen (makes, smooth46, access-chat) and
+// a sweep found more, all outside the release: these run at every release now. Each passed in the sweep's last run;
+// 20 checks, ≈ 20 min on the 4-core box (docs/upgrades/checksweep123.md)
+GROUPS.core = ['access-chat', 'access-astra', 'aicheck', 'collab-appserver', 'datasafe', 'crashsafe', 'chatcore', 'chat-new-row', 'chatsafe55', 'connections', 'appsearch', 'firstrun', 'calmstart', 'labboot', 'keptaside94', 'guardloss78', 'devices90', 'projects', 'sync', 'makes'];
+GROUPS.release = [...new Set([...GROUPS.qa, ...GROUPS.unit, ...GROUPS.core])]; // (round 123) + core
 
 if (argv.includes('--list')) {
   for (const [g, list] of Object.entries(GROUPS)) if (g !== 'all') console.log(`${g}: ${list.join(' ')}`);
@@ -453,6 +458,9 @@ const EXTRA_FLAGS = {
   'adaptive-feedback': ['--fake-engines', '--eval', `window.FEEDBACK_FIXTURE=${JSON.stringify(`${T}/hearth-test-videos/neon_tunnel_v1.mp4`)}`],
   // (round 74, projdesk74) Codex's project checks that only passed when started by hand: auto-improve sends through the
   // fake engines, the Sound desk test needs the fake VST host (dev/fixtures/fake-vst-py; never real instruments)
+  // (round 123, checksweep123) Astra × Claude on the app-server transport: the fakes' paths its own runner
+  // (dev/collab-appserver-smoke.js) writes into the script; run here, it failed "Couldn't find Codex" every time
+  'collab-appserver': ['--wait', '1500', '--eval', `window.COLLAB_FAKES=${JSON.stringify({ codex: path.join(DEV, 'fake-codex-server.js').split(path.sep).join('/'), claude: path.join(DEV, 'fake-claude-astra.js').split(path.sep).join('/') })}`],
   'project-auto-improve': ['--fake-engines'],
   'project-sound': ['--fake-vst'],
 };

@@ -13,6 +13,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(150); } return null; };
 const out = { steps: [], problems: [] };
 const step = (ok, label, extra) => { out.steps.push(`${ok ? '✓' : '✖'} ${label}${extra !== undefined ? ` · ${typeof extra === 'string' ? extra : JSON.stringify(extra)}` : ''}`); if (!ok) out.problems.push(label); };
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (all three chats in it, the list's groups by AI): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Chat safety check' }); ProjChats.setScope(P123.id);
 let def = null; let dirId = null;
 try {
   await Commands.tryRun('/director-setup', H.claudeAgent().id);

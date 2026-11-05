@@ -59,11 +59,17 @@ await wait(1500);
 const at0 = Date.now() - 86400000;
 const para = (i) => `Reply ${i}: here is **some** text with \`code\` and a [link](https://example.com), and a few more words so it wraps over a line or two like a real answer does.\n\n- one point about ${i}\n- another, *slightly* longer point\n\n${i % 10 === 1 ? '```js\nconst x = 1;\nfor (let k = 0; k < 4; k++) console.log(x + k);\n```' : 'Another paragraph of plain words to give it some height.'}`;
 const codeReply = (i) => `Here's the scene ${i}:\n\n\`\`\`js\n${Array.from({ length: 36 }, (_, k) => `  const v${k} = new THREE.Vector3(${k}, ${i % 7}, ${k * 2}); // point ${k}\n  mesh${k % 3}.position.add(v${k}.multiplyScalar(0.${(k % 9) + 1}));`).join('\n')}\n\`\`\`\n\n![frame ${i}](https://img.hearth.test/640x360/cs${i}.png)\n\n| a | b |\n|---|---|\n| ${i} | ${i * 2} |\n| x | y |`;
+// (round 123, checksweep123) since round 116 every chat belongs to one project and the chats list shows the open
+// project's chats only (this check's chats go into one of their own): the owner works in an open project, so does this check
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 100)); }
+const P123 = Projects.create({ name: 'Chat switch check' }); ProjChats.setScope(P123.id);
 const mk = async (key, title, count, reply) => {
   const c = { id: `cs-${key}-${Math.random().toString(36).slice(2, 6)}`, agentId: claude.id, title, createdAt: at0, updatedAt: at0 + count * 1000, messages: Array.from({ length: count }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: i % 2 ? reply(i) : `Question ${i}: what about this part of it?`, at: at0 + i * 1000 })) };
   await window.hub.saveChat(c);
   const summary = { id: c.id, agentId: c.agentId, title: c.title, updatedAt: c.updatedAt, pinned: false };
   H.chats = [summary, ...H.chats.filter((x) => x.id !== c.id)];
+  Projects.add(P123, 'chat', c.id, title, { links: false }); // (round 123, checksweep123)
   return c;
 };
 // saved to disk and listed only: nothing of them is in the window's memory yet (a first open reads them like a real one)

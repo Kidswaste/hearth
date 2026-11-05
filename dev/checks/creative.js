@@ -6,7 +6,7 @@ await hub.kvSet('creative-playground',{v:1,seed:'focus-tiles',recipes:[{feature:
 await Lazy.load('creative');activate('tool:creative');await until(()=>document.querySelector('.wb-stations'));
 const root=()=>document.querySelector('.cp-workspace');
 const press=async text=>{const b=[...root().querySelectorAll('button')].find(b=>b.textContent===text);check(b,text+' available');b.click();await until(()=>!b.disabled);await wait(80);};
-check([...root().querySelectorAll('[data-feature-id]')].map(n=>n.dataset.featureId).join(',')==='studio,vst,texture,draw,story,pattern','only focused stations in navigation');
+check([...root().querySelectorAll('[data-feature-id]')].map(n=>n.dataset.featureId).join(',')==='studio,texture,draw,story,pattern','only focused stations in navigation'); // (round 123, checksweep123) round 116 removed the Serum 2 & Vital (vst) station
 check(!/Pocket worlds|Ember sound forge|Palette posters/.test(root().textContent),'retired activities absent');
 CreativePlayground.openFeature('drums');check(CreativePlayground.snapshot().feature==='studio','retired deep links recover to worktable');
 await CreativePlayground.openFeature('pattern');await press('Export SVG');await press('Export PNG');await press('Keep on worktable');

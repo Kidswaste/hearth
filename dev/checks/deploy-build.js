@@ -82,7 +82,10 @@ try {
   const ltext = await live;
   out.live = ltext;
   ok(/is live on Vercel: https:\/\/deploy-check-[a-z0-9-]+\.vercel\.app/.test(ltext), `live on Vercel (${ltext.slice(0, 120)})`);
-  const calls = (await window.hub.fs.read('/tmp/hearth-fake-deploy/calls.jsonl').catch(() => '')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  // (round 123, checksweep123) the fake CLIs write to <the app's temp folder>/hearth-fake-deploy (dev/fake-deploy/fake-cli.js):
+  // since round 106 that is the check's own temp root (SMOKE_TMP's parent), not /tmp, where an old run's calls were read
+  const fakeState = window.SMOKE_TMP ? `${window.SMOKE_TMP.replace(/[\\/][^\\/]+[\\/]?$/, '')}/hearth-fake-deploy` : '/tmp/hearth-fake-deploy';
+  const calls = (await window.hub.fs.read(`${fakeState}/calls.jsonl`).catch(() => '')).trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const dep = calls.filter((c) => c.cli === 'vercel' && c.args[0] === 'deploy').pop();
   ok(dep && dep.args.includes('--prod') && dep.args.includes('--yes') && /[\\/]deploy[\\/]builds[\\/][^\\/]+[\\/]deploy-check-/.test(dep.args[1]) && dep.args[4] === b.slug, `vercel deploy <build> --yes --name <slug> --prod (${dep?.args.join(' ').slice(0, 140)})`);
   // the second publish (another build of the same scene) replaces the first
