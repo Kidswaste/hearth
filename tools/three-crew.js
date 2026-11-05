@@ -17,6 +17,10 @@
 // - Merge: the director reads a variation's changes (crew {op: "code", n, layer}: a diff against your scene) and copies
 //   layers over (crew {op: "copy", from, layer}), so "the motion from #2 and the colors from #4" is two calls.
 // - The crew shows in the liveness tree of the director's reply when the director deployed it (ChatLive.feed).
+// - (round 130, takes130) ✦ 3 takes (tools/three-takes.js) runs a crew of 3 with its own card: plan(…, { ui: false,
+//   live: true, extra }) keeps the grid off, adds lines to the shared brief (the ask, the project's brief and palette),
+//   and keeps each helper's stage after it ends (bigger, smoother, on the scene's song, silent) so the takes play live
+//   side by side until one is kept or they're discarded (end()).
 const ThreeCrew = (() => {
   const MIN = 2; const MAX = 6; const DEF = 3;
   const CALLS = 4; // tool calls per helper (said in its brief; Hearth stops it at CALLS + 2)
@@ -99,9 +103,9 @@ const ThreeCrew = (() => {
   function briefFor(c, h) {
     const names = c.base.layers.map((L) => `${L.name}${L.id === c.base.selId ? ' (selected)' : ''}`).join(', ');
     return `Crew of ${c.n} helpers: variations of one scene, in parallel, each on its own copy.
-Scene "${c.base.name}" · ${c.base.frame || 'fit'} · layers (bottom first): ${names}. It already runs on your own copy (no music there: a demo beat).
+Scene "${c.base.name}" · ${c.base.frame || 'fit'} · layers (bottom first): ${names}. It already runs on your own copy (${c.live && c.base.song ? 'on the scene\'s song, silent' : 'no music there: a demo beat'}).
 The owner's brief: ${c.brief || 'make it more striking'}
-Make ONE clear, good-looking variation along your angle (below; the other helpers take other angles); keep the layers and their sliders working.
+${c.extra ? `${c.extra}\n` : ''}Make ONE clear, good-looking variation along your angle (below; the other helpers take other angles); keep the layers and their sliders working.
 Budget: at most ${CALLS} tool calls, then one line saying what you changed.
 ${codeBlock(c.base)}
 Crew · helper ${h.n}/${c.n} · ${h.angle.split(':')[0]}
@@ -117,14 +121,15 @@ Your angle: ${h.angle}.`;
       selectedOf: (id) => H0(id)?.selId || c.base.selId,
       frameOf: () => c.base.frame,
       setFrame() {}, // a variation keeps the scene's frame
-      songOf: () => null,
+      songOf: () => (c.live ? c.base.song || null : null), // (round 130, takes130) live takes play on the scene's song
+      ...(c.live ? { timelineOf: () => c.base.timeline || null } : {}),
       changed: (id) => { const h = H0(id); if (h) { h.sketch.updatedAt = Date.now(); h.changed += 1; } },
       create() { throw new Error('Crew helpers work on their own copy: use three_set_code / three_add_layer.'); },
     };
   }
 
   // ---------- plan → start ----------
-  async function plan(chatId, { n = DEF, brief = '', angles = null, by = 'owner' } = {}) {
+  async function plan(chatId, { n = DEF, brief = '', angles = null, by = 'owner', ui = true, live = false, extra = '' } = {}) {
     if (C && ['plan', 'running'].includes(C.status)) throw new Error(`A crew is already ${C.status === 'plan' ? 'waiting for your OK' : 'working'} (/crew stop).`);
     const S = await lab();
     const agent = agentFor(chatId);
@@ -138,8 +143,8 @@ Your angle: ${h.angle}.`;
     const id = `c${(seq += 1)}${Date.now().toString(36).slice(-4)}`;
     const pick = Array.isArray(angles) && angles.length ? angles.map((a) => cap(a, 160)) : [];
     const c = {
-      id, chatId: chatId || null, agent, brief: cap(brief, 400), n, by, status: 'plan', at: Date.now(),
-      base: { sketchId, name: x.name, frame: S.frameOf(sketchId) || 'fit', layers: snap.layers, selId: snap.selId },
+      id, chatId: chatId || null, agent, brief: cap(brief, 400), n, by, status: 'plan', at: Date.now(), ui: ui !== false, live: Boolean(live), extra: String(extra || '').slice(0, 1600),
+      base: { sketchId, name: x.name, frame: S.frameOf(sketchId) || 'fit', layers: snap.layers, selId: snap.selId, ...(live ? { song: S.songOf?.(sketchId) || null, timeline: deep(S.timelineOf?.(sketchId) || null) } : {}) },
       helpers: [], picked: null, kept: [], pickTokens: 0, notes: [],
     };
     c.helpers = Array.from({ length: n }, (_, i) => ({
@@ -153,7 +158,7 @@ Your angle: ${h.angle}.`;
     c.decided = new Promise((r) => { c.decide = r; });
     c.finished = new Promise((r) => { c.finish = r; });
     C = c;
-    Panel.open(c);
+    if (c.ui) Panel.open(c);
     return c;
   }
 
@@ -165,7 +170,7 @@ Your angle: ${h.angle}.`;
     const scenes = scenesOf(c);
     for (const h of c.helpers) {
       byHelper.set(h.id, h);
-      h.stage = ThreeBackstage.make({ long: 360, cap: 12, scenes, idleMs: 10 * 60000, onStill: (url) => setThumb(h, url) });
+      h.stage = ThreeBackstage.make({ long: c.live ? 480 : 360, cap: c.live ? 30 : 12, scenes, song: c.live, idleMs: c.live ? 60 * 60000 : 10 * 60000, onStill: (url) => setThumb(h, url) }); // (round 130, takes130: live takes are watched)
       h.route = { chatId: h.id, sketchId: h.sketch.id, crew: true, stage: h.stage };
       // its page starts right away (thumbnails from the first second; no tokens)
       h.stage.handle('three_console', {}, h.route).then(() => setTimeout(() => refreshThumb(h), 900)).catch(() => {});
@@ -243,9 +248,9 @@ Your angle: ${h.angle}.`;
     c.ms = Date.now() - c.startedAt;
     await Promise.all(c.helpers.map((h) => refreshThumb(h).catch(() => {}))); // the last picture of each, as it ended
     c.status = c.helpers.some((h) => h.stopWhy === 'stopped') ? 'stopped' : 'done';
-    for (const h of c.helpers) { byHelper.delete(h.id); h.stage?.dispose(); h.stage = null; } // GPU back
+    for (const h of c.helpers) { byHelper.delete(h.id); if (!c.live) { h.stage?.dispose(); h.stage = null; } } // GPU back (live takes keep theirs until end())
     Panel.paint();
-    toast(`Crew ${c.status === 'stopped' ? 'stopped' : 'done'}: ${c.helpers.filter(usable).length} variation${c.helpers.filter(usable).length === 1 ? '' : 's'} · ${fmtK(total(c))} tokens · pick one in the grid`, { timeout: 5000 });
+    if (c.ui) toast(`Crew ${c.status === 'stopped' ? 'stopped' : 'done'}: ${c.helpers.filter(usable).length} variation${c.helpers.filter(usable).length === 1 ? '' : 's'} · ${fmtK(total(c))} tokens · pick one in the grid`, { timeout: 5000 });
     c.finish(c);
   }
   // a variation worth picking: it changed something and isn't broken
@@ -365,7 +370,13 @@ Your angle: ${h.angle}.`;
   // a new crew (or closing the app's crew) ends the last one: its stages go, its data stays until replaced
   function end() {
     if (!C) return;
-    if (C.status === 'running') stop();
+    if (C.status === 'plan') cancel();
+    if (C.status === 'running') {
+      stop();
+      // (round 130, takes130) its helpers' stop events no longer reach done() (they're forgotten below): it ends here
+      for (const h of C.helpers) if (h.status === 'running' || h.status === 'waiting') { clearTimeout(h.timer); h.status = 'stopped'; h.stopWhy = 'stopped'; }
+      C.status = 'stopped'; C.finish?.(C);
+    }
     for (const h of C.helpers) { byHelper.delete(h.id); h.stage?.dispose(); h.stage = null; }
     Panel.close();
   }
@@ -627,13 +638,13 @@ Your angle: ${h.angle}.`;
   registerCommands();
 
   return {
-    plan, approve, cancel, stop, pick, undo: undoPick, keep, copy, code: codeOf, directorPicks, describe, tool, estimate,
+    plan, approve, cancel, stop, end, pick, undo: undoPick, keep, copy, code: codeOf, directorPicks, describe, tool, estimate,
     current: () => C, running: () => C?.status === 'running',
     // chat-scenes.js routes a helper's tool calls to its own stage; three-director.js keeps crew edits out of your undo
     routeFor: (id) => { const h = byHelper.get(id); return h && h.status === 'running' && h.stage ? h.route : null; },
     isCrewSketch: (id) => Boolean(id && String(id).startsWith('crew_')),
     get panel() { return Panel.el; },
-    _test: { briefFor, diffLines, Panel, CALLS, BUDGET, get fixed() { return fixedTok; } },
+    _test: { briefFor, diffLines, Panel, CALLS, BUDGET, OUT_EACH, get fixed() { return fixedTok; } },
   };
 })();
 window.ThreeCrew = ThreeCrew;

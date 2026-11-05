@@ -14,6 +14,8 @@
 // one per variation, in parallel, smaller and slower ({ long, cap }), on its own scene data ({ scenes }: the shape of
 // ThreeLab.scenes), with its pictures sent to opts.onStill instead of a chat row. A call whose route names a stage
 // (route.stage) goes to that stage.
+// (round 130, takes130) opts.song: a stage on its own scene data plays that data's song too (silent), and every stage
+// keeps the time its page last said (clockAt) so ✦ 3 takes can keep three stages in step with the Lab's song.
 // (round 77, labaudio77) a song's analysis for a scene that runs backstage: the file read and analysed once (the same
 // analysis the Lab on screen makes: ThreeMedia.analyze, the decode off the main thread and the math in a Worker), kept
 // by labload75's file key (path | size | modified time, as the preview's asset cache keys a file), so a song changed
@@ -74,7 +76,9 @@ function makeBackstage(opts = {}) {
   const log = []; // { at, chatId, sketch, tool } the last calls (/scene shows them)
   const timing = { calls: 0, ms: 0, shots: 0, shotMs: 0, shotTimeouts: 0, loads: 0, fresh: 0, loadMs: 0 }; // (round 73) where backstage time goes
 
+  let clockAt = null; // (round 130, takes130) { t, playing, at } the page's last media-state
   function onMessage(m) {
+    if (m.type === 'media-state' && Number.isFinite(m.time)) clockAt = { t: m.time, playing: Boolean(m.playing), at: performance.now() };
     if (!opts.scenes && loaded?.id && /^(error|health|health-clear|layer-paused|gpu-lost|gpu-restored)$/.test(m.type)) window.LabHealth?.fromBox(m, loaded.id, 'backstage'); // (round 80, laberrors80)
     // a fresh page has started at its first stats; a layer re-run in place once it has drawn
     if (onStart && (m.type === 'drawn' || m.type === 'error' || (m.type === 'stats' && !waitDrawn))) { const fn = onStart; onStart = null; fn(); }
@@ -158,7 +162,7 @@ function makeBackstage(opts = {}) {
   // Lab's; the analysis and the beat map follow as soon as they're ready (the first time a few seconds in a Worker,
   // then from memory). false: not a song scene here (or its file is gone: the scene's own timeline, as before).
   let song = null; // { id, path, sig, name, bytes, analysis, duration, elDur, coreSent, want }
-  const songPathOf = (s) => { const p = !opts.scenes ? SC()?.songOf?.(s.id) : null; return p && /\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(p) ? p : null; };
+  const songPathOf = (s) => { const p = !opts.scenes || opts.song ? SC()?.songOf?.(s.id) : null; return p && /\.(mp3|wav|ogg|flac|m4a|aac|opus)$/i.test(p) ? p : null; };
   async function syncSong(s, { fresh = false } = {}) {
     const path = songPathOf(s);
     if (!path) { song = null; return false; }
@@ -805,7 +809,9 @@ function makeBackstage(opts = {}) {
     director: (sketchId, route) => director(sketchId, route),
     // (round 35, labtemplates) a stage shown as a live preview (My templates' form lays its page over a box) and fed
     // what code doesn't carry (references, the palette)
-    get host() { return host; }, send: (m) => box?.send(m) };
+    get host() { return host; }, send: (m) => box?.send(m),
+    // (round 130, takes130) where its clock is now (seconds), from the page's last word: null before it said any
+    get clock() { if (!clockAt) return null; return { playing: clockAt.playing, t: clockAt.t + (clockAt.playing ? (performance.now() - clockAt.at) / 1000 : 0) }; } };
   return self;
 }
 const ThreeBackstage = makeBackstage();

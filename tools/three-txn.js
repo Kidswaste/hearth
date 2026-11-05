@@ -167,7 +167,17 @@ const LabTxn = (() => {
     }
     redoStack.length = 0;
   }
-  const label = (e) => `what ${e.who} did in one reply to "${e.scene}" (${e.calls} call${e.calls === 1 ? '' : 's'})`;
+  const label = (e) => e.label || `what ${e.who} did in one reply to "${e.scene}" (${e.calls} call${e.calls === 1 ? '' : 's'})`;
+  // (round 130, takes130) a change made outside any tool call that is one undo step of its own (✦ 3 takes: a take kept):
+  // the dock's ↶ / Alt+Shift+Z / /undo-edit take it back whole, like an AI's reply
+  function step({ chatId = null, who = 'You', before, after, label: text = '', words = '' } = {}) {
+    if (!before || !after || before.id !== after.id || sigOf(before) === sigOf(after)) return false;
+    const now = Date.now();
+    undoStack.push({ key: `step|${now}|${Math.random()}`, chatId, who, sceneId: before.id, scene: before.name, at: now, lastAt: now, before, after, calls: 1, words: words ? [words] : [], ...(text ? { label: text } : {}) });
+    if (undoStack.length > MAX) undoStack.shift();
+    redoStack.length = 0; lastUndo = null;
+    return true;
+  }
   // the dock's ↶ takes the newest of: a whole reply (here) or a code edit made outside any chat (ThreeDirector's history)
   function wantsUndo(codeHistory = []) {
     const e = undoStack.at(-1);
@@ -259,6 +269,6 @@ const LabTxn = (() => {
   }
   if (typeof HubBridge !== 'undefined' && HubBridge.setAround) HubBridge.setAround(around);
 
-  return { around, snap, describe, restore, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } };
+  return { around, snap, describe, restore, step, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } };
 })();
 window.LabTxn = LabTxn;
