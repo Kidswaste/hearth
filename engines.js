@@ -445,6 +445,7 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 // session, saved with the chat): saved memory is frozen per session while it only grows (memoryFor below).
 // (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
 // reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
+const BRIEF_MAX = 640; // (round 128, aiprep128) the brief part's cap: projectbrief-core.js PART_MAX (600) + a little slack
 function promptParts0(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
@@ -514,6 +515,8 @@ function promptParts0(agent, session = null) {
   // (round 26) ⋯ AI setup: the user's standing instructions, each one on / off
   const rules = (Array.isArray(agent.instructions) ? agent.instructions : []).filter((r) => r && r.on !== false && String(r.text || '').trim()).slice(0, 40).map((r) => `- ${String(r.text).trim().slice(0, 600)}`);
   if (rules.length) add('instructions', `The user's standing instructions (always follow them):\n${rules.join('\n')}`);
+  // (round 128, aiprep128) a director in a project with a brief: its compact form (≤ 600 characters, projectbrief-core.js)
+  if (agent.projectBrief && sets.includes('threeTools') && agent.toolMode !== 'crew') add('brief', String(agent.projectBrief).slice(0, BRIEF_MAX));
   const acc = accessOf(agent);
   if (acc) add('access', accessLine(agent, acc));
   // (round 116, astraparity116) working on Hearth's own code (a chat's folder is a Hearth source folder): a short map of
@@ -1347,6 +1350,9 @@ function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } 
   if (options.asDirector === 'three') agent = { ...agent, threeTools: true, hubTools: agent.engine === 'codex' ? true : agent.hubTools, dock: agent.dock || 'three' };
   // a chat that turned on /capture-tools gets the capture tool set for its runs (not lean ones)
   if (options.captureTools && !options.lean) agent = { ...agent, captureTools: true };
+  // (round 128, aiprep128) the project brief (projectbrief.js sends its compact form for a director's chat in a project
+  // with a brief): a text that only changes when the brief does, so the part stays cached; never for lean / crew runs
+  if (typeof options.brief === 'string' && options.brief.trim() && !options.lean && !options.crew) agent = { ...agent, projectBrief: options.brief.slice(0, BRIEF_MAX) };
   // (round 41, toolslim) the AI's opt-in tool sets (board, capture, Adobe, publishing, apps) sleep until it's likely to
   // need them (used this week, named in the message, already in this session): toolwake.js
   const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;

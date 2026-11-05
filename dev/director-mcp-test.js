@@ -13,7 +13,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
     const c = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: mode === 'full' ? { HUB_TOOL_MODE: 'full' } : { HUB_TOOL_MODE: '' } });
     const names = c.tools.map((t) => t.name);
     // (round 46, promptdiet) lean: three_input / three_contact_sheet are three_do commands (12 tools; 14 before)
-    check(mode === 'lean' ? names.includes('three_do') && names.length === 12 && !names.includes('three_input') && !names.includes('three_contact_sheet') : !names.includes('three_do') && names.length === 38, `${mode}: ${names.length} tools`);
+    check(mode === 'lean' ? names.includes('three_do') && names.length === 12 && !names.includes('three_input') && !names.includes('three_contact_sheet') : !names.includes('three_do') && names.length === 39, `${mode}: ${names.length} tools`); // (round 128, aiprep128) full: 39 with three_brief (the project brief)
     check(names.includes('three_add_layer') && names.filter((n) => n === 'three_add_layer').length === 1, `${mode}: three_add_layer is an everyday tool (layers always)`);
     check(!c.instructions, `${mode}: no MCP instructions`);
     const h = await c.call('three_do', { cmd: 'help', topic: 'cues' });
