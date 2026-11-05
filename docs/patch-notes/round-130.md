@@ -25,3 +25,7 @@
 - **Apply** on a slider or keyframe change lands at once (one Undo); anything bigger goes to the director as your
   message. ✕ hides a suggestion. It remembers its last 5 critiques per project so it doesn't repeat itself, and
   checks the brief's risks off.
+
+## ◆ Tidier toolbar
+- The project's palette no longer sits open in the Lab toolbar: it's one small **◆** button now. Click it to show
+  the colours, **Apply** and **⋯** in a small panel under it; Esc or a click elsewhere folds it away.

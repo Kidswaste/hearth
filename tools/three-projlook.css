@@ -7,3 +7,9 @@
 .lab-projlook .pl-apply { font-weight: 600; }
 .lab-projlook.pl-previewing .pl-apply { outline: 1px solid var(--ui-gold, #ffd75e); }
 .lab-projlook .pl-undo, .lab-projlook .pl-more { padding: 1px 5px; }
+/* (round 131) folded away: one ◆ in the toolbar, the strip opens under it */
+.lab-projlook { position: relative; border-left: 0; padding-left: 0; }
+.lab-projlook .pl-toggle { padding: 1px 6px; opacity: 0.8; }
+.lab-projlook .pl-toggle.on { opacity: 1; }
+.lab-projlook .pl-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 8px; background: var(--panel, #1b1d24); border: 1px solid var(--line, #ffffff26); box-shadow: 0 8px 24px #0008; white-space: nowrap; }
+.lab-projlook .pl-pop .pl-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; margin-right: 2px; }

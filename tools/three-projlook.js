@@ -211,8 +211,18 @@ const LabProjLook = (() => {
     const applyBtn = el('button', { class: 'pl-apply', text: 'Apply', title: `Put ${src ? src.name.toLowerCase() : 'the palette'} on ${o.scope === 'all' ? 'the scene\'s' : 'the selected layer\'s'} color sliders and material looks (${o.strength === 'subtle' ? 'subtle' : 'full'}${o.keepLocked ? ', locked sliders kept' : ''}). Point at it to see it first. One undo.`,
       on: { mouseenter: () => { try { previewOn(); } catch (e) { console.warn(e); } }, mouseleave: () => previewOff(), click: () => { try { apply(); } catch (e) { err(e); } } } });
     const undoOn = S.last && !S.last.undone && S.last.sid === sceneNow();
-    box.replaceChildren(
-      el('span', { class: 'pl-label', text: '◆', title: `${p.name}: ${src ? src.name : 'no palette yet'}` }),
+    // (round 131, owner: "make it somewhere i have to expand to see it") one small ◆ button in the toolbar; the
+    // swatches, Apply and ⋯ open under it on a click (Esc or a click outside closes it)
+    const toggle = el('button', { class: 'pl-toggle' + (S.open ? ' on' : ''), text: '◆', title: `Project look: ${p.name}${src ? ` · ${src.name}` : ' (no palette yet)'}. Click to open`, attrs: { 'aria-expanded': String(Boolean(S.open)) }, on: { click: (e) => { e.stopPropagation(); S.open = !S.open; paint(); } } });
+    if (!S.open) { box.replaceChildren(toggle); box.title = ''; return; }
+    const pop = el('div', { class: 'pl-pop', attrs: { role: 'group', 'aria-label': 'Project look' } });
+    box.replaceChildren(toggle, pop);
+    if (!S.closer) {
+      S.closer = (e) => { if (!S.open || !S.box) return; if (e.type === 'keydown' ? e.key !== 'Escape' : S.box.contains(e.target) || e.target.closest?.('.menu, #menu')) return; S.open = false; previewOff(); paint(); };
+      document.addEventListener('mousedown', S.closer, true); document.addEventListener('keydown', S.closer, true);
+    }
+    pop.replaceChildren(
+      el('span', { class: 'pl-label', text: p.name, title: `${p.name}: ${src ? src.name : 'no palette yet'}` }),
       ...(src ? src.colors.map(sw) : []),
       src ? applyBtn : el('button', { class: 'pl-board', text: S.busy ? 'Reading…' : '🖼 From the moodboard', title: 'Take the project\'s palette from its moodboard\'s pictures (read here, no AI)', on: { click: () => fromBoardUI() } }),
       ...(undoOn ? [el('button', { class: 'pl-undo', text: '↶', title: 'Undo the project look', on: { click: () => undo() } })] : []),

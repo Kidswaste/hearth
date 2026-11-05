@@ -48,10 +48,11 @@ renderer.setAnimationLoop(() => { mesh.rotation.y += 0.01; mesh.material.color.s
   Projects.add(P, 'scene', sk.id, sk.name, { links: false });
   SC.open(sk.id);
   await until(() => SC.currentId() === sk.id && hk.ctlOf('lkFront')?.controls().some((c) => c.key === 'rim'), 20000);
-  const strip = () => document.querySelector('.lab-projlook');
+  // (round 131) the strip is folded behind one ◆ button: open it whenever the check looks at it
+  const strip = () => { const b = document.querySelector('.lab-projlook'); if (b && !b.hidden && !b.querySelector('.pl-pop')) b.querySelector('.pl-toggle')?.click(); return b; };
   const shown = await until(() => strip() && !strip().hidden && strip().querySelectorAll('.lab-swatch').length === PAL.length, 15000);
   const sw = () => [...(strip()?.querySelectorAll('.lab-swatch') || [])].map((b) => b.style.background);
-  step('a project scene: the Lab\'s toolbar shows the ◆ Project look strip with the project\'s swatches', shown && Boolean(strip().closest('.three-toolbar')) && strip().getBoundingClientRect().width > 40, { swatches: sw().length, apply: Boolean(strip()?.querySelector('.pl-apply')), width: Math.round(strip()?.getBoundingClientRect().width || 0), why: (() => { const out2 = []; for (let n = strip(); n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.display === 'none' || n.hidden || cs.visibility === 'hidden') out2.push(`${n.tagName}.${n.className}`); } return out2; })() });
+  step('a project scene: the Lab\'s toolbar shows the ◆ Project look strip with the project\'s swatches', shown && Boolean(strip().closest('.three-toolbar')) && strip().getBoundingClientRect().width > 10, { swatches: sw().length, apply: Boolean(strip()?.querySelector('.pl-apply')), width: Math.round(strip()?.getBoundingClientRect().width || 0), why: (() => { const out2 = []; for (let n = strip(); n && n !== document.body; n = n.parentElement) { const cs = getComputedStyle(n); if (cs.display === 'none' || n.hidden || cs.visibility === 'hidden') out2.push(`${n.tagName}.${n.className}`); } return out2; })() });
   await smoke({ shot: `${DIR}-strip0.png` }).catch(() => {});
 
   const colors = () => Object.fromEntries(['lkBack', 'lkFront'].map((id) => [id, Object.fromEntries(hk.ctlOf(id).controls().filter((c) => typeof c.value === 'string' && /^#/.test(c.value)).map((c) => [c.key, c.value]))]));
