@@ -45,6 +45,12 @@ const mk = async (title, n) => {
   await window.hub.saveChat(c); Native.save(c); return c;
 };
 const chats = [await mk('MP chat A', 120), await mk('MP chat B', 120), await mk('MP chat C', 120)];
+// (round 127, checksweep127) since round 116 the chats list shows the open project's chats: the check opens its own
+// project and puts its chats in it (the menu stretch right-clicks a row of the list)
+if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects');
+await Projects.ready(); { const t0 = Date.now(); while (!ProjChats._ok() && Date.now() - t0 < 20000) await wait(100); }
+const P127 = Projects.create({ name: 'Motion polish check' }); for (const c of chats) Projects.add(P127, 'chat', c.id, c.title, { links: false });
+ProjChats.setScope(P127.id); Panel.render();
 activate(claude.id); await wait(400);
 Native.open(claude.id, chats[0].id);
 await until(() => Native.view(claude.id).list.querySelectorAll('.msg').length >= 20, 10000);

@@ -8,7 +8,7 @@
 //   · a word only in the chat's title + one in its messages ("clink flicker")
 //   · never: a chat in the Trash, a version sync kept aside (data/sync/trash), a .prev copy as a second row
 //   · a chat that can't be read is named (unread), never silently missing
-//   · each row's project (an archived project's chat: none, as Projects.openChat sees it)
+//   · each row's project (an archived project's chat: its project, marked "(archived)"; round 127)
 //   · a long chat (read in slices) and a giant one (read by its bytes) land on the right message
 // (a plain script too: the app check gets it in front of its body with smoke.js --lib, as S113Set)
 const S113Set = (() => {
@@ -55,7 +55,7 @@ function longChat(id, n, at, word, now = Date.now(), pad = 40) {
   return { id, agentId: 'claude', title: id === 's113-giant' ? 'Render log (giant)' : 'Render log (long)', updatedAt: now - 3600e3, messages };
 }
 // the queries: top = the chat that must come first; order = these chats in this order; once = only one row for it;
-// none = no row at all; k = the message it lands on; project = the project the top row names (null: none)
+// none = no row at all; k = the message it lands on; project = the project the top row names (archived: marked so)
 const QUERIES = [
   { q: 'kyoto', top: 's113-kyoto', project: 'Travel', why: 'the obvious chat first (title + messages), its project' },
   { q: 'ky', top: 's113-kyoto', why: 'two letters: the start of a word' },
@@ -77,7 +77,7 @@ const QUERIES = [
   { q: 'spreadsheet', top: 's113-prev', once: true, why: 'a .prev copy is never a second row' },
   { q: 'clink flicker', top: 's113-clink-shader', why: 'one word in the title, one in a message' },
   { q: 'serum', top: 's113-serum', why: 'case: SERUM / Serum' },
-  { q: 'tamarind', top: 's113-arch', project: null, why: 'an archived project’s chat: no project' },
+  { q: 'tamarind', top: 's113-arch', project: 'Old archive', archived: true, why: 'an archived project’s chat: its project, “(archived)”' }, // (round 127, checksweep127)
   { q: 'xylophonic', top: 's113-giant', k: 30, why: 'a giant chat: lands on #30, read by its bytes' },
   { q: 'marmalade', top: 's113-long', k: 500, why: 'a long chat read in slices: lands on #500' },
 ];

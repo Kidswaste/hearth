@@ -448,10 +448,11 @@ function projectsOf(file) {
   const list = Array.isArray(v?.list) ? v.list : Array.isArray(v) ? v : null;
   if (!list) return { map: null, n: 0 };
   const map = new Map(); let n = 0;
-  for (const p of list) {
-    if (!p || typeof p !== 'object' || p.status === 'archived') continue;
-    n += 1;
-    for (const x of Array.isArray(p.items) ? p.items : []) if (x?.type === 'chat' && x.ref != null && !map.has(String(x.ref))) map.set(String(x.ref), { id: p.id, name: String(p.name || 'Project') });
+  // (round 127, checksweep127) live projects first; an archived project's chat still names it, marked archived
+  for (const arch of [false, true]) for (const p of list) {
+    if (!p || typeof p !== 'object' || (p.status === 'archived') !== arch) continue;
+    if (!arch) n += 1;
+    for (const x of Array.isArray(p.items) ? p.items : []) if (x?.type === 'chat' && x.ref != null && !map.has(String(x.ref))) map.set(String(x.ref), arch ? { id: p.id, name: String(p.name || 'Project'), archived: true } : { id: p.id, name: String(p.name || 'Project') });
   }
   Object.assign(projKeep, { sig, map, n });
   return projKeep;
