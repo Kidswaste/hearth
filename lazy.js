@@ -203,6 +203,9 @@ const Lazy = (() => {
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c));
     each(g, m.bridge, (p) => stubBridge(g, p));
+    // (round 139, room139) keysNow: a group whose keys-sheet lines its file added as it loaded (keys-lines.js, once
+    // part of keys-ui.js) gets their stand-ins right here too, so the sheet keeps its order
+    if (g.keysNow) { seen = {}; each(g, m.keys, (k) => stubKey(g, k)); }
   }
   // (what the palette / keys sheet already list, read once per moment: their lists are copied on every read)
   let seen = {};
@@ -212,7 +215,7 @@ const Lazy = (() => {
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
     each(g, m.tools, (t) => stubTool(g, t));
-    each(g, m.keys, (k) => stubKey(g, k));
+    if (!g.keysNow) each(g, m.keys, (k) => stubKey(g, k));
     each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
     each(g, m.apps, (a) => stubApp(g, a));
   }
@@ -295,13 +298,16 @@ const Lazy = (() => {
       realActions.set(label, run);
       return orig(label, run, keys);
     });
+    const filled = new Set();
     if (typeof Keys !== 'undefined') swap(Keys, 'add', (orig) => (...entries) => {
       const pass = [];
       for (const e of entries.flat()) {
         if (!e?.keys) continue;
         rep.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) });
-        const s = stubKeys.get(`${e.area || 'General'}|${e.keys}`);
-        if (s) Object.assign(s, { what: e.what, when: e.when || null, run: e.run || null, sel: e.sel || null }); else pass.push(e);
+        const id = `${e.area || 'General'}|${e.keys}`;
+        const s = stubKeys.get(id);
+        // (round 139, room139) the first line with these keys fills the stand-in, as Keys.add keeps the first of two
+        if (s) { if (!filled.has(id)) { filled.add(id); Object.assign(s, { what: e.what, when: e.when || null, run: e.run || null, sel: e.sel || null }); } } else pass.push(e);
       }
       return pass.length ? orig(...pass) : undefined;
     });
