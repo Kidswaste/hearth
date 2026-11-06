@@ -91,16 +91,16 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'play', 'brief', 'map_song', 'help'];
+const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'play', 'brief', 'map_song', 'perform', 'help'];
 // (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
   name: 'three_do',
   description: `Lab actions: {cmd, ...args, shot: true adds a picture}. help {topic}: a cmd's args, guide topic or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
-batch {ops: [{cmd, ...}]} in one call · undo {force} your last edit
-Look: contact_sheet {count|times} the song as one picture · input {actions} play-test · play {game, script}
+batch {ops: [{cmd, ...}]} in one call · undo {force} last edit
+Look: contact_sheet {count|times} song as one picture · input {actions} play-test · play {game, script}
 Layers: layers select_layer remove_layer {layer|layers} update_layer keyframes animate looks references
-Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop map_song
+Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop map_song perform
 Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
 run {command} a chat command`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
@@ -120,6 +120,7 @@ const DO_HELP = {
   play: 'play {game, script, secs, perf, shot, op}: play-test a game in ▶ Play (its own window, max fidelity) in ONE call: starts it if needed (game: a Lab scene\'s name like "Clink", "last", or an html path; none: the scene open now), plays script ("hold W 2 s, jump, look left 45, click, wait 1 s, press E, run forward 1 s, W+D 1 s, jump x3"; secs repeats it; no script: a walk-about for secs), then answers with numbers: fps vs the screen, worst frame, stutters, where the player went, each step ✓/✗, the game\'s state before → after (it reads window.game / window.__game / window.hearthState()), errors with file:line, the line and the usual fix, and what looks off. perf: true adds the stutter causes and fixes (≈ 250 tokens); shot: true one small picture (only when you need to see it). op: start | run | state | shot | perf | stop. It ends with your reply. "Play it for 30 s and tell me what feels off": say a one-line test plan, make ONE call {game, secs: 30, script, perf: true}, then sum up.',
   looks: 'looks {action: list | save {name} | apply {name} | delete {name} | project {strength: subtle|full, layer, keepLocked: true}}: saved slider looks per layer; project puts the project\'s palette (the owner\'s pick, the moodboard\'s or the brief\'s) on the scene\'s color sliders and material looks, no code change, one undo step.', // (round 129, looks129)
   map_song: 'map_song {apply, plan: {cues: [{time, name, looks: [{layer, name}]}], keys: [{layer, property, keys: [{time, value, ease}]}], links: [{layer, slider, band: kick|snare|…}]}}: the scene mapped to the loaded song (cues on the sections, drop moves on real sliders, saved looks per section, kick / snare links), shown to the owner as ghosts; plan replaces the proposal; apply keeps it (one undo step).', // (round 130, songmap130)
+  perform: 'perform {setup: {cues: [names] | {"1": name}, looks: [names] | {q: name}, layer, quant: now|beat|bar, note}}: a set for the owner\'s live ◉ Perform mode (keys 1–9 jump to cues, Q W E… play looks, on the beat or bar); the owner reviews it before it is used; the scene never changes. No args: what is on the keys.', // (round 131, perform131)
   material: 'material {op: list | set {layer, preset, color: #hex, shine: 0–1, part: object path (none: whole layer)} | off {layer, part} | info}: a material look (chrome, glass, gold, plastic, velvet, neon, toon, wireframe…) on a 3D layer or one object, without code; kept with the layer, renders follow.',
 };
 

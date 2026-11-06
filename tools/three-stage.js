@@ -385,6 +385,7 @@ const ThreeStage = (() => {
   async function act(a) {
     const h = hk(); const c = ThreeLab.peek?.();
     if (!h || !c) return;
+    if (String(a).startsWith('perform:')) { if (typeof ThreePerform === 'undefined' && window.Lazy) await Lazy.load('perform'); return window.ThreePerform?.act(String(a).slice(8)); } // (round 131, perform131) a pad / key learned for ◉ Perform
     if (a === 'go') return go();
     if (a === 'cut') return go(null, { mode: 'cut', quant: 'off' });
     if (a === 'next' || a === 'prev') { const id = neighbour(a === 'next' ? 1 : -1); if (id) return go(id); return null; }
