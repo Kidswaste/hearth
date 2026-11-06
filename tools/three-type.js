@@ -457,15 +457,19 @@ const LabType = (() => {
       [o.mode === '3d' ? 'Flat (2D)' : 'Extrude (3D)', '', quick(() => setMode(L.id, o.mode === '3d' ? '2d' : '3d'), o.mode === '3d' ? '🅰 2D' : '🅰 3D')],
       ...(o.mode === '3d' ? [['Material', '', pick(TD.MATERIALS, (x) => set(L.id, { material: x }))]] : []),
       ['♪ React to the music', 'scale + glow on kick, color on bass', quick(() => react(L.id, {}), '♪ reacting')],
+      ...(lyr ? [['🎤 Lyrics card…', 'the lane, styles, tap to time', () => lyricsCard()]] : []), // (round 133, lyrics133)
       ...(lyr ? [['Lyric look', '', Object.keys(TD.LOOKS).map((x) => [x, TD.LOOKS[x], quick(() => set(L.id, { look: x }), `🅰 ${x}`)])], ['🎤 Tap along (fix the timing)…', 'Space at each line', () => tapMode(L.id).catch((e) => toast(e.message, { type: 'error' }))], ['Align to the song again', 'onsets, beats', quick(() => realign(L.id), (r) => `🅰 ${r.lines} lines · ${r.how}`)], ['To the sequence (captions)', '', quick(() => toSequence(L.id), (r) => `▤ ${r.captions} captions`)]] : [['Lyrics…', 'paste, .lrc, .srt', () => pasteLyrics().catch((e) => toast(e.message, { type: 'error' }))]]),
       ['✦ Into particles', 'the words as dust', quick(() => toParticles(L.id), '✦ the words in particles')],
       ['Replace with a preset…', '', () => picker({ replace: true })],
     ]]];
   }
+  // (round 133, lyrics133) 🎤 the lyrics card and lane (tools/three-lyrics.js, lazy group "lyrics")
+  const lyricsCard = () => (window.Lazy ? Lazy.load('lyrics') : Promise.resolve()).then(() => window.LabLyrics?.open()).catch((e) => toast(e.message, { type: 'error' }));
   function previewItem() {
     return { label: '🅰 Type', hint: 'kinetic type, lyrics', items: () => [
       { label: '🅰 New type layer…', hint: `${TD.PRESETS.length} presets`, action: () => picker() },
       ...(typeof LabKineticHook !== 'undefined' ? LabKineticHook.previewRows() : []), // (round 45, kinetictype)
+      { label: '🎤 Lyrics synced to the song…', hint: 'paste / .lrc, auto-time, tap, a lane', action: () => lyricsCard() }, // (round 133, lyrics133)
       { label: 'Lyrics…', hint: 'paste, aligned to the song', action: () => pasteLyrics().then((r) => r && toast(`🅰 ${r.lines} lyric lines · ${r.how}`, { timeout: 2400 })).catch((e) => toast(e.message, { type: 'error' })) },
       { label: 'Lyrics from a file…', hint: '.lrc · .srt', action: () => loadLyricsFile().then((r) => r && toast(`🅰 ${r.lines} lyric lines`, { timeout: 2000 })).catch((e) => toast(e.message, { type: 'error' })) },
       { label: '🎤 Tap along…', hint: 'fix the lyric timing', action: () => tapMode().catch((e) => toast(e.message, { type: 'error' })) },

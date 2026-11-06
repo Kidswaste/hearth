@@ -1,0 +1,25 @@
+/* 🎤 Lyrics synced to the song (round 133, lyrics133): the lane under the song, the fold-away card, the tap strip (tools/three-lyrics.js) */
+.ly-lane { display: flex; align-items: stretch; height: 18px; margin: 1px 0 2px; gap: 2px; }
+.ly-lane .ly-head { flex: none; width: 22px; padding: 0; font-size: 11px; line-height: 16px; opacity: 0.7; }
+.ly-lane .ly-head:hover { opacity: 1; }
+.ly-track { position: relative; flex: 1; min-width: 0; overflow: hidden; border-radius: 4px; background: #ffffff08; }
+.ly-blk { position: absolute; top: 2px; bottom: 2px; padding: 0 4px; border-radius: 3px; background: #ffd75e2e; border: 1px solid #ffd75e66; color: var(--text, #f4ece0); font: 10px/12px system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: grab; user-select: none; touch-action: none; }
+.ly-blk:hover { background: #ffd75e44; }
+.ly-blk.on { background: #ffd75e88; color: #1a1408; }
+.ly-blk.drag { cursor: grabbing; outline: 1px solid var(--accent, #ff8c42); z-index: 1; }
+.ly-blk.tapped { border-color: var(--accent, #ff8c42); }
+.ly-pop { position: fixed; z-index: 70; width: 330px; max-height: 420px; overflow-y: auto; padding: 8px 10px; border-radius: 10px; background: var(--panel, #16161c); border: 1px solid var(--border, #ffffff22); box-shadow: 0 6px 22px #0007; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ly-h, .ly-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ly-h .spacer { flex: 1; }
+.ly-sub { margin-top: 2px; }
+.ly-styles { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ly-style { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 6px; border: 1px solid transparent; background: #ffffff08; color: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.ly-style:hover { border-color: #ffffff30; }
+.ly-style.on { border-color: var(--accent, #ff8c42); }
+.ly-prev { width: 64px; height: 18px; flex: none; border-radius: 3px; background: #0b0b10; }
+.ly-sls { display: flex; flex-direction: column; gap: 2px; }
+.ly-sl { display: grid; grid-template-columns: 80px 1fr 36px; align-items: center; gap: 6px; font-size: 11px; }
+.ly-sl input { width: 100%; }
+.ly-v { text-align: right; opacity: 0.7; }
+.ly-tap { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 60; padding: 8px 14px; border-radius: 10px; background: var(--panel, #16161c); border: 1px solid var(--accent, #ff8c42); font: 600 13px system-ui, sans-serif; color: var(--text, #f4ece0); box-shadow: 0 4px 18px #0006; }
+@media (max-width: 700px) { .ly-pop { width: calc(100vw - 16px); } }

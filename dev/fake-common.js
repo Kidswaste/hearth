@@ -310,6 +310,20 @@ function likePlan(prompt, msg) {
 // (round 129, draft129) ✦ Build a first draft (projectbrief-draft.js): "Draft · build steps 2–4 of the project brief…" builds
 // each listed step as a real layer "Draft N" in the palette's colors (three_do add_layer), keys its opacity, ticks it
 // (three_do brief {done: N}), then looks once (three_screenshot). "draft-slow" in a step: a pause after each step (to Stop).
+// (round 133, lyrics133) ✦ Style the lyrics (tools/three-lyrics-core.js askText): the "Suggested:" picks, applied the way
+// the prompt asks: one three_do keyframes per slider, a hold key at each section's start (dev/checks/lyrics133.js)
+function lyricsPlan(msg) {
+  if (!/^✦ Style the lyrics · layer "/m.test(msg)) return null;
+  const layer = (msg.match(/^✦ Style the lyrics · layer "([^"]+)"/m) || [])[1];
+  const styles = {};
+  for (const m of (msg.split(/^Styles \(slider=value\):$/m)[1] || '').split(/^Sections/m)[0].matchAll(/^(\w+): (.+?) \(/gm)) styles[m[1]] = Object.fromEntries([...m[2].matchAll(/(\w+)=(\S+)/g)].map((x) => [x[1], Number.isFinite(Number(x[2])) ? Number(x[2]) : x[2]]));
+  const secs = [...msg.matchAll(/^(.+?) @([\d.]+) \(/gm)].map((m) => ({ name: m[1], t: Number(m[2]) }));
+  const picks = Object.fromEntries(((msg.match(/^Suggested: (.+)$/m) || [])[1] || '').split(' · ').map((x) => { const i = x.lastIndexOf(' '); return [x.slice(0, i), x.slice(i + 1)]; }));
+  const keys = {};
+  secs.forEach((s, j) => { const v = styles[picks[s.name]]; if (!v) return; for (const [k, x] of Object.entries(v)) (keys[k] ||= []).push({ time: j === 0 ? 0 : s.t, value: x, ease: 'hold' }); });
+  const calls = Object.entries(keys).map(([k, list]) => ['three_do', { cmd: 'keyframes', layer, property: k, keys: list }]);
+  return { mcpCalls: calls, text: `Styled the lyrics per section: ${Object.entries(picks).map(([a, b]) => `${a} ${b}`).join(', ')}.` };
+}
 function draftPlan(msg) {
   if (!/^Draft · build /m.test(msg)) return null;
   const palette = ((msg.match(/^Palette: (.+)$/m) || [])[1] || '').match(/#[0-9a-f]{6}/gi) || [];
@@ -440,6 +454,8 @@ function plan(prompt, engine = 'claude') {
   if (crew) return { p: { mcp: true, mcpCalls: crew.mcpCalls }, text: crew.text, thinking: '' };
   const comp = compPlan(msg);
   if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
+  const lyr = lyricsPlan(msg); // (round 133, lyrics133)
+  if (lyr) return { p: { mcp: true, mcpCalls: lyr.mcpCalls }, text: lyr.text, thinking: '' };
   const jam = jamPlan(msg, engine);
   const dir = jam ? null : likePlan(prompt, msg) || draftPlan(msg) || directorPlan(prompt, msg, engine); // (round 129, draft129: the draft first; round 131, refmatch131: a layer like a picture)
   if (dir) {

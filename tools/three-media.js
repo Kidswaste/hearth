@@ -1440,6 +1440,7 @@ const ThreeMedia = (() => {
     function sectionsMenu(anchor) {
       menuAt(anchor, [
         st.analysis?.sections?.length ? ['✦ Map the scene to the song…', 'Cues, drop moves, looks and beat links as ghosts first (/map-song)', () => mapSong()] : false, // (round 130, songmap130)
+        ['🎤 Lyrics synced to the song…', 'Paste or open an .lrc, auto-time on the bars, tap to time, a lyrics layer', () => (window.Lazy ? Lazy.load('lyrics') : Promise.resolve()).then(() => window.LabLyrics?.open(anchor)).catch((err) => toast(err.message, { type: 'error' }))], // (round 133, lyrics133)
         ['Mark sections from the song', st.analysis?.sections?.[0]?.label ? `${st.analysis.sections.map((x) => x.label).join(' · ')}` : 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
         null,
         ...SECTION_NAMES.map((n) => [`${n} here`, `A "${n}" cue at the playhead (${fmtMs(now())})`, () => addCue(now(), n)]),
