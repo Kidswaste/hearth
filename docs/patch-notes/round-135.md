@@ -6,6 +6,8 @@
   song started again from the beginning, or jumped a second late. Two causes are fixed: the song, still loading,
   reset itself to its start once it knew its length, and a jump waited behind the previous one's answer. In our test
   (play then jump, 0 to 200 ms later, hundreds of times) the jumps now land where you clicked.
+- Also: right after a scene was reloaded, play then a jump could show the scene's very start for a moment before
+  catching up. The preview now waits for the song to be ready before it counts time, so it shows the right moment at once.
 
 ## 🎛 Mood dials
 - The Sliders panel's ⋯ › **🎛 Dials…** (or the Lab's ⋯ › 🎛 Dials): up to 4 knobs for the whole scene, like Energy,
