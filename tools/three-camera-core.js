@@ -49,7 +49,12 @@ function hearthCamCore() {
     { id: 'whip', name: 'Whip pan', icon: '⟿', travel: false, hint: 'a fast swing away and back', words: 'whip pan swish fast swing transition' },
     { id: 'punch', name: 'Punch-in on the beat', icon: '✸', travel: false, hint: 'a quick push on each kick / beat / bar', words: 'punch in on the beat kick bar bump zoom pulse thump beat sync music' },
     { id: 'views', name: 'From this view to that view', icon: '⇢', travel: true, hint: 'two views you set by looking around', words: 'from this view to that view keyframe start end camera path a to b' },
+    // (round 133, campath133) a path through 2+ views, each a keyframe at its own time (✎ Draw a camera path)
+    { id: 'path', name: 'Camera path', icon: '✎', travel: true, hint: 'a smooth curve through the points you drew', words: 'camera path draw curve spline keyframes points fly through route track' },
   ];
+  // (round 133, campath133) how a path goes from one point to the next: a smooth curve through them (Catmull-Rom),
+  // straight lines, or hold each point and move on the last beat before the next one
+  const PATH_HOW = [{ id: 'smooth', name: 'Smooth' }, { id: 'linear', name: 'Linear' }, { id: 'hold', name: 'Hold, then move on the beat' }];
   const KIND = Object.fromEntries(KINDS.map((k) => [k.id, k]));
   const BANDS = [{ id: 'kick', name: 'each kick' }, { id: 'beat', name: 'each beat' }, { id: 'bar', name: 'each bar' }];
   const VKEYS = ['yaw', 'pitch', 's', 'px', 'py', 'pz'];
@@ -69,6 +74,15 @@ function hearthCamCore() {
     if (kind === 'punch') m.band = BANDS.some((b) => b.id === o.band) ? o.band : 'kick';
     if (kind === 'shake') m.seed = Number(o.seed) || 1;
     if (kind === 'views') { m.from = view(o.from); m.to = view(o.to); }
+    if (kind === 'path') { // (round 133, campath133) pts: [{ t, v: view }], its range is its first and last point
+      const pts = (Array.isArray(o.pts) ? o.pts : []).filter((p) => p && Number.isFinite(Number(p.t))).map((p) => ({ t: r4(Math.max(0, Number(p.t))), v: view(p.v) })).sort((a, b) => a.t - b.t).slice(0, 64);
+      if (pts.length < 2) throw new Error('A camera path needs at least 2 points');
+      for (let i = 1; i < pts.length; i += 1) if (pts[i].t < pts[i - 1].t + 0.02) pts[i].t = r4(pts[i - 1].t + 0.02);
+      m.pts = pts; m.t0 = pts[0].t; m.t1 = pts[pts.length - 1].t;
+      m.how = PATH_HOW.some((x) => x.id === o.how) ? o.how : 'smooth';
+      if (Number(o.beat) > 0) m.beat = r4(Number(o.beat));
+      const kick = clamp(Number(o.kick) || 0, 0, 1); if (kick > 0) { m.kick = r4(kick); m.seed = Number(o.seed) || 1; }
+    }
     return m;
   }
   const view = (v) => Object.fromEntries(VKEYS.map((k) => [k, Number.isFinite(Number(v?.[k])) ? Number(v[k]) : k === 's' ? 1 : 0]));
@@ -111,6 +125,13 @@ function hearthCamCore() {
       case 'dolly': { const k = Math.exp(dir * 0.7 * a * u); O.s *= k; O.tk /= k; break; }
       case 'crane': O.pitch -= dir * 0.42 * a * u; break;
       case 'drift': O.yaw += dir * 0.16 * a * u; O.pitch -= 0.05 * a * u; O.s *= Math.exp(-0.08 * a * u); break;
+      case 'path': { // (round 133, campath133) the view on the curve at t, plus a shake on each kick (beatlink's hits)
+        const v = pathView(m, t);
+        for (const k of ['yaw', 'pitch', 'px', 'py', 'pz']) O[k] += v[k];
+        O.s *= v.s;
+        if (m.kick > 0 && since) { const e = punchEnv(since('kick')); if (e > 0) { const k = 0.03 * m.kick * e * a; const sd = m.seed || 1; O.lyaw += k * noise(t * 3, sd, 0); O.lpitch += k * noise(t * 3, sd, 1); O.roll += k * 0.6 * noise(t * 3, sd, 2); } }
+        break;
+      }
       case 'views': {
         const f = m.from || {}; const g = m.to || {};
         for (const k of ['yaw', 'pitch', 'px', 'py', 'pz']) O[k] += (f[k] || 0) + ((g[k] || 0) - (f[k] || 0)) * u;
@@ -144,6 +165,28 @@ function hearthCamCore() {
     if (Math.abs(O.tk - 1) < 1e-12) O.tk = 1;
     return identity(O) ? null : O;
   }
+  // (round 133, campath133) a path's view at t: before its first point the first, after its last the last; between two
+  // points a Catmull-Rom curve through them (the scale in log space), straight lines, or a hold until the last beat
+  function pathView(m, t) {
+    const P = m.pts || []; const n = P.length;
+    if (!n) return view(null);
+    if (n === 1 || t <= P[0].t) return { ...P[0].v };
+    if (t >= P[n - 1].t) return { ...P[n - 1].v };
+    let i = 0; while (i < n - 2 && t >= P[i + 1].t) i += 1;
+    const a = P[i]; const b = P[i + 1];
+    let u = (t - a.t) / Math.max(1e-6, b.t - a.t);
+    if (m.how === 'hold') { const beat = Math.min(m.beat > 0 ? m.beat : 0.5, b.t - a.t); const tm = b.t - beat; u = t <= tm ? 0 : ease('smooth', (t - tm) / Math.max(1e-6, beat)); }
+    const p0 = P[Math.max(0, i - 1)].v; const p3 = P[Math.min(n - 1, i + 2)].v;
+    const out = {};
+    for (const k of VKEYS) {
+      const f = (v) => (k === 's' ? Math.log(Math.max(1e-3, v.s)) : v[k]);
+      const x1 = f(a.v); const x2 = f(b.v);
+      const x = m.how === 'linear' ? x1 + (x2 - x1) * u : catmull(f(p0), x1, x2, f(p3), u);
+      out[k] = k === 's' ? Math.exp(x) : x;
+    }
+    return out;
+  }
+  const catmull = (p0, p1, p2, p3, u) => 0.5 * (2 * p1 + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u + (-p0 + 3 * p1 - 3 * p2 + p3) * u * u * u);
   const identity = (O) => !O || (O.yaw === 0 && O.pitch === 0 && O.s === 1 && O.px === 0 && O.py === 0 && O.pz === 0 && O.lyaw === 0 && O.lpitch === 0 && O.roll === 0 && O.tk === 1);
   // hit times → since(t): seconds since the last hit at or before t (null before the first)
   function sinceOf(times) {
@@ -153,13 +196,14 @@ function hearthCamCore() {
 
   // ---------- editing ----------
   // moves for a clip of a sequence: the scene's time k lands at t0 + k / rate
-  const shift = (moves, dt, rate = 1) => (moves || []).map((m) => ({ ...m, t0: r4(m.t0 / rate + dt), t1: r4(m.t1 / rate + dt) }));
+  const shift = (moves, dt, rate = 1) => (moves || []).map((m) => ({ ...m, t0: r4(m.t0 / rate + dt), t1: r4(m.t1 / rate + dt), ...(m.pts ? { pts: m.pts.map((p) => ({ ...p, t: r4(p.t / rate + dt) })) } : {}) })); // (round 133, campath133: a path's points too)
   // one end dragged (or the whole move: edge 'both'), kept inside [0, len] and at least min long
   function moveEdge(m, edge, t, { len = Infinity, min = 0.1, from = null } = {}) {
     const n = { ...m };
     if (edge === 'a') n.t0 = r4(clamp(t, 0, n.t1 - min));
     else if (edge === 'b') n.t1 = r4(clamp(t, n.t0 + min, len));
     else { const w = m.t1 - m.t0; const t0 = clamp((from ?? m.t0) + t, 0, Math.max(0, len - w)); n.t0 = r4(t0); n.t1 = r4(t0 + w); }
+    if (m.pts?.length) { const k = (n.t1 - n.t0) / Math.max(1e-6, m.t1 - m.t0); n.pts = m.pts.map((p) => ({ ...p, t: r4(n.t0 + (p.t - m.t0) * k) })); } // (round 133, campath133) a path's points stretch with its ends
     return n;
   }
   // where a new move goes: the whole scene, the loop, 4 bars from the playhead, or right after the last move
@@ -184,6 +228,7 @@ function hearthCamCore() {
       case 'drift': return 'Slow drift';
       case 'punch': return `Punch-in on ${BANDS.find((b) => b.id === m.band)?.name || 'each kick'}`;
       case 'views': return 'From one view to another';
+      case 'path': return `Camera path (${m.pts?.length || 0} points)`; // (round 133, campath133)
       default: return K.name;
     }
   }
@@ -217,7 +262,7 @@ function hearthCamCore() {
     const rg = /(\d+(?:\.\d+)?)\s*s?\s*(?:to|-|–|\.\.)\s*(\d+(?:\.\d+)?)\s*s\b/.exec(s); if (rg) { o.t0 = Number(rg[1]); o.t1 = Number(rg[2]); }
     return o;
   }
-  return { KINDS, KIND, EASES, EASE, BANDS, VKEYS, ease, make, clean, cleanAll, noise, punchEnv, whipShape, progress, at, addMove, identity, zero, sinceOf, shift, moveEdge, rangeFor, name, describe, parse, fmtT };
+  return { KINDS, KIND, EASES, EASE, BANDS, VKEYS, PATH_HOW, pathView, catmull, ease, make, clean, cleanAll, noise, punchEnv, whipShape, progress, at, addMove, identity, zero, sinceOf, shift, moveEdge, rangeFor, name, describe, parse, fmtT };
 }
 const CamCore = hearthCamCore();
 // the preview page gets the factory as source (tools/three.js sandboxLib: it runs `(code)()` as a module there)

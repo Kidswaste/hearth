@@ -184,6 +184,7 @@ const LabCamera = (() => {
       '-',
       { label: fromView && fromView.sid === h?.sketchId() ? '⇢ …to this view (the end)' : '⇢ From this view…', hint: fromView && fromView.sid === h?.sketchId() ? 'the view you looked around to now' : 'then look around to the end view', action: () => (fromView && fromView.sid === h?.sketchId() ? setTo() : setFrom()).catch(err) },
       ...(fromView ? [] : [{ label: '⇢ …to this view', hint: 'from the scene’s own camera', action: () => setTo().catch(err) }]),
+      { label: '✎ Draw a camera path', hint: 'click points on the picture: a smooth curve through them, on the song', tags: 'camera path draw curve points keyframes spline fly through', action: () => drawPath() }, // (round 133, campath133)
       '-',
       { label: n ? `🎥 Your moves (${n})…` : '🎥 Your moves…', hint: 'easing, intensity, remove', action: () => open() },
       ...(u ? [{ label: `↶ Undo ${u.replace(/^🎥\s*/, '')}`, action: () => undo() }] : []),
@@ -235,6 +236,7 @@ const LabCamera = (() => {
       g.fillStyle = '#48ddff';
       g.fillRect(Math.round(xa), y0, 2, y1 - y0); g.fillRect(Math.round(xb) - 2, y0, 2, y1 - y0);
       if (!C.KIND[m.kind]?.travel) g.fillRect(xa, y0, Math.max(2, xb - xa), 1); // (felt only inside its range: a top line)
+      if (m.pts) for (const p of m.pts) { const x = o.X(p.t); g.beginPath(); g.moveTo(x, y0 + 1); g.lineTo(x + 3, (y0 + y1) / 2); g.lineTo(x, y1 - 1); g.lineTo(x - 3, (y0 + y1) / 2); g.closePath(); g.fill(); } // (round 133, campath133) a path's points: its keyframes
       const label = `${C.KIND[m.kind]?.icon || '🎥'} ${C.name(m)}`;
       if (xb - xa > 34) { g.save(); g.beginPath(); g.rect(xa + 3, y0, xb - xa - 6, y1 - y0); g.clip(); g.fillStyle = '#dff8ff'; g.fillText(label, Math.max(xa + 5, 4), (y0 + y1) / 2 + 0.5); g.restore(); }
     }
@@ -285,7 +287,7 @@ const LabCamera = (() => {
     };
   }
   const cursorAt = (t, hit, xOf, e) => { if (!e || (hit.zone !== 'wave' && hit.zone !== 'ruler')) return ''; const x = hitAt(e, xOf); return x ? (x.edge === 'both' ? 'grab' : 'col-resize') : ''; };
-  const frameKey = () => (h ? withMoves().map((L) => movesOf(L).map((m) => `${m.id}:${m.t0}:${m.t1}:${m.kind}`).join(',')).join('|') + (drag ? `|d${drag.id}` : '') : '');
+  const frameKey = () => (h ? withMoves().map((L) => movesOf(L).map((m) => `${m.id}:${m.t0}:${m.t1}:${m.kind}${m.pts ? `:${m.pts.length}` : ''}`).join(',')).join('|') + (drag ? `|d${drag.id}` : '') : '');
 
   // ---------- the card: your moves ----------
   let card = null;
@@ -342,6 +344,9 @@ const LabCamera = (() => {
     return card;
   }
   const err = (e) => toast(e?.message || String(e), { type: 'error' });
+  // (round 133, campath133) ✎ Draw a camera path: tools/three-campath.js (lazy group "campath", loaded on first use)
+  const campath = async () => { if (typeof CamPath === 'undefined') await window.Lazy?.load('campath'); if (typeof CamPath === 'undefined') throw new Error('Camera paths aren’t loaded'); return CamPath; };
+  const drawPath = () => campath().then((cp) => cp.start()).catch(err);
 
   function attach(hooks) {
     h = hooks;
@@ -356,7 +361,7 @@ const LabCamera = (() => {
       Commands.register({
         name: 'camera-moves', area: 'Three.js Lab', aliases: ['lab-camera'],
         desc: 'Cinematic camera moves on the Lab timeline (keyframes on the scene’s own camera, renders match): push in, pull out, orbit left/right ¼ ½ full, dolly zoom, crane up/down, handheld shake, whip pan, slow drift, punch-in on each kick/beat/bar, from/to this view; [whole|loop|here|after] [smooth|cine|in|out|linear|snap] [60%] [2s to 8s]; list · undo · clear',
-        args: '<move words> | from | to | list | undo | clear',
+        args: '<move words> [on the drop] | path <yaw° pitch° distance, …> [over the drop] [hold|linear] [shake 40%] | from | to | list | undo | clear',
         keywords: 'camera move push pull orbit dolly zoom vertigo crane shake handheld whip pan drift punch beat kick bar view keyframe',
         async run(args) {
           await ready();
@@ -367,6 +372,8 @@ const LabCamera = (() => {
           if (/^(clear|off|none|remove all)$/i.test(a)) { const n = clearAll(); return n ? `${n} camera move${n === 1 ? '' : 's'} removed (/camera-moves undo brings them back)` : 'No camera moves to remove'; }
           if (/^from\b/i.test(a)) { const r = await setFrom(); return r ? 'Start view kept: look around to the end view, then /camera-moves to' : 'No 3D camera here'; }
           if (/^to\b/i.test(a)) { const m = await setTo(); return m ? C.describe(m) : 'No 3D camera here'; }
+          // (round 133, campath133) a drawn path in words, or a move over a named section ("orbit right half on the drop")
+          if (/^(path|draw)\b/i.test(a) || /\b(on|over|during|in|for) (the )?(intro|build|drop|break|outro|chorus|verse|loop)\b/i.test(a)) return (await campath()).command(a);
           const o = C.parse(a);
           if (!o.kind) throw new Error(`Moves: ${C.KINDS.map((k) => k.name.toLowerCase()).join(', ')}`);
           if (o.kind === 'views') { const m = await setTo(o); return m ? C.describe(m) : 'No 3D camera here'; }
@@ -380,5 +387,5 @@ const LabCamera = (() => {
   // ⌘/Ctrl+K (also what Find anything lists)
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Lab: 🎥 Camera moves (push in, orbit, dolly zoom, punch-in on the beat…)', async () => { try { await ThreeLab.cmd(); for (let i = 0; i < 40 && !h; i += 1) await new Promise((r) => setTimeout(r, 50)); open(); } catch (e) { err(e); } });
 
-  return { attach, onBox, previewItem, menuItems, presets, waveItems, add, setFrom, setTo, patch, remove, clearAll, setAll, undo, open, close, ask, stats, get card() { return card; }, moves: () => withMoves().map((L) => ({ layer: L.id, moves: clone(movesOf(L)) })), get undoDepth() { return U.length; }, _geo: () => geo, _bar: (id) => { const it = rows().get(id); if (!it || !geo) return null; const [y0, y1] = bandY(geo.LT, it.row); return { y0, y1, row: it.row }; } };
+  return { hooks: () => h, commit, liveSet, drawPath, attach, onBox, previewItem, menuItems, presets, waveItems, add, setFrom, setTo, patch, remove, clearAll, setAll, undo, open, close, ask, stats, get card() { return card; }, moves: () => withMoves().map((L) => ({ layer: L.id, moves: clone(movesOf(L)) })), get undoDepth() { return U.length; }, _geo: () => geo, _bar: (id) => { const it = rows().get(id); if (!it || !geo) return null; const [y0, y1] = bandY(geo.LT, it.row); return { y0, y1, row: it.row }; } };
 })();

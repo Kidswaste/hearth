@@ -1,0 +1,25 @@
+/* ✎ Camera paths (round 133, campath133: tools/three-campath.js): the overlay on the preview and the small path bar */
+.cpath-over { position: fixed; z-index: 980; cursor: grab; touch-action: none; }
+.cpath-over:active { cursor: grabbing; }
+.cpath-over.cpath-playing { pointer-events: none; }
+.cpath-svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.cpath-ring { fill: none; stroke: #48ddff40; stroke-width: 1; stroke-dasharray: 4 5; }
+.cpath-subject { fill: none; stroke: #ffffffa0; stroke-width: 1.5; }
+.cpath-curve { fill: none; stroke: #48ddff; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; filter: drop-shadow(0 0 3px #000c); }
+.cpath-aim { stroke: #48ddff55; stroke-width: 1; stroke-dasharray: 2 4; }
+.cpath-dot { cursor: move; }
+.cpath-dot circle { fill: #0f1214e6; stroke: #48ddff; stroke-width: 2; }
+.cpath-dot:hover circle { fill: #48ddff; }
+.cpath-dot text { fill: #dff8ff; font: 600 10px system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
+.cpath-dot:hover text { fill: #0f1214; }
+.cpath-cam { fill: none; stroke: #ffd36e; stroke-width: 2; }
+.cpath-cam.on { fill: #ffd36e; }
+.cpath-playing .cpath-dot { opacity: .5; }
+.cpath-bar { position: fixed; z-index: 991; padding: 5px 7px; border-radius: 10px; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 6px 20px #0009; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+.cpath-row, .cpath-more { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.cpath-bar b { color: var(--ui-cyan, #48ddff); white-space: nowrap; }
+.cpath-info { opacity: .7; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; margin-right: 2px; }
+.cpath-sel { font-size: 11.5px; padding: 1px 4px; max-width: 170px; }
+.cpath-kickl { display: flex; align-items: center; gap: 4px; font-size: 11px; opacity: .85; white-space: nowrap; }
+.cpath-kick { width: 70px; }
+.cpath-more[hidden] { display: none; }
