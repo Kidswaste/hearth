@@ -1,0 +1,13 @@
+/* ✈ The pre-flight check before a render (round 140, preflight140): the small card that shows only when something is
+   found (tools/three-preflight.js). Compact: one line per problem, its fix buttons beside it. */
+.pf-card { width: min(520px, calc(100vw - 32px)); }
+.pf-card h3 { margin: 0 0 8px; font-size: 15px; }
+.pf-card .pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pf-card .pf-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; line-height: 1.35; padding: 6px 8px; border-radius: 6px; background: var(--bg2, rgba(127, 127, 127, .08)); }
+.pf-card .pf-text { flex: 1 1 260px; min-width: 0; }
+.pf-card .pf-fixes { display: flex; gap: 4px; flex-wrap: wrap; }
+.pf-card .pf-fix { padding: 2px 8px; font-size: 12px; }
+.pf-card .pf-done { margin-top: 6px; font-size: 12px; opacity: .8; }
+.pf-card .pf-est { margin-top: 8px; font-size: 12px; opacity: .7; }
+.pf-card.pf-busy .pf-fix { pointer-events: none; opacity: .5; }
+.sq-render-panel .lx-est { opacity: .8; }

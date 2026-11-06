@@ -129,11 +129,11 @@ const LabRenderPre = (() => {
       state: () => ({ ticked: R.ticked.slice(), shown: R.shown, filled: JSON.parse(JSON.stringify(R.filled)) }),
       click, saveAs, editLength,
       // ⇪ Export with presets ticked: each one's jobs, the shown one with the card's fields as they are now
-      async run() {
+      async run(o = {}) { // (round 140, preflight140) o.check: the Render card's check before a render (one for every ticked preset)
         keep();
         const list = R.ticked.map((id) => fillOf(id)).filter(Boolean);
-        if (R.p && R.shown) setPrefs(R.p, { renderLast: R.shown });
-        return queue(list, { frame: frame(), source: st.source, project: R.p });
+        const shown = R.shown;
+        return queue(list, { frame: frame(), source: st.source, project: R.p, check: o.check || null, onGo: () => { if (R.p && shown) setPrefs(R.p, { renderLast: shown }); } });
       },
     };
     S.cur = api; // (the card open now: the check reads its state)
@@ -153,9 +153,9 @@ const LabRenderPre = (() => {
     const n = all[FormatsCore.nearest(size.w, size.h)];
     return n ? FormatsCore.toPage(FormatsCore.clamp(n)) : null;
   }
-  async function queue(list, { frame, source = 'scene', project = null, quiet = false } = {}) {
+  async function queue(list, { frame, source = 'scene', project = null, quiet = false, check = null, onGo = null } = {}) {
     const name = project?.name || (() => { try { return ThreeLab.scenes.get(sketchId())?.name; } catch { return null; } })() || 'Lab';
-    const dir = WinMac.join(await outBase(), XC().safe(name));
+    let dir = WinMac.join(await outBase(), XC().safe(name));
     let jobs = [];
     const date = new Date();
     for (const f of list) {
@@ -164,6 +164,19 @@ const LabRenderPre = (() => {
       jobs.push(...C.jobs(f, { format: x.format, size, fps: x.fps, quality: x.quality, ss: x.ss, blur: x.blur }, { name, source, date, perfect: true }));
     }
     if (S.tiny) jobs = C.tiny(jobs, S.tiny);
+    // (round 140, preflight140) one combined check of every ticked preset before anything renders (tools/three-preflight.js):
+    // a reel or a square post is meant to be its own shape; the presets that follow the song want one. Cancel: nothing renders.
+    if (check && typeof LabPreflight === 'undefined') await Promise.resolve(window.Lazy?.load?.('preflight')).catch(() => null);
+    if (check && typeof LabPreflight !== 'undefined') {
+      const baseOf = (id) => (C.get(id) ? id : savedOf(project).find((x) => x.id === id)?.base || 'full');
+      let song = false; try { song = Boolean(ThreeLab.scenes.songOf?.(sketchId())); } catch { /* none */ }
+      const pf = await check({ jobs: jobs.map((j) => LabPreflight.jobOf(j, { label: j.label, shape: /^(reel|square)$/.test(baseOf(j.preset)) ? 'fixed' : 'free', song })), dir, source, title: list.length > 1 ? `Before these ${list.length} presets` : null,
+        wantSong: source === 'seq' ? [] : list.filter((f) => /^(reel|full|master|square)$/.test(baseOf(f.id))).map((f) => f.name) });
+      if (!pf) return null;
+      jobs = jobs.map((j, k) => (pf.jobs[k] ? { ...j, size: { w: pf.jobs[k].w, h: pf.jobs[k].h }, fps: pf.jobs[k].fps } : j));
+      if (pf.flags?.dir) dir = pf.dir;
+    } else if (check) await check({ jobs: [], dir, source }); // (the check couldn't load: the card just closes)
+    onGo?.();
     // a file of that name already there: asked first (replace: the old one goes to the Trash; else both are kept)
     for (const j of jobs) {
       const target = WinMac.join(dir, `${XC().safe(j.stem)}${j.ext ? `.${j.ext}` : ''}`);

@@ -347,9 +347,14 @@ const LabBatch = (() => {
     pat.addEventListener('input', () => { st.pattern = pat.value || BC.DEFAULT_PATTERN; remember(st); paint(); });
     secsIn.addEventListener('change', () => { st.secs = Number(secsIn.value) || null; });
     half.addEventListener('change', () => { st.half = half.checked; remember(st); paint(); });
-    go.addEventListener('click', () => {
+    let pfBusy = false;
+    go.addEventListener('click', async () => {
       const o2 = { t: st.t, rows: st.rowsOk(), skipped: (st.parsed?.rows || []).filter((r) => !st.rowsOk().includes(r)), formats: FC().FORMATS.map((f) => f.id).filter((id) => st.formats.has(id)), recipe: st.rcs.find((x) => x.id === st.recipeId) || null, pattern: st.pattern, secs: st.secs, half: st.half };
       remember(st);
+      // (round 140, preflight140) one combined check of the whole batch first (tools/three-preflight.js); Cancel: the card stays
+      if (pfBusy) return;
+      pfBusy = true;
+      try { const pf = await preflight(o2); if (!pf) return; if (pf.flags?.half) o2.half = true; } catch (e) { console.warn('preflight', e); } finally { pfBusy = false; }
       close();
       start(o2).catch(err);
     });
@@ -361,6 +366,20 @@ const LabBatch = (() => {
     schedulePreview();
     st.preview = preview; st.reparse = reparse; st.rowsEl = rows;
     return st;
+  }
+  // (round 140, preflight140) the check before a render, for the whole batch at once: every row × format as a job (the
+  // template's song length, or the length asked), the template's scene (its files, solo, hidden layers), the disk
+  async function preflight(o) {
+    if (typeof LabPreflight === 'undefined') await Promise.resolve(window.Lazy?.load?.('preflight')).catch(() => null);
+    if (typeof LabPreflight === 'undefined' || !o.t || !o.rows?.length || !o.formats?.length) return { jobs: [], flags: {} };
+    const song = o.t.scene?.extras?.media?.path && AUD.test(o.t.scene.extras.media.path) ? o.t.scene.extras.media.path : null;
+    const P = LAB()?.player;
+    const secs = Number(o.secs) || (song && P?.path === song && P.duration) || (song ? durs.get(song) : null) || o.t.scene?.extras?.timeline?.len || 10;
+    const long = (fid) => (o.half ? Math.max(FC().get(fid).w, FC().get(fid).h) / 2 : 0);
+    const jobs = [];
+    for (const r of o.rows) for (const fid of o.formats) jobs.push(LabPreflight.jobOf({ format: 'mp4', size: FC().sizeOf(fid, long(fid)), fps: 30, quality: 'high', secs, source: 'seq' }, { label: `${r.n ?? ''} ${fid}`.trim(), shape: 'fixed', song: Boolean(song) }));
+    let dir = null; try { dir = await SEQ().outDir(); } catch { dir = null; }
+    return LabPreflight.gate({ jobs, dir, template: o.t, skipped: (o.skipped || []).length, canDir: false, title: `Before this batch (${plural(jobs.length, 'video')})` });
   }
   function close() {
     const st = S.st; S.st = null;

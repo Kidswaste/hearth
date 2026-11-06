@@ -47,6 +47,17 @@ function register(ipcMain, getWin, settings) {
   });
   // an event for a job that never reached ffmpeg, so its callers hear the end like any other
   ipcMain.handle('renders:relay', (_e, ev) => { if (ev && ev.id && ['done', 'progress', 'queued'].includes(ev.type)) send(ev); return true; });
+  // (round 140, preflight140) the room left on the disk of a render's output folder (the folder, or the nearest one
+  // above it that exists: a project's renders folder may not be made yet) → { free (bytes) | null }
+  ipcMain.handle('renders:free', async (_e, dir) => {
+    const path = require('path'); const fs = require('fs');
+    let d = typeof dir === 'string' && dir ? path.resolve(dir) : null;
+    for (let i = 0; d && i < 40; i += 1) {
+      try { const s = await fs.promises.statfs(d); return { free: Number(s.bavail) * Number(s.bsize) }; } catch { /* not there (yet): its parent */ }
+      const up = path.dirname(d); if (up === d) break; d = up;
+    }
+    return { free: null };
+  });
   ipcMain.handle('renders:encoders', (_e, overrides) => {
     const { ffmpeg } = aemain.ffStatus(over(overrides));
     if (!ffmpeg) return { ffmpeg: null, list: [] };
