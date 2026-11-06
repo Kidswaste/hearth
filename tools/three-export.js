@@ -601,7 +601,7 @@ const LabExport = (() => {
 
   // ---------- the panel (one dialog: what, format, size, quality; the rest in chat) ----------
   const SIZE_CHIPS = [['frame', 'Lab frame'], ['1080p', '1080p'], ['4k', '4K'], ['8k-square', '8K □'], ['custom', 'W×H…']];
-  async function panel({ format = null, source = null } = {}) {
+  async function panel({ format = null, source = null, preset = null } = {}) { // (round 131, renderpre131: preset 'last' = the project's last-used one)
     const last = opts0();
     // (round 128, projcreate128) a scene of a project made with a size and frame rate: the project's own (its frame is the scene's), else the last render's
     const own = (() => { try { const id = ThreeLab.scenes?.currentId?.(); const p = id && window.Projects?.ofItem?.('scene', id)?.find((x) => x.prefs?.fps || x.workspace?.fps); if (!p) return null; return { fps: p.prefs?.fps || p.workspace?.fps, frame: p.prefs?.aspect || p.workspace?.frame }; } catch { return null; } })();
@@ -611,12 +611,16 @@ const LabExport = (() => {
     const body = el('div', { class: 'sq-rp-body' });
     const go = el('button', { type: 'button', class: 'primary', text: '⇪ Export' });
     const main = ['mp4', 'prores', 'png', 'gif', 'still'];
+    // (round 131, renderpre131) the Presets row at the top (tools/three-renderpre.js, lazy group renderpre): its chips fill
+    // the fields below; with presets ticked, ⇪ Export renders each of them
+    const rp = await (async () => { try { if (typeof LabRenderPre === 'undefined') await window.Lazy?.load?.('renderpre'); return await window.LabRenderPre?.attach({ st, paint: () => paint(), frame: () => (st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow()), preset }) || null; } catch (err) { console.warn('Render presets', err); return null; } })();
     function paint() {
       const f = C.get(st.format);
       const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
       const sz = st.size === 'custom' ? C.size(st.custom || 'frame', frame) : C.size(st.size, frame);
       const pg = C.page(sz.w, sz.h, st.ss, { cap: gpuCap() });
       body.replaceChildren(
+        ...(rp ? [rp.row()] : []), // (round 131, renderpre131)
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'What' }), el('div', { class: 'sq-chips' }, chip(st.source === 'scene', 'This scene', 'The scene on screen, with its sliders as they are', () => { st.source = 'scene'; paint(); }), chip(st.source === 'seq', '▤ The sequence', 'The Lab sequence, whole (or its In–Out range from /lab-export)', () => { st.source = 'seq'; paint(); }))),
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Format' }), el('div', { class: 'sq-chips' }, [...main.map((id) => chip(st.format === id, C.get(id).name.split(' · ')[0].replace('PNG sequence + alpha', 'PNG seq'), C.get(id).tip, () => { st.format = id; paint(); })),
           chip(!main.includes(st.format), main.includes(st.format) ? 'More ▾' : `${f.name} ▾`, 'HEVC, WebM + alpha, MP4 loop, 16-bit still, GLB, web page, preset, contact sheet', (ev) => showMenu(ev.clientX, ev.clientY, C.FORMATS.filter((x) => !main.includes(x.id)).map((x) => ({ label: x.name, hint: x.tip, checked: st.format === x.id, action: () => { st.format = x.id; paint(); } }))))])),
@@ -629,7 +633,7 @@ const LabExport = (() => {
         ])),
         el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` }),
       );
-      go.textContent = `⇪ ${f.kind === 'scene' && f.id !== 'sheet' ? 'Save' : 'Export'} ${f.name.split(' · ')[0]}`;
+      go.textContent = rp?.label?.() || `⇪ ${f.kind === 'scene' && f.id !== 'sheet' ? 'Save' : 'Export'} ${f.name.split(' · ')[0]}`; // (round 131, renderpre131: "⇪ Export 2 presets")
     }
     dlg.append(el('h3', { text: 'Export from the Lab' }), body, el('div', { class: 'modal-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost', text: 'Cancel', on: { click: () => dlg.close() } }), go));
     document.body.append(dlg);
@@ -637,6 +641,7 @@ const LabExport = (() => {
     paint();
     dlg.showModal();
     go.addEventListener('click', () => {
+      if (rp?.active()) { dlg.close(); rp.run().catch((err) => toast(err.message, { type: 'error' })); return; } // (round 131, renderpre131) the ticked presets, one after another (the last render's settings stay as they were)
       store.set('three.export', { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur });
       window.LabRecipesHook?.note?.('export', { set: { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur } }); // (round 39, labrecipes)
       dlg.close();

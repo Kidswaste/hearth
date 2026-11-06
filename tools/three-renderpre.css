@@ -1,0 +1,11 @@
+/* One-click render presets (round 131, renderpre131): the Presets row at the top of the Lab's Render card
+   (tools/three-renderpre.js). Built on the card's own chips (.sq-render-panel .sq-chip, tools/three-seq.css). */
+.sq-render-panel .rp-row { align-items: start; padding-bottom: 8px; margin-bottom: 2px; border-bottom: 1px solid var(--line, #333); }
+.sq-render-panel .rp-row > b { padding-top: 5px; }
+.sq-render-panel .rp-wrap { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sq-render-panel .rp-chip { font-size: 12px; padding: 3px 9px; }
+.sq-render-panel .rp-chip.rp-shown { outline: 2px solid var(--fg, #ddd); outline-offset: 1px; }
+.sq-render-panel .rp-line { display: flex; align-items: center; gap: 6px; font-size: 12px; min-height: 22px; }
+.sq-render-panel .rp-len { opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sq-render-panel .rp-line .spacer { flex: 1; }
+.sq-render-panel .rp-line button.small { padding: 1px 7px; font-size: 12px; }
