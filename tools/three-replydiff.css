@@ -1,0 +1,32 @@
+/* "Changed 3 layers · Review" under a director reply (round 137, replydiff137, tools/three-replydiff.js): one folded
+   line; opened, a compact review (Keep all / Undo all, a before / after pair, a row per layer, the code change folded). */
+.rd-fold { margin: 2px 0 0; font-size: 12px; }
+.rd-fold > .rd-sum { cursor: pointer; color: var(--muted, #8a8f98); list-style: none; display: inline-block; padding: 1px 4px; border-radius: 5px; }
+.rd-fold > .rd-sum::-webkit-details-marker { display: none; }
+.rd-fold > .rd-sum::before { content: '▸ '; }
+.rd-fold[open] > .rd-sum::before { content: '▾ '; }
+.rd-fold > .rd-sum:hover { color: var(--text, inherit); background: color-mix(in srgb, currentColor 8%, transparent); }
+.rd-body { margin: 4px 0 2px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, currentColor 5%, transparent); max-width: 620px; }
+.rd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.rd-who { font-weight: 600; }
+.rd-sp { flex: 1; }
+.rd-btn { font-size: 11px; padding: 1px 7px; border-radius: 5px; }
+.rd-undo, .rd-undo-all { color: var(--fh-ember, #ff8a3d); }
+.rd-wait { color: var(--muted, #8a8f98); }
+.rd-scene { margin-top: 4px; font-weight: 600; font-size: 11px; color: var(--muted, #8a8f98); }
+.rd-pics { display: flex; gap: 6px; margin: 2px 0 4px; }
+.rd-pic { margin: 0; text-align: center; font-size: 10px; color: var(--muted, #8a8f98); }
+.rd-pic img, .rd-nopic { display: block; width: 96px; height: 54px; object-fit: cover; border-radius: 4px; background: #0003; line-height: 54px; }
+.rd-row { padding: 3px 0; border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent); }
+.rd-line { display: flex; align-items: baseline; gap: 6px; }
+.rd-words { flex: 1; overflow-wrap: anywhere; }
+.rd-row.rd-gone .rd-words { opacity: .55; text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.rd-done { font-size: 11px; color: var(--muted, #8a8f98); }
+.rd-code > summary, .rd-some > summary { cursor: pointer; font-size: 11px; color: var(--muted, #8a8f98); }
+.rd-diff { margin: 3px 0; max-height: 260px; overflow: auto; font: 11px/1.4 var(--mono, ui-monospace, monospace); padding: 4px 6px; border-radius: 5px; background: #0002; white-space: pre; }
+.rd-add { background: color-mix(in srgb, #3fb950 18%, transparent); }
+.rd-del { background: color-mix(in srgb, #f85149 18%, transparent); }
+.rd-gap { color: var(--muted, #8a8f98); font-style: italic; }
+.rd-some { margin-top: 4px; }
+.rd-tick { display: block; font-size: 12px; padding: 1px 0; }
+.rd-some-go { margin-top: 3px; }
