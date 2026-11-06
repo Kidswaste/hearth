@@ -3795,6 +3795,7 @@ const ThreeLab = (() => {
         ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
         ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
         ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
+        { label: '★ From my work…', hint: 'layers, scenes, looks', tip: 'Your past scenes, standout layers and looks: add a layer here, start a new scene from one, or use a look (each one Undo)', action: () => Lazy.load('mywork').then(() => MyWork.open({ mode: 'lab', kind: 'layer' })).catch((e) => toast(e.message, { type: 'error' })) }, // (round 134, starters134) mywork.js
         ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the webcam as a live input (tools/three-motion-in.js)
         ...(compRest.length ? ['-', '◫ Comp', ...compRest] : []),
       ];
@@ -4288,7 +4289,9 @@ const ThreeLab = (() => {
       const grid = el('div', { class: 'sb-grid' });
       const dlg = el('dialog', { class: 'ui-modal sb-dialog' },
         el('div', { class: 'refs-head' }, el('h3', { text: 'Sketches' }), q, el('span', { class: 'spacer' }),
-          btn('＋ New', 'New sketch from a template', () => { dlg.close(); templateGallery(); }, 'primary small'), btn('Close', '', () => dlg.close())),
+          btn('＋ New', 'New sketch from a template', () => { dlg.close(); templateGallery(); }, 'primary small'),
+          btn('★ My work', 'Start a new scene from your past work: scenes, templates, standout layers, looks', () => { dlg.close(); Lazy.load('mywork').then(() => MyWork.open({ mode: 'lab', kind: 'scene' })).catch((e) => toast(e.message, { type: 'error' })); }, 'ghost small sb-mywork'), // (round 134, starters134)
+          btn('Close', '', () => dlg.close())),
         grid);
       // ★ pinned first, then by the sort you pick; right-click a card for rename / duplicate / pin / delete.
       const sortSel = el('select', { class: 'sb-sort', title: 'Sort' }, [['recent', 'Recent'], ['name', 'Name'], ['layers', 'Most layers']].map(([v, l]) => el('option', { value: v, text: l, selected: v === store.get('three.sbSort', 'recent') })));

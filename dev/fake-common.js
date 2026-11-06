@@ -391,6 +391,13 @@ function plan(prompt, engine = 'claude') {
   // `const NAME = <number>;` and the first quoted '#rrggbb' of the numbered code as hard-coded values, the first two
   // sliders as the ones that matter; "Make it slower / blurry / calmer…" is a plan (speed halved, keys on glow, one
   // unknown key and one value past its max for the clamp), anything else goes to the director (dev/checks/explain132.js)
+  // (round 134, starters134) ✦ Like my past work (mywork-core.js): 3 ideas, the first three library ids it was given,
+  // each naming the brief's first word (dev/checks/starters134.js)
+  if (/^Suggest 3 starting points from my past work/m.test(msg)) { // (Astra's prompt has its instructions first)
+    const ids = [...msg.matchAll(/^\[(w\d+)\] ([^·\n]+)/gm)].map((m) => ({ id: m[1], name: m[2].trim() }));
+    const brief = ((msg.match(/^Brief: (.*)$/m) || [])[1] || '').split(/\s+/)[0] || 'it';
+    return { p: {}, thinking: '', text: JSON.stringify({ ideas: ids.slice(0, 3).map((x, i) => ({ id: x.id, title: `Idea ${i + 1}: ${x.name}`, why: `Fits "${brief}" (fake: ${ids.length} items read).` })) }) };
+  }
   if (msg.startsWith('Explain this Lab layer')) {
     const code = [...msg.matchAll(/^ *(\d+)\| (.*)$/gm)].map((m) => ({ n: +m[1], t: m[2] })).filter((l) => !/tweak\s*\(/.test(l.t));
     const keys = [...((msg.match(/^Its sliders \(tweak\(\)\): (.+)\.$/m) || [])[1] || '').matchAll(/(?:^|, )(\w+)(?: "[^"]*")? -?[\d.]+/g)].map((m) => m[1]);

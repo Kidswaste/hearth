@@ -85,7 +85,7 @@
   // one line per section, under its label
   function summary(st, agents = []) {
     const s = startOf(st.start);
-    const start = st.start === 'copy' ? 'A copy of one of my scenes' : st.start === 'duplicate' ? 'A copy of a project' : st.start === 'mytemplate' ? 'One of my Lab templates' : st.start === 'projtemplate' ? `My template “${st.projTemplateName || 'template'}”` /* (round 129, next129) */ : s.label;
+    const start = st.start === 'copy' ? 'A copy of one of my scenes' : st.start === 'duplicate' ? 'A copy of a project' : st.start === 'mytemplate' ? 'One of my Lab templates' : st.start === 'projtemplate' ? `My template “${st.projTemplateName || 'template'}”` /* (round 129, next129) */ : st.start === 'mywork' ? `My work: “${st.myWork?.name || 'my work'}”` /* (round 134, starters134) */ : s.label;
     const media = [st.song ? `🎵 ${base(st.song)}` : '', st.footage ? `🎞 ${base(st.footage)}` : ''].filter(Boolean).join(' · ') || 'Skip for now';
     const size = SIZES.find((z) => z.id === st.frame);
     const look = [st.pictures?.length ? `${st.pictures.length} picture${st.pictures.length === 1 ? '' : 's'}` : '', st.palette?.length ? `${st.palette.length} colors` : '', `${size?.label || st.frame} · ${st.fps} fps`].filter(Boolean).join(' · ');

@@ -46,7 +46,7 @@ window.ProjCreate = (() => {
     agents.sort((a, b) => (b.engine === 'codex') - (a.engine === 'codex'));
     const d0 = C.defaults(store.get(KEY, {}), agents.map((a) => a.id));
     const st = {
-      start: 'empty', copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
+      start: 'empty', myWork: null /* (round 134, starters134) */, copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
       palette: [], paletteName: '', frame: d0.frame, fps: d0.fps, agentId: defaults.agentId && agents.some((a) => a.id === defaults.agentId) ? defaults.agentId : d0.agentId,
       persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: '',
     };
@@ -106,6 +106,10 @@ window.ProjCreate = (() => {
       const out = [el('div', { class: 'pcw-chips', attrs: { role: 'group', 'aria-label': 'Start from' } },
         ...C.STARTS.map((s) => chip(`${s.icon} ${s.label}`, s.hint, st.start === s.id, () => set({ start: s.id }))),
         chip('⧉ Copy one of my scenes…', 'A copy of a scene you made, with its song and frame size', st.start === 'copy', choose('scenes', 'copy')),
+        // (round 134, starters134) ★ My work: past scenes, templates, standout layers and looks, with pictures (mywork.js)
+        chip('★ My work…', 'Your past scenes, templates, standout layers and palettes, with pictures; ✦ Like my past work suggests 3', st.start === 'mywork', async () => {
+          try { await Lazy.load('mywork'); await MyWork.open({ mode: 'card', name: title.value, brief: st.intent, agentId: st.agentId, onPick: async (item) => { try { set(await MyWork.cardPatch(item, st)); } catch (err) { status.textContent = calmError(err); } } }); } catch (err) { status.textContent = calmError(err); }
+        }),
         ...(store.get('three.myTemplates', 0) > 0 ? [chip('📐 One of my Lab templates…', 'A template you saved in the Lab', st.start === 'mytemplate', choose('templates', 'mytemplate'))] : []),
         chip('⎘ Duplicate a project…', 'A copy of a whole project: its chats, scenes and moodboard', st.start === 'duplicate', choose('projects', 'duplicate')))];
       const s = C.startOf(st.start);
@@ -124,6 +128,7 @@ window.ProjCreate = (() => {
         const t = st.start === 'projtemplate' && lists.projTemplates.find((x) => x.id === st.projTemplate);
         if (t) out.push(el('p', { class: 'hint', text: `${t.name}: ${ProjTemplates.describe(t)}. A new project, with its own copies.` }));
       }
+      if (st.start === 'mywork' && st.myWork) out.push(el('p', { class: 'hint', text: `From my work: ${st.myWork.kind === 'layer' ? 'the layer' : 'the scene'} “${st.myWork.name}”. A copy with fresh ids; the original stays as it is.` })); // (round 134, starters134)
       if (st.start === 'copy') out.push(select('Which scene?', lists.scenes, st.copyScene, (v) => { st.copyScene = v; }, 'Pick a scene'));
       if (st.start === 'mytemplate') out.push(select('Which template?', lists.templates, st.myTemplate, (v) => { st.myTemplate = v; }, 'Pick a template'));
       if (st.start === 'duplicate') out.push(select('Which project?', lists.projects, st.dupProject, (v) => { st.dupProject = v; }, 'Pick a project'), el('p', { class: 'hint', text: 'The copy keeps its own song, look and moodboard; the name above renames it.' }));
@@ -247,6 +252,7 @@ window.ProjCreate = (() => {
     }
     if (st.start === 'copy' && !st.copyScene) throw Error('Pick the scene to copy, or choose another start.');
     if (st.start === 'mytemplate' && !st.myTemplate) throw Error('Pick the template, or choose another start.');
+    if (st.start === 'mywork' && !st.myWork) throw Error('Pick something from My work, or choose another start.'); // (round 134, starters134)
     // (round 129, next129) a project template: its song (when it kept one) copied in, unless a song was picked here
     st.tplMedia = null;
     if (st.start === 'projtemplate') {
@@ -269,6 +275,7 @@ window.ProjCreate = (() => {
     if (!x) return;
     let Ls = null;
     if (st.start === 'projtemplate') { await fromProjTemplate(p, st, x); return; } // (round 129, next129)
+    if (st.start === 'mywork') { await Lazy.load('mywork'); const r = await MyWork.into(p, x, st.myWork, st); last.steps.push(`my work: ${r.kind} · ${x.layers.map((L) => L.name).join(', ')}`); } // (round 134, starters134) a copy, fresh ids
     if (st.start === 'mytemplate') {
       await Lazy.load('labtemplates');
       const t = (await LabTemplates.list()).find((y) => y.id === st.myTemplate);
