@@ -1,0 +1,26 @@
+/* 🎛 Mood dials (round 135, mooddial135: tools/three-dials.js): the small card */
+.md-pop { position: fixed; z-index: 985; padding: 10px 12px; border-radius: 12px; display: flex; flex-direction: column; gap: 7px; max-height: 70vh; overflow: auto; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12.5px; }
+.md-head { display: flex; align-items: baseline; gap: 6px; }
+.md-head b { color: var(--ui-cyan, #48ddff); }
+.md-x { margin-left: auto; }
+.md-sub, .md-k { opacity: .65; font-size: 11px; }
+.md-row { display: flex; flex-direction: column; gap: 3px; padding: 3px 4px; border-radius: 8px; }
+.md-row.sel { background: color-mix(in srgb, var(--ui-cyan, #48ddff) 10%, transparent); }
+.md-row.learning { outline: 1px dashed var(--ui-cyan, #48ddff); }
+.md-line { display: flex; align-items: center; gap: 5px; }
+.md-name { width: 74px; flex: none; text-align: left; padding: 0; border: 0; background: none; color: var(--text, #e8e2d6); font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.md-knob { flex: 1; min-width: 60px; accent-color: var(--ui-cyan, #48ddff); }
+.md-pct { width: 32px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; font-size: 11px; }
+.md-kf, .md-more { padding: 0 4px; min-width: 0; }
+.md-kf.on { color: var(--ui-cyan, #48ddff); }
+.md-lane { position: relative; height: 8px; margin-left: 79px; margin-right: 50px; border-radius: 4px; background: var(--line, #2c2a26); }
+.md-key { position: absolute; top: 0; width: 8px; height: 8px; margin-left: -4px; transform: rotate(45deg) scale(.8); background: var(--ui-cyan, #48ddff); cursor: pointer; }
+.md-ph { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--text, #fff); opacity: .7; pointer-events: none; }
+.md-learn { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 8px; font-size: 11.5px; background: color-mix(in srgb, var(--ui-cyan, #48ddff) 12%, transparent); }
+.md-sugs { display: flex; flex-direction: column; gap: 3px; }
+.md-sug { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 5px; }
+.md-sug .md-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md-ai { display: flex; flex-direction: column; gap: 4px; }
+.md-cost { font-size: 11px; opacity: .8; }
+.md-foot { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.md-empty { line-height: 1.4; }

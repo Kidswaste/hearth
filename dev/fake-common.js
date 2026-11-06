@@ -410,6 +410,19 @@ function plan(prompt, engine = 'claude') {
     const brief = ((msg.match(/^Brief: (.*)$/m) || [])[1] || '').split(/\s+/)[0] || 'it';
     return { p: {}, thinking: '', text: JSON.stringify({ ideas: ids.slice(0, 3).map((x, i) => ({ id: x.id, title: `Idea ${i + 1}: ${x.name}`, why: `Fits "${brief}" (fake: ${ids.length} items read).` })) }) };
   }
+  // (round 135, mooddial135) ✦ Suggest mood dials (tools/three-dials-core.js): 3 dials from the slider lines it was given
+  // (Energy: the first two numbers min → max, plus an unknown key; Darkness: the second number with its 1 end past its
+  // max, for the clamp; Chaos: the last number) (dev/checks/mooddial135.js)
+  if (/^✦ Suggest mood dials/m.test(msg)) {
+    const sl = [...msg.matchAll(/^\[([^\]]+)\] (\w+) "[^"]*" (-?[\d.]+) \((-?[\d.]+)–(-?[\d.]+)\)$/gm)].map((m) => ({ layer: m[1], key: m[2], v: +m[3], min: +m[4], max: +m[5] }));
+    const mk = (x, a, b) => ({ layer: x.layer, key: x.key, at0: a, at1: b, curve: 'linear' });
+    const dials = sl.length ? [
+      { name: 'Energy', why: `faster and brighter (fake: ${sl.length} sliders read)`, maps: [...sl.slice(0, 2).map((x) => mk(x, x.min, x.max)), { layer: sl[0].layer, key: 'zzz', at0: 0, at1: 1 }] },
+      { name: 'Darkness', why: 'dimmer', maps: [mk(sl[1] || sl[0], (sl[1] || sl[0]).min, (sl[1] || sl[0]).max * 5)] },
+      { name: 'Chaos', why: 'wilder', maps: [mk(sl.at(-1), sl.at(-1).min, sl.at(-1).max)] },
+    ] : [];
+    return { p: {}, thinking: '', text: JSON.stringify({ dials }) };
+  }
   if (msg.startsWith('Explain this Lab layer')) {
     const code = [...msg.matchAll(/^ *(\d+)\| (.*)$/gm)].map((m) => ({ n: +m[1], t: m[2] })).filter((l) => !/tweak\s*\(/.test(l.t));
     const keys = [...((msg.match(/^Its sliders \(tweak\(\)\): (.+)\.$/m) || [])[1] || '').matchAll(/(?:^|, )(\w+)(?: "[^"]*")? -?[\d.]+/g)].map((m) => m[1]);
