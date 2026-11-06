@@ -2266,6 +2266,7 @@ const ThreeLab = (() => {
             btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
             btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
             r.kind === 'video' && typeof ThreeFrames !== 'undefined' ? btn('🎞 Read ▾', 'Read this clip exactly: contact sheet, scenes, motion, pacing · match its pacing (its rhythm, not its footage)', (e) => { const rr = e.currentTarget.getBoundingClientRect(); refsDlg?.close(); ThreeFrames.refMenu(rr.left, rr.bottom + 4, r.path, r.key); }) : null,
+            r.kind === 'image' ? btn('✦ Like this', 'Make a layer like this: the director studies the picture and builds ONE new layer in its spirit, with sliders, in its palette (the cost shows first)', () => { refsDlg?.close(); (window.Lazy ? Lazy.load('refmatch') : Promise.resolve()).then(() => LabRefMatch.fromRef(r)).catch((err) => toast(err.message, { type: 'error' })); }, 'ghost small imp-ai') : null, // (round 131, refmatch131)
             r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
       }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
@@ -5902,7 +5903,9 @@ ${frag}\`,
         R.setPalette(cols);
         return { ok: true, value: { palette: cols } };
       }
-      return { ok: false, error: 'action must be list, add, rename, remove or palette' };
+      // (round 131, refmatch131) like: the picture (small) + its palette and look, to build ONE layer in its spirit
+      if (action === 'like') { if (typeof LabRefMatch === 'undefined' && window.Lazy) await Lazy.load('refmatch'); return LabRefMatch.op(find(args.name), args); }
+      return { ok: false, error: 'action must be list, add, rename, remove, palette or like' };
     }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
     if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layers ?? args.layer ?? args.name, { who: args._owner && args._owner === window.LabChatLink?.ownerToken ? null : aiName(ctx.chatId) }) }; // (round 116) layers: several in one step

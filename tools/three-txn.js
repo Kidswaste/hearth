@@ -21,7 +21,8 @@ const LabTxn = (() => {
   const READ_OP = /^(list|info|help|library|presets|types|status|check|show|find)$/i;
   const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')))
     || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length)) // (round 74) sliders read, none set
-    || (tool === 'three_map_song' && !a.apply); // (round 130, songmap130) the song map as ghosts: nothing in the scene changes
+    || (tool === 'three_map_song' && !a.apply) // (round 130, songmap130) the song map as ghosts: nothing in the scene changes
+    || (tool === 'three_references' && a.action === 'like'); // (round 131, refmatch131) the picture and its palette: a read
   // tools whose own answer already says what changed (no second line about it)
   const SAYS = /^three_(edit_code|set_code|add_layer|update_layer|undo|sliders)$/;
   const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0 };

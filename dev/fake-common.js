@@ -268,6 +268,45 @@ function directorPlan(prompt, msg, engine) {
   return { mcpCalls: calls, text: lines.join(' ') };
 }
 
+// (round 131, refmatch131) ✦ Make a layer like this (tools/three-refmatch-core.js): ONE new layer named as asked, in the
+// message's palette, with tweak() sliders (two colours, size, count, speed, glow), then a look; "✦ Closer…" / "✦ Looser…"
+// rework that layer only (closer: tighter rings, slower; looser: wider, faster), keeping its name and sliders. The reply
+// says how many pictures came with the message (dev/checks/refmatch131.js: the picture only on the click)
+function likeCode(name, pal, mode = 'make') {
+  const [a = '#ff3cac', b = '#2bd2ff'] = pal;
+  const size = mode === 'closer' ? 0.8 : mode === 'looser' ? 1.6 : 1.2;
+  const speed = mode === 'closer' ? 0.3 : mode === 'looser' ? 1.4 : 0.7;
+  return `import * as THREE from 'three';
+const P = tweak({ colorA: { value: '${a}', label: 'Colour A', group: 'Colour' }, colorB: { value: '${b}', label: 'Colour B', group: 'Colour' }, size: [${size}, 0.2, 3], count: [${mode === 'closer' ? 5 : 7}, 1, 16, 1], speed: [${speed}, 0, 3], glow: [0.6, 0, 1] });
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.z = 6;
+const rings = [];
+for (let i = 0; i < 16; i += 1) { const m = new THREE.Mesh(new THREE.TorusGeometry(0.4 + i * 0.18, 0.03, 8, 64), new THREE.MeshBasicMaterial({ color: i % 2 ? P.colorB : P.colorA, transparent: true })); m.name = ${JSON.stringify(name)}; scene.add(m); rings.push(m); }
+renderer.setAnimationLoop((now) => {
+  rings.forEach((m, i) => { m.visible = i < P.count; m.scale.setScalar(P.size); m.rotation.z = (now / 1000) * P.speed * (i % 2 ? -1 : 1); m.material.opacity = P.glow; m.material.color.set(i % 2 ? P.colorB : P.colorA); });
+  renderer.render(scene, camera);
+});`;
+}
+function likePlan(prompt, msg) {
+  const make = /^✦ Make a layer like this: /m.test(msg);
+  const more = msg.match(/^✦ (Closer|Looser)[^:]*: rework the layer "([^"]+)"/m);
+  if (!make && !more) return null;
+  const pal = ((msg.match(/^Palette: (.+)$/m) || [])[1] || '').match(/#[0-9a-f]{6}/gi) || [];
+  const seen = ((prompt.split(/\[Attached image[^\]]*\]/)[1] || '').split('\n').filter((l) => /^([a-zA-Z]:[\\/]|\/)/.test(l.trim()))).length;
+  if (make) {
+    const name = (msg.match(/named "([^"]+)"/) || [])[1] || 'Like it';
+    return { mcpCalls: [['three_do', { cmd: 'add_layer', name, code: likeCode(name, pal) }], ['three_screenshot', { size: 'small' }]],
+      text: `Built "${name}": nested rings in its two lead colours, slow counter-rotation for its calm motion (pictures seen: ${seen}).` };
+  }
+  const mode = more[1].toLowerCase();
+  return { mcpCalls: [['three_do', { cmd: 'update_layer', layer: more[2], code: likeCode(more[2], pal, mode) }], ['three_screenshot', { size: 'small' }]],
+    text: `${more[1]}: reworked "${more[2]}" (pictures seen: ${seen}).` };
+}
+
 // (round 129, draft129) ✦ Build a first draft (projectbrief-draft.js): "Draft · build steps 2–4 of the project brief…" builds
 // each listed step as a real layer "Draft N" in the palette's colors (three_do add_layer), keys its opacity, ticks it
 // (three_do brief {done: N}), then looks once (three_screenshot). "draft-slow" in a step: a pause after each step (to Stop).
@@ -377,7 +416,7 @@ function plan(prompt, engine = 'claude') {
   const comp = compPlan(msg);
   if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
   const jam = jamPlan(msg, engine);
-  const dir = jam ? null : draftPlan(msg) || directorPlan(prompt, msg, engine); // (round 129, draft129: the draft first)
+  const dir = jam ? null : likePlan(prompt, msg) || draftPlan(msg) || directorPlan(prompt, msg, engine); // (round 129, draft129: the draft first; round 131, refmatch131: a layer like a picture)
   if (dir) {
     const p = { mcp: true, mcpCalls: dir.mcpCalls };
     return { p, text: dir.text, thinking: '' };

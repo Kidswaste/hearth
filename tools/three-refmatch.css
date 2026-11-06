@@ -1,0 +1,28 @@
+/* ✦ Make a layer like this (tools/three-refmatch.js, round 131 refmatch131): a small card over the Lab preview's bottom
+   left, only while the owner uses it (no toolbar row). A plain dark card like lookmatch's, no blur over the preview. */
+.rm-card {
+  position: absolute; left: 8px; bottom: 44px; z-index: 7; width: 300px; max-width: calc(100% - 16px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.rm-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rm-head b { color: var(--fh-gold, #ffd75e); flex: none; }
+.rm-src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #9a948c); font-size: 11px; }
+.rm-top { display: flex; gap: 8px; align-items: flex-start; }
+.rm-thumb { flex: none; width: 64px; max-height: 64px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+.rm-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rm-pal { display: flex; height: 12px; min-width: 40px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.rm-pal span { flex: 1; min-width: 6px; }
+.rm-words, .rm-note, .rm-cost { margin: 0; color: var(--muted, #9a948c); font-size: 11px; line-height: 1.35; }
+.rm-cost { color: var(--text, #eae0d5); }
+.rm-made { color: var(--fh-gold, #ffd75e); }
+.rm-err { color: var(--danger, #ff7a7a); }
+.rm-tick { display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer; }
+.rm-tick .rm-pal { flex: 1; }
+.rm-input { width: 100%; box-sizing: border-box; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; font: inherit; }
+.rm-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.rm-btn { flex: none; padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; font: inherit; cursor: pointer; line-height: 1.6; }
+.rm-btn:hover { border-color: var(--fh-gold, #ffd75e); }
+.rm-btn.primary { border-color: var(--fh-gold, #ffd75e); color: var(--fh-gold, #ffd75e); }
+.rm-btn.rm-x { border-color: transparent; padding: 0 4px; }
