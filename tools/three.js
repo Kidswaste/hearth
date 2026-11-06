@@ -604,6 +604,8 @@ const ThreeLab = (() => {
         ['Rename…', current?.name || '', () => renameSketch()],
         ['⧉ Duplicate', 'A copy you can change freely', () => duplicate()],
         ['History', 'Time machine, earlier versions, deleted and lost scenes', [
+          ['🕘 Scene versions…', 'Named and automatic versions: compare 2–4 side by side, live; use one or take one layer', () => window.Lazy.load('scenevers').then(() => LabVersions.open()).catch((err) => toast(err.message, { type: 'error' }))], // (round 132, versions132)
+          ['Save a version…', 'The scene as it is now, with a name', () => window.Lazy.load('scenevers').then(async () => { await LabVersions.open(); LabVersions.panel?.querySelector('.vs-head .vs-btn')?.click(); }).catch((err) => toast(err.message, { type: 'error' }))], // (round 132, versions132)
           ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
           ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
           ['🕘 Earlier versions of the scene…', 'From every safety copy: automatic copies, sync, conflicts, backups', () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: current?.id, name: current?.name }))], // (round 75, versions75)

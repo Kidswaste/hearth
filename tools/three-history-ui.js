@@ -141,6 +141,7 @@ const ThreeHistoryUI = (() => {
       ]] : null,
       turns.length ? ['Back before the director', `${turns.length} turn${turns.length === 1 ? '' : 's'} with edits`, [1, 2, 3, 5].filter((n) => n <= turns.length || n === 1).map((n) => [`Before the last ${n === 1 ? 'turn' : `${n} turns`}`, turns[Math.min(n, turns.length) - 1] ? `${C.whoName(turns[Math.min(n, turns.length) - 1].by)}: “${turns[Math.min(n, turns.length) - 1].text}”` : '', () => doBack(n).catch(err)])] : null,
       [grid ? 'One row' : 'All as a grid', 'G', () => { grid = !grid; refresh().catch(err); }],
+      ['🕘 Scene versions…', 'Named and automatic versions, compared 2–4 side by side, live', () => { close(); window.Lazy.load('scenevers').then(() => LabVersions.open({ id: sid })).catch(err); }], // (round 132, versions132)
     ]);
   }
 

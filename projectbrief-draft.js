@@ -77,6 +77,7 @@ const BriefDraft = (() => {
     const sceneId = sceneOf(chat.id, p);
     const before = sceneId ? await LabTxn.snap(sceneId) : null;
     if (!before) throw new Error('The project\'s scene isn\'t there: open it in the Lab first.');
+    await window.ThreeHistory?.autoVersion?.(sceneId, { why: 'draft', label: 'Before the first draft', by: a.engine === 'codex' || chat.engine === 'codex' ? 'codex' : 'claude' })?.catch?.(() => null); // (round 132, versions132) Scene versions…
     const r = { status: 'running', chatId: chat.id, agentId: a.id, sceneId, steps, landed: new Set(), before, doneBefore: (e.done || []).slice(), at: Date.now(), who: who(a, chat), touched: [] };
     runs.set(pid, r);
     paint();
