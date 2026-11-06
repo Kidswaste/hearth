@@ -307,6 +307,15 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .ly-eye.some { opacity: .55; }
 .ly-eye.by-group { opacity: .6; }
 .layers.ly-soloing .ly-row.hidden-layer:not(.ly-group) { opacity: .55; }
+/* (round 136, outline136) a group's colour tag (its header's edge and its layers' line), rename in place, 🔍 find */
+.ly-row.ly-group.ly-tagged { box-shadow: inset 3px 0 0 var(--ly-gc); }
+.ly-row.in-group[style*="--ly-gc"]::before { border-left: 2px solid var(--ly-gc); }
+.ly-rename { flex: 1; min-width: 0; height: 18px; padding: 0 4px; font: inherit; border: 1px solid var(--ui-gold); border-radius: 3px; background: var(--bg, #111); color: inherit; }
+.ly-find { display: flex; gap: 4px; align-items: center; padding: 2px 0 4px; }
+.ly-find[hidden] { display: none; }
+.ly-find-in { flex: 1; min-width: 0; height: 22px; font-size: 12px; }
+.ly-none { padding: 6px 8px; color: var(--muted); font-size: 11.5px; }
+.ly-more { padding-inline: 6px; }
 
 /* ---------- (round 48, labcalm) a calmer Lab ---------- */
 /* the picture's pill at rest: ❚❚ Freeze and the frame sizes; More…, Safe, 📷 still and ⋯ come on a second row while you

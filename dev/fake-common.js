@@ -423,6 +423,11 @@ function plan(prompt, engine = 'claude') {
     ] : [];
     return { p: {}, thinking: '', text: JSON.stringify({ dials }) };
   }
+  // (round 136, outline136) ✦ Name these layers (tools/three-outline-core.js): "AI name N" for each numbered layer line
+  if (/^✦ Name these layers/m.test(msg)) {
+    const n = [...msg.matchAll(/^\d+\. now "/gm)].length;
+    return { p: {}, thinking: '', text: JSON.stringify({ names: Array.from({ length: n }, (_, i) => `AI name ${i + 1}`) }) };
+  }
   if (msg.startsWith('Explain this Lab layer')) {
     const code = [...msg.matchAll(/^ *(\d+)\| (.*)$/gm)].map((m) => ({ n: +m[1], t: m[2] })).filter((l) => !/tweak\s*\(/.test(l.t));
     const keys = [...((msg.match(/^Its sliders \(tweak\(\)\): (.+)\.$/m) || [])[1] || '').matchAll(/(?:^|, )(\w+)(?: "[^"]*")? -?[\d.]+/g)].map((m) => m[1]);

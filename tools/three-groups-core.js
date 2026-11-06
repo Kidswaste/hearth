@@ -26,7 +26,7 @@ const LayerGroups = (() => {
       const id = gOf(L);
       if (!id) return;
       let g = out.get(id);
-      if (!g) { g = { id, name: cleanName(L.group.name), closed: Boolean(L.group.closed), ids: [], at: i, top: i }; out.set(id, g); }
+      if (!g) { g = { id, name: cleanName(L.group.name), closed: Boolean(L.group.closed), ...(L.group.color ? { color: L.group.color } : {}), ids: [], at: i, top: i }; out.set(id, g); } // (round 136, outline136) + its colour tag
       g.ids.push(L.id);
       g.top = i;
     });
@@ -60,6 +60,17 @@ const LayerGroups = (() => {
     });
     return out;
   }
+  // (round 136, outline136) the Layers list's 🔍 filter: the layers whose name (or group's name) has every word typed,
+  // with their group's header; a group whose name matches keeps all its layers. Folded groups open while filtering.
+  function filterRows(list, q) {
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return list;
+    const has = (t) => { const s = String(t || '').toLowerCase(); return words.every((w) => s.includes(w)); };
+    const gHit = new Set(list.filter((r) => r.kind === 'group' && has(r.g.name)).map((r) => r.g.id));
+    const keep = list.filter((r) => r.kind === 'layer' && (has(r.L.name) || has(`${r.L.name} ${r.L.group?.name || ''}`) || (r.gid && gHit.has(r.gid))));
+    const gs = new Set(keep.map((r) => r.gid).filter(Boolean));
+    return list.filter((r) => (r.kind === 'group' ? gs.has(r.g.id) : keep.includes(r))).map((r) => (r.kind === 'layer' ? { ...r, folded: false } : r));
+  }
   // what is drawn, in draw order (bottom first): the ids every renderer ends up with
   const drawn = (layers) => (layers || []).filter(shown).map((L) => L.id);
   const nextName = (layers) => { const names = new Set(groups(layers).map((g) => g.name.toLowerCase())); let i = 1; while (names.has(`group ${i}`)) i += 1; return `Group ${i}`; };
@@ -76,7 +87,8 @@ const LayerGroups = (() => {
     const top = Math.max(...picks.map((L) => layers.indexOf(L)));
     const rest = layers.filter((L) => !want.has(L.id));
     const below = layers.slice(0, top).filter((L) => !want.has(L.id)).length;
-    const g = { id: id || gid(), name: cleanName(name || nextName(layers)) };
+    const was = id ? find(layers, id) : null; // (round 136, outline136) brought together again: it keeps its colour tag
+    const g = { id: id || gid(), name: cleanName(name || nextName(layers)), ...(was?.color ? { color: was.color } : {}) };
     for (const L of picks) {
       if (L.hid === 'group') { L.visible = true; delete L.hid; } // a hidden group's member joins a shown one: it shows
       L.group = { ...g };
@@ -95,6 +107,15 @@ const LayerGroups = (() => {
     const n = cleanName(name, '');
     if (!m.length || !n) return false;
     for (const L of m) L.group = { ...L.group, name: n };
+    return true;
+  }
+  // (round 136, outline136) a group's colour tag (one of COLORS; null takes it off): shown on its header and its line
+  const COLORS = [['red', '#e5484d'], ['orange', '#f08c2e'], ['yellow', '#e9c43a'], ['green', '#46a758'], ['blue', '#3e8ef7'], ['violet', '#8e4ec6'], ['grey', '#8b8d98']];
+  function color(layers, id, c) {
+    const m = members(layers, id);
+    const ok = c == null || COLORS.some(([, hex]) => hex === c);
+    if (!m.length || !ok) return false;
+    for (const L of m) { L.group = { ...L.group }; if (c) L.group.color = c; else delete L.group.color; }
     return true;
   }
   function fold(layers, id, closed) {
@@ -205,6 +226,35 @@ const LayerGroups = (() => {
     const at = rest.indexOf(top) + 1;
     return [...rest.slice(0, at), L, ...rest.slice(at)];
   }
+  // (round 136, outline136) Alt+↑ / Alt+↓ in the Layers list: one step up (dir 1, toward the top of the list) or down.
+  // A layer swaps with its neighbour; at its group's edge it steps out of the group (where it is, so the header passes
+  // it); an ungrouped layer next to a group steps into it at that edge. A group (drag: { group }) jumps over the next
+  // layer, or over the next group's whole run. → the new order (bottom first) or null (already at the end)
+  function nudge(layers, drag, dir) {
+    const d = dir > 0 ? 1 : -1;
+    if (drag.group) {
+      const m = members(layers, drag.group);
+      if (!m.length) return null;
+      const lo = layers.indexOf(m[0]); const hi = layers.indexOf(m[m.length - 1]);
+      if (hi - lo + 1 !== m.length) return gather(layers, drag.group); // split in two runs: brought together first
+      const N = layers[d > 0 ? hi + 1 : lo - 1];
+      if (!N) return null;
+      const jump = gOf(N) ? (() => { let k = layers.indexOf(N); const g = gOf(N); while (layers[k + d] && gOf(layers[k + d]) === g) k += d; return Math.abs(k - layers.indexOf(N)) + 1; })() : 1;
+      const rest = layers.filter((L) => !m.includes(L));
+      const at = d > 0 ? lo + jump : lo - jump;
+      return [...rest.slice(0, at), ...m, ...rest.slice(at)];
+    }
+    const L = layers.find((x) => x.id === drag.layer);
+    if (!L) return null;
+    const i = layers.indexOf(L);
+    const N = layers[i + d];
+    const g = gOf(L);
+    if (g && gOf(N) !== g) { delete L.group; if (L.hid === 'group') { L.visible = true; delete L.hid; } return layers.slice(); } // out of its group, in place
+    if (!N) return null;
+    if (!g && gOf(N)) { L.group = { ...N.group }; if (N.hid === 'group' && shown(L)) { L.visible = false; L.hid = 'group'; } return layers.slice(); } // into the group at its edge
+    const next = layers.slice(); next[i] = N; next[i + d] = L;
+    return next;
+  }
   // a group's members brought together where its topmost member is (after a split): the explicit "tidy" of a group
   const gather = (layers, id) => group(layers, members(layers, id).map((L) => L.id), { name: find(layers, id)?.name || null, id })?.layers || null;
 
@@ -265,6 +315,6 @@ const LayerGroups = (() => {
     }).join('\n') + (sid && !gs.some((g) => g.id === sid) ? `\nSolo: ${layers.find((L) => L.id === sid)?.name || sid}` : '');
   }
 
-  return { gid, gOf, groups, find, members, byName, vis, rows, drawn, nextName, group, ungroup, rename, fold, setVisible, toggle, manual, soloId, solo, unsolo, move, takeOut, gather, state, undo, clean, describe, cleanName, FIELDS };
+  return { COLORS, color, nudge, filterRows, gid, gOf, groups, find, members, byName, vis, rows, drawn, nextName, group, ungroup, rename, fold, setVisible, toggle, manual, soloId, solo, unsolo, move, takeOut, gather, state, undo, clean, describe, cleanName, FIELDS };
 })();
 if (typeof module !== 'undefined') module.exports = LayerGroups;

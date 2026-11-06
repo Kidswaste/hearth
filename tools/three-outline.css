@@ -1,0 +1,11 @@
+/* 🗂 The scene outline (round 136, outline136: tools/three-outline.js): a group's Fade, move & key card */
+.ol-card { position: fixed; z-index: 985; width: 260px; padding: 9px 11px; border-radius: 12px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--line-hi, #443e35); border-left: 3px solid var(--ly-gc, var(--ui-gold, #d8b45a)); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12.5px; }
+.ol-head { display: flex; align-items: baseline; gap: 6px; }
+.ol-head b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+.ol-x { margin-left: auto; }
+.ol-sub { opacity: .65; font-size: 11px; }
+.ol-row { display: flex; align-items: center; gap: 6px; }
+.ol-k { width: 52px; flex: none; font-size: 11.5px; }
+.ol-row input[type=range] { flex: 1; min-width: 60px; accent-color: var(--ly-gc, var(--ui-gold, #d8b45a)); }
+.ol-v { width: 38px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; font-size: 11px; }
+.ol-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; }

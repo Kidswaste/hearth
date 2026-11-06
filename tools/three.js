@@ -2557,14 +2557,14 @@ const ThreeLab = (() => {
       const L = layerById(row.dataset.id); // (round 44) by id: group headers sit between the rows now
       if (!L) return;
       const Ls = layersOf(); const at = Ls.indexOf(L);
-      const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); reorderLayers(ids); };
+      const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); if (window.LabGroups?.op) LabGroups.op(`Moved "${L.name}"`, (cur) => ids.map((i) => cur.find((x) => x.id === i)).filter(Boolean), { say: false }); else reorderLayers(ids); }; // (round 136, outline136) one undo step
       ThreeTweaks.menu(e.clientX, e.clientY, [L.name,
         [L.visible === false ? '👁 Show' : '◌ Hide', `Alt+${[...Ls].reverse().indexOf(L) + 1}`, () => editLayer(L.id, { visible: L.visible === false })],
         [soloNow() === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloNow() === L.id ? null : L.id)],
-        ['Rename…', 'Or double-click its name', async () => { const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }],
+        ['Rename…', 'Or double-click its name', async () => { if (layersPanel.rename?.(L.id)) return; const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }], // (round 136, outline136) in place
         ['Duplicate', 'A copy on top', () => { selectLayer(L.id); addLayer('copy'); }, false, 'Duplicate layer'],
-        at < Ls.length - 1 ? ['Move up', '', () => move(at + 1)] : null,
-        at > 0 ? ['Move down', '', () => move(at - 1)] : null,
+        at < Ls.length - 1 ? ['Move up', 'Alt+↑ in the list', () => (window.LabGroups?.nudge ? LabGroups.nudge(1, { layer: L.id }) : move(at + 1))] : null,
+        at > 0 ? ['Move down', 'Alt+↓ in the list', () => (window.LabGroups?.nudge ? LabGroups.nudge(-1, { layer: L.id }) : move(at - 1))] : null,
         at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
         // (round 7) the layer's timing, whose two buttons wait behind Alt now
         player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
@@ -2818,6 +2818,14 @@ const ThreeLab = (() => {
       },
       refresh: (want) => refreshInPlace(want),
       persist: () => persist(),
+      // (round 136, outline136) a group faded / moved / keyed as one (tools/three-outline.js): each member's own values,
+      // through the same path as its Layer settings (an animated value becomes a key at the playhead)
+      edit: (id, patch, { live = false } = {}) => editLayer(id, patch, { live, direct: false }),
+      value: (id, prop) => { const L = layerById(id); return L ? valueAt(L, prop) : null; },
+      key(id, prop, v) { const L = layerById(id); if (!L) return false; if (!player.loaded) ensureTimeline(); if (!player.loaded) return false; setKeys(L, prop, upsertKey(keysOf(L, prop), player.time, v ?? valueAt(L, prop))); return true; },
+      time: () => (player.loaded ? player.time : null),
+      sliders: (id) => controllers.get(id)?.controls?.() || [],
+      find: (q) => layersPanel.find?.(q),
     };
 
     // Sends (or drafts) a message to the Three Director docked next to the Lab.
