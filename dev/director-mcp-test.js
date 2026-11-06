@@ -29,7 +29,7 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   // the node tool: on for Three directors (engines.js sets HUB_NODES_TOOL=1 unless agent.nodesTool === false), lean
   const n = await F.mcpClient({ command: process.execPath, args: [path.join(root, 'mcp', 'three-mcp.js')], env: { HUB_NODES_TOOL: '1', HUB_TOOL_MODE: '' } });
   const nt = n.tools.find((t) => t.name === 'three_nodes');
-  check(n.tools.length === 13 && nt && JSON.stringify(nt).length < 520, `nodes on: ${n.tools.length} tools, three_nodes ${nt ? JSON.stringify(nt).length : 0} chars`);
+  check(n.tools.length === 13 && nt && JSON.stringify(nt).length < 320, `nodes on: ${n.tools.length} tools, three_nodes ${nt ? JSON.stringify(nt).length : 0} chars`);
   n.close();
   const engines = require(path.join(root, 'engines.js'))._test;
   const dir = { id: 'td', name: 'Three Director', engine: 'claude', dock: 'three', threeTools: true };
@@ -74,9 +74,9 @@ const check = (ok, what) => { console.log(`${ok ? '✓' : '✖'} ${what}`); if (
   // (round 25, diet) the ceiling came down from 1,700: new director ops go behind three_do + help <cmd>, not in descriptions
   // (round 37, directorlean) and to 1,220 (1,186 now): the per-turn savings are in the results, the list stays put
   // (round 46, promptdiet) and to 990: rare args named in the words, input / contact_sheet behind three_do
-  check(listTok <= 990, `lean tool list ≤ 990 tokens (${listTok}; 1184 before round 46, 1300 before round 37, 1687 before round 25, 1878 before round 21)`);
+  check(listTok <= 915, `lean tool list ≤ 915 tokens (${listTok}; 990 budget before round 132, 1184 before round 46, 1300 before round 37, 1687 before round 25, 1878 before round 21)`);
   check(lean.tools.find((t) => t.name === 'three_read_code').inputSchema.properties.force, 'three_read_code takes force (code it already has is one line)');
-  check(JSON.stringify(doT).length / 4 <= 200 && lean.tools.every((t) => JSON.stringify(t).length / 4 <= 130 || t.name === 'three_do'), `three_do ≤ 200 tokens (${Math.round(JSON.stringify(doT).length / 4)}), every other tool ≤ 130`);
+  check(JSON.stringify(doT).length / 4 <= 190 && lean.tools.every((t) => JSON.stringify(t).length / 4 <= 130 || t.name === 'three_do'), `three_do ≤ 190 tokens (${Math.round(JSON.stringify(doT).length / 4)}), every other tool ≤ 130`);
   for (const [topic, re] of [['edit_code', /three_edit_code: .*find.*\nargs: layer, edits/s], ['update_layer', /three_do update_layer.*fadeIn/], ['particles', /particles \{op: .*GPU PARTICLES/s], ['batch', /batch \{ops/], ['screenshot', /three_screenshot: .*compare/], ['nodes', /three_nodes: .*NODES|three_nodes: /]]) {
     const r = await lean.call('three_do', { cmd: 'help', topic });
     check(re.test(r.content[0].text), `help ${topic}: the details the lean list leaves out (${r.content[0].text.length} chars)`);

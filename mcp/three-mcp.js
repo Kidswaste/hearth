@@ -88,7 +88,8 @@ const MORE_TOOLS = [
     inputSchema: obj({ action: { type: 'string' }, frame: {}, value: {}, ref: { type: 'string' }, from: {}, to: {}, mode: { type: 'string' }, cut: { type: 'boolean' } }) },
 ];
 // On by default for Three directors (the owner wants a node view of visual work; `/nodes-director off` drops it).
-const NODES_TOOL = { name: 'three_nodes', description: 'Layers as node graphs (the Nodes view). command: layer <preset> (new layer) · presets · types [word] · list · add <type> k=v [to=n.in] · link a.out b.in · unlink b.in · set <n> k=v · rm <n> · preset <p> (replace) · rebuild. help nodes.', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
+// (round 132, promptroom132) the command syntax (add … to=, link a.out b.in, unlink, set k=v, rm…) is in help nodes
+const NODES_TOOL = { name: 'three_nodes', description: 'Node-graph layers (the Nodes view). command: layer <preset> (new layer) · presets · types · list · add · link · unlink · set · rm · preset <p> · rebuild (syntax: help nodes).', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
 const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'play', 'brief', 'map_song', 'perform', 'help'];
@@ -96,13 +97,13 @@ const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 's
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
   name: 'three_do',
-  description: `Lab actions: {cmd, ...args, shot: true adds a picture}. help {topic}: a cmd's args, guide topic or app. layer = name|id|n (1 = bottom)|top|bottom|selected.
-batch {ops: [{cmd, ...}]} in one call · undo {force} last edit
-Look: contact_sheet {count|times} song as one picture · input {actions} play-test · play {game, script}
-Layers: layers select_layer remove_layer {layer|layers} update_layer keyframes animate looks references
+  // (round 132, promptroom132) the same commands in fewer words (199 → 185 tokens): each one's args are in help <cmd>
+  description: `Lab actions {cmd, ...args; shot: true adds a picture}. help {topic}: any cmd's args or guide topic. layer: name|id|n (1 = bottom)|top|bottom|selected.
+batch {ops: [{cmd, ...}]} · undo {force} · run {command} (a chat command)
+Look: contact_sheet {count|times} · input {actions} play-test · play {game, script}
+Layers: layers select_layer update_layer remove_layer keyframes animate looks references
 Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop map_song perform
-Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes
-run {command} a chat command`,
+Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 // the commands that have no own tool in full mode: their help line (round 25)
@@ -127,24 +128,58 @@ const DO_HELP = {
 // (round 25, diet) the everyday tools as the lean list sends them: short words, the details in help <tool>
 // (round 46, promptdiet) only the args a typical call uses stay in the schema; the rarer ones are named in the words (the
 // server passes every arg on, listed or not; help <tool> lists them all)
-// (full mode keeps the long descriptions above). layer: {} = the reference three_do explains.
+// (round 132: full mode sends these words too; help <tool> gives the long ones above). layer: {} = the reference three_do explains.
 const S = { type: 'string' }; const B = { type: 'boolean' }; const N = { type: 'number' }; const A = { type: 'array' };
+// (round 132, promptroom132) full mode sends these too (the guide it carries says the rest); fewer words where the
+// guide's core already says it (one layer per effect, alpha / no background). help <tool> still gives the long words.
 const LEAN = {
-  three_add_layer: ['NEW layer per new element or effect (top; position: bottom|n), selected + run. code: complete module (alpha: true, no background) or template (help filters). settings as update_layer. Returns sliders.', { name: S, code: S, template: S, position: {}, settings: {} }],
+  three_add_layer: ['NEW layer (top; position: bottom|n), selected + run: complete module or template (help filters); settings as update_layer. Returns sliders.', { name: S, code: S, template: S, position: {}, settings: {} }],
   three_eval: ['Run JS in the live preview (expression, or statements with return; await ok). __scenes[layer] = {scene, camera, renderer}. max chars (3000); samples n every ms.', { code: S }],
-  three_edit_code: ['Change code, re-run that layer: edits [{find, replace, all?} | {lines: [from, to], replace}] (an edit may name its layer). Answers once on screen: errors, console, fps, picture (shot: false = none); safe: undo if broken; diff.', { layer: {}, edits: A, shot: B }],
-  three_screenshot: ['Preview picture. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, region: A, at: {} }],
-  three_read_code: ['A layer\'s numbered code (1–250); from / to, or around: line; force: even if you have it.', { layer: {}, from: N, to: N, force: B }],
+  three_edit_code: ['Change code, re-run: edits [{find, replace, all?} | {lines: [from, to], replace}] (edit.layer ok). Answers on screen: errors, console, fps, picture (shot: false = none); safe: undo if broken; diff.', { layer: {}, edits: A, shot: B }],
+  three_screenshot: ['Preview picture. size small|medium|large; region [x, y, w, h] 0..1; at: s|drop|kick|cue (seeks); compare: beside the last; frames 2–8 every gap s; force: even unchanged.', { size: S, at: {} }],
+  three_read_code: ['A layer\'s numbered code (1–250); from / to, or around: line; force: even if you have it.', { layer: {}, from: N, force: B }],
   three_search_code: ['Find text (regex) in all layers or one: line numbers, context (1), max (40).', { pattern: S, layer: {} }],
   three_sliders: ['Read or move a layer\'s tweak() sliders (no code change): set {key: value}, unsaved for the owner.', { layer: {}, set: {} }],
-  three_set_code: ['Rewrite the selected layer (complete module), run it, undoable: an empty sketch or when asked; new elements go in a new layer. report: full.', { code: S }],
+  three_set_code: ['Rewrite the selected layer (complete module), run it, undoable: an empty sketch or when asked. report: full.', { code: S }],
   three_get_code: ['Scene outline + the selected layer\'s code (outline past 160 lines), unsaved slider values.', {}],
-  three_console: ['Errors, console lines, fps / draw calls; full: + sliders, layers, music.', { full: B }],
-  three_media_control: ['Music: play|pause|seek {time}|loop {time, end; none clears}. Footage: frame {frame: n|"f120"|timecode}|step {n}|read (see: picture).', { action: S, time: N }],
+  three_console: ['Errors, console lines, fps / draw calls; full: true + sliders, layers, music.', {}],
+  three_media_control: ['Music: play|pause|seek {time}|loop {time, end; none clears}. Footage: frame {frame: n|"f120"|timecode}|step {n}|read (see: picture).', { action: S }],
   three_input: ['Play-test, in order: {key, ms} held, {keys: [], ms}, {click: [x, y]} 0..1, {move: [x, y]}, {wait: ms}; screenshot: true = a picture after.', { actions: A }],
   three_contact_sheet: ['One image of numbered frames at the owner\'s cues (or count over loop / song, or times s).', {}],
 };
 const lean = (t) => (LEAN[t.name] ? { name: t.name, description: LEAN[t.name][0], inputSchema: obj(LEAN[t.name][1], t.inputSchema.required) } : t);
+// (round 132, promptroom132) full mode: one line per tool says what it does; the guide it carries (topic named in CAPS)
+// and three_help <tool> (the long words + every arg, MORE_TOOLS above) give the options. Schemas keep the args a typical
+// call uses (the server passes every arg on). These 26 were ≈ 2,500 tokens on every full-mode message, now ≈ 1,650.
+const SHORT = {
+  three_layers: ['The layers (bottom first) with their settings, placements and sliders.'],
+  three_select_layer: ['Select a layer (code tools then default to it); returns its code.'],
+  three_update_layer: ['Change a layer\'s settings (time range, fades, opacity, blend, transform, visible, name), order or code: LAYERS.', { layer: {}, settings: {}, order: {}, code: S }],
+  three_undo: ['Undo your last code change (force: even if the layer changed since).'],
+  three_remove_layer: ['Delete a layer, or several: layers [...] (one undo).', { layer: {}, layers: A }],
+  three_keyframes: ['Keyframe a layer property or slider over the song (replaces its keys; clear: true): KEYFRAMES.', { layer: {}, property: S, keys: A, clear: B }],
+  three_animate: ['Animation preset on a layer (fadeIn, popIn, slideUp, zoom, pulse…): KEYFRAMES.', { layer: {}, preset: S }],
+  three_timeline: ['Read the timeline: grid, markers, cues, loop, layer ranges, keys, notes (from / to s).'],
+  three_timeline_edit: ['Change grid, markers, loop, zoom, cues, speed or lanes: TIMELINE. The user\'s grid / markers only when asked.', { grid: {}, markers: {}, loop: {}, zoom: {}, cues: {}, lane: {}, speed: N }],
+  three_looks: ['Saved slider looks: list | save | apply | delete {name} | project (the palette; help looks).', { action: S, name: S, layer: {} }],
+  three_notes: ['The user\'s notes on moments: list | done | reopen | edit | delete {id} | add {time, text}: NOTES.', { action: S, id: S, time: N, text: S }],
+  three_references: ['Reference files: list | add {path} | rename | remove | palette | like {name}: REFERENCES (help references).', { action: S, name: S, path: S }],
+  three_triggers: ['The user\'s ⚡ Triggers (the band each sound fires on); set only when asked (help triggers).'],
+  three_media_info: ['The loaded song / video: grid, sections, drops, hits, markers, playhead, live input.'],
+  three_load_media: ['Load an audio / video file (absolute path) into the Lab and analyze it.'],
+  three_set_frame: ['Set the output frame: FRAME.'],
+  three_new_sketch: ['Create, open and run a new named sketch (the others stay untouched).'],
+  three_run: ['Run a Lab / music / nodes / video chat command, e.g. "/size 9:16"; returns what it printed.'],
+  three_brief: ['The project brief: read it before a broad ask.'],
+  three_task: ['This chat\'s task state (goal, done, layers, todos); todo: [...] replaces the open todos.'],
+  three_help: ['A tool\'s options and examples (topic: its name), a guide topic, or the app map: app, lab, nodes, react, commands, handoff, habits, video.'],
+  three_sequence: ['The Lab sequence: scenes, footage, titles and the song on a video timeline. op: status | new | add | transition | trim | render… (help sequence).', { op: S, at: {}, clip: {}, scene: S }],
+  three_comp: ['Precomps: other scenes as live layers, and parts dispatched to other chats (help comp).', { op: S, source: S, layer: {}, parts: A }],
+  three_motion: ['Motion-design kit: titles, words, Hearth on screen; the owner\'s webcam as an input (help motion, help webcam).', { op: S, preset: S, words: S, layer: {} }],
+  three_model: ['3D model layers: add, material, light, sky, clips, moves (help model).', { op: S, file: S, preset: S, layer: {}, values: {} }],
+  three_footage: ['Video footage frame by frame, its cut list, a reference clip\'s pacing: FOOTAGE (help footage).', { action: S, frame: {}, ref: S }],
+};
+const short = (t) => (SHORT[t.name] ? { name: t.name, description: SHORT[t.name][0], inputSchema: SHORT[t.name][1] ? obj(SHORT[t.name][1], t.inputSchema.required) : t.inputSchema } : t);
 
 // (round 22, labcrew) HUB_TOOL_MODE=crew: a crew helper (tools/three-crew.js) works on its own copy of a scene,
 // backstage, for a few calls: only the tools that work there and that a variation needs (lean words, round 25).
@@ -154,7 +189,7 @@ const CREW_TOOLS = ['three_edit_code', 'three_add_layer', 'three_set_code', 'thr
 // the lean list (≈ 115 tokens less on every director step); their words come back with help; the hub gets the same names
 const VIA_DO = ['three_input', 'three_contact_sheet'];
 const tools = CREW ? CORE_TOOLS.filter((t) => CREW_TOOLS.includes(t.name)).map(lean)
-  : [...(FULL ? CORE_TOOLS : CORE_TOOLS.filter((t) => !VIA_DO.includes(t.name)).map(lean)), ...(FULL ? MORE_TOOLS : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
+  : [...(FULL ? CORE_TOOLS : CORE_TOOLS.filter((t) => !VIA_DO.includes(t.name))).map(lean), ...(FULL ? MORE_TOOLS.map(short) : [DO_TOOL]), ...(process.env.HUB_NODES_TOOL === '1' ? [NODES_TOOL] : [])];
 
 // help <topic>: a tool or command by name gives its whole description + args (then the guide topic of the same name,
 // if any); anything else goes to the guide / app map. (round 25)
