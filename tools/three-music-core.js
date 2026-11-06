@@ -113,6 +113,11 @@ const MusicCore = (() => {
     const all = [1, bin(8000)]; const kick = [bin(40), bin(130)]; const snare = [bin(1000), bin(5000)]; const hats = [bin(6000), Math.min(NFFT / 2 - 1, bin(10500))];
     const NB = NFFT / 2;
     const hop = SR / FPS;
+    // (round 134, audiomap134) a small spectrum per frame for 🎚 Follow the music: SPK log bands, amplitude per band
+    const top = Math.min(16000, SR / 2 - binHz); const SPK = 20;
+    const sEdges = Array.from({ length: SPK }, (_, k) => [30 * (top / 30) ** (k / SPK), 30 * (top / 30) ** ((k + 1) / SPK)]);
+    const sBins = sEdges.map(([lo, hi]) => { const a = Math.max(1, Math.ceil(lo / binHz - 0.5)); const b = Math.min(NB - 1, Math.ceil(hi / binHz - 0.5) - 1); return b >= a ? [a, b] : [Math.min(NB - 1, Math.max(1, Math.round(Math.sqrt(lo * hi) / binHz))), Math.min(NB - 1, Math.max(1, Math.round(Math.sqrt(lo * hi) / binHz)))]; });
+    const SPEC = new Float32Array(N * SPK);
     const SF = new Float32Array(N); const SK = new Float32Array(N); const SS = new Float32Array(N); const SH = new Float32Array(N);
     const PKb = new Float32Array(N); const PSb = new Float32Array(N); const PHb = new Float32Array(N); const PT = new Float32Array(N); // band / total power, per frame
     const nLow = LOWB[1] - LOWB[0];
@@ -134,6 +139,7 @@ const MusicCore = (() => {
       const pow = (r) => { let v = 0; for (let k = r[0]; k <= r[1]; k += 1) v += pw[k]; return v; };
       PKb[f] = pow(kick); PSb[f] = pow(snare); PHb[f] = pow(hats); PT[f] = tot;
       for (let k = 0; k < nLow; k += 1) LS[f * nLow + k] = y[LOWB[0] + k];
+      for (let k = 0; k < SPK; k += 1) { let v = 0; for (let j = sBins[k][0]; j <= sBins[k][1]; j += 1) v += pw[j]; SPEC[f * SPK + k] = Math.sqrt(v); } // (round 134)
       // rotate: A (two frames back) ← B ← now
       const ty = yA; yA = yB; yB = y; y = ty;
       const tp = pA; pA = pB; pB = p; p = tp;
@@ -157,7 +163,7 @@ const MusicCore = (() => {
       if (two) { p.set(P2); frame(f + 1, p); }
       if (onProgress && f % 3000 === 0) onProgress(0.15 + 0.5 * (f / N));
     }
-    return { SF, SK, SS, SH, LS, nLow, PKb, PSb, PHb, loud: quantile(PT, 0.99) };
+    return { SF, SK, SS, SH, LS, nLow, PKb, PSb, PHb, loud: quantile(PT, 0.99), SPEC, SPK, sEdges };
   }
 
   // onset strength: the flux minus its local mean, half-wave rectified, in units of its spread
@@ -489,6 +495,17 @@ const MusicCore = (() => {
     const down = (a) => { const n = Math.floor((N * SFPS) / FPS); const o = new Array(n); for (let i = 0; i < n; i += 1) { const s = Math.floor((i * FPS) / SFPS); const e = Math.floor(((i + 1) * FPS) / SFPS); let m = 0; for (let k = s; k < e; k += 1) m = Math.max(m, a[k]); o[i] = Math.round(m * 1000) / 1000; } return o; };
     const peakNorm = (a) => { let mx = 0; for (let i = 0; i < a.length; i += 1) mx = Math.max(mx, a[i]); const o = new Uint8Array(a.length); for (let i = 0; i < a.length; i += 1) o[i] = Math.round((a[i] / (mx || 1)) * 255); return o; };
     let pmx = 0; for (let i = 0; i < N; i += 1) pmx = Math.max(pmx, bp.PK[i]);
+    // (round 134, audiomap134) the spectrum at 30 fps, SPK bands: 0..255 = (amplitude / the loudest band anywhere)^¼
+    const spec = (() => {
+      const K = fl.SPK; const n = Math.floor((N * SFPS) / FPS); const out = new Uint8Array(n * K);
+      let mx = 0; for (let i = 0; i < fl.SPEC.length; i += 1) if (fl.SPEC[i] > mx) mx = fl.SPEC[i];
+      const g = mx > 0 ? 1 / mx : 0;
+      for (let i = 0; i < n; i += 1) {
+        const s = Math.floor((i * FPS) / SFPS); const e = Math.max(s + 1, Math.floor(((i + 1) * FPS) / SFPS));
+        for (let k = 0; k < K; k += 1) { let m = 0; for (let f = s; f < e && f < N; f += 1) m = Math.max(m, fl.SPEC[f * K + k]); out[i * K + k] = Math.round(Math.sqrt(Math.sqrt(m * g)) * 255); }
+      }
+      return { fps: SFPS, edges: fl.sEdges.map(([a, b]) => [Math.round(a), Math.round(b)]), data: out };
+    })();
     onProgress?.(1);
     return {
       duration, bpm, bpmCandidates, beats, drops,
@@ -500,6 +517,7 @@ const MusicCore = (() => {
       downIndex, onsets: { kick: kicks, snare: snares, hats }, style,
       // 100 fps peaks per band for the timeline's 3-band waveform (0..255; kept by the player, not sent to the sketch)
       wave: { fps: FPS, low: peakNorm(bp.WL), mid: peakNorm(bp.WM), high: peakNorm(bp.WH) },
+      spec, // (round 134, audiomap134) the song's small spectrum: 🎚 Follow the music's low-mids and custom ranges
     };
   }
 

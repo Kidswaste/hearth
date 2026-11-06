@@ -139,5 +139,22 @@ ok('the preview page\'s copy: the factory as source runs on its own and gives th
   const L = { band: 'kick', how: 'random', seed: 4, lo: 0, hi: 1 };
   assert.deepStrictEqual(kicks.slice(0, 8).map((t) => B.value(L, { ...src('kick'), t: t + 0.01 })[0]), kicks.slice(0, 8).map((t) => C.value(L, { ...src('kick'), t: t + 0.01 })[0]));
 });
+// (round 134, audiomap134) 🎚 Follow the music: responses, invert, on the beat, the song's spectrum, a first guess
+ok('🎚 Follow the music: punchy / smooth / on the beat, invert, a custom Hz range from the spectrum, the guess', () => {
+  const P = C.wizLink({ band: 'bass', resp: 'punchy', lo: 0, hi: 1 });
+  assert.ok(P.how === 'follow' && P.att === 0 && P.resp === 'punchy' && C.isLink(P));
+  const I = { ...P, inv: true };
+  near(val(I, kicks[5] + 0.03)[0], 1 - val(P, kicks[5] + 0.03)[0], 1e-9, 'inverted');
+  const B = C.wizLink({ band: 'kick', resp: 'beat' });
+  near(val(B, beats[6])[0], 1, 1e-9, 'a kick on the beat'); assert.ok(val(B, beats[6] + 0.3)[0] < 0.1);
+  assert.strictEqual(val(C.wizLink({ band: 'snare', resp: 'beat' }), beats[2] + 0.01)[0], 0, 'no snare on that beat');
+  const spec = { fps: 10, edges: [[20, 60], [60, 150], [150, 400], [400, 1000]], data: Uint8Array.from([255, 0, 0, 0, 0, 0, 255, 0, 0, 0, 128, 0]) };
+  const lm = C.specLevel(spec, 150, 400);
+  near(lm(0.1), 1, 1e-6); near(lm(0), 0, 1e-6); assert.ok(lm(0.2) > 0 && lm(0.2) < 0.2);
+  assert.ok(C.weights(spec.edges, 150, 400)[2] === 1 && C.weights(spec.edges, 150, 400)[0] === 0);
+  assert.strictEqual(C.suggest({ label: 'Glow', v: 0.2, min: 0, max: 2 }).band, 'bass');
+  assert.deepStrictEqual(['Speed', 'Sparkle'].map((l) => C.suggest({ label: l }).band), ['loudness', 'highs']);
+  assert.strictEqual(C.short(C.wizLink({ band: 'custom', resp: 'smooth', fLo: 200, fHi: 1500, inv: true })), 'Custom 200–1.5k Hz · smooth · inverted');
+});
 
-console.log(`${n}/17 passed`);
+console.log(`${n}/18 passed`);

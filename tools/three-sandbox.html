@@ -5104,15 +5104,20 @@ function blLiveHit(name) {
   return s.k < 0 ? null : { k: s.k, at: s.at, prev: s.prev, next: s.at + 0.5 };
 }
 // what a driver reads now: { hit, beat, level, hist }, made again when the song, its map, its parts or live changes
-function blSrc(band) {
+function blSrc(band, m = null) {
   const C = globalThis.beatlink;
-  let s = BL.srcs.get(band);
+  // (round 134, audiomap134) a custom range has its own source (its Hz in the key); lowmids / custom read the song's
+  // spectrum (analysis.spec), live: the worklet's 8 bands
+  const hz = band === 'custom' || band === 'lowmids' ? C.hzOf?.(m || { band }) : null;
+  const key = band === 'custom' && hz ? `custom:${hz[0]}-${hz[1]}` : band;
+  let s = BL.srcs.get(key);
   if (s) return s;
   const demoT = (t) => { const ph = ((t * 2) % 1 + 1) % 1; return Math.exp(-ph / 0.12); };
+  const liveHz = () => { const names = ['sub', 'low', 'lowMid', 'mids', 'highMid', 'presence', 'brilliance', 'air']; return C.liveLevel(names.map((n) => featVal(n)), hz[0], hz[1], FX.core?.BANDS || C.LIVE_BANDS); };
   if (liveKind) {
     const beat = livePeriod ? (t) => C.clockHits(livePeriod, liveOrigin)(t) : () => blLiveHit('kick');
     const bar = livePeriod ? (t) => C.clockHits(livePeriod, liveOrigin, 4)(t) : beat;
-    const LV = { bass: () => audio.bass, mids: () => audio.mid, highs: () => audio.treble, loudness: () => audio.level, vocals: () => featVal('vocal'), drums: () => stemStandIn(0) };
+    const LV = { bass: () => audio.bass, mids: () => audio.mid, highs: () => audio.treble, loudness: () => audio.level, vocals: () => featVal('vocal'), drums: () => stemStandIn(0), ...(hz ? { lowmids: liveHz, custom: liveHz } : {}) };
     s = { beat, hit: band === 'beat' ? beat : band === 'bar' ? bar : /^(kick|snare|hats)$/.test(band) ? () => blLiveHit(band) : beat, level: LV[band] || (() => 0), hist: false };
   } else if (mediaEl) {
     const bs = beatMap?.beats?.length ? beatMap.beats : analysis?.beats || [];
@@ -5125,6 +5130,7 @@ function blSrc(band) {
     const fps = analysis?.fps || 30;
     const stem = (k, fb) => blStemFn(k) || fb;
     const LV = { bass: stem(4, C.envOf(analysis?.bass, fps)), mids: C.envOf(analysis?.mid, fps), highs: C.envOf(analysis?.treble, fps), loudness: C.envOf(analysis?.level, fps) };
+    if (hz) LV[band] = C.specLevel(analysis?.spec, hz[0], hz[1]) || LV[hz[1] <= 200 ? 'bass' : hz[0] >= 2000 ? 'highs' : 'mids']; // (round 134, audiomap134; an analysis without a spectrum: the nearest band)
     // the voice and the drums need the song's parts (asked for here, once): a stand-in at the playhead until then
     const parts = { vocals: 5, drums: 0 };
     let level = LV[band]; let hist = true;
@@ -5135,9 +5141,10 @@ function blSrc(band) {
     const beat = C.clockHits(0.5);
     const HT = { beat, bar: C.clockHits(0.5, 0, 4), kick: beat, snare: C.clockHits(1, 0.5), hats: C.clockHits(0.25) };
     const LV = { bass: (t) => 0.25 + 0.6 * demoT(t), mids: (t) => 0.3 + 0.15 * Math.sin(t * 1.3), highs: (t) => 0.2 + 0.1 * Math.sin(t * 3.1), loudness: (t) => 0.3 + 0.35 * demoT(t), vocals: (t) => 0.3 + 0.2 * Math.sin(t * 0.7), drums: demoT };
+    if (hz) LV[band] = hz[1] <= 200 ? LV.bass : hz[0] >= 2000 ? LV.highs : (t) => 0.3 + 0.3 * demoT(t) + 0.1 * Math.sin(t * 1.3); // (round 134)
     s = { beat, hit: HT[band] || beat, level: LV[band] || (() => 0), hist: true };
   }
-  BL.srcs.set(band, s);
+  BL.srcs.set(key, s);
   return s;
 }
 // the song, its analysis / map / parts or live changed: the sources are made again and every value computed again
@@ -5155,7 +5162,7 @@ function blValue(i, m) {
   const t = blTime();
   const c = BL.cache.get(i);
   if (c && c.m === m && Math.abs(c.t - t) < 0.002) return c.v;
-  const src = blSrc(m.band);
+  const src = blSrc(m.band, m);
   let st = BL.st.get(i); if (!st) { st = {}; BL.st.set(i, st); }
   const [v, raw, s] = globalThis.beatlink.value(m, { t, hit: src.hit, beat: src.beat, level: src.level, hist: src.hist, st, now: realNow() }, m.int);
   BL.cache.set(i, { m, t, v });

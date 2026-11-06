@@ -245,14 +245,37 @@ const BeatLink = (() => {
         lo.setAttribute('cx', x0.toFixed(2)); lo.setAttribute('cy', y0.toFixed(2)); hi.setAttribute('cx', x1.toFixed(2)); hi.setAttribute('cy', y1.toFixed(2));
       };
     }
+    // (round 134, audiomap134) 〰: this slider follows the music (🎚 Follow the music); a click opens its card again
+    let mark = null;
+    const paintMark = (b) => {
+      const on = Boolean(b?.resp && C.isLink(b));
+      if (!on) { if (mark) mark.hidden = true; return; }
+      if (!mark) {
+        mark = el('button', { type: 'button', class: 'am-mark', text: '〰', on: { click: (e) => { e.stopPropagation(); follow(adapter()); } } });
+        const host = r.knob ? r.el.querySelector('.tw-kicons') : r.el.querySelector('.tw-top');
+        if (host) host.prepend(mark); else r.el.append(mark);
+      }
+      mark.hidden = false; mark.title = `Follows the music: ${C.short(b)} · click to change`;
+    };
     r.paintLink = () => {
       const a = adapter(); const b = a.get(); const on = C.isLink(b);
       r.el.classList.toggle('bl-linked', on);
+      paintMark(b);
       if (on) r.el.dataset.beatlink = C.short(b); else delete r.el.dataset.beatlink;
       paintRange?.(b, on);
       if (card && card.a.mid === a.mid) card.paint();
     };
     r.paintLink();
+  }
+
+  // (round 134, audiomap134) 🎚 Follow the music: its card is the lazy group 'audiomap' (tools/three-follow.js)
+  async function follow(a) {
+    try {
+      if (typeof FollowMusic === 'undefined' && window.Lazy) await Lazy.load('audiomap');
+      if (typeof FollowMusic === 'undefined') throw new Error('🎚 Follow the music did not load');
+      close();
+      return FollowMusic.open(a);
+    } catch (err) { toast(err.message, { type: 'error' }); return null; }
   }
 
   // ---------- the Lab: a menu row to pick a slider, the help, commands ----------
@@ -282,7 +305,7 @@ const BeatLink = (() => {
     Commands.register({
       name: 'move-with', area: 'Three.js Lab', aliases: ['beatlink', 'move-with-music'],
       desc: 'Move a slider with the music: what drives it (beat, bar, kick, snare, hats, bass, mids, highs, vocals, drums, loudness) and how (pulse, follow, step, random), from one value to another; "off" stops it, alone lists the links. Renders match the preview',
-      args: '<slider> <driver> [pulse|follow|step|random] [from X to Y] | <slider> off | undo',
+      args: '<slider> <driver | 200-800hz> [pulse|follow|step|random|onbeat | smooth|punchy|on the beat] [invert] [from X to Y] | <slider> off | undo', // (round 134, audiomap134: smooth / punchy / on the beat, invert, a Hz range)
       keywords: 'beat link music move pulse kick step bar follow bass random hats snare vocals react',
       async run(args) {
         await ready();
@@ -296,14 +319,24 @@ const BeatLink = (() => {
           for (const ctl of [...new Set(all.map((x) => x.ctl))]) { const hit = ctl.resolve?.(q); if (hit?.kind === 'number') { s = all.find((x) => x.ctl === ctl && x.key === hit.key) || null; if (s) { n = k; break; } } }
         }
         if (!s) throw new Error(`No slider "${ws[0]}" (sliders: ${all.map((x) => x.label).slice(0, 12).join(', ') || 'none yet'})`);
-        const rest = ws.slice(n).join(' ');
+        let rest = ws.slice(n).join(' ');
         if (/^(off|stop|none|still)$/i.test(rest.trim())) { s.ctl.link(s.key, null); return `${s.label} stays still (/move-with undo brings it back)`; }
         const a = s.ctl.linkAdapter(s.key);
+        // (round 134, audiomap134) 🎚 Follow the music's words: smooth | punchy | on the beat, invert, 200-800hz (custom)
+        const kHz = (x, k) => Number(x) * (k ? 1000 : 1);
+        const hzM = /(\d+(?:\.\d+)?)\s*(k)?\s*(?:hz)?\s*(?:-|–|to|\.\.)\s*(\d+(?:\.\d+)?)\s*(k)?\s*hz\b/i.exec(rest);
+        if (hzM) rest = rest.replace(hzM[0], ' custom ');
+        const resp = /\bon[ -]?the[ -]?beat\b|\bonbeat\b/i.test(rest) ? 'beat' : /\bsmooth(ly)?\b/i.test(rest) ? 'smooth' : /\bpunchy\b/i.test(rest) ? 'punchy' : null;
+        const inv = /\binvert(ed)?\b|\bupside[ -]down\b/i.test(rest) ? !/\bno[ -]invert\b/i.test(rest) : null;
+        rest = rest.replace(/\bon[ -]?the[ -]?beat\b|\bonbeat\b|\bsmooth(ly)?\b|\bpunchy\b|\b(no[ -])?invert(ed)?\b/gi, ' ');
         const band = C.parseDriver(rest); const how = C.parseHow(rest.replace(/\bbeat\b/gi, ''));
         let link = C.isLink(a.get()) ? a.get() : fresh(a, band, how);
         if (band || how) link = retime(link, { ...(band ? { band } : {}), ...(how ? { how } : {}) });
         const rg = /(?:from\s+)?(-?\d*\.?\d+)\s*(?:to|\.\.|→|-)\s*(-?\d*\.?\d+)/i.exec(rest);
         if (rg) { link.lo = Number(rg[1]); link.hi = Number(rg[2]); link.amount = r4((link.hi - link.lo) / ((a.max - a.min) || 1)); }
+        if (resp) link = { ...link, ...C.respond(link.band, resp), resp }; else if (band || how) delete link.resp;
+        if (inv != null) { if (inv) link.inv = true; else delete link.inv; }
+        if (link.band === 'custom') { const lo = hzM ? kHz(hzM[1], hzM[2]) : link.fLo || 60; const hi = hzM ? kHz(hzM[3], hzM[4]) : link.fHi || 250; link.fLo = Math.round(Math.min(lo, hi)); link.fHi = Math.round(Math.max(lo, hi)); } else { delete link.fLo; delete link.fHi; }
         for (const m of rest.matchAll(/\b(rise|attack|fall|decay|release|steps|glide|seed)\s*=\s*(\d+)/gi)) { const k = { rise: 'att', attack: 'att', fall: 'dec', decay: 'dec', release: 'dec' }[m[1].toLowerCase()] || m[1].toLowerCase(); link[k] = Number(m[2]); }
         s.ctl.link(s.key, link);
         stats.made += 1;
@@ -318,6 +351,8 @@ const BeatLink = (() => {
     });
   }
   if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Lab: ♪ Move a slider with the music (pulse on kick, step on the beat…)', async () => { try { await ThreeLab.cmd(); for (let i = 0; i < 40 && !lab(); i += 1) await new Promise((res) => setTimeout(res, 50)); pickMenu(null); } catch (err) { toast(err.message, { type: 'error' }); } });
+  // (round 134, audiomap134) Ctrl/⌘+K: 🎚 Follow the music (which slider, then its card)
+  if (typeof AppUI !== 'undefined' && AppUI.addAction) AppUI.addAction('Lab: 🎚 Follow the music (a slider follows the bass, the highs, the kick… with a live meter)', async () => { try { await ThreeLab.cmd(); for (let i = 0; i < 40 && !lab(); i += 1) await new Promise((res) => setTimeout(res, 50)); if (typeof FollowMusic === 'undefined' && window.Lazy) await Lazy.load('audiomap'); FollowMusic.pick(null); } catch (err) { toast(err.message, { type: 'error' }); } });
 
-  return { open, close, decorate, guess, fresh, retime, sliders, pickMenu, item, stats, get card() { return card; } };
+  return { open, close, decorate, guess, fresh, retime, sliders, pickMenu, item, stats, follow, get card() { return card; } };
 })();

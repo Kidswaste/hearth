@@ -837,6 +837,7 @@ const ThreeTweaks = (() => {
       const d = dirtyCount();
       menu(r.right - 280, r.bottom + 4, [
         explain ? ['✦ Explain this layer', 'What it draws, which sliders matter · cost first', () => explain()] : null, // (round 132, explain132)
+        typeof BeatLink !== 'undefined' && BeatLink.follow && scanned?.items.some((x) => x.kind === 'number') ? ['🎚 Follow the music…', 'A slider follows the bass, the highs, the kick…', () => followMenu(anchor)] : null, // (round 134, audiomap134)
         'Values',
         ['Reset', d ? 'Back to the values in the code' : 'Nothing changed', () => reset(), false, 'Reset'],
         ['Undo the last slider change', undoStack.length ? `${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : 'Nothing to undo', () => undo(), false, 'Undo slider change'],
@@ -854,6 +855,12 @@ const ThreeTweaks = (() => {
         ['One group open at a time', 'Opening a group folds the others', () => { accordionBox.checked = !accordionBox.checked; accordionBox.dispatchEvent(new Event('change')); }, accordionBox.checked],
         ['Fold every group', '', () => foldAll(true)], ['Unfold every group', '', () => foldAll(false)],
       ]);
+    }
+    // (round 134, audiomap134) ⋯ › 🎚 Follow the music…: this layer's number sliders, then the card
+    function followMenu(anchor) {
+      const r = anchor.getBoundingClientRect();
+      const list = (scanned?.items || []).map((it, i) => [it, i]).filter(([it]) => it.kind === 'number' && it.key != null).slice(0, 40);
+      menu(r.right - 280, r.bottom + 4, ['Which slider follows the music?', ...list.map(([it, i]) => [`${bindings[ids[i]]?.resp ? '〰 ' : ''}${labelOf(it) || it.raw}`, bindings[ids[i]] ? linkName(bindings[ids[i]]) : '', () => openFollow(it, i, rows.find((x) => x.i === i) || null)])]);
     }
     function foldAll(fold) { for (const sec of body.querySelectorAll('.tw-sec')) { sec.open = !fold; if (fold) collapsed.add(sec.dataset.group); else collapsed.delete(sec.dataset.group); } store.set('three.twCollapsed', [...collapsed]); }
     function lockAll(on) { (scanned?.items || []).forEach((it, i) => { if (it.key == null) return; if (on) locks.add(ids[i]); else locks.delete(ids[i]); }); saveSets(); rows.forEach((x) => x.paintLock?.()); toast(on ? 'Every control is locked' : 'Everything unlocked', { timeout: 1200 }); }
@@ -938,6 +945,7 @@ const ThreeTweaks = (() => {
       menu(e.clientX, e.clientY, [
         labelOf(it) || it.raw,
         it.kind === 'number' && typeof BeatLink !== 'undefined' ? ['♪ Move with the music…', bindings[ids[i]] ? `now: ${linkName(bindings[ids[i]])}` : 'pulse on the kick, step on each bar, follow the bass…', () => openLink(it, i, r), Boolean(bindings[ids[i]]?.how), 'Move with the music'] : null,
+        it.kind === 'number' && typeof BeatLink !== 'undefined' && BeatLink.follow ? ['🎚 Follow the music…', bindings[ids[i]]?.resp ? `now: ${linkName(bindings[ids[i]])}` : 'the bass, the highs, the kick…: a live meter, Keep or not', () => openFollow(it, i, r), Boolean(bindings[ids[i]]?.resp), 'Follow the music'] : null, // (round 134, audiomap134)
         ['↺ Back to the code\'s value', fmtVal(it, it.orig), () => resetOne(i)],
         [locked ? '🔓 Unlock' : '🔒 Lock at this value', 'Shuffle, looks, resets and MIDI leave it alone', () => toggleLock(i)],
         ['🔒 Reset and lock', '', () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); }],
@@ -1071,7 +1079,7 @@ const ThreeTweaks = (() => {
       if (!scanned) return mods;
       scanned.items.forEach((it, i) => {
         const b = bindings[ids[i]];
-        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int, mid: ids[i], ...(b.c ? { c: b.c } : {}), ...(b.how ? { how: b.how, lo: b.lo, hi: b.hi, att: b.att, dec: b.dec, steps: b.steps, glide: b.glide, seed: b.seed } : {}) };
+        if (b?.band && it.kind === 'number') mods[i] = { band: b.band, amount: b.amount, span: it.range.max - it.range.min, int: it.int, mid: ids[i], ...(b.c ? { c: b.c } : {}), ...(b.how ? { how: b.how, lo: b.lo, hi: b.hi, att: b.att, dec: b.dec, steps: b.steps, glide: b.glide, seed: b.seed, ...(b.inv ? { inv: true } : {}), ...(b.band === 'custom' ? { fLo: b.fLo, fHi: b.fHi } : {}) } : {}) }; // (round 134, audiomap134: invert, a custom range)
       });
       return mods;
     }
@@ -1115,6 +1123,7 @@ const ThreeTweaks = (() => {
       };
     }
     const openLink = (it, i, r) => (typeof BeatLink !== 'undefined' ? (BeatLink.open(linkAdapter(it, i, r)), true) : false);
+    const openFollow = (it, i, r) => (typeof BeatLink !== 'undefined' && BeatLink.follow ? BeatLink.follow(linkAdapter(it, i, r)) : null); // (round 134, audiomap134) 🎚 Follow the music
     function mapAdapter(it, i, r) {
       return { key: it.key, label: labelOf(it), mid: ids[i], anchor: r?.el || rows.find((x) => x.i === i)?.el, live: reads ? reads.live.has(i) : true, get: () => bindings[ids[i]] || null, set: (band, amount, c) => setBinding(i, band, amount, c) };
     }
@@ -1862,6 +1871,7 @@ const ThreeTweaks = (() => {
       link(key, link, o) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; setLink(i, link || null, o); return true; },
       linkAdapter(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return linkAdapter(scanned.items[i], i, rows.find((x) => x.i === i) || null); },
       openLink(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return false; return openLink(scanned.items[i], i, rows.find((x) => x.i === i) || null); },
+      openFollow(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return openFollow(scanned.items[i], i, rows.find((x) => x.i === i) || null); }, // (round 134, audiomap134)
       get undoDepth() { return undoStack.length; },
       motion(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; return i < 0 ? null : motions[ids[i]] || null; }, // (round 30, autopolish) its undo
       mapping(key) { const i = scanned?.items.findIndex((x) => x.key === key) ?? -1; if (i < 0 || scanned.items[i].kind !== 'number') return null; return mapAdapter(scanned.items[i], i, null); },
