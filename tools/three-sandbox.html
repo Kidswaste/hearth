@@ -7065,7 +7065,8 @@ window.__labLook = { state: () => ({ lib: Boolean(globalThis.matcore), scans: LK
 // alone (keyTime: the song / the scene's own timeline, a sequence's or an export's program time), and a punch from the
 // song's hits (beatlink's sources), so a render steps to the same pictures every time. The math arrives as source the
 // first time a move does (globalThis.camcore). Nothing runs for layers without moves.
-const CM = { want: null, applied: 0, pose: new Map() };
+const CM = { want: null, applied: 0, pose: new Map(), hold: null }; // (round 133, campath133: hold = the layer whose moves wait while a path is drawn)
+const cmBeat = (m) => m.kind === 'punch' || m.kick > 0; // (round 133, campath133: a path's shake on the kick reads beatlink's hits too)
 function cmReady(punch = false) {
   if (punch) blReady();
   if (globalThis.camcore) return true;
@@ -7076,7 +7077,7 @@ function cmReady(punch = false) {
 async function cmWait() {
   const Ls = [...layers.values()].filter((L) => L.props.camMoves?.length);
   if (!Ls.length) return;
-  const punch = Ls.some((L) => L.props.camMoves.some((m) => m.kind === 'punch'));
+  const punch = Ls.some((L) => L.props.camMoves.some(cmBeat));
   if (!cmReady(punch)) await CM.want;
   if (punch && !globalThis.beatlink) await BL.want;
 }
@@ -7092,7 +7093,8 @@ function cmRender(r, scene, camera, EL) {
   if (EL.lvCamGen !== EL.gen) { EL.lvCam = camera; EL.lvCamGen = EL.gen; } // (the same main camera the gestures use)
   if (camera !== EL.lvCam) return null;
   const moves = EL.props.camMoves;
-  if (!cmReady(moves.some((m) => m.kind === 'punch'))) return null;
+  if (CM.hold === EL.id && !XP_PAGE) { if (EL.cmKey) { EL.cmKey = ''; PACE.poke += 1; } CM.pose.delete(EL.id); return null; } // (round 133, campath133) drawing a path: its own camera, looked around
+  if (!cmReady(moves.some(cmBeat))) return null;
   const O = globalThis.camcore.at(moves, keyTime(EL), { since: cmSince });
   const key = O ? `${O.yaw}|${O.pitch}|${O.s}|${O.px}|${O.py}|${O.pz}|${O.lyaw}|${O.lpitch}|${O.roll}|${O.tk}` : '';
   if (EL.cmKey !== key) { EL.cmKey = key; PACE.poke += 1; } // (labpace: the picture changes now)
@@ -7138,6 +7140,8 @@ function cmCommand(m) {
   const L = cmLayer(m.layer);
   const out = { type: 'cam-info', req: m.req, cmd: m.cmd };
   if (!L) { post({ ...out, ok: false, why: mode !== 'sketch' || SQ.on ? 'Not while the sequence plays' : edit.on ? 'Not in the scene editor' : 'This scene has no 3D camera to move' }); return; }
+  if (m.cmd === 'hold') { CM.hold = m.on ? L.id : null; PACE.poke += 1; } // (round 133, campath133) path mode: the moves wait
+  if (m.cmd === 'set' && m.view) { const W = lvViewOf(L); for (const k of LV.core.KEYS) { const x = Number(m.view[k]); if (Number.isFinite(x)) { W[k] = x; W.t[k] = x; } } for (const k in W.v) W.v[k] = 0; W.dirty = true; lvKick(); } // (round 133, campath133) look from a path's point
   const V = LV.views.get(L.id);
   const d = V && V.L === L ? V.d : lvPivot(L);
   const view = V && V.L === L ? Object.fromEntries(LV.core.KEYS.map((k) => [k, V.t[k]])) : { yaw: 0, pitch: 0, s: 1, px: 0, py: 0, pz: 0 };
