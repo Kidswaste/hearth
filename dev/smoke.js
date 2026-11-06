@@ -409,6 +409,12 @@ async function cdpConnect(dir) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
         result = { saved: req.shot };
+      } else if (req.loadwait) {
+        // (round 133, speed133) a check's timing judged load-aware: dev/loadwait.js's snapshot of this box now (snap),
+        // or what was waited for since one (since: an earlier snap) with the verdict for ms against budget
+        const L = require('./loadwait');
+        const now = L.snap();
+        result = req.since ? { waited: L.waited(req.since, now), judge: req.ms != null ? L.judge(req.ms, req.budget, L.waited(req.since, now)) : null, loadavg: os.loadavg(), cpus: os.cpus().length } : { snap: now, loadavg: os.loadavg(), cpus: os.cpus().length };
       } else if (req.pageCdp) {
         // (round 53, gameinput) a CDP call into another window's page (the ▶ Play window: real input with Input.*), the
         // newest page whose URL matches; its socket is kept for the next call (a burst of mouse moves, one key after another)

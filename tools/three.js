@@ -642,7 +642,7 @@ const ThreeLab = (() => {
       // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
       // the Lab itself (🩺 Fix my scene, Capture ›, Code & console ›, View & help ›); 17 rows → 11, every row ≤ 2 clicks
       const easy = typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []; // (round 26) Director › (tools/three-easy.js)
-      const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
+      const fix = easy.filter((r) => /Fix my scene|Speed check/.test(r[0])); // (round 133, speed133: ⚡ Speed check beside it)
       return ['Make',
         ...easy.filter((r) => !fix.includes(r)),
         'This Lab',
@@ -3449,6 +3449,31 @@ const ThreeLab = (() => {
     previewHost.addEventListener('mouseenter', () => fbSoon(50));
     previewHost.addEventListener('mouseleave', () => fbSoon(400));
     api.framebar = { host: previewHost, call: (m, t) => sandboxCall(m, t), name: (id) => layerById(id)?.name || null, ids: () => layersOf().map((L) => L.id), selected: () => selId, recheck: () => fbCheck() };
+    // (round 133, speed133) ⚡ Speed check (tools/three-speed*.js): the scene's preview-only speed settings, kept with the
+    // scene (sketch.speed: px1 · noAA · sh · fxHalf; never read by an export page or ▶ Play), the 3-second measure, and
+    // the place of the slow chip (beside the stats line). set(): saved, sent to the page; a change of antialias runs the
+    // scene again on a fresh page (a context's antialias is fixed when it's made). The card's undo goes through set() too.
+    const speedOf = (sk = current) => ({ px1: false, noAA: false, sh: null, fxHalf: false, ...(sk?.speed || {}) });
+    const speedMsg = () => ({ type: 'speed', ...speedOf() });
+    api.speed = {
+      host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
+      get: () => speedOf(),
+      set(next, { quiet = false } = {}) {
+        if (!current) return null;
+        const was = speedOf(); const now = { ...was, ...(next || {}) };
+        const clean = Object.fromEntries(Object.entries(now).filter(([k, v]) => (k === 'sh' ? v !== null && v !== undefined : Boolean(v))));
+        if (Object.keys(clean).length) current.speed = clean; else delete current.speed;
+        current.updatedAt = Date.now(); saveSoon();
+        box.send(speedMsg());
+        if (Boolean(was.noAA) !== Boolean(now.noAA)) run({ reload: true, quiet });
+        return speedOf();
+      },
+      measure: (ms = 3000, toggle = 3) => sandboxCall({ type: 'speed-measure', ms, toggle }, ms * 20 + 30000), // (a slow software GPU stretches each window to 6 frames)
+      reopen: () => run({ reload: true }), // a fresh page for the scene (safe mode after the graphics card dropped it)
+      name: (id) => layerById(id)?.name || null,
+      userCap: () => { const v = fpsPref(); return v > 0 ? v : 0; },
+      light: () => lightOn, frozen: () => frozenNow, parked: () => parkedNow,
+    };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
     let perfHudOn = Boolean(store.get('three.perfHud', false));
@@ -3574,6 +3599,7 @@ const ThreeLab = (() => {
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         lastStatsMsg = msg;
         window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
+        if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.stats(msg); // (round 133, speed133) ⚡ "Slow: 21 fps · Why?" after 5 s under 50 fps / half the screen's rate
         paintPerfHud(msg);
         if (msg.adapt) paintAdapt(msg.adapt);
         if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
@@ -3605,7 +3631,7 @@ const ThreeLab = (() => {
         sendLiveGain();
         if (box.onStage) { hubLiveStop(); setTimeout(() => window.hub.liveStart(liveKind), 400); } else if (hubLive.stream) box.send({ type: 'live-remote', on: true, kind: liveKind }); else setTimeout(() => window.hub.liveStart(liveKind), 400);
       }
-      if (msg.type === 'framebar-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; } // (round 64, framebar64) "why?"
+      if (msg.type === 'framebar-result' || msg.type === 'speed-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; } // (round 64, framebar64) "why?" · (round 133, speed133) ⚡ the speed check's measure
       if (msg.type === 'eval-result' || msg.type === 'input-result') { sandboxCalls.get(msg.id)?.(msg); sandboxCalls.delete(msg.id); return; }
       if (msg.type === 'shot') {
         if (msg.tag === 'thumb') { const fn = thumbShot; thumbShot = null; fn?.(msg.dataUrl, msg.small); return; }
@@ -4150,6 +4176,7 @@ const ThreeLab = (() => {
       // on the contexts and compiled shaders it left (tools/three-boot.js)
       const warmOf = fresh ? box.takeWarmRun() : false;
       const overWarm = Boolean(warmOf);
+      box.send(speedMsg()); // (round 133, speed133) ⚡ the scene's preview speed settings, before its layers make their renderers
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs({ fresh: true }); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
       if (!fresh && !partial && !player.path) box.send({ type: 'media-unload' }); // a sketch without a song: the last one stops
@@ -5956,6 +5983,7 @@ ${frag}\`,
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
     get healthHost() { return api.healthHost || null; }, // (round 80, laberrors80) tools/three-health.js
     get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
+    get speed() { return api.speed || null; }, // (round 133, speed133) ⚡ the speed check (tools/three-speed*.js)
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
