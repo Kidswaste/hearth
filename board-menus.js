@@ -310,6 +310,7 @@
     }
     // (round 28, lookmatch) its colors, light and grain on the Lab scene (tools/three-lookmatch.js, loaded with the Lab)
     if (it && ['image', 'gif', 'video', 'web'].includes(it.type) && (it.src || it.thumb)) primary.push({ label: '🎨 Use this look in the Lab', action: () => (typeof Lazy !== 'undefined' ? Lazy.load('lab') : Promise.resolve()).then(() => LookMatch.fromBoardItem(it)).catch((err) => toast(err.message, { type: 'error' })) });
+    if (it && ['image', 'gif', 'web'].includes(it.type) && (it.src || it.thumb)) primary.push({ label: '✦ Make a layer like this', hint: 'the director builds one in the Lab (cost first)', action: () => (typeof Lazy !== 'undefined' ? Lazy.load('lab').then(() => Lazy.load('refmatch')) : Promise.resolve()).then(() => LabRefMatch.fromBoardItem(it)).catch((err) => toast(err.message, { type: 'error' })) }); // (round 131, refmatch131)
     if (list.length === 2) primary.push({ label: 'Compare the two', action: () => Board._.compare?.(list[0], list[1]) });
     menu(e, [
       ...primary,

@@ -379,6 +379,7 @@ const LookMatch = (() => {
     showMenu(x, y, [
       { label: '🎨 Match this look', hint: 'colors, light, grain: on this scene, no tokens', action: () => run(src).catch(err) },
       { label: '🎨 Match it, then ask the director', hint: 'shapes and motion too (cost shown first)', action: () => run(src).then(() => askDirector()).catch(err) },
+      { label: '✦ Make a layer like this', hint: 'the director builds one new layer in its spirit (cost shown first)', action: () => (window.Lazy ? Lazy.load('refmatch') : Promise.resolve()).then(() => LabRefMatch.open(src)).catch(err) }, // (round 131, refmatch131)
       path ? { label: 'Add it to the sketch\'s references', action: () => ThreeLab.addReference(path).then((r) => toast(`${file.name} is a reference (${r.key})`, { timeout: 2200 })).catch(err) } : null,
     ].filter(Boolean));
   }
