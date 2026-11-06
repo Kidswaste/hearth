@@ -88,6 +88,12 @@ const ThreeSeq = (() => {
   const flat = (e) => (e?.clips?.some((c) => c.kind === 'seq') ? D.flatten(e, (ref) => S.nested.get(ref) || null, 0, new Set(S.key ? [S.key] : [])) : e);
   // the songs' beat maps (kv three-beatmaps): a scene's own hits and cue looks travel with its clips
   async function loadMaps() { try { S.maps = (await window.hub.kvGet('three-beatmaps', {})) || {}; } catch { S.maps = {}; } }
+  // (round 139, cuelooks139) the scene on screen plays its timeline's cues as they are now (an edit not saved yet too)
+  function liveCues(L, sk) {
+    const P = L?.player;
+    if (!P?.loaded || sk.id !== L.sketchId?.() || P.path !== (L.scenes.songOf?.(sk.id) || `scene:${sk.id}`)) return null;
+    try { return (P.cues || []).map((c) => ({ t: c.time, name: c.name, looks: c.looks })); } catch { return null; }
+  }
   async function list() {
     const v = VC();
     if (!v) return [];
@@ -327,7 +333,36 @@ const ThreeSeq = (() => {
   // (rate: the clip's speed: a key at the scene's own time k lands at t0 + k / rate in the sequence)
   const shiftKeys = (keys, dt, rate = 1) => keys.map((k) => ({ ...k, t: r4(k.t / rate + dt) }));
   const ANIM = ['opacity', 'x', 'y', 'scale', 'rotate'];
-  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1, links = null } = {}) {
+  // (round 139, cuelooks139) one slider's keys for a layer's cue looks (scene time): cues = [{ t, values }] where the
+  // layer's look changes (cueLooksOf). Each change morphs from the value at that moment (mid-morph too) to the look's
+  // value, or the slider's own when the look doesn't name it: playLook's smoothstep over `fade` for two numbers
+  // ('ease' is the same curve), otherwise a switch at half the fade
+  function cueMorphKeys(cues, id, base, fade) {
+    let ks = [{ t: -1e6, v: base, ease: 'hold' }];
+    const at = (t) => { let k = ks[0]; for (const x of ks) if (x.t <= t) k = x; const nx = ks[ks.indexOf(k) + 1]; if (!nx || k.ease === 'hold') return k.v; const u = (t - k.t) / (nx.t - k.t || 1); return k.v + (nx.v - k.v) * u * u * (3 - 2 * u); };
+    for (const q of cues) {
+      const to = id in q.values ? q.values[id] : base;
+      const from = at(q.t);
+      ks = ks.filter((k) => k.t < q.t);
+      if (typeof from === 'number' && typeof to === 'number') ks.push({ t: q.t, v: from, ease: 'ease' }, { t: q.t + fade, v: to, ease: 'hold' });
+      else ks.push({ t: q.t, v: from, ease: 'hold' }, { t: q.t + fade / 2, v: to, ease: 'hold' });
+    }
+    return ks;
+  }
+  // (round 139, cuelooks139) a layer's cue looks as the preview plays them: at each cue, the last look a cue at or before
+  // it names for the layer; only where that changes, and only a look the layer has (a missing one changes nothing)
+  function cueLooksOf(cues, ly, mine) {
+    const out = []; let cur = null;
+    for (const q of [...(cues || [])].sort((a, b) => a.t - b.t)) {
+      const name = q.looks?.find((l) => l.layer === ly.id || l.layer === ly.name)?.name;
+      if (!name || name === cur) continue;
+      const values = mine.find((l) => l.name === name)?.values;
+      if (!values) continue;
+      cur = name; out.push({ t: q.t, values });
+    }
+    return out.length ? out : null;
+  }
+  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1, links = null, locked = null } = {}) {
     const keys = Object.fromEntries(ANIM.filter((p) => L.keys?.[p]?.length).map((p) => [p, shiftKeys(L.keys[p], t0, rate)]));
     const sc = scanOf(L.code || '');
     if (!sc?.items?.length) return { code: L.code || '', values: undefined, keys, sliderKeys: {} };
@@ -345,12 +380,15 @@ const ThreeSeq = (() => {
       if (i >= 0) sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: sc.items[i].kind === 'color' && !sc.items[i].quote, keys: shiftKeys(ks, t0, rate) };
     }
     // the scene's cue looks (✦ a look per song section) move with the clip too: held slider keys at the cues' times
+    // (round 139, cuelooks139) exactly as the preview plays them (three.js onCue → ThreeTweaks playLook): a look morphs in
+    // over LOOK_FADE from wherever the sliders are (smoothstep for numbers, a switch halfway for the rest), a slider the
+    // new look doesn't name goes back to its own value, 🔒 locked sliders stay, and keyframes / ♪ links still win
     if (cues?.length) {
+      const fade = ((ThreeTweaks.LOOK_FADE ?? 450) / 1000) * rate; // seconds of the scene's own time (the morph is wall time in the preview)
       ids.forEach((id, i) => {
-        if (sliderKeys[b + i] || !cues.some((q) => id in q.values)) return;
-        const ks = [{ t: -1e6, v: runtime(sc.items[i], vals[i]), ease: 'hold' }];
-        for (const q of cues) if (id in q.values) ks.push({ t: r4(q.t / rate + t0), v: runtime(sc.items[i], q.values[id]), ease: 'hold' });
-        sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: false, keys: ks };
+        if (sliderKeys[b + i] || locked?.includes(id) || !cues.some((q) => id in q.values)) return;
+        const ks = cueMorphKeys(cues, id, vals[i], fade);
+        sliderKeys[b + i] = { call: sc.items[i].call, key: sc.items[i].key, num: false, keys: ks.map((k) => ({ ...k, t: k.t < -1e5 ? k.t : r4(k.t / rate + t0), v: runtime(sc.items[i], k.v) })) };
       });
     }
     // (round 38, beatlink) its sliders' ♪ Move with the music links: the page computes them from the song's time, so the
@@ -376,14 +414,16 @@ const ThreeSeq = (() => {
     const t0 = r4(x.start - (c.in || 0) / rate);
     const looks = looksOf(sk);
     // its own song's hand-placed hits and cue looks (in the scene's own time: they move with the clip)
-    const map = S.maps?.[L.scenes.songOf?.(sk.id)] || null;
+    const map = S.maps?.[L.scenes.songOf?.(sk.id) || `scene:${sk.id}`] || null; // (round 139, cuelooks139) a scene with no song keeps its cues under "scene:<id>"
+    const cueList = liveCues(L, sk) || map?.cues || null; // (round 139, cuelooks139) the scene on screen: its timeline's cues as they are now
     const marks = map?.marks && ['kick', 'snare', 'hit'].some((k) => map.marks[k]?.length) ? { kick: map.marks.kick || [], snare: map.marks.snare || [], hit: map.marks.hit || [] } : null;
     return L.scenes.layersOf(sk).filter((ly) => ly.visible !== false).map((ly, j) => {
       const mine = looks[ly.id] || looks.main || [];
       const look = c.look ? mine.find((l) => l.name === c.look)?.values : null;
-      const cues = !c.look && map?.cues?.length ? map.cues.map((q) => ({ t: q.t, name: q.looks?.find((l) => l.layer === ly.id || l.layer === ly.name)?.name })).filter((q) => q.name).map((q) => ({ t: q.t, values: mine.find((l) => l.name === q.name)?.values })).filter((q) => q.values) : null;
+      const cues = !c.look && cueList?.length ? cueLooksOf(cueList, ly, mine) : null; // (round 139, cuelooks139)
       const lex = L.scenes.extrasOf?.(sk.id) || {}; const links = (ly.id === 'main' ? lex.bindings : lex.layers?.[ly.id]?.bindings) || null; // (round 38, beatlink)
-      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate, links });
+      const locked = (ly.id === 'main' ? lex.locks : lex.layers?.[ly.id]?.locks) || null; // (round 139, cuelooks139) 🔒 sliders: a cue's look leaves them, as in the preview
+      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate, links, locked });
       return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, mask: ly.mask || null, in: ly.in != null ? r4(ly.in / rate + t0) : null, out: ly.out != null ? r4(ly.out / rate + t0) : null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, keys: p.keys, sliderKeys: p.sliderKeys, ...(p.links ? { links: p.links } : {}), ...(ly.camMoves?.length && typeof CamCore !== 'undefined' ? { camMoves: CamCore.shift(CamCore.cleanAll(ly.camMoves), t0, rate) } : {}), ...(ly.overrides ? { overrides: ly.overrides } : {}), /* (round 50, labmaterials: the 3D editor's placements and ◉ looks, as in the preview) */ ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
     });
   }
@@ -2652,6 +2692,7 @@ const ThreeSeq = (() => {
     arrange, again, retime, versions, fillGap, vary, varySections, copyLook, pasteLook, swapLooks, nest, unnest, copySel, paste, zoomTo, sectionMarkers, decideArrangement,
     setFrame, setFit, frameEverywhere, setMotion, setVolume, setFade, setDuck, muteTrack, setGrade, setGradeAmt, setCGrade, chop, captionsFile, captionsTyped, captionsFromCues, captionLook, exportCaptions, addLower, lowerLook, setOutputs, outputsOf: () => outputsOf(), renderOutputs, writeCaptions,
     audioPlan, duckOf, // (labexport: the sound of an export page's render)
+    loadMaps, // (round 139, cuelooks139) a render of a scene reads the songs' cues (with their looks) fresh
     outDir, keyForScene, switchTo, summaryFor, sceneCopied, songInfo, pickScenes, bakeRuns, get owner() { return S.owner; },
     on: (ev, fn) => { (listeners[ev] ||= []).push(fn); },
     get active() { return S.view; }, get key() { return S.key; }, get edit() { return S.edit ? C.copy(S.edit) : null; }, get time() { return S.T; }, get playing() { return S.playing; }, get fps() { return fps(); },

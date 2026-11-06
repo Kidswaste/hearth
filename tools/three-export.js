@@ -136,6 +136,7 @@ const LabExport = (() => {
     e = CutData.setSeq(e, { w, h });
     const song = L.scenes.songOf?.(sid);
     const P = L.player;
+    await SEQ()?.loadMaps?.(); // (round 139, cuelooks139) the cues and their looks as saved now (the sequence loads them only when it opens)
     if (song && AUD.test(song)) { const d = (P.path === song && P.duration) || 0; if (d) e = D.setSong(e, song, d); }
     e = D.addScene(e, { sketch: sk.id, name: sk.name }, { dur: Math.max(0.1, end + 1 / F), trans: null });
     return { e, sk, live: true };
@@ -252,6 +253,7 @@ const LabExport = (() => {
         if (lp && lp.b > lp.a) { T0 = lp.a; N = Math.round((lp.b - lp.a) * F); } else { T0 = o.at ?? playhead('scene'); N = Math.round(10 * F); }
       }
       T0 = r4(Math.max(0, T0));
+      if (o.source === 'seq') await SEQ()?.loadMaps?.(); // (round 139, cuelooks139) each clip's cue looks, as saved now
       if (o.source === 'seq') { e = CutData.copy(seqE); e = CutData.setSeq(e, { w: o.w, h: o.h, fps: F, format: D_FORMATS()[seqE.seq?.format] && aspectKey(o.w, o.h) === seqE.seq.format ? seqE.seq.format : aspectKey(o.w, o.h) }); } else ({ e, sk } = await sceneEdit({ w: o.w, h: o.h, F, end: T0 + N / F }));
       const { plan, assets } = o.compiled || compileLive(e, sk); // (round 42, labbatch) a batch row compiles its own scene (not the one on screen)
       plan.w = o.w; plan.h = o.h; plan.fps = F;
