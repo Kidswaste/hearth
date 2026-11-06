@@ -69,20 +69,10 @@ renderer.setAnimationLoop(() => { scene.background.setRGB(Math.min(1, P.glow * 0
 
   // ---------- 2 + 3. play: the meter moves, the slider follows the bass ----------
   {
-    // (a seek right after the song loads can be lost: seek until the playhead is there, then play)
+    // (round 135, seekfix135: one play and one seek; a seek right after play lands and holds now)
     const at = Math.max(0, drop.start - 2);
-    const seekLog = [];
-    // (play first, then seek while it plays: a play could start from the loop's start instead of the playhead)
-    cmd.play(true); await wait(300);
-    // (and stays there: a song element that just loaded can start again from 0 once it plays; then seek again)
-    await until(async () => {
-      const t1 = Number(await ev('audio.time'));
-      if (!(t1 >= at - 0.05 && t1 < at + 2)) { cmd.seek(at); await wait(400); }
-      const a1 = Number(await ev('audio.time')); await wait(400); const a2 = Number(await ev('audio.time'));
-      seekLog.push([r3(P.time), r3(a1), r3(a2), P.playing]);
-      return a1 >= at - 0.05 && a2 > a1 && a2 < at + 2.5;
-    }, 20000);
-    out.seekLog = seekLog.slice(0, 12);
+    cmd.play(true); cmd.seek(at);
+    await wait(300);
     const meter = []; const samples = [];
     const t0 = performance.now();
     while (performance.now() - t0 < 6000) {

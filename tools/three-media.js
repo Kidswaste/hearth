@@ -676,6 +676,7 @@ const ThreeMedia = (() => {
       window.TwoComputers?.noteFile?.(path, bytes.byteLength).catch?.(() => {}); // its place + content, for the other computer
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
       Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
+      wish = null; // (round 135, seekfix135) a new song starts paused unless play is pressed from here on (attach below)
       emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
@@ -692,7 +693,7 @@ const ThreeMedia = (() => {
       store.set('three.media', path);
       analyzing = true;
       paint();
-      attach({ playing: false });
+      attach(); // (round 135, seekfix135) paused, or playing when play was pressed while the song was being read (it was dropped)
       try {
         const a = await analyze(bytes, { onProgress: (p) => { if (seq === loadSeq) setText(nameEl, `${st.name} · analyzing ${Math.round(p * 100)}%`); } });
         st.samples = a.samples; st.wave = a.wave;
@@ -818,6 +819,11 @@ const ThreeMedia = (() => {
       if (!st.bytes) { if (force !== false) pick(); return; }
       const play = force ?? !st.playing;
       seekFlush(); // (labscrub) a seek still waiting goes first
+      // (round 135, seekfix135) …and the seek that follows a play / pause goes at once, not after the preview has
+      // answered the one before: a paused preview draws (and so answers) only when it next has a frame to draw, which
+      // was often the play itself, so a seek right after play waited up to a second while the song played from the old
+      // spot. The messages keep their order; the one-seek-at-a-time pacing is for scrubbing.
+      seekQ.busy = 0;
       wish = { play, at: performance.now() };
       send({ type: 'media', cmd: play ? 'play' : 'pause', ...(play ? {} : hooks.pauseMsg?.() || {}) });
     }
@@ -903,6 +909,12 @@ const ThreeMedia = (() => {
       // pointer has it (the answer is for an older spot while a scrub runs on)
       // (a paused report while a seek is still on its way is an older spot too)
       if (msg.type === 'media-state' && (msg.seekAck || seekQ.busy) && !msg.playing && !st.playing && !msg.ended) msg = { ...msg, time: st.time };
+      // (round 135, seekfix135) …and while it plays or starts: a report sent before the preview had the seek (the
+      // song's 'play', a 4×/s tick) is an older spot; the playhead keeps the seek until the preview answers it (its
+      // answer has where it landed). It used to snap back there, and a seek made from the playhead meanwhile (a cue,
+      // Perform's next bar, a render) started from that older spot.
+      else if (msg.type === 'media-state' && seekQ.busy && !msg.seekAck && !msg.ended) msg = { ...msg, time: st.playing ? now() : st.time };
+      if (msg.type === 'seek-ack') { seekAcked(); return; } // (round 135, seekfix135) the answer when the preview has no song to report
       if (msg.type === 'media-state' && msg.seekAck) seekAcked();
       // (round 77, labaudio77) the sound output changed under the song (the preview kept it playing): kept for the play
       // button's menu and /hear sync
