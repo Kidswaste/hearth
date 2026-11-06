@@ -102,12 +102,16 @@ const LabTakes = (() => {
     const sid = t.sceneId;
     const before = await LabTxn.snap(sid);
     if (!before) throw new Error('The scene is gone.');
+    // (round 132, versions132) a version of the scene before the take, and one of the take kept (Scene versions…)
+    const what = cap(words, 60);
+    await window.ThreeHistory?.autoVersion?.(sid, { why: 'take', label: `Before ${what}: “${cap(t.ask, 50)}”`, by: 'you' })?.catch?.(() => null);
     window.ThreeHistory?.as?.(sid, 'takes');
     await LabTxn.restore({ ...before, layers: deep(layers), vals: {}, selId: selId || before.selId }, { keepRefs: true });
     await wait(300);
     const after = await LabTxn.snap(sid);
     LabTxn.step({ chatId: t.chatId, who: 'You', before, after, label: `the take you kept on "${before.name}"`, words });
     t.kept = { words, at: LabTxn.history().at(-1)?.at || Date.now(), sig: LabTxn._test.sigOf(after) };
+    window.ThreeHistory?.autoVersion?.(sid, { why: 'take', label: `Kept ${what}: “${cap(t.ask, 50)}”`, by: 'you' })?.catch?.(() => null); // (round 132, versions132)
     t.status = 'kept';
     discard({ quiet: true });
     toast(`Kept: ${cap(words, 70)}`, { timeout: 6000, action: { label: 'Undo', fn: () => undo().catch(err) } });

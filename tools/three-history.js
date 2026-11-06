@@ -27,11 +27,13 @@ const ThreeHistory = (() => {
     if (docs.has(id)) { const e = docs.get(id); docs.delete(id); docs.set(id, e); return Promise.resolve(e); }
     if (!loading.has(id)) {
       loading.set(id, (async () => {
-        let d = null;
-        try { d = okId(id) ? await window.hub.kvGet(KV(id), null) : null; } catch { /* a new one */ }
+        let d = null; let unreadable = false;
+        // (round 132, versions132) a read that failed is never "no versions": noted, and nothing is saved over the file
+        // until it reads again (saveSoon merges the two)
+        try { const r = okId(id) ? await window.hub.kvGet(KV(id), null, { status: true }) : null; if (r && typeof r === 'object' && r.state) { if (r.state === 'unreadable') unreadable = true; else d = r.state === 'ok' ? r.value : null; } else d = r; } catch { unreadable = true; }
         const doc = d?.versions && d.keys ? d : C.blank();
         C.heal(doc); C.gc(doc);
-        const e = { id, doc, last: null };
+        const e = { id, doc, last: null, unreadable };
         const lv = C.latest(doc);
         e.last = lv ? C.stateOf(doc, lv) : null;
         docs.set(id, e); loading.delete(id);
@@ -47,8 +49,20 @@ const ThreeHistory = (() => {
     saveT.set(id, setTimeout(() => {
       saveT.delete(id);
       const e = docs.get(id);
+      if (e && okId(id) && e.unreadable) { healRead(e).then((okNow) => { if (okNow) saveSoon(id); else setTimeout(() => saveSoon(id), 30000); }); return; } // (round 132, versions132)
       if (e && okId(id)) { stats.saves += 1; window.hub.kvSet(KV(id), e.doc).catch((err) => console.warn('time machine save', err)); }
     }, 1500));
+  }
+  // (round 132, versions132) a history that couldn't be read: read again; once it reads, what's on disk and what was
+  // made meanwhile are one history
+  async function healRead(e) {
+    try {
+      const r = await window.hub.kvGet(KV(e.id), null, { status: true });
+      if (!r || r.state === 'unreadable') return false;
+      if (r.state === 'ok' && r.value?.versions && r.value.keys) { e.doc = C.mergeDocs(e.doc, r.value); C.heal(e.doc); }
+      e.unreadable = false;
+      return true;
+    } catch { return false; }
   }
   // (round 77, storeack77) a scene's versions from the other computer (StoreAck, storeack-core.js): a save waiting here
   // goes first (sync's guard merges it), then the history in memory is what's on disk (new versions show in the strip)
@@ -158,9 +172,26 @@ const ThreeHistory = (() => {
     if (!st) return null;
     let v = null;
     if (!e.last) {
-      v = C.add(e.doc, st, { kind: 'start', label: extra.label || 'Opened', by: 'you', mark: extra.mark });
+      v = C.add(e.doc, st, { kind: extra.tag ? 'saved' : 'start', label: extra.label || 'Opened', by: 'you', mark: extra.mark });
     } else if (C.same(st, e.last)) {
-      if (extra.mark) { const lv = C.latest(e.doc); if (lv) { lv.mark = extra.mark; saveSoon(id); emit(id, lv); } }
+      if (extra.mark) {
+        let lv = C.latest(e.doc);
+        // (round 132, versions132) a named / automatic version keeps its own row: the bookmark goes on a new version of
+        // the same state (Scene versions lists both), with a picture of the scene before the reply
+        if (lv && (lv.name || lv.auto)) { lv = C.add(e.doc, st, { kind: 'turn', label: lv.label, by: 'you', mark: extra.mark, p: lv.id }); heads.set(id, lv.id); }
+        if (lv) { lv.mark = extra.mark; saveSoon(id); emit(id, lv); thumbNow(id, lv.id); }
+      }
+      // (round 132, versions132) a name / an automatic tag for the scene as it is: on the newest version when it shows
+      // the same thing and has no tag of that kind yet, else a new version of the same state
+      if (extra.tag) {
+        let lv = C.latest(e.doc);
+        const field = extra.tag.name ? 'name' : 'auto';
+        if (!lv || lv.name || lv.auto || (field === 'auto' && lv.mark)) { lv = C.add(e.doc, st, { kind: 'saved', label: extra.label || lv?.label || 'Saved', by: extra.by || 'you', p: lv?.id }); heads.set(id, lv.id); }
+        Object.assign(lv, extra.tag);
+        C.thin(e.doc); saveSoon(id); emit(id, lv);
+        thumbNow(id, lv.id);
+        return lv;
+      }
       stats.skipped += 1;
       return null;
     } else {
@@ -178,13 +209,15 @@ const ThreeHistory = (() => {
       v = C.add(e.doc, st, { kind: who.by !== 'you' && kind !== 'restore' && kind !== 'pick' ? 'director' : kind, label, by: who.by, chat: who.chat, mark: extra.mark, p });
       if (who.tools) { v.tools = [...who.tools].slice(0, 6); who.tools.clear(); }
     }
+    if (v && extra.tag) Object.assign(v, extra.tag); // (round 132, versions132)
     e.last = st;
     if (v) heads.set(id, v.id);
     C.thin(e.doc);
     saveSoon(id);
     stats.captured += 1; stats.lastMs = Math.round((performance.now() - t0) * 10) / 10;
     emit(id, v);
-    if (id === S()?.currentId() && !scrub) thumbSoon(id, v.id);
+    if (v && (extra.tag || extra.mark)) thumbNow(id, v.id); // (round 132, versions132) a listed version's picture now
+    else if (id === S()?.currentId() && !scrub) thumbSoon(id, v.id);
     return v;
   }
   const emit = (id, v) => dispatchEvent(new CustomEvent('hearth:tm', { detail: { id, version: v?.id || null } }));
@@ -203,7 +236,8 @@ const ThreeHistory = (() => {
   if (typeof Native !== 'undefined' && Native.hooks) {
     Native.hooks.send.push((agentId, chat, text) => {
       const a = H.agent?.(agentId);
-      if (!chat?.id || !(a?.threeTools || a?.dock === 'three') || !T() || /^\s*\//.test(String(text || ''))) return;
+      const linkedChat = chat?.id && typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(chat.id); // (round 132, versions132) a chat that works on a scene (a project's chat) is bookmarked too
+      if (!chat?.id || !(a?.threeTools || a?.dock === 'three' || linkedChat) || !T() || /^\s*\//.test(String(text || ''))) return;
       const id = sceneFor(chat.id);
       if (!id) return;
       const by = a.engine === 'codex' ? 'codex' : 'claude';
@@ -275,6 +309,13 @@ const ThreeHistory = (() => {
       };
       if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else go();
     }, forScrub ? 700 : 1600);
+  }
+  // (round 132, versions132) a version Scene versions lists (named, automatic, before an AI reply) gets its picture at
+  // once, while the scene on screen still is that version (thumbSoon waits for a quiet moment and the next change takes
+  // its turn)
+  function thumbNow(id, vid) {
+    if (S()?.currentId() !== id || scrub || (typeof ThreeSeq !== 'undefined' && ThreeSeq.active)) return;
+    Promise.resolve(ThreeLab.director?.shotSmall?.(THUMB)).then((url) => { if (url) putThumb(id, vid, url); }).catch(() => {});
   }
   function putThumb(id, vid, url) {
     stats.thumbs += 1;
@@ -421,12 +462,51 @@ const ThreeHistory = (() => {
     return copy;
   }
 
+  // ---------- (round 132, versions132) named and automatic versions (tools/three-versions.js lists and compares them) ----------
+  // saveVersion: the scene as it is now, with a name (never thinned) · autoVersion: a tagged moment (a first draft, a
+  // kept take), thinned like a director bookmark · removeVersion: out of the history (the caller keeps a copy in the Trash)
+  async function saveVersion(id, name, { by = 'you' } = {}) {
+    const nm = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!nm) throw new Error('Give the version a name.');
+    if (!okId(id) || !S()?.get(id)) throw new Error('That scene is gone.');
+    await flush(id);
+    return capture(id, { kind: 'saved', by, force: true, label: `Saved “${nm}”`, tag: { name: nm } });
+  }
+  async function autoVersion(id, { why = 'auto', label = '', by = 'you' } = {}) {
+    if (!okId(id) || !S()?.get(id) || !T()) return null;
+    await flush(id);
+    return capture(id, { kind: 'saved', by, force: true, label: label || 'Saved', tag: { auto: { why, label: String(label || why).slice(0, 100), by } } });
+  }
+  async function removeVersion(vid, id = S()?.currentId()) {
+    const e = await docOf(id);
+    const v = e.doc.versions.find((x) => x.id === vid);
+    if (!v) throw new Error('No such version.');
+    const st = C.stateOf(e.doc, v);
+    e.doc.versions = e.doc.versions.filter((x) => x !== v);
+    if (heads.get(id) === vid) heads.delete(id);
+    C.gc(e.doc); saveSoon(id); emit(id, null);
+    return { version: v, state: st };
+  }
+  // a deleted version back (from the Trash): its time, name and who, the state it had
+  async function putBack(id, item) {
+    const e = await docOf(id);
+    if (e.doc.versions.some((x) => x.id === item.version.id)) return e.doc.versions.find((x) => x.id === item.version.id);
+    const o = item.version;
+    const v = C.add(e.doc, C.clone(item.state), { id: o.id, at: o.at, by: o.by, kind: o.kind, label: o.label, chat: o.chat, mark: o.mark });
+    if (o.name) v.name = o.name;
+    if (o.auto) v.auto = o.auto;
+    saveSoon(id); emit(id, v);
+    return v;
+  }
+  async function readable(id) { const e = await docOf(id); return !e.unreadable; }
+
   const fmtWhen = (t) => { const d = new Date(t); const today = new Date(); return d.toDateString() === today.toDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
   addEventListener('beforeunload', () => { if (scrub) endScrub(false); });
 
   return {
     changed, director, as, capture, flush, list, stateOf, resolve, changesBetween, thumbs, turns, back,
     preview, endScrub, restore, pick, branch, fmtWhen, keepVersion, apply,
+    saveVersion, autoVersion, removeVersion, putBack, readable, // (round 132, versions132)
     // (round 67, direction67) the scene's branches: the newest version of each line, newest first; current = the
     // line the scene is on now
     async branches(id = S()?.currentId()) {

@@ -214,8 +214,9 @@ const TMCore = (() => {
     const lastIn = new Map();
     for (const v of list) {
       if (v.at >= t0) { keep.add(v.id); continue; }
+      if (v.name) { keep.add(v.id); continue; } // (round 132, versions132) a named version is never thinned
       if (v.at >= week) {
-        if (v.mark) keep.add(v.id);
+        if (v.mark || v.auto) keep.add(v.id); // (round 132, versions132) automatic versions (a draft, a kept take) kept the week
         const d = new Date(v.at); lastIn.set(`h${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}`, v.id);
         continue;
       }
@@ -223,7 +224,9 @@ const TMCore = (() => {
     }
     for (const id of lastIn.values()) keep.add(id);
     let kept = list.filter((v) => keep.has(v.id));
-    if (kept.length > cap) kept = kept.slice(kept.length - cap);
+    // (round 132, versions132) the cap counts and drops unnamed versions only (the oldest first)
+    const un = kept.filter((v) => !v.name);
+    if (un.length > cap) { const drop = new Set(un.slice(0, un.length - cap).map((v) => v.id)); kept = kept.filter((v) => !drop.has(v.id)); }
     const n = doc.versions.length - kept.length;
     if (n) {
       const ids = new Set(kept.map((v) => v.id));
@@ -232,6 +235,16 @@ const TMCore = (() => {
       doc.versions = doc.versions.filter((v) => ids.has(v.id)); gc(doc, now);
     }
     return n;
+  }
+
+  // (round 132, versions132) two copies of one history (a read that failed, then the disk again): every version and key
+  // of both, by id; a version's name / automatic tag from either side stays
+  function mergeDocs(a, b) {
+    if (!b?.versions || !b.keys) return a;
+    const out = { ...a, versions: a.versions.slice(), keys: { ...b.keys, ...a.keys } };
+    const byId = new Map(out.versions.map((v) => [v.id, v]));
+    for (const v of b.versions) { const m = byId.get(v.id); if (!m) { out.versions.push(v); byId.set(v.id, v); } else { if (v.name && !m.name) m.name = v.name; if (v.auto && !m.auto) m.auto = v.auto; } }
+    return out;
   }
 
   // ---------- what changed between two states ----------
@@ -331,7 +344,7 @@ const TMCore = (() => {
   return {
     config: (o) => { if (o?.scan) scanFn = o.scan; },
     ops, diff, patch, codeDiff, plusMinus, encode, decode, same, sig,
-    blank, add, latest, byTime, stateOf, gc, heal, thin, sizeOf, parentOf, tips, lineOf,
+    blank, add, latest, byTime, stateOf, gc, heal, thin, sizeOf, mergeDocs, parentOf, tips, lineOf,
     changes, none, summary, label, whoName, sliderVals, pickLayer, pickValues, clone, newId,
   };
 })();
