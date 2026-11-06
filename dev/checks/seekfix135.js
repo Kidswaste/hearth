@@ -7,6 +7,8 @@
 // must lie between the target − one frame and the target + the time since the seek + one frame (so a play that
 // started from 1 s / 0 and lost the seek, or a later step that put it back, fails). Every 4th try loads the song (or
 // the timeline) again first and presses play + seeks as soon as the Lab has the file, while the preview still reads it.
+// C (follow-up): the timeline reloaded before every try, play, then seek 16 / 24 ms later, looked at at once: audio.time
+// is never the timeline's start (a play on the unread element started the audio clock at 0; seen on a busy box).
 // Only the check's own temp data (smoke.js) and the fixture song; never an owner's scene.
 //   node dev/make-test-song.js /tmp/hearth-autoedit-song.wav 128 0 --form
 //   node dev/smoke.js --check-timeout 900000 --script dev/checks/seekfix135.js
@@ -94,6 +96,31 @@ renderer.setAnimationLoop(() => { cube.rotation.y = audio.time; renderer.render(
   step('a scene with its own timeline (no song)', Boolean(P().isClock), { duration: r3(P().duration) });
   const reClock = async () => { P().loadClock({ key: sk2.id, seconds: 60, fps: 30, startAt: 1, playing: false }); };
   await run('timeline', [37, 22, 48.5, 15, 30], reClock);
+
+  // ---------- C. (follow-up) the timeline just reloaded: looked at at once after the seek ----------
+  // play, then seek 16 / 24 ms later (a drawn frame between them, the preview still reading the timeline's file), 12×
+  // each, every try a reload. Read right after the seek, audio.time is the target, or the spot the timeline really
+  // sounded from (the reload's 1 s, for one output path), never its start: a play on the unread element started the
+  // audio clock at 0 and the seek held that never-heard spot (on a busy box it was still held at the 350 ms look:
+  // the one reading in 240 that failed in a combined run). The element and the playhead must be at the target.
+  for (const delay of [16, 24]) {
+    const fails = [];
+    for (let i = 0; i < 12; i++) {
+      const T = [37, 22, 48.5, 15, 30][i % 5];
+      cmd.play(false); await wait(120); await reClock();
+      cmd.play(true); await wait(delay);
+      const seekAt = performance.now(); cmd.seek(T);
+      for (const at of [0, 350]) {
+        await wait(Math.max(0, at - (performance.now() - seekAt)));
+        const [el, heard, lead] = await read(); const lab = P().time; const since = (performance.now() - seekAt) / 1000;
+        const hi = T + since + FRAME; const lo = T - FRAME - (lead || 0);
+        const loHeard = at ? lo : 1 - FRAME - (lead || 0);
+        for (const [k, v, l] of [['element', el, T - FRAME], ['audio.time', heard, loHeard], ['timeline', lab, at ? lo : T - FRAME]]) if (!(v >= l && v <= hi)) fails.push({ i, T, at, k, v: r3(v), lo: r3(l), hi: r3(hi) });
+      }
+    }
+    step(`timeline just reloaded: play, then seek ${delay} ms later, 12×, looked at at once and at 350 ms: audio.time never at the timeline's start, the element and the playhead on the target`, !fails.length, { fails: fails.length, first: fails.slice(0, 3) });
+  }
+  cmd.play(false);
 } catch (err) {
   step('the check ran to the end', false, String(err?.stack || err).slice(0, 600));
 }
