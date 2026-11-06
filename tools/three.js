@@ -1508,7 +1508,7 @@ const ThreeLab = (() => {
     const trackHandlers = {
       ...keysHandlers,
       onSelect: (id) => selectLayer(id),
-      onChange: (id, v, { final }) => editLayer(id, v, { live: !final }),
+      onChange: (id, v, { final }) => { editLayer(id, v, { live: !final }); if (final) window.LabDropMedia?.moved?.(id, v); }, // (round 140, dropmedia140) a dropped clip's own time follows its bar
       onKeyMove: (id, from, to) => editKeysAt(id, from, (ks, hit) => [...ks.filter((k) => !hit(k) && Math.abs(k.t - to) >= KEY_EPS), ...ks.filter(hit).map((k) => ({ ...k, t: Math.round(to * 1000) / 1000 }))]),
       onKeyDelete: (id, t) => editKeysAt(id, t, (ks, hit) => ks.filter((k) => !hit(k))),
       onKeyEase: (id, t, ease) => editKeysAt(id, t, (ks, hit) => ks.map((k) => (hit(k) ? { ...k, ease } : k))),
@@ -2261,7 +2261,13 @@ const ThreeLab = (() => {
             : el('span', { class: 'refs-icon', text: REF_ICONS[r.kind] });
         const keyIn = el('input', { class: 'refs-key', value: r.key, spellcheck: false, title: 'The name code uses for it' });
         keyIn.addEventListener('change', () => { keyIn.value = renameRef(r, keyIn.value); renderRefsDlg(); });
-        return el('div', { class: 'refs-card' }, el('div', { class: 'refs-thumb' }, thumb), keyIn,
+        // (round 140, dropmedia140) a picture or a clip drags onto the timeline (tools/three-dropmedia.js): a layer at that time
+        const media = r.kind === 'image' || r.kind === 'video';
+        const card = el('div', { class: 'refs-card', attrs: media ? { draggable: 'true', title: 'Drag onto the timeline: a layer at that time' } : {}, on: media ? {
+          dragstart: (e) => { e.dataTransfer.setData('application/x-hearth-labref', JSON.stringify({ key: r.key, name: r.name, kind: r.kind, path: r.path })); e.dataTransfer.effectAllowed = 'copy'; window.Lazy?.load('dropmedia').catch(() => {}); for (const n of [refsDlg, refsDlg?.previousElementSibling]) if (n) { n.style.pointerEvents = 'none'; n.style.opacity = '0.35'; } },
+          dragend: () => { for (const n of [refsDlg, refsDlg?.previousElementSibling]) if (n) { n.style.pointerEvents = ''; n.style.opacity = ''; } },
+        } : {} });
+        card.append(el('div', { class: 'refs-thumb' }, thumb), keyIn,
           el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}${r.files > 1 ? ` · ${r.files} files` : ''}${r.missing?.length ? ` · ⚠ ${r.missing.length} missing` : ''}`, title: r.missing?.length ? `It came without: ${r.missing.join(' · ')}` : '' }), // (round 99, labmodels99)
           el('div', { class: 'refs-actions' },
             btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
@@ -2271,6 +2277,7 @@ const ThreeLab = (() => {
             r.kind === 'image' ? btn('✦ Like this', 'Make a layer like this: the director studies the picture and builds ONE new layer in its spirit, with sliders, in its palette (the cost shows first)', () => { refsDlg?.close(); (window.Lazy ? Lazy.load('refmatch') : Promise.resolve()).then(() => LabRefMatch.fromRef(r)).catch((err) => toast(err.message, { type: 'error' })); }, 'ghost small imp-ai') : null, // (round 131, refmatch131)
             r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
             btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
+        return card;
       }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
     }
     function askAboutRef(r) {
@@ -2749,7 +2756,7 @@ const ThreeLab = (() => {
     // (round 116, layerdelete116) one or several layers out as ONE step: the toast's Undo and the Lab's Ctrl/⌘+Z put them
     // all back where they were (the owner's typing in the selected one included). A chat deleting every layer leaves an
     // empty layer (a scene always has one), taken away again by the Undo. who: the AI that did it, for the toast.
-    function removeLayers(ids, { who = null } = {}) {
+    function removeLayers(ids, { who = null, quiet = false } = {}) { // (round 140, dropmedia140) quiet: an undo taking dropped layers away (no toast, no step of its own)
       if (!current) return null;
       const s = current;
       const gone = [...new Set(ids)].map((id) => layerById(id)).filter(Boolean);
@@ -2789,8 +2796,10 @@ const ThreeLab = (() => {
         renderLayers();
         return true;
       };
-      toast(`${who ? `${who} deleted` : 'Deleted'} ${label}`, { timeout: who ? 9000 : 4500, action: { label: 'Undo', fn: undo } });
-      window.LabDirect?.push?.(null, `Deleted ${label}`, () => undo()); // the Lab's own Ctrl/⌘+Z
+      if (!quiet) { // (round 140, dropmedia140)
+        toast(`${who ? `${who} deleted` : 'Deleted'} ${label}`, { timeout: who ? 9000 : 4500, action: { label: 'Undo', fn: undo } });
+        window.LabDirect?.push?.(null, `Deleted ${label}`, () => undo()); // the Lab's own Ctrl/⌘+Z
+      }
       return { removed: gone.map((L) => L.name), ...(blank ? { left: `"${blank.name}" (a scene keeps one layer: a blank one to start from)` } : {}) };
     }
     function reorderLayers(idsBottomFirst) {
@@ -3209,6 +3218,10 @@ const ThreeLab = (() => {
       favs: () => (current?.favs ? JSON.parse(JSON.stringify(current.favs)) : null),
       setFavs: (v) => { if (!current) return false; if (v?.list?.length) current.favs = JSON.parse(JSON.stringify(v)); else delete current.favs; current.updatedAt = Date.now(); save(); return true; },
       keyState: (id, prop) => { const L = layerById(id); return L ? keyStateFor(L, prop) : 'none'; }, toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
+      // (round 140, dropmedia140) media dropped on the timeline (tools/three-dropmedia.js): its layers added at once, with
+      // their times, fades, colour and group ([{ name, code, props }] at index, bottom = 0), and taken away again by its undo
+      addLayers: (list, index = null) => { const ids = []; let at = index; for (const o of list || []) { const L = addLayer('code', { code: o.code, name: uniqueName(o.name || 'Dropped'), index: at, props: o.props || {} }); if (!L) continue; ids.push(L.id); if (at != null) at += 1; } return ids; },
+      dropUndo: (ids) => Boolean(removeLayers(ids, { quiet: true })),
       peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
     };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------

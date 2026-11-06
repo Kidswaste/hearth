@@ -3304,6 +3304,14 @@ const ThreeMedia = (() => {
     // (round 36, nativefeel) a new screen scale (another monitor, Windows' scaling) redraws the wave crisp (the sizes didn't change)
     const onDpr = () => { if (!canvas.isConnected) removeEventListener('hearth:dpr', onDpr); else draw(); };
     addEventListener('hearth:dpr', onDpr);
+    // (round 140, dropmedia140) files, moodboard tiles and Lab references dropped on the timeline become layers at that
+    // time (tools/three-dropmedia.js, lazy group "dropmedia", loaded on the first drag over it)
+    const dmApi = { timeAt: (cx) => v0() + ((cx - canvas.getBoundingClientRect().left) / tw()) * span(), redraw: () => draw(), addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); } };
+    const dmWants = (e) => D() > 0 && !locked && [...(e.dataTransfer?.types || [])].some((t) => t === 'Files' || t === 'application/x-hearth-ref' || t === 'application/x-hearth-labref');
+    const dmWrap = canvas.parentElement;
+    dmWrap.addEventListener('dragover', (e) => { if (!dmWants(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; if (window.LabDropMedia) LabDropMedia.over(e, dmApi); else window.Lazy?.load('dropmedia').catch(() => {}); });
+    dmWrap.addEventListener('dragleave', (e) => { if (!dmWrap.contains(e.relatedTarget)) window.LabDropMedia?.leave(dmApi); });
+    dmWrap.addEventListener('drop', (e) => { if (!dmWants(e)) return; e.preventDefault(); e.stopPropagation(); if (window.LabDropMedia) LabDropMedia.drop(e, dmApi); else toast('One moment: drop it again', { timeout: 1500 }); });
     paint();
 
     return {
