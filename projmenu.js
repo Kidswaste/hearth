@@ -256,7 +256,7 @@ const ProjectMenu = (() => {
   async function renderMain(p) {
     await openLab(p);
     for (let i = 0; i < 40 && typeof LabExport === 'undefined'; i += 1) await new Promise((r) => setTimeout(r, 100));
-    return LabExport.panel({});
+    return LabExport.panel({ preset: 'last' }); // (round 131, renderpre131) on the project's last-used render preset
   }
 
   // ---------- Settings ----------
