@@ -1,0 +1,5 @@
+/* 📱 See it on my phone (round 136, phone136, phoneview.js): the card reuses the phone remote's card (remote.css) */
+.pv-card { z-index: 2147483000; }
+.pv-line { font-size: 12px; }
+.pv-conn { font-size: 12px; opacity: .75; }
+.pv-conn.on { color: var(--ok, #6c6); opacity: 1; }

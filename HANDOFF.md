@@ -44,7 +44,8 @@ owner-facing notes.
   as the backstage that runs a chat's scene off screen (`tools/three-backstage.js`).
 - App windows (`appsmain.js`, `apps-window.html`), ▶ Play's game window (`gamemodemain.js`), the board's offscreen
   snapshots (`boardmain.js`), the capture indicator (`capturemain.js`), the phone remote page served over the LAN
-  (`remotemain.js`, `remote-page.html`), the second-copy card (`twocopies.html`).
+  (`remotemain.js`, `remote-page.html`), a render or the live preview on the owner's phone (`phoneviewmain.js`,
+  `phoneview-page.html`, round 136), the second-copy card (`twocopies.html`).
 
 ## The store and sync
 - Everything the owner makes lives in `data/` inside Hearth's folder (gitignored, never touched by updates):
