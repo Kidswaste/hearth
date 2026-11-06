@@ -101,7 +101,9 @@ try {
   const spy3 = setInterval(() => { const t = card(pid)?.querySelector('.pb-draft-now')?.textContent; if (t) seen3.add(t); }, 50);
   ok(await click(pid, /✦ Build a first draft/), 'up to step 3: click ✦ Build a first draft');
   ok(await until(() => BriefDraft.state(pid)?.landed.length >= 1, 60000), 'the first step lands');
-  await until(() => /Building step 2 of 3…/.test(card(pid)?.querySelector('.pb-draft-now')?.textContent || ''), 3000);
+  // (round 132) wait for step 1's tick (the card moves on to step 2), not only its layer: since Scene versions saves a
+  // version before the draft, the start is a little later and the layer can show before the tick
+  await until(() => /Building step 2 of 3…/.test(card(pid)?.querySelector('.pb-draft-now')?.textContent || ''), 15000);
   ok(await click(pid, /^Stop$/), 'click Stop');
   await until(() => BriefDraft.state(pid)?.status === 'stopped', 30000);
   await wait(800); clearInterval(spy3);
