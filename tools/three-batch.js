@@ -127,6 +127,7 @@ const LabBatch = (() => {
     e = CutData.setSeq(e, { w: sz.w, h: sz.h });
     if (song && songLen) e = D.setSong(e, song, songLen);
     e = D.addScene(e, { sketch: sk.id, name: r.name }, { dur: Math.max(0.1, (N + 1) / F), trans: null });
+    await SEQ().loadMaps?.(); // (round 139, cuelooks139) its song's cue looks, as saved now
     const compiled = virtual(sk, r.extras || {}, song, () => SEQ().compile(e));
     return { e, compiled, refs: await refsMsg(r), N, F, sz, secs: Math.round((N / F) * 100) / 100, r, song };
   }

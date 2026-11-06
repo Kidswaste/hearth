@@ -3,6 +3,7 @@
 // writes the values back into the code on Save. Sketches can also declare named controls:
 //   const P = tweak({ speed: [1, 0, 5], glow: { value: 1.2, min: 0, max: 3, onChange: (v) => … }, tint: '#ff3cac', wire: false });
 const ThreeTweaks = (() => {
+  const LOOK_FADE = 450; // (round 139, cuelooks139) ms a cue's look morphs in over (playLook); renders bake the same morph
   const EXPR_KEYWORDS = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'of', 'new', 'delete', 'void', 'throw', 'yield', 'await', 'instanceof']);
   const NOT_CALLS = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'return', 'typeof', 'await']);
   // Argument names for the constructors and setters sketches use most.
@@ -1026,7 +1027,7 @@ const ThreeTweaks = (() => {
         send({ type: 'tweak', index: i, value: runtime(it, v), call: it.call, key: it.key });
       });
     }
-    function playLook(name, fade = 450) {
+    function playLook(name, fade = LOOK_FADE) { // (round 139, cuelooks139) renders bake the same fade (ThreeSeq prepLayer)
       const look = looks.find((l) => l.name === name);
       if (!look || !scanned) return false;
       const from = (played?.cur || values).slice();
@@ -1924,5 +1925,5 @@ const ThreeTweaks = (() => {
     return `#${to(r)}${to(g)}${to(b)}`;
   }
 
-  return { scan, instrument, applyValues, controller, menu, MOTIONS, RATES, labelOf }; // (round 73, labtools73) labelOf: a backstage scene names its sliders as the panel does
+  return { scan, instrument, applyValues, controller, menu, MOTIONS, RATES, labelOf, LOOK_FADE }; // (round 73, labtools73) labelOf: a backstage scene names its sliders as the panel does
 })();
