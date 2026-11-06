@@ -25,7 +25,7 @@ const LabTxn = (() => {
     || (tool === 'three_references' && a.action === 'like'); // (round 131, refmatch131) the picture and its palette: a read
   // tools whose own answer already says what changed (no second line about it)
   const SAYS = /^three_(edit_code|set_code|add_layer|update_layer|undo|sliders)$/;
-  const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0 };
+  const stats = { calls: 0, rolledBack: 0, turnsUndone: 0, shots: 0, lastMs: 0, settled: 0, waited: 0, labKeys: 0 }; // (round 138, sectionmood138) settled · waited · labKeys
   const mark = (k) => { if (typeof HubBridge !== 'undefined') HubBridge.mark?.(k); }; // (round 74, labcalls74) hop steps
 
   // ---------- a scene, as data ----------
@@ -165,10 +165,10 @@ const LabTxn = (() => {
     const key = `${ctx.chatId}|${turns.get(ctx.chatId) || 0}|${before.id}`;
     const top = undoStack.findLast((e) => e.sceneId === before.id);
     if (top && top.key === key && sigOf(top.after) === sigOf(before)) {
-      Object.assign(top, { after, lastAt: Date.now(), calls: top.calls + 1 });
+      Object.assign(top, { after, lastAt: Date.now(), calls: top.calls + 1, local: marks(), labSkip: false });
       if (words) top.words.push(words);
     } else {
-      undoStack.push({ key, chatId: ctx.chatId, who: whoOf(ctx.chatId), sceneId: before.id, scene: before.name, at, lastAt: Date.now(), before, after, calls: 1, words: words ? [words] : [] });
+      undoStack.push({ key, chatId: ctx.chatId, who: whoOf(ctx.chatId), sceneId: before.id, scene: before.name, at, lastAt: Date.now(), before, after, calls: 1, words: words ? [words] : [], local: marks() });
       if (undoStack.length > MAX) undoStack.shift();
     }
     redoStack.length = 0;
@@ -179,9 +179,80 @@ const LabTxn = (() => {
   function step({ chatId = null, who = 'You', before, after, label: text = '', words = '' } = {}) {
     if (!before || !after || before.id !== after.id || sigOf(before) === sigOf(after)) return false;
     const now = Date.now();
-    undoStack.push({ key: `step|${now}|${Math.random()}`, chatId, who, sceneId: before.id, scene: before.name, at: now, lastAt: now, before, after, calls: 1, words: words ? [words] : [], ...(text ? { label: text } : {}) });
+    undoStack.push({ key: `step|${now}|${Math.random()}`, chatId, who, sceneId: before.id, scene: before.name, at: now, lastAt: now, before, after, calls: 1, words: words ? [words] : [], ...(text ? { label: text } : {}), local: marks() });
     if (undoStack.length > MAX) undoStack.shift();
     redoStack.length = 0; lastUndo = null;
+    return true;
+  }
+  // (round 138, sectionmood138) a step that is recorded AT ONCE and completed once the scene has settled (layers re-run,
+  // sliders read back): an undo pressed in between waits for it ("settling…") instead of taking back the step before it.
+  //   const r = reserve({ who, before, label, words }); …change the scene… ; r.done(after) (→ true when it is a step) · r.cancel()
+  function reserve({ chatId = null, who = 'You', before, label: text = '', words = '' } = {}) {
+    if (!before) return null;
+    const now = Date.now(); let end;
+    const e = { key: `step|${now}|${Math.random()}`, chatId, who, sceneId: before.id, scene: before.name, at: now, lastAt: now, before, after: before, calls: 1, words: words ? [words] : [], ...(text ? { label: text } : {}), local: marks(), reserved: true };
+    e.settling = new Promise((r) => { end = r; });
+    undoStack.push(e); if (undoStack.length > MAX) undoStack.shift();
+    redoStack.length = 0; lastUndo = null;
+    const drop = () => { const i = undoStack.indexOf(e); if (i >= 0) undoStack.splice(i, 1); };
+    const finish = () => { e.settling = null; e.reserved = false; end(); };
+    return {
+      done(after) {
+        if (!after || after.id !== before.id || sigOf(after) === sigOf(before)) { drop(); finish(); return false; }
+        Object.assign(e, { after, lastAt: Date.now(), local: marks() }); finish();
+        return true;
+      },
+      cancel() { drop(); finish(); },
+    };
+  }
+  // (round 138, sectionmood138) the Lab's own Ctrl/⌘+Z steps (✥ Direct, looks, dials, the song map… LabDirect; the
+  // timeline's): what was on top of them when a reply / step was recorded. A later Lab step changes it.
+  const marks = () => ({ d: window.LabDirect?.last?.() || null, t: player()?.undoMark?.() || null });
+  const localNewer = (e) => { const m = marks(); const l = e.local || {}; return m.d !== (l.d ?? null) || Boolean(m.t && l.t && (m.t.n !== l.t.n || m.t.top !== l.t.top)); };
+  const pause = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  // a reply's scene after it ended: re-read until two reads agree (≤ 3 s), so its undo step is the scene as it settled
+  async function settleReply(e, rec) {
+    let prev = e.after;
+    for (let i = 0; i < 15; i += 1) {
+      await pause(200);
+      const a = await snap(e.sceneId).catch(() => null);
+      if (!a) return;
+      if (sigOf(a) === sigOf(prev)) break;
+      prev = a;
+    }
+    if (undoStack.findLast((x) => x.sceneId === e.sceneId) !== e || sigOf(prev) === sigOf(e.after)) return;
+    e.after = prev; e.local = marks(); stats.settled += 1;
+    const s = rec?.scenes.find((x) => x.key === e.key);
+    if (s) { s.after = clone(prev); readReplies().then(saveReplies); }
+  }
+  // an undo while the newest step is still settling waits for it (and says so)
+  async function settled() {
+    const e = undoStack.at(-1);
+    if (!e?.settling) return;
+    const t = setTimeout(() => { if (typeof toast === 'function') toast('Settling… the undo follows in a moment', { timeout: 1600 }); }, 150);
+    stats.waited += 1;
+    try { await e.settling; } finally { clearTimeout(t); }
+  }
+  const settling = () => Boolean(undoStack.at(-1)?.settling);
+  // Ctrl/⌘+Z in the Lab (tools/three-direct.js): when the newest change on this scene is a reply (or a LabTxn step) and no
+  // Lab step came after it, that reply is what Ctrl/⌘+Z takes back, exactly; never the Lab step before it
+  function labKey(e, sceneId) {
+    const top = undoStack.at(-1);
+    if (!top || top.sceneId !== sceneId || top.labSkip || localNewer(top)) return false;
+    e.preventDefault(); e.stopPropagation();
+    stats.labKeys += 1;
+    (async () => {
+      await settled();
+      if (undoStack.at(-1) !== top) return;
+      const cur = await snap(top.sceneId);
+      if (!cur || sigOf(cur) !== sigOf(top.after)) {
+        top.labSkip = true; // the next Ctrl/⌘+Z goes to the Lab's own steps again
+        toast(`“${top.scene}” changed after ${top.who === 'You' ? 'that step' : `${top.who}'s reply`}: nothing undone. ↶ in the dock (or /undo-edit force) takes the reply back.`, { timeout: 5000 });
+        return;
+      }
+      const r = await undoTurn();
+      toast(`↶ Undid ${r.label} · ↷ in the dock puts it back`, { timeout: 3000 });
+    })().catch((err) => toast(window.calmError ? calmError(err) : err.message, { type: 'error', timeout: 5000 }));
     return true;
   }
   // the dock's ↶ takes the newest of: a whole reply (here) or a code edit made outside any chat (ThreeDirector's history)
@@ -193,6 +264,7 @@ const LabTxn = (() => {
   }
   const wantsRedo = () => lastUndo === 'turn' && redoStack.length > 0;
   async function undoTurn({ force = false } = {}) {
+    await settled(); // (round 138, sectionmood138) a step still settling is waited for, never skipped
     const e = undoStack.at(-1);
     if (!e) throw new Error('Nothing an AI did to undo.');
     const cur = await snap(e.sceneId);
@@ -204,6 +276,7 @@ const LabTxn = (() => {
     return { turn: true, restored: 'before', layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0, what: e.words.join('; ') };
   }
   async function redoTurn() {
+    await settled();
     const e = redoStack.at(-1);
     if (!e) throw new Error('Nothing to redo.');
     await restore(e.after, { keepRefs: true });
@@ -248,6 +321,13 @@ const LabTxn = (() => {
     const rec = { id, chatId: chat.id, who: mine[0].who, at: mine[0].at, scenes: real.map((s) => ({ ...s, before: clone(s.before), after: clone(s.after) })) };
     (replies ||= []).unshift(rec);
     readReplies().then(saveReplies);
+    // (round 138, sectionmood138) the reply's step is there at once; it is completed when its scene settles (≤ 3 s), and an
+    // undo pressed meanwhile waits for it ("settling…") rather than taking back the step before it
+    for (const s of real) {
+      const e = undoStack.find((x) => x.key === s.key);
+      if (!e || e.settling) continue;
+      e.settling = settleReply(e, rec).catch(() => {}).finally(() => { e.settling = null; });
+    }
   }
   if (typeof Native !== 'undefined' && Native.hooks?.finish) Native.hooks.finish.push(onFinish);
   const reply = async (id) => { await readReplies(); return (replies || []).find((r) => r.id === id) || null; };
@@ -318,6 +398,6 @@ const LabTxn = (() => {
   }
   if (typeof HubBridge !== 'undefined' && HubBridge.setAround) HubBridge.setAround(around);
 
-  return { reply, isTop, around, snap, describe, restore, step, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } }; // (round 137, replydiff137) reply, isTop
+  return { reply, isTop, around, snap, describe, restore, step, reserve, settling, settled, labKey, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.filter((e) => !e.reserved).map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } }; // (round 137, replydiff137) reply, isTop · (round 138, sectionmood138) reserve, settling, settled, labKey
 })();
 window.LabTxn = LabTxn;

@@ -1,0 +1,13 @@
+/* 🎭 Give each section its mood (round 138, sectionmood138): the ghost proposal's list under the song's row (tools/three-sectionmood.js) */
+.smo-panel { margin: 4px 6px; padding: 6px 8px; border: 1px dashed #7fd6c266; border-radius: 8px; background: #7fd6c20d; font-size: 12px; max-height: 220px; display: flex; flex-direction: column; gap: 4px; }
+.smo-head, .smo-need { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.smo-head .spacer, .smo-sec-head .spacer { flex: 1; }
+.smo-list { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.smo-sec { border-top: 1px solid #ffffff12; padding-top: 3px; }
+.smo-sec-head { display: flex; align-items: center; gap: 4px; }
+.smo-mood { font-size: 11px; padding: 0 2px; }
+.smo-item { display: flex; align-items: center; gap: 6px; opacity: 0.72; padding-left: 14px; }
+.smo-item:hover { opacity: 1; }
+.smo-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+.smo-item button { padding: 0 6px; }
+@media (max-width: 700px) { .smo-head .smo-sum, .smo-from { display: none; } }

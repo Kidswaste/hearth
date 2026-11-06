@@ -23,6 +23,7 @@ const LabDirect = (() => {
     // otherwise Ctrl/⌘+Z in the Lab (or on the picture) undoes the last move here
     h.pane.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.defaultPrevented || e.key.toLowerCase() !== 'z' || typing(e) || e.target?.closest?.('.tw-column')) return; // (the sliders keep their own undo)
+      if (window.LabTxn?.labKey?.(e, h.sketchId())) return; // (round 138, sectionmood138) the newest change is an AI reply (or a LabTxn step): that one, exactly
       const u = U[U.length - 1];
       if (!u || u.timeline || u.sid !== h.sketchId()) return;
       e.preventDefault(); e.stopPropagation();

@@ -114,6 +114,8 @@ owner-facing notes.
   that isn't on screen runs backstage. Crew helpers: `tools/three-crew.js`. Claude and Astra take turns with `jam.js`.
 - (round 137) A reply that changed a scene gets "Changed 3 layers · Review" under it (`tools/three-replydiff*.js`, LabTxn's
   before / after per reply in kv `labtxn-replies`): plain words per layer, ↶ Undo this layer (one undo step), Undo all, Keep some.
+- (round 138) The Lab's Ctrl/⌘+Z takes the newest change, an AI reply included (`LabTxn.labKey`); a step still settling is
+  waited for, never skipped (`LabTxn.reserve`). Sections ▾ › 🎭 gives each section its mood (dial keys + looks, `tools/three-sectionmood*.js`).
 - Other rail tools: Projects (`projects-home.js`), the mood board (`board.js`), Commands (`cmdpage.js`), ⋯ AI setup
   (`options.js`), the Creative board (`tools/creative-playground.js`), Forgeheart (`tools/forge.js`,
   `tools/forge-game.js`).
