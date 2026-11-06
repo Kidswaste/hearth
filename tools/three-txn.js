@@ -20,7 +20,7 @@ const LabTxn = (() => {
   const OUTSIDE = /^three_(sequence|comp|make|crew|play|perf|autoedit|loop|load_media|media_control|run|footage|triggers|new_sketch|set_frame|motion|perform)$/; // (round 131, perform131) perform: keys for the live mode, never the scene
   const READ_OP = /^(list|info|help|library|presets|types|status|check|show|find)$/i;
   const isRead = (tool, a = {}) => READ.test(tool) || OUTSIDE.test(tool) || READ_OP.test(String(a.op ?? a.action ?? '')) || (tool === 'three_nodes' && /^\s*(list|presets|types|help)\b/i.test(String(a.command || '')))
-    || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length)) // (round 74) sliders read, none set
+    || (tool === 'three_sliders' && !(a.set && typeof a.set === 'object' && Object.keys(a.set).length) && !(a.dial != null && a.value != null)) // (round 74) sliders read, none set · (round 135, mooddial135) a dial turned is a change
     || (tool === 'three_map_song' && !a.apply) // (round 130, songmap130) the song map as ghosts: nothing in the scene changes
     || (tool === 'three_references' && a.action === 'like'); // (round 131, refmatch131) the picture and its palette: a read
   // tools whose own answer already says what changed (no second line about it)

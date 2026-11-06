@@ -3190,6 +3190,9 @@ const ThreeLab = (() => {
       // (round 133, lyrics133) 🎤 the scene's lyrics (tools/three-lyrics.js): { kind, lines: [[a, b, "text", [w…]]…] }, saved with the scene
       lyrics: () => (current?.lyrics ? JSON.parse(JSON.stringify(current.lyrics)) : null),
       setLyrics: (v) => { if (!current) return false; if (v) current.lyrics = JSON.parse(JSON.stringify(v)); else delete current.lyrics; current.updatedAt = Date.now(); save(); return true; },
+      // (round 135, mooddial135) 🎛 the scene's mood dials (tools/three-dials.js): { v, sel, list: [{ id, name, value, maps, keys, follow }] }, saved with the scene
+      dials: () => (current?.dials ? JSON.parse(JSON.stringify(current.dials)) : null),
+      setDials: (v) => { if (!current) return false; if (v?.list?.length) current.dials = JSON.parse(JSON.stringify(v)); else delete current.dials; current.updatedAt = Date.now(); save(); return true; },
       peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
     };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------

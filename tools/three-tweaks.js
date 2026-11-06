@@ -837,6 +837,7 @@ const ThreeTweaks = (() => {
       const d = dirtyCount();
       menu(r.right - 280, r.bottom + 4, [
         explain ? ['✦ Explain this layer', 'What it draws, which sliders matter · cost first', () => explain()] : null, // (round 132, explain132)
+        ['🎛 Dials…', 'A few scene-wide knobs (Energy, Darkness…) that move many sliders at once', () => (window.Lazy ? Lazy.load('dials') : Promise.resolve()).then(() => LabDials.open({ anchor })).catch((err) => toast(err.message, { type: 'error' }))], // (round 135, mooddial135)
         typeof BeatLink !== 'undefined' && BeatLink.follow && scanned?.items.some((x) => x.kind === 'number') ? ['🎚 Follow the music…', 'A slider follows the bass, the highs, the kick…', () => followMenu(anchor)] : null, // (round 134, audiomap134)
         'Values',
         ['Reset', d ? 'Back to the values in the code' : 'Nothing changed', () => reset(), false, 'Reset'],

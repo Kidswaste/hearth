@@ -32,7 +32,7 @@ const CORE_TOOLS = [
     inputSchema: obj({ layer: LAYER, from: { type: 'number' }, to: { type: 'number' }, around: { type: 'number' }, force: { type: 'boolean' } }) },
   { name: 'three_search_code', description: 'Find text (regex: true) in every layer (or one): matches by layer, line numbers, context lines (1), max hits (40).',
     inputSchema: obj({ pattern: { type: 'string' }, layer: LAYER, regex: { type: 'boolean' }, context: { type: 'number' }, max: { type: 'number' } }, ['pattern']) },
-  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders as the owner would (no code change): set { key or label: value }, shown unsaved; locked ones skipped. Returns sliders + looks.',
+  { name: 'three_sliders', description: 'Read or move a layer\'s tweak() sliders as the owner would (no code change): set { key or label: value }, shown unsaved; locked ones skipped. Returns sliders + looks. {dial, value: 0–1}: turn the scene\'s 🎛 mood dial (Energy, Darkness…: many sliders at once, one undo); {dial: ""} lists them.', // (round 135, mooddial135)
     inputSchema: obj({ layer: LAYER, set: { type: 'object' } }) },
   { name: 'three_set_code', description: 'Rewrite the selected layer with a complete module and run it (undoable): for an empty sketch, or when the owner asks to rewrite this layer; new elements go in a new layer. Returns errors (layer + line), console, fps, sliders; report: "full" for everything.',
     inputSchema: obj({ code: { type: 'string' }, report: { type: 'string', enum: ['compact', 'full'] } }, ['code']) },

@@ -927,6 +927,8 @@ return await new Promise((res) => { const tick = () => { if (!A.playing || A.tim
   async function handle(tool, args, d, ctx = {}) {
     // (round 129, looks129) three_do looks { action: "project" }: the project's palette on the scene's colors (tools/three-projlook.js)
     if ((tool === 'three_looks' && args.action === 'project') || (tool === 'three_look' && args.apply === 'project')) { if (typeof LabProjLook === 'undefined' && window.Lazy) await Lazy.load('projlook'); return typeof LabProjLook === 'undefined' ? { ok: false, error: 'The project look did not load.' } : LabProjLook.op(args, d, ctx); }
+    // (round 135, mooddial135) three_sliders { dial, value }: turn a 🎛 mood dial (tools/three-dials.js)
+    if (tool === 'three_sliders' && args.dial != null) { if (typeof LabDials === 'undefined' && window.Lazy) await Lazy.load('dials'); return typeof LabDials === 'undefined' ? { ok: false, error: 'The dials did not load.' } : LabDials.op(args, d, ctx); }
     // (round 130, songmap130) three_do map_song { apply, plan }: the song map (tools/three-songmap.js)
     if (tool === 'three_map_song') { if (typeof SongMap === 'undefined' && window.Lazy) await Lazy.load('songmap'); return typeof SongMap === 'undefined' ? { ok: false, error: 'The song map did not load.' } : SongMap.op(args, d, ctx); }
     // (round 131, perform131) three_do perform { setup }: a set for ◉ Perform the owner reviews (tools/three-perform.js)

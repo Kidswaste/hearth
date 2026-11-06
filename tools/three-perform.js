@@ -204,6 +204,7 @@ const ThreePerform = (() => {
     // looks played here go: each layer back to its own sliders (or the playing cue's look)
     const p = player();
     for (const id of P.held.keys()) h?.ctlOf(id)?.endLook?.();
+    window.LabDials?.performEnd?.(); // (round 135, mooddial135) the dials turned here go back
     P.held.clear();
     // paused: a cue's looks played by a jump go too (playback plays cue looks only while it plays; playing, they stay)
     if (!p?.playing) for (const L of h?.layers?.() || []) { const c = h.ctlOf(L.id); if (c?.playingLook) c.endLook(); }
@@ -240,9 +241,18 @@ const ThreePerform = (() => {
     else if (k === '0') setQuant(C().nextQuant(quant()));
     else if (k === 'Enter') playPause();
     else if (k === 'h') { P.hidden = !P.hidden; paint(); }
+    else if ((k === 'ArrowUp' || k === 'ArrowDown' || k === '[' || k === ']') && hk()?.dials?.()?.list?.length) dial(k); // (round 135, mooddial135) 🎛 the selected dial ↑ / ↓, [ / ] another
     else done = false;
     if (!done) return;
     e.preventDefault(); e.stopImmediatePropagation();
+  }
+
+  // (round 135, mooddial135) 🎛 mood dials (tools/three-dials.js): live only, put back when Perform ends
+  async function dial(k) {
+    try {
+      if (typeof LabDials === 'undefined' && window.Lazy) await Lazy.load('dials');
+      if (k === '[' || k === ']') LabDials.performPick(k === ']' ? 1 : -1); else LabDials.perform(k === 'ArrowUp' ? 1 : -1);
+    } catch (e) { err(e); }
   }
 
   // ---------- MIDI and keys learned: ThreeStageMidi's learn, the actions "perform:…" ----------
