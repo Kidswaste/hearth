@@ -616,6 +616,18 @@ const LabExport = (() => {
     // (round 131, renderpre131) the Presets row at the top (tools/three-renderpre.js, lazy group renderpre): its chips fill
     // the fields below; with presets ticked, ⇪ Export renders each of them
     const rp = await (async () => { try { if (typeof LabRenderPre === 'undefined') await window.Lazy?.load?.('renderpre'); return await window.LabRenderPre?.attach({ st, paint: () => paint(), frame: () => (st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow()), preset }) || null; } catch (err) { console.warn('Render presets', err); return null; } })();
+    // (round 140, preflight140) the check before a render (tools/three-preflight.js, lazy group preflight): loaded with the
+    // card, run when ⇪ Export is pressed; nothing found → the render starts at once, else a small card (Cancel: back here)
+    const pfLoad = (typeof LabPreflight !== 'undefined' ? Promise.resolve() : Promise.resolve(window.Lazy?.load?.('preflight')).then(() => { if (dlg.isConnected) paint(); })).catch(() => null);
+    let pfBusy = false;
+    const preflight = async (o) => {
+      await pfLoad;
+      if (typeof LabPreflight === 'undefined') { dlg.close(); return { jobs: o.jobs, dir: o.dir, flags: {} }; }
+      const r = await LabPreflight.gate(o);
+      if (r) dlg.close();
+      return r;
+    };
+    const lenNow = () => { try { const s = rp?.state?.(); const L = s?.shown && s.filled[s.shown]?.length; return !L || L.whole ? {} : L.range ? { range: L.range } : { at: L.at, secs: L.secs }; } catch { return {}; } }; // (the shown preset's length)
     function paint() {
       const f = C.get(st.format);
       const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
@@ -633,7 +645,8 @@ const LabExport = (() => {
           chip(st.ss > 1, st.ss > 1 ? `Supersample ${st.ss}×` : 'Supersample', 'Drawn at 2× (or 3×, 4×) the pixels and boxed down: clean edges, fine lines, no shimmer. Click: off → 2× → 3× → 4×', () => { st.ss = st.ss >= 4 ? 1 : st.ss + 1; paint(); }),
           f.kind === 'still' ? null : chip(st.blur > 1, st.blur > 1 ? `Motion blur ${st.blur}` : 'Motion blur', 'Real motion blur: sub-frames across a 180° shutter, averaged. Click: off → 8 → 16', () => { st.blur = st.blur === 1 ? 8 : st.blur === 8 ? 16 : 1; paint(); }),
         ])),
-        el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` }),
+        el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` },
+          f.kind !== 'scene' && typeof LabPreflight !== 'undefined' ? el('span', { class: 'lx-est', text: ` · ${LabPreflight.estimateLine({ format: st.format, source: st.source, size: sz, fps: st.fps, quality: st.quality, ss: pg.ss, blur: st.blur, ...lenNow() })}` }) : null), // (round 140, preflight140) about how long and how big
       );
       go.textContent = rp?.label?.() || `⇪ ${f.kind === 'scene' && f.id !== 'sheet' ? 'Save' : 'Export'} ${f.name.split(' · ')[0]}`; // (round 131, renderpre131: "⇪ Export 2 presets")
     }
@@ -642,14 +655,27 @@ const LabExport = (() => {
     dlg.addEventListener('close', () => dlg.remove());
     paint();
     dlg.showModal();
-    go.addEventListener('click', () => {
-      if (rp?.active()) { dlg.close(); rp.run().catch((err) => toast(err.message, { type: 'error' })); return; } // (round 131, renderpre131) the ticked presets, one after another (the last render's settings stay as they were)
-      store.set('three.export', { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur });
-      window.LabRecipesHook?.note?.('export', { set: { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur } }); // (round 39, labrecipes)
-      dlg.close();
-      const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
-      render({ format: st.format, source: st.source, size: st.size === 'custom' ? C.size(st.custom, frame) : C.size(st.size, frame), fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur })
-        .catch((err) => { if (!window.Renders || /^(Open|No )/.test(err.message)) toast(err.message, { type: 'error' }); });
+    go.addEventListener('click', async () => {
+      if (pfBusy) return; // (round 140, preflight140: one check at a time)
+      pfBusy = true;
+      try {
+        if (rp?.active()) { await rp.run({ check: preflight }).catch((err) => toast(err.message, { type: 'error' })); return; } // (round 131, renderpre131) the ticked presets, one after another (the last render's settings stay as they were) · (round 140, preflight140) one combined check first
+        store.set('three.export', { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur });
+        window.LabRecipesHook?.note?.('export', { set: { format: st.format, size: st.size, custom: st.custom, fps: st.fps, quality: st.quality, ss: st.ss, blur: st.blur } }); // (round 39, labrecipes)
+        const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
+        let size = st.size === 'custom' ? C.size(st.custom, frame) : C.size(st.size, frame); let fps = st.fps; let dir = null;
+        const f = C.get(st.format);
+        if (f.kind === 'scene') dlg.close(); else { // (round 140, preflight140) the check before a render
+          await pfLoad;
+          const song = st.source === 'scene' && Boolean(LAB()?.scenes?.songOf?.(LAB().sketchId()));
+          const pf = await preflight({ jobs: typeof LabPreflight !== 'undefined' ? [LabPreflight.jobOf({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur }, { song })] : [], dir: await outDir(), source: st.source });
+          if (!pf) return; // Cancel: the card stays open
+          if (pf.jobs[0]) { size = { w: pf.jobs[0].w, h: pf.jobs[0].h }; fps = pf.jobs[0].fps; }
+          if (pf.flags?.dir) dir = pf.dir;
+        }
+        render({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur, ...(dir ? { dir } : {}) })
+          .catch((err) => { if (!window.Renders || /^(Open|No )/.test(err.message)) toast(err.message, { type: 'error' }); });
+      } finally { pfBusy = false; }
     });
     return dlg;
   }
