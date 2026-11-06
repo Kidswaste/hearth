@@ -108,7 +108,7 @@ renderer.setAnimationLoop((t) => { m.rotation.y = t / 1000 * P.speed; m.scale.se
         // (a click on a button the card had just painted again went nowhere: once more, on the card as it is now)
         if (!(await until(() => LabTour.stats.shows.length > n0, 2000))) card()?.querySelector('.tour-demo')?.click();
         r.shown = Boolean(await until(PROBE[id], 15000));
-        if (!r.shown) out[`dbg_${id}`] = [...document.querySelectorAll('.mb-menu, #menu:not([hidden])')].map((m) => `${m.className}|${drawn(m)}|${m.textContent.slice(0, 120)}`).concat(LabTour.stats.errors || [], [`shows: ${LabTour.stats.shows.join(" ")}`], [...document.querySelectorAll('dialog')].map((d) => `${d.className}|${d.open}`), [JSON.stringify(Lazy.state().filter((g) => /renderpre|lab$/.test(g.name)))], [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 100)));
+        if (!r.shown) out[`dbg_${id}`] = [...document.querySelectorAll('.mb-menu, #menu:not([hidden])')].map((m) => `${m.className}|${drawn(m)}|${m.textContent.slice(0, 120)}`).concat(LabTour.stats.errors || [], [`steps shown — ${LabTour.stats.shows.join(" ")}`], [...document.querySelectorAll('dialog')].map((d) => `${d.className}|${d.open}`), [JSON.stringify(Lazy.state().filter((g) => /renderpre|lab$/.test(g.name)))], [...document.querySelectorAll('.toast')].map((t) => t.textContent.slice(0, 100)));
         r.demo = S.currentId() !== own.id;
         r.wantDemo = LabTourData.STEPS[i].show === 'demo';
       }
