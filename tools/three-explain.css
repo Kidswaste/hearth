@@ -1,0 +1,28 @@
+/* ✦ Explain this layer (round 132, explain132): a small card above the Sliders panel; folds to its one-line head */
+.xpl-card { margin: 4px 8px 6px; padding: 6px 10px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, #15181b); font-size: 12px; }
+.xpl-card[open] > :not(summary) { margin-top: 6px; }
+.xpl-head { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.xpl-head::-webkit-details-marker { display: none; }
+.xpl-head::before { content: '▸'; opacity: .5; font-size: 10px; }
+.xpl-card[open] > .xpl-head::before { content: '▾'; }
+.xpl-head b { white-space: nowrap; }
+.xpl-name { flex: 1; min-width: 0; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xpl-who { opacity: .55; font-size: 11px; }
+.xpl-note { margin: 0; opacity: .8; line-height: 1.35; }
+.xpl-busy::before { content: '◌ '; display: inline-block; animation: xpl-spin 1.2s linear infinite; }
+@keyframes xpl-spin { to { transform: rotate(360deg); } }
+.xpl-err { color: var(--danger, #ff7a7a); opacity: 1; }
+.xpl-cost { margin: 0; font-size: 11px; opacity: .65; }
+.xpl-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.xpl-what { margin: 0; line-height: 1.4; white-space: pre-line; }
+.xpl-sec { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.xpl-k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+.xpl-sl { padding: 1px 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; }
+.xpl-chip { font-size: 11px !important; white-space: normal; text-align: left; max-width: 100%; }
+.xpl-chip.done { opacity: .7; padding: 1px 6px; }
+.xpl-parts summary { cursor: pointer; font-size: 11px; opacity: .75; }
+.xpl-part { display: flex; gap: 6px; font-size: 11px; padding: 1px 0; }
+.xpl-lines { font: 10px Consolas, monospace; opacity: .55; min-width: 4.5em; }
+.xpl-tweak { display: flex; gap: 4px; }
+.xpl-input { flex: 1; min-width: 0; font-size: 12px; }
+.xpl-res { display: flex; align-items: center; gap: 6px; font-size: 11px; }

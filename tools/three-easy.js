@@ -157,6 +157,11 @@ const LabEasy = (() => {
       d.open = true; d.scrollIntoView({ block: 'nearest' }); d.querySelector('summary')?.focus({ preventScroll: true });
     }, 120);
   }
+  // (round 132, explain132) ✦ Explain this layer: the lazy group 'explain', then its card beside the Sliders panel
+  function explainLayer(id) {
+    const fail = (err) => toast(typeof calmError === 'function' ? calmError(err) : String(err?.message || err), { type: 'error' });
+    (window.Lazy && !Lazy.loaded('explain') ? Lazy.load('explain') : Promise.resolve()).then(() => LabExplain.open({ layerId: id })).catch(fail);
+  }
   function layerItems(L, h = {}) {
     const fx = (kind) => () => { h.select?.(); if (typeof ThreeFX !== 'undefined') setTimeout(() => ThreeFX.openPicker(kind), 60); };
     const sel = (it) => ({ ...it, action: () => { h.select?.(); it.action(); } });
@@ -169,6 +174,8 @@ const LabEasy = (() => {
       h.copy ? { label: '⧉ Duplicate', action: () => { h.select?.(); h.copy(); } } : null,
       ...kindItems(L),
       '-',
+      // (round 132, explain132) what it draws and which sliders matter, in plain words; then "Make it…" (tools/three-explain.js)
+      { label: '✦ Explain this layer', hint: 'plain words · cost first', action: () => { h.select?.(); explainLayer(L.id); } },
       sel(item('✦ Make it react to the music', 'Its sliders follow the kick, bass and loudness', '/make-it-react', { undo: '/make-it-react undo' })),
       { label: 'Add a filter above…', hint: 'glow, grain, blur…', cmd: 'fx', action: fx('filter') },
       { label: 'Apply a look…', hint: 'palette and filters', cmd: 'look-apply', action: fx('look') },
@@ -247,5 +254,5 @@ const LabEasy = (() => {
     walk(layerItems({ name: 'Layer' }, { change() {}, solo() {}, rename() {}, copy() {}, remove() {} }), 'Layer right-click');
     return out;
   }
-  return { previewItem, previewGroups, musicItem, lookItem, makeItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations, formats, formatsItem };
+  return { previewItem, previewGroups, musicItem, lookItem, makeItem, toolbarItems, layerItems, layerMenu, run, plain, placed, last, MISSIONS, addMissions, variations, formats, formatsItem, explainLayer };
 })();

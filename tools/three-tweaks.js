@@ -346,7 +346,7 @@ const ThreeTweaks = (() => {
   // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
   // learn(key, label) → map a MIDI knob to it (optional); clock() → { t, bpm, playing, section } for motions (optional).
   // palette() → the sketch's colors (for "colors from the palette").
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette }) {
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette, explain }) { // (round 132, explain132) explain() → ✦ Explain this layer in ⋯
     let scanned = null;
     let ids = [];
     let values = [];
@@ -836,6 +836,7 @@ const ThreeTweaks = (() => {
       const r = anchor.getBoundingClientRect();
       const d = dirtyCount();
       menu(r.right - 280, r.bottom + 4, [
+        explain ? ['✦ Explain this layer', 'What it draws, which sliders matter · cost first', () => explain()] : null, // (round 132, explain132)
         'Values',
         ['Reset', d ? 'Back to the values in the code' : 'Nothing changed', () => reset(), false, 'Reset'],
         ['Undo the last slider change', undoStack.length ? `${undoStack.length} step${undoStack.length === 1 ? '' : 's'}` : 'Nothing to undo', () => undo(), false, 'Undo slider change'],

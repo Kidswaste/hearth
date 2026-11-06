@@ -373,6 +373,31 @@ function presetPlan(msg) {
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
   if (msg.startsWith('Give a useful second opinion and directions for ONE small improvement round.')) return {p:{},thinking:'',text:JSON.stringify({...(/Review stage: survey\./.test(msg) ? {inspect:[{after:3,before:4,reason:'Check the foreground transition'},{after:8,before:9,reason:'Check the later pose'}]} : {}),summary:'The foreground shape needs a clearer silhouette.',keep:'Keep the existing palette and overall composition.',issues:[{title:'The main shape blends into the background',evidence:[1,2],observation:'The edge and its backdrop have similar brightness in these frames.',why:'The main subject is harder to spot.',change:'Try a restrained rim light around the main silhouette.',check:'Compare the same camera angle before and after.',confidence:'tentative'}],limits:'Synthetic test response: sampled images only; audio and smoothness were not reviewed.'})};
+  // (round 132, explain132) ✦ Explain this layer (tools/three-explain-core.js): the explanation names the first
+  // `const NAME = <number>;` and the first quoted '#rrggbb' of the numbered code as hard-coded values, the first two
+  // sliders as the ones that matter; "Make it slower / blurry / calmer…" is a plan (speed halved, keys on glow, one
+  // unknown key and one value past its max for the clamp), anything else goes to the director (dev/checks/explain132.js)
+  if (msg.startsWith('Explain this Lab layer')) {
+    const code = [...msg.matchAll(/^ *(\d+)\| (.*)$/gm)].map((m) => ({ n: +m[1], t: m[2] })).filter((l) => !/tweak\s*\(/.test(l.t));
+    const keys = [...((msg.match(/^Its sliders \(tweak\(\)\): (.+)\.$/m) || [])[1] || '').matchAll(/(?:^|, )(\w+)(?: "[^"]*")? -?[\d.]+/g)].map((m) => m[1]);
+    const hard = [];
+    const num = code.map((l) => [l, l.t.match(/\bconst (\w+) = (\d+(?:\.\d+)?);/)]).find(([, m]) => m);
+    if (num) hard.push({ line: num[0].n, text: num[1][2], label: `${num[1][1].toLowerCase()} amount`, key: num[1][1].toLowerCase(), min: 1, max: +num[1][2] * 3, why: 'how many there are' });
+    const col = code.map((l) => [l, l.t.match(/'(#[0-9a-f]{6})'/i)]).find(([, m]) => m);
+    if (col) hard.push({ line: col[0].n, text: `'${col[1][1]}'`, label: 'main colour', key: 'tint', why: 'the colour of the shapes' });
+    return { p: {}, thinking: '', text: JSON.stringify({ what: `A ring of glowing spheres orbiting slowly.\nThey pulse with the glow slider (fake: ${code.length} lines read).`,
+      parts: [{ lines: '1–3', does: 'sets up the renderer and the camera' }, { lines: `${code.at(-1)?.n || 1}`, does: 'spins the ring every frame' }],
+      sliders: keys.slice(0, 2).map((k) => ({ key: k, why: `changes the ${k}` })), hardcoded: hard }) };
+  }
+  if (msg.startsWith('Tweak this Lab layer')) {
+    const req = (msg.match(/^The owner says: make it (.+)$/m) || [])[1] || '';
+    const sl = [...((msg.match(/^Its sliders: (.+)\.$/m) || [])[1] || '').matchAll(/(?:^|, )(\w+)(?: "[^"]*")? (-?[\d.]+) \((-?[\d.]+)–(-?[\d.]+)\)/g)].map((m) => ({ key: m[1], v: +m[2], min: +m[3], max: +m[4] }));
+    if (/slower|blurr?y|calmer|softer/i.test(req) && sl.length) {
+      const sp = sl.find((x) => /speed/.test(x.key)) || sl[0]; const gl = sl.find((x) => x !== sp) || sp;
+      return { p: {}, thinking: '', text: JSON.stringify({ set: { [sp.key]: Math.round((sp.v / 2) * 1000) / 1000, zzz: 3 }, keys: [{ property: gl.key, keys: [{ time: 0, value: gl.v }, { time: 2, value: gl.max * 5 }, { time: 4, value: gl.v }] }], say: 'Slower, softer on the breaks' }) };
+    }
+    return { p: {}, thinking: '', text: JSON.stringify({ director: `Add ${req} to the layer, keeping its look.` }) };
+  }
   // (round 130, critique130) ✦ Critique this (tools/three-critique-core.js): 4 improvements as JSON. The first slider of
   // the outline becomes a slider fix (doubled, in range), then message fixes from a pool, skipping titles the prompt's
   // "Earlier critiques" names (dev/checks/critique130.js: the history avoids repeats); how many pictures it got goes in a why
