@@ -929,6 +929,8 @@ return await new Promise((res) => { const tick = () => { if (!A.playing || A.tim
     if ((tool === 'three_looks' && args.action === 'project') || (tool === 'three_look' && args.apply === 'project')) { if (typeof LabProjLook === 'undefined' && window.Lazy) await Lazy.load('projlook'); return typeof LabProjLook === 'undefined' ? { ok: false, error: 'The project look did not load.' } : LabProjLook.op(args, d, ctx); }
     // (round 130, songmap130) three_do map_song { apply, plan }: the song map (tools/three-songmap.js)
     if (tool === 'three_map_song') { if (typeof SongMap === 'undefined' && window.Lazy) await Lazy.load('songmap'); return typeof SongMap === 'undefined' ? { ok: false, error: 'The song map did not load.' } : SongMap.op(args, d, ctx); }
+    // (round 131, perform131) three_do perform { setup }: a set for ◉ Perform the owner reviews (tools/three-perform.js)
+    if (tool === 'three_perform') { if (typeof ThreePerform === 'undefined' && window.Lazy) await Lazy.load('perform'); return typeof ThreePerform === 'undefined' ? { ok: false, error: 'Perform did not load.' } : ThreePerform.op(args, d, ctx); }
     if (!d.codeOf) return null; // an older Lab without the hooks: its own handler answers
     const B = bucketOf(d, ctx);
     bpmNow = () => { try { const i = d.media?.info?.(); return i?.grid?.bpm || i?.bpm || 0; } catch { return 0; } };

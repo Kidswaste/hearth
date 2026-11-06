@@ -1,0 +1,26 @@
+/* ◉ Perform (round 131, perform131): the small strip on the owner's screen (tools/three-perform.js) */
+.three-preview.perform-on .present-hint, .three-preview.perform-on .present-hud { display: none; }
+.three-preview.perform-window { position: fixed; inset: 0; z-index: 9000; background: #000; }
+.pf-strip { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 25; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; max-width: calc(100% - 24px); padding: 4px 6px; border-radius: 10px; background: #0d0d12d9; border: 1px solid #ffffff1f; color: #ddd; font-size: 12px; line-height: 1.2; box-shadow: 0 4px 18px #0008; }
+.pf-strip.pf-hidden { display: none; }
+.pf-dot { color: #ff5470; padding: 0 2px; }
+.pf-btn, .pf-chip { background: #ffffff10; border: 1px solid #ffffff1a; color: inherit; border-radius: 6px; padding: 2px 6px; font: inherit; cursor: pointer; white-space: nowrap; }
+.pf-btn:hover, .pf-chip:hover { background: #ffffff22; }
+.pf-btn.on, .pf-chip.on { background: #c9a7ff33; border-color: #c9a7ff99; color: #fff; }
+.pf-chip.armed { border-color: #ffd27a; animation: pf-armed 0.5s ease-in-out infinite alternate; }
+@keyframes pf-armed { from { background: #ffd27a14; } to { background: #ffd27a40; } }
+.pf-cues, .pf-looks { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.pf-looks:empty { display: none; }
+.pf-chip { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.pf-tempo { min-width: 58px; font-variant-numeric: tabular-nums; }
+.pf-quant { min-width: 40px; }
+.pf-next { display: inline-flex; align-items: center; gap: 4px; opacity: 0.85; max-width: 170px; overflow: hidden; white-space: nowrap; }
+.pf-thumb { width: 48px; height: 27px; object-fit: cover; border-radius: 3px; border: 1px solid #ffffff2a; }
+.pf-thumb[hidden] { display: none; }
+.pf-rec { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; padding: 0 4px; }
+.pf-rec.on { color: #ff5470; }
+.pf-note, .pf-empty { opacity: 0.7; font-style: italic; }
+.pf-btn[hidden] { display: none; }
+.pf-review { max-width: 420px; }
+.pf-review-list { display: flex; flex-direction: column; gap: 2px; margin: 8px 0; font-variant-numeric: tabular-nums; }
+@media (max-width: 700px) { .pf-next { display: none; } .pf-chip { max-width: 70px; } }

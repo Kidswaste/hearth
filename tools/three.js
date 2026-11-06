@@ -761,7 +761,7 @@ const ThreeLab = (() => {
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Shows the preview full screen with nothing else, for showing it off (P · Esc leaves)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
-    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)]]); });
+    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)], ['◉ Perform', 'Live: 1–9 cues and Q W E looks on the beat or bar, the other screen at full speed', () => (window.Lazy ? Lazy.load('perform') : Promise.resolve()).then(() => ThreePerform.start()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))]]); }); // (round 131, perform131) ◉ Perform: tools/three-perform.js
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
     // (round 52, gamemode) ▶ Play: the scene as a game, in its own full-screen window at max fidelity, its layers on one
@@ -2840,6 +2840,7 @@ const ThreeLab = (() => {
         for (const L of layersOf()) {
           const c = controllers.get(L.id);
           if (!c?.playLook) continue;
+          if (window.ThreePerform?.holds?.(L.id)) continue; // (round 131, perform131) a look played live in ◉ Perform stays until its next switch
           let want = null;
           if (playing) for (let k = 0; k <= index; k += 1) { const l = cues[k].looks?.find((x) => x.layer === L.id || x.layer === L.name); if (l) want = l.name; }
           if (want) { if (c.playingLook !== want) c.playLook(want); } else c.endLook();
@@ -3179,6 +3180,7 @@ const ThreeLab = (() => {
       sketchId: () => current?.id || null, sketchName: () => current?.name || '', blackout: (on) => setBlackout(on),
       // (round 37, abcompare) a palette on the preview for a moment, not saved (null: the scene's own again)
       // (round 130, songmap130) ✦ Map to the song (tools/three-songmap.js): a layer's keys as they are, and put back exactly
+      layers: () => layersOf().map((L) => ({ id: L.id, name: L.name })), // (round 131, perform131) ◉ Perform: each layer's cue looks
       keysOf: (id, prop) => { const L = layerById(id); return L?.keys?.[prop] ? JSON.parse(JSON.stringify(L.keys[prop])) : []; },
       setKeys: (id, prop, keys) => { const L = layerById(id); if (!L) return false; setKeys(L, prop, JSON.parse(JSON.stringify(keys || []))); return true; },
       peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
@@ -3498,6 +3500,7 @@ const ThreeLab = (() => {
       if(msg.type==='stack-drawn'&&!msg.noGl)workspaceDrawn=current?.id;
       workspaceMessage?.(msg);
       window.ThreeStage?.preview?.(msg); // (round 22, labstage) show-mode safety, tempo, crossfade hand-over
+      window.ThreePerform?.preview?.(msg); // (round 131, perform131) ◉ Perform's frame rate on its strip
       if (/^gpu-(lost|restored|stuck)$/.test(msg.type)) { glPreview(msg); return; } // (round 43, glrecover)
       if (msg.type === 'frame-runaway') { glp.runaway.push({ ...msg, at: Date.now() }); if (glp.runaway.length > 10) glp.runaway.shift(); console.warn('[Lab] the preview\'s frames ran away; it went back to plain frames', JSON.stringify(msg)); return; } // (round 109, labchecks109) the page's runaway guard
       if (/^ready-/.test(msg.type)) { window.PresentReady?.onBox?.(msg); return; } // (round 52, presentready)
