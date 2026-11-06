@@ -1,0 +1,35 @@
+/* ◎ How close am I? (tools/three-matchscore.js, round 141 matchscore141): a small chip just above the Lab preview's stats
+   line ("◎ 72 %"), only once a reference is picked; a click folds out a small card. No toolbar row. */
+.ms-chip { position: absolute; left: 8px; bottom: 36px; z-index: 3; padding: 2px 8px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--panel, #15181b) 92%, transparent); color: var(--fh-gold, #ffd75e); font: 11.5px Consolas, monospace; cursor: pointer; box-shadow: 0 4px 14px #0006; }
+.ms-chip:hover { background: color-mix(in srgb, var(--panel, #15181b) 80%, var(--fh-gold, #ffd75e) 8%); }
+.three-preview:has(> .lab-speedchip) > .ms-chip { bottom: 62px; }
+.three-preview:has(> .lab-speedchip) > .ms-card { bottom: 90px; }
+.lab-show .ms-chip, .lab-show .ms-card { display: none; }
+.ms-card {
+  position: absolute; left: 8px; bottom: 64px; z-index: 7; width: 290px; max-width: calc(100% - 16px); max-height: calc(100% - 76px); overflow-y: auto; scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.ms-card.busy .ms-rows { opacity: 0.6; }
+.ms-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ms-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; }
+.ms-top { flex: 1; min-width: 0; }
+.ms-all { color: var(--fh-gold, #ffd75e); font-size: 15px; margin-right: 6px; }
+.ms-word, .ms-src, .ms-sub, .ms-cost, .ms-why { color: var(--muted, #9a948c); font-size: 11px; }
+.ms-src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-pal { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
+.ms-pal > span { flex: 1; }
+.ms-rows { display: flex; flex-direction: column; gap: 3px; }
+.ms-row { display: grid; grid-template-columns: 56px 1fr 40px; align-items: center; column-gap: 6px; }
+.ms-row .ms-why { grid-column: 1 / -1; padding-left: 62px; line-height: 1.3; }
+.ms-row .ms-why:empty { display: none; }
+.ms-bar { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text, #eae0d5) 12%, transparent); overflow: hidden; }
+.ms-bar > i { display: block; height: 100%; background: var(--fh-gold, #ffd75e); transition: width 0.3s; }
+.ms-v { text-align: right; font: 11px Consolas, monospace; }
+.ms-acts { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ms-btn { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line); background: none; color: var(--text, #eae0d5); }
+.ms-btn:hover { background: color-mix(in srgb, var(--text, #eae0d5) 10%, transparent); }
+.ms-x { margin-left: auto; padding: 0 6px; }
+.ms-go, .ms-send { color: var(--fh-gold, #ffd75e); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, var(--line)); }
+.ms-ai { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
