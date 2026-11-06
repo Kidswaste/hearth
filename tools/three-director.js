@@ -720,6 +720,8 @@ return await new Promise((res) => { const tick = () => { if (!A.playing || A.tim
   // One line per layer, bottom first: "2. Sparkles* · 70 lines · sliders: Size, Glow · plays 30–60 s · keys: opacity 0s=0, 2s=1"
   function layerLine(L, i, { lines = null, sliders = 'names', colors = '' } = {}) {
     const bits = [];
+    if (L.group) bits.push(`📁 ${L.group}`); // (round 136, outline136) the owner's groups, by name ("the bass group")
+    if (L.solo) bits.push('solo');
     if (L.kind) bits.push(L.kind);
     if (lines != null) bits.push(`${lines} lines`);
     if (L.visible === false) bits.push('hidden');

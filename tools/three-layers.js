@@ -383,9 +383,25 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     const delBtn = btn('🗑', 'Delete the selected layer', () => selectedId && onRemove(selectedId));
     const props = el('div', { class: 'ly-props' });
     let liveRanges = {}; // prop → { r, out, fmt, diamond }
+    // (round 136, outline136) ⋯: the outline's tools (find, ✦ Name these for me, groups, move up / down), folded behind
+    // one small button in the Layers head (no new row); 🔍 the filter field shows only while you look for a layer
+    const moreBtn = btn('⋯', 'Tidy the layers: find one, ✦ name them for me, groups, move up / down (Alt+↑ / ↓)', (e) => { const a = e.currentTarget; (window.Lazy ? Lazy.load('outline') : Promise.resolve()).then(() => LabOutline.menu(a)).catch((err) => toast(err.message, { type: 'error' })); });
+    moreBtn.classList.add('ly-more');
+    let findQ = '';
+    const findIn = el('input', { class: 'ly-find-in', type: 'search', placeholder: 'Find a layer or group…', spellcheck: false, autocomplete: 'off', attrs: { 'aria-label': 'Find a layer' } });
+    const findRow = el('div', { class: 'ly-find', hidden: true }, findIn, el('button', { class: 'ghost small', text: '✕', title: 'Stop filtering (Esc)', on: { click: () => setFind(null) } }));
+    findIn.addEventListener('input', () => { findQ = findIn.value; renderList(); });
+    findIn.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setFind(null); root.focus({ preventScroll: true }); } else if (e.key === 'Enter') { e.preventDefault(); const r = list.querySelector('.ly-row[data-id]'); if (r) onSelect(r.dataset.id); } });
+    function setFind(q) {
+      findRow.hidden = q == null;
+      findQ = q || '';
+      findIn.value = findQ;
+      renderList();
+      if (q != null) findIn.focus({ preventScroll: true });
+    }
     const root = el('div', { class: 'layers' },
-      el('div', { class: 'tw-head' }, el('b', { text: 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn),
-      list, props);
+      el('div', { class: 'tw-head' }, el('b', { text: 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn, moreBtn),
+      findRow, list, props);
     root.tabIndex = 0;
     root.setAttribute('role', 'group'); { const say = 'Layers (Ctrl+C / Ctrl+V copy and paste layers, Delete removes the selected one)'; root.setAttribute('aria-label', window.WinMac ? WinMac.keyLabel(say) : say); } // (round 73) a focusable box says what it is · (round 74, checkhealth74) ⌘C / ⌘V on a Mac
     root.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,textarea,select,button,[contenteditable]')) root.focus({ preventScroll: true }); });
@@ -393,6 +409,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       if (e.target.closest('input,textarea,select,[contenteditable]') || e.altKey || e.repeat) return;
       const mod = e.ctrlKey || e.metaKey;
       const ids = picked.size ? picked : new Set([selectedId]);
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopPropagation(); setFind(findQ); return; } // (round 136, outline136) find a layer
       if (mod && e.key.toLowerCase() === 'c') {
         clipboard = JSON.parse(JSON.stringify(layers.filter(L => ids.has(L.id))));
         e.preventDefault(); e.stopPropagation(); toast(`${clipboard.length} layer(s) copied`);
@@ -470,23 +487,44 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     // a drop under the last row: the bottom of the list, out of any group
     list.addEventListener('dragover', (e) => { if (dragId && e.target === list) e.preventDefault(); });
     list.addEventListener('drop', (e) => { if (e.target === list && dragId) { e.preventDefault(); GU()?.drop(dragKind === 'group' ? { group: dragId } : { layer: dragId }, { end: true }); } });
+    // (round 136, outline136) rename in place: double-click a name, type, Enter (Esc keeps the old one)
+    function inlineEdit(span, value, done) {
+      const row = span.closest('.ly-row');
+      const inp = el('input', { class: 'ly-rename', type: 'text', value, spellcheck: false, autocomplete: 'off', attrs: { 'aria-label': 'New name' } });
+      if (row) row.draggable = false;
+      span.replaceWith(inp);
+      inp.focus({ preventScroll: true }); inp.select();
+      let fin = false;
+      const end = (ok) => {
+        if (fin) return; fin = true;
+        const v = inp.value.replace(/\s+/g, ' ').trim();
+        if (inp.isConnected) inp.replaceWith(span);
+        if (row) row.draggable = true;
+        if (ok && v && v !== value) done(v);
+      };
+      inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); end(true); } else if (e.key === 'Escape') { e.preventDefault(); end(false); } });
+      inp.addEventListener('blur', () => end(true));
+      for (const t of ['click', 'dblclick', 'pointerdown']) inp.addEventListener(t, (e) => e.stopPropagation());
+      return inp;
+    }
     function layerRow(L, r = {}) {
       const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}${L.hid ? ' by-group' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? (L.hid === 'solo' ? 'Hidden by a solo: show it too' : L.hid === 'group' ? 'Hidden with its group: show it' : 'Show this layer') : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(L.id); return; } onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
       const name = el('span', { class: 'ly-name', text: L.name, title: 'Double-click to rename' });
-      name.addEventListener('dblclick', async (e) => {
+      name.addEventListener('dblclick', (e) => {
         e.stopPropagation();
-        const v = await Modal.prompt('Rename layer', { value: L.name });
-        if (v?.trim()) onChange(L.id, { name: v.trim() }, { live: false });
+        // (round 136, outline136) in place, one undo step (LabGroups.renameLayer: the Lab's Ctrl/⌘+Z)
+        inlineEdit(name, L.name, (v) => { if (!GU()?.renameLayer?.(L.id, v)) onChange(L.id, { name: v }, { live: false }); });
       });
       const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
       // (round 44) S: this layer alone (lit while it is; shows on hover otherwise)
       const solo = onSolo ? el('button', { class: `ly-solo${L.solo === L.id ? ' on' : ''}`, text: 'S', title: L.solo === L.id ? 'Show every layer again' : 'Show only this layer (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo ${L.name}` }, on: { click: (e) => { e.stopPropagation(); onSolo(L.id); } } }) : null;
-      const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(L, e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = L.id; onSelect(L.id); } } },
+      const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { GU()?.pickGroup?.(null); if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(L, e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = L.id; onSelect(L.id); } } },
         eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), solo);
       // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
       row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, menuHandlers(L)); });
       dragFrom(row, 'layer', L.id);
       dropInto(row, { layer: L.id }, () => dragId === L.id);
+      if (L.group?.color) row.style.setProperty('--ly-gc', L.group.color); // (round 136, outline136) its group's colour tag
       return row;
     }
     // (round 44) a group's header: ▾ fold, its eye (Alt+click: solo), 📁 name (double-click: rename), how many, S
@@ -495,22 +533,25 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       const caret = el('button', { class: 'ly-caret', text: g.closed ? '▸' : '▾', title: g.closed ? 'Show its layers' : 'Fold it', attrs: { 'aria-label': `${g.closed ? 'Unfold' : 'Fold'} the group ${g.name}`, 'aria-expanded': String(!g.closed) }, on: { click: (e) => { e.stopPropagation(); gu?.fold(g.id); } } });
       const eye = el('button', { class: `ly-eye${r.vis === 'off' ? ' off' : ''}${r.vis === 'some' ? ' some' : ''}`, text: r.vis === 'off' ? '◌' : '👁', title: `${r.vis === 'off' ? 'Show the group' : 'Hide the whole group'} · Alt+click: show only this group (again: all)`, attrs: { 'aria-label': `${r.vis === 'off' ? 'Show' : 'Hide'} the group ${g.name}` }, on: { click: (e) => { e.stopPropagation(); if (e.altKey) gu?.solo(g.id); else gu?.toggle(g.id); } } });
       const name = el('span', { class: 'ly-name', text: g.name, title: 'Double-click to rename' });
-      name.addEventListener('dblclick', (e) => { e.stopPropagation(); gu?.rename(g.id); });
+      name.addEventListener('dblclick', (e) => { e.stopPropagation(); if (gu) inlineEdit(name, g.name, (v) => gu.rename(g.id, v)); }); // (round 136, outline136) in place
       const solo = el('button', { class: `ly-solo${r.solo ? ' on' : ''}`, text: 'S', title: r.solo ? 'Show every layer again' : 'Show only this group (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo the group ${g.name}` }, on: { click: (e) => { e.stopPropagation(); gu?.solo(g.id); } } });
       const ids = layers.filter((L) => L.group?.id === g.id).map((L) => L.id);
-      const row = el('div', { class: `ly-row ly-group${r.vis === 'off' ? ' hidden-layer' : ''}${ids.length && ids.every((id) => picked.has(id)) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { group: g.id }, title: 'A group · click: pick its layers · drag: move the whole group · drop a layer here: into the group · right-click: Ungroup, Rename, Precomp…', on: { click: () => { picked = new Set(ids); paintPicks(); row.classList.add('picked'); } } },
+      const row = el('div', { class: `ly-row ly-group${r.vis === 'off' ? ' hidden-layer' : ''}${ids.length && ids.every((id) => picked.has(id)) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { group: g.id }, title: 'A group · click: pick its layers · drag: move the whole group · drop a layer here: into the group · right-click: Ungroup, Rename, Precomp…', on: { click: () => { gu?.pickGroup?.(g.id); picked = new Set(ids); paintPicks(); row.classList.add('picked'); } } },
         caret, eye, el('span', { class: 'ly-folder', text: '📁', attrs: { 'aria-hidden': 'true' } }), name, el('span', { class: 'ly-tags', text: `${r.n}` }), solo);
       row.addEventListener('contextmenu', (e) => { if (!gu) return; e.preventDefault(); e.stopPropagation(); gu.groupMenu(e.clientX, e.clientY, g.id); });
       dragFrom(row, 'group', g.id);
       dropInto(row, { group: g.id }, () => dragKind === 'group' && dragId === g.id);
+      if (g.color) { row.style.setProperty('--ly-gc', g.color); row.classList.add('ly-tagged'); } // (round 136, outline136)
       return row;
     }
     function renderList() {
       count.textContent = layers.length > 1 ? `${layers.length}` : '';
       delBtn.disabled = layers.length <= 1;
       picked = new Set([...picked].filter((id) => layers.some((x) => x.id === id)));
-      const rows = GC() ? GC().rows(layers) : [...layers].reverse().map((L) => ({ kind: 'layer', L }));
+      let rows = GC() ? GC().rows(layers) : [...layers].reverse().map((L) => ({ kind: 'layer', L }));
+      if (findQ.trim() && GC()?.filterRows) { rows = GC().filterRows(rows, findQ); count.textContent = `${rows.filter((r) => r.kind === 'layer').length} of ${layers.length}`; } // (round 136, outline136) 🔍
       list.replaceChildren(...rows.filter((r) => !r.folded).map((r) => (r.kind === 'group' ? groupRow(r) : layerRow(r.L, r))));
+      if (findQ.trim() && !rows.length) list.append(el('div', { class: 'ly-none', text: 'No layer or group by that name' }));
       const sid = GC()?.soloId(layers);
       root.classList.toggle('ly-soloing', Boolean(sid));
     }
@@ -639,6 +680,8 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       refreshProps: () => renderProps(),
       picked: () => [...picked], // (round 44) the layers picked with Ctrl/⌘ / Shift+click (Group)
       clearPicks: () => { picked.clear(); paintPicks(); },
+      find: (q = '') => setFind(q), // (round 136, outline136) 🔍 the filter field (null: closed)
+      rename: (id) => { const n = list.querySelector(`.ly-row[data-id="${CSS.escape(id)}"] .ly-name`); if (n) n.dispatchEvent(new MouseEvent('dblclick')); return Boolean(n); },
       menuFor: (id) => { const L = layers.find((x) => x.id === id); return L ? { L, h: menuHandlers(L) } : null; }, // (round 36, labsearch)
       // While the song plays: animated fields show their current value, and ◆ shows whether you're on a keyframe.
       sync(values, states) {

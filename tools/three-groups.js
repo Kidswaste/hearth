@@ -35,26 +35,41 @@ const LabGroups = (() => {
     const after = C().state(next);
     if (same(before, after)) return false;
     h.commit(next);
-    stack.push({ label, sketch: h.sketchId(), before, after });
-    if (stack.length > 40) stack.shift();
+    remember({ label, sketch: h.sketchId(), before, after });
     if (rec) window.LabRecipesHook?.note?.('groups', rec);
     if (say !== false) toast(say || label, { timeout: 2600, action: { label: 'Undo', fn: () => undo() } });
     return true;
   }
-  function undo() {
+  // (round 136, outline136) every step here is also one step of the Lab's own Ctrl/⌘+Z (LabDirect: the picture's moves,
+  // looks, deleted layers, dials), so a group, a rename, a reorder or a group fade is one undo wherever you press it
+  function remember(u) {
+    stack.push(u);
+    if (stack.length > 40) stack.shift();
+    const fn = () => (stack.includes(u) ? undo(u, true) : false); // (false: undone already, by its toast or the Layers list)
+    fn.group = u;
+    window.LabDirect?.push?.(null, u.label, fn);
+    return u;
+  }
+  function undo(which = null, quiet = false) {
     const h = H0();
-    const u = stack[stack.length - 1];
+    const u = which || stack[stack.length - 1];
     if (!h || !u) { if (h) toast('No group change to undo', { timeout: 1500 }); return false; }
     if (u.sketch !== h.sketchId()) { toast('The last group change was on another scene', { timeout: 2200 }); return false; }
-    stack.pop();
-    if (u.full) {
+    stack.splice(stack.lastIndexOf(u), 1);
+    if (u.names) { // (round 136) names: each one back, unless it was renamed again since
+      for (const [id, was, now] of u.names) { const L = layerOf(id); if (L && L.name === now) L.name = was; }
+      h.commit();
+    } else if (u.props) { // (round 136) a group's fade / move / keys: its layers' opacity, place and their keys back
+      for (const [id, b] of Object.entries(u.props)) { const L = layerOf(id); if (L) putSnap(L, b); }
+      h.commit();
+    } else if (u.full) {
       const S = ThreeLab.scenes; const sk = S.get(u.sketch);
       if (!sk) return false;
       sk.layers = JSON.parse(JSON.stringify(u.full));
       S.changed(u.sketch);
       if (u.made && S.get(u.made)) S.remove(u.made); // the scene the precomp showed (to History's deleted sketches)
     } else h.commit(C().undo(h.layers(), u.before, u.after));
-    toast(`Undid: ${u.label}`, { timeout: 1800 });
+    if (!quiet) toast(`Undid: ${u.label}`, { timeout: 1800 }); // (the Lab's Ctrl/⌘+Z says it itself)
     return true;
   }
 
@@ -115,6 +130,55 @@ const LabGroups = (() => {
   function moveInto(id, gid) { return op(`Into "${groupName(gid)}"`, (Ls) => C().move(Ls, { layer: id }, { group: gid })); }
   function gather(id) { return op(`"${groupName(id)}" in one piece`, (Ls) => C().gather(Ls, id)); }
 
+  // ---------- (round 136, outline136) colour tags, Alt+↑ / ↓, names, a group's fade / move / keys ----------
+  function color(id, c) { const n = groupName(id); return op(c ? `"${n}" tagged` : `"${n}" untagged`, (Ls) => C().color(Ls, id, c || null), { say: false }); }
+  // the selected layer (or the group whose header was clicked last) one step up / down the list: one undo step
+  function nudge(dir, target = null) {
+    const h = H0();
+    if (!h) return false;
+    const t = target || (lastGroup && C().members(h.layers(), lastGroup).length ? { group: lastGroup } : { layer: h.selected() });
+    const L = t.layer ? layerOf(t.layer) : null;
+    const what = t.group ? `"${groupName(t.group)}"` : `"${L?.name || 'the layer'}"`;
+    return op(`${dir > 0 ? '↑' : '↓'} Moved ${what} ${dir > 0 ? 'up' : 'down'}`, (Ls) => C().nudge(Ls, t, dir), { say: false });
+  }
+  let lastGroup = null; // a group header clicked last: Alt+↑ / ↓ moves the whole group (a layer clicked: that layer)
+  const pickGroup = (id) => { lastGroup = id; };
+  // names: [[id, new name]] → one undo step (a rename, ✦ Name these for me)
+  function names(pairs, label = null) {
+    const h = H0();
+    if (!h) return 0;
+    const list = [];
+    for (const [id, to] of pairs) {
+      const L = layerOf(id); const n = String(to ?? '').replace(/[\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (!L || !n || n === L.name) continue;
+      list.push([id, L.name, n]); L.name = n;
+    }
+    if (!list.length) return 0;
+    h.commit();
+    const lbl = label || (list.length === 1 ? `Renamed "${list[0][1]}" to "${list[0][2]}"` : `Named ${list.length} layers`);
+    remember({ label: lbl, sketch: h.sketchId(), names: list });
+    window.LabRecipesHook?.note?.('layers');
+    return list.length;
+  }
+  const renameLayer = (id, to) => names([[id, to]]) > 0;
+  // a layer's opacity, place and their keys: what a group's fade / move / ◆ changes (and its undo puts back)
+  const PROPS = ['opacity', 'x', 'y'];
+  const snap = (L) => ({ opacity: L.opacity ?? 1, x: L.x || 0, y: L.y || 0, keys: Object.fromEntries(PROPS.filter((p) => L.keys?.[p]).map((p) => [p, JSON.parse(JSON.stringify(L.keys[p]))])) });
+  function putSnap(L, b) {
+    L.opacity = b.opacity; L.x = b.x; L.y = b.y;
+    for (const p of PROPS) { if (b.keys[p]) (L.keys ||= {})[p] = JSON.parse(JSON.stringify(b.keys[p])); else if (L.keys) delete L.keys[p]; }
+  }
+  // before: { id: snap } taken when the change started; the change is already on the layers → one undo step
+  function propsDone(label, before) {
+    const h = H0();
+    if (!h) return false;
+    const changed = Object.entries(before).filter(([id, b]) => { const L = layerOf(id); return L && JSON.stringify(snap(L)) !== JSON.stringify(b); });
+    if (!changed.length) return false;
+    remember({ label, sketch: h.sketchId(), props: Object.fromEntries(changed) });
+    return true;
+  }
+  const snaps = (id) => Object.fromEntries(C().members(host()?.layers() || [], id).map((L) => [L.id, snap(L)]));
+
   // ---------- precomps (tools/three-comp.js): a group becomes one, and back ----------
   async function toPrecomp(id) {
     const h = H0();
@@ -142,7 +206,7 @@ const LabGroups = (() => {
     S.get(sid).layers = [...rest.slice(0, below), pc, ...rest.slice(below)];
     S.changed(sid);
     h.select?.(pc.id);
-    stack.push({ label: `"${name}" made a precomp`, sketch: sid, full, made: sk.id });
+    remember({ label: `"${name}" made a precomp`, sketch: sid, full, made: sk.id });
     toast(`◫ "${name}" is a precomp now: its ${m.length} layer${m.length === 1 ? '' : 's'} live in the scene "${sk.name}"`, { timeout: 5000, action: { label: 'Undo', fn: () => undo() } });
     return pc;
   }
@@ -176,7 +240,7 @@ const LabGroups = (() => {
     const at = Ls.indexOf(P);
     S.get(sid).layers = [...Ls.slice(0, at), ...copies, ...Ls.slice(at + 1)];
     S.changed(sid);
-    stack.push({ label: `"${gname}" back to a group`, sketch: sid, full });
+    remember({ label: `"${gname}" back to a group`, sketch: sid, full });
     toast(`📁 "${gname}": its ${copies.length} layer${copies.length === 1 ? '' : 's'} are a group here now (the scene "${sk.name}" stays as it is)`, { timeout: 5000, action: { label: 'Undo', fn: () => undo() } });
     return gid;
   }
@@ -196,6 +260,11 @@ const LabGroups = (() => {
       { label: soloOn ? 'Show every layer' : 'Only this group (solo)', hint: 'Alt+click its eye · S', action: () => solo(id) },
       { label: 'Rename…', hint: 'or double-click its name', action: () => rename(id) },
       { label: g.closed ? '▾ Unfold' : '▸ Fold', action: () => fold(id) },
+      // (round 136, outline136) a colour tag, and the group faded / moved / keyed as one (the outline card)
+      { label: 'Colour tag', hint: g.color ? 'tagged' : 'none', items: [...C().COLORS.map(([nm, hex]) => ({ label: `● ${nm[0].toUpperCase()}${nm.slice(1)}`, hint: g.color === hex ? 'on' : '', action: () => color(id, hex) })), g.color ? { label: 'No colour', action: () => color(id, null) } : null].filter(Boolean) },
+      { label: 'Fade, move & key…', hint: 'the whole group as one', action: () => (window.Lazy ? Lazy.load('outline') : Promise.resolve()).then(() => LabOutline.groupCard(id)).catch((e) => err(e.message)) },
+      { label: 'Move up', hint: 'Alt+↑', action: () => nudge(1, { group: id }) },
+      { label: 'Move down', hint: 'Alt+↓', action: () => nudge(-1, { group: id }) },
       split ? { label: 'Bring its layers together', hint: 'a layer sits between them', action: () => gather(id) } : null,
       '-',
       { label: 'Ungroup', hint: 'Ctrl/⌘+Shift+G · the layers stay', action: () => ungroup(id) },
@@ -261,6 +330,14 @@ const LabGroups = (() => {
   const inPanel = (n) => { const p = host()?.panel; return Boolean(p && n && p.contains(n)); };
   addEventListener('pointerdown', (e) => { armed = inPanel(e.target); }, true);
   addEventListener('keydown', (e) => {
+    // (round 136, outline136) Alt+↑ / Alt+↓: the selected layer (or the group header clicked last) one step up / down
+    if (armed && e.altKey && !(e.ctrlKey || e.metaKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.defaultPrevented && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) && !e.target?.isContentEditable) {
+      if (!host()?.panel?.checkVisibility?.({ visibilityProperty: true })) return;
+      e.preventDefault(); e.stopPropagation();
+      nudge(e.key === 'ArrowUp' ? 1 : -1);
+      window.Usage?.key?.(`Alt+${e.key === 'ArrowUp' ? '↑' : '↓'}`, 'Lab layers');
+      return;
+    }
     if (!armed || !(e.ctrlKey || e.metaKey) || e.altKey || e.defaultPrevented) return;
     const k = e.key.toLowerCase();
     if (k !== 'g' && k !== 'z') return;
@@ -269,7 +346,8 @@ const LabGroups = (() => {
     if (!h?.panel?.checkVisibility?.({ visibilityProperty: true })) { armed = false; return; }
     if (k === 'z' && (e.shiftKey || !stack.length || stack[stack.length - 1].sketch !== h.sketchId())) return; // the Lab's / the app's own undo
     e.preventDefault(); e.stopPropagation();
-    if (k === 'z') undo(); else if (e.shiftKey) ungroup(); else groupPicked();
+    // (round 136) Ctrl/⌘+Z: the Lab's own last step when it is one of ours (so its place in the Lab's undo goes too)
+    if (k === 'z') { const u = window.LabDirect?.last?.(); if (u?.fn?.group && stack.includes(u.fn.group)) LabDirect.undo(); else undo(); } else if (e.shiftKey) ungroup(); else groupPicked();
     window.Usage?.key?.(`Ctrl+${e.shiftKey ? 'Shift+' : ''}${k.toUpperCase()}`, 'Lab layers');
   }, true);
 
@@ -311,6 +389,8 @@ const LabGroups = (() => {
         { area: 'Lab sliders & layers', keys: 'Ctrl+G (in the Layers list)', what: 'Group the picked layers (right-click a layer › 📁 Group layers does it too)', when: inLab },
         { area: 'Lab sliders & layers', keys: 'Ctrl+Shift+G (in the Layers list)', what: 'Ungroup the selected layer\'s group', when: inLab },
         { area: 'Lab sliders & layers', keys: 'Ctrl+Z (in the Layers list)', what: 'Undo the last group / solo change', when: inLab },
+        { area: 'Lab sliders & layers', keys: 'Alt+↑ / Alt+↓ (in the Layers list)', what: 'Move the selected layer (or group) up / down, one undo step each', when: inLab }, // (round 136, outline136)
+        { area: 'Lab sliders & layers', keys: 'Ctrl+F (in the Layers list)', what: 'Find a layer: filter the list by name or group', when: inLab },
       );
     } catch { /* keys list optional */ }
     if (typeof AppUI !== 'undefined' && AppUI.addAction) {
@@ -339,5 +419,5 @@ const LabGroups = (() => {
     Hints.offer({ id: 'layergroups-discover', place: 'lab', rank: 3, show: () => toast('📁 Many layers? Ctrl/⌘+click a few in the Layers list, then Ctrl/⌘+G puts them in a group with its own eye (S shows only it).', { timeout: 9000 }) });
   }, 3000));
 
-  return { op, undo, groupPicked, ungroup, toggle, setVisible, fold, rename, solo, drop, takeOut, moveInto, gather, toPrecomp, fromPrecomp, groupItems, groupMenu, layerItems, replay, command, stack: () => stack.map((u) => u.label) };
+  return { color, nudge, pickGroup, names, renameLayer, snap, snaps, putSnap, propsDone, op, undo, groupPicked, ungroup, toggle, setVisible, fold, rename, solo, drop, takeOut, moveInto, gather, toPrecomp, fromPrecomp, groupItems, groupMenu, layerItems, replay, command, stack: () => stack.map((u) => u.label) };
 })();

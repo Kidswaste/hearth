@@ -135,6 +135,6 @@ const LabDirect = (() => {
     );
   } catch { /* keys list optional */ }
 
-  return { attach, onBox, undo, push, help, stats, get steps() { return U.map((u) => ({ label: u.label, timeline: u.timeline })); } };
+  return { last: () => U[U.length - 1] || null /* (round 136, outline136) the last step, for the Layers list's Ctrl/⌘+Z */, attach, onBox, undo, push, help, stats, get steps() { return U.map((u) => ({ label: u.label, timeline: u.timeline })); } };
 })();
 window.LabDirect = LabDirect;
