@@ -211,6 +211,49 @@ const LabTxn = (() => {
     return { turn: true, restored: 'after', layer: e.scene, who: e.who, calls: e.calls, label: label(e), tool: 'three_last_reply', at: e.at, errors: 0 };
   }
 
+  // ---------- (round 137, replydiff137) what each reply changed, for the review under it (tools/three-replydiff.js) ----------
+  // When a reply ends, its calls' before / after per scene are kept (kv labtxn-replies, the newest 10, 2 weeks) and the
+  // reply gets labDiff: { id, layers } (the "Changed 3 layers · Review" line). Nothing extra while a reply runs.
+  const REPLIES = 'labtxn-replies'; const KEEP_REPLIES = 10; const KEEP_MS = 14 * 864e5;
+  let replies = null; let repliesRead = null;
+  const readReplies = () => (repliesRead ||= (async () => {
+    let d = null; try { d = await window.hub.kvGet(REPLIES, null); } catch { d = null; }
+    const old = Array.isArray(d?.list) ? d.list : [];
+    replies = (replies || []).concat(old.filter((r) => !(replies || []).some((x) => x.id === r.id)));
+    return replies;
+  })());
+  const saveReplies = () => { const cut = Date.now() - KEEP_MS; replies = replies.filter((r) => r.at >= cut).sort((a, b) => b.at - a.at).slice(0, KEEP_REPLIES); window.hub.kvSet(REPLIES, { v: 1, list: replies }).catch?.(() => {}); };
+  // the layers a change touched (added, removed, or any of its data / slider values)
+  function layersChanged(b, a) {
+    const bl = new Map(b.layers.map((L) => [L.id, L])); const al = new Map(a.layers.map((L) => [L.id, L]));
+    const ids = new Set();
+    for (const id of new Set([...bl.keys(), ...al.keys()])) if (JSON.stringify(bl.get(id) || null) !== JSON.stringify(al.get(id) || null) || JSON.stringify(b.vals[id] || null) !== JSON.stringify(a.vals[id] || null) || JSON.stringify(b.links?.[id] || null) !== JSON.stringify(a.links?.[id] || null)) ids.add(id);
+    return ids.size;
+  }
+  function onFinish(event, chat, extras) {
+    if (!chat?.id) return;
+    const pre = `${chat.id}|${turns.get(chat.id) || 0}|`;
+    const mine = undoStack.filter((e) => e.key.startsWith(pre));
+    if (!mine.length) return;
+    const scenes = [];
+    for (const e of mine) {
+      const s = scenes.find((x) => x.sceneId === e.sceneId);
+      if (s) Object.assign(s, { after: e.after, lastAt: e.lastAt, key: e.key }); else scenes.push({ sceneId: e.sceneId, scene: e.scene, key: e.key, at: e.at, lastAt: e.lastAt, before: e.before, after: e.after });
+    }
+    const real = scenes.filter((s) => sigOf(s.before) !== sigOf(s.after));
+    if (!real.length) return;
+    const id = `rd${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const layers = real.reduce((n, s) => n + layersChanged(s.before, s.after), 0);
+    extras.labDiff = { id, layers, scenes: real.length };
+    const rec = { id, chatId: chat.id, who: mine[0].who, at: mine[0].at, scenes: real.map((s) => ({ ...s, before: clone(s.before), after: clone(s.after) })) };
+    (replies ||= []).unshift(rec);
+    readReplies().then(saveReplies);
+  }
+  if (typeof Native !== 'undefined' && Native.hooks?.finish) Native.hooks.finish.push(onFinish);
+  const reply = async (id) => { await readReplies(); return (replies || []).find((r) => r.id === id) || null; };
+  // the reply's own undo step is still the newest one, and the scene is as the reply left it
+  const isTop = (key) => { const e = undoStack.at(-1); return Boolean(e && e.key === key); };
+
   // ---------- the wrapper (bridge.js) ----------
   const open = new Map(); // scene id → { chatId }: a call running on it (calls inside it are part of it)
   const inject = { tool: null, n: 0 }; // dev checks: the nth call of that tool inside another call fails
@@ -275,6 +318,6 @@ const LabTxn = (() => {
   }
   if (typeof HubBridge !== 'undefined' && HubBridge.setAround) HubBridge.setAround(around);
 
-  return { around, snap, describe, restore, step, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } };
+  return { reply, isTop, around, snap, describe, restore, step, undoTurn, redoTurn, wantsUndo, wantsRedo, noteCodeUndo: () => { lastUndo = 'code'; }, stats, history: () => undoStack.map((e) => ({ who: e.who, scene: e.scene, calls: e.calls, at: e.at, words: e.words.slice() })), _test: { isRead, sigOf, failNested: (tool, n = 1) => { inject.tool = tool; inject.n = n; } } }; // (round 137, replydiff137) reply, isTop
 })();
 window.LabTxn = LabTxn;

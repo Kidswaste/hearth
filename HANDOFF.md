@@ -112,6 +112,8 @@ owner-facing notes.
   `tools/three-txn.js` (one call applies whole or not at all; one reply is one undo step) to `tools/three-director.js`
   (fast paths, short results) or the Lab's own handlers. Each director chat owns its scene (`chat-scenes.js`). A scene
   that isn't on screen runs backstage. Crew helpers: `tools/three-crew.js`. Claude and Astra take turns with `jam.js`.
+- (round 137) A reply that changed a scene gets "Changed 3 layers · Review" under it (`tools/three-replydiff*.js`, LabTxn's
+  before / after per reply in kv `labtxn-replies`): plain words per layer, ↶ Undo this layer (one undo step), Undo all, Keep some.
 - Other rail tools: Projects (`projects-home.js`), the mood board (`board.js`), Commands (`cmdpage.js`), ⋯ AI setup
   (`options.js`), the Creative board (`tools/creative-playground.js`), Forgeheart (`tools/forge.js`,
   `tools/forge-game.js`).
