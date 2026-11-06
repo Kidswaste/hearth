@@ -91,6 +91,53 @@ readouts.
 - Run this round: seekfix135 ✓ · audiomap134 ✓ (without the workaround) · beat108 ✓ · songmap130 ✓ · perform131 ✓ ·
   labload94 ✓ · `node dev/boot-test.js` ✓ · `node dev/labaudio77-test.js` ✓.
 
+## Follow-up: the one failed reading on a busy box
+In one combined run (load ≈ 4.5), one reading in 240 failed: "timeline: play, then seek 10 ms later", try 7, a
+fresh try (the scene's timeline loaded again first, no song). Run alone, the check passed.
+
+**Reproduced.** CPU load alone (5 busy loops, load ≈ 11, plus another Electron check) did not do it: 0 in 240 fresh
+tries. A test-only stall inside the preview did (a scratch copy of the check that reloads the timeline every try and
+adds a listener in the page through `evalInSketch`: 250 ms of work on `media-load`, 30 ms on each `media` command,
+frames up to 60 ms late). In 4 runs, 11 tries in 480 were off, every one the same: `audio.time` read 0 at the
+350 ms look while the element (14.99, still unread: readyState 0, playing) and the Lab's playhead (15) were right.
+A look right after the seek showed the same on a quiet box: `audio.time` 0 in 10 tries of 32 at 16 and 24 ms.
+
+**A real race, not only load.** The page's state at the failed look (a temporary readout of the audio clock): a
+"seek while playing" start with the old spot at −0.02 s, held for one output path (93 ms). Where it came from:
+1. `loadClock` replaces the element. Play arrives while the new element is still unread, so the element counts as
+   playing and its time is 0: the startAt of 1 s is applied only once its length is known.
+2. A frame drawn before the seek arrives reads `audio.time`, and the audio clock starts fresh at 0.
+3. The seek arrives. The element is "playing", so the clock takes it as a seek while playing: the speakers still
+   play the old spot for one output path, so the pictures keep it. That spot was never heard (the element hadn't
+   played a sample).
+
+On a calm box the hold is over about 90 ms after the seek, long before the 350 ms look. Still, layers draw the
+scene's start for that moment. On a busy box the preview handles the seek late, and the look landed inside the hold.
+The song never does this because its fresh path unloads first. Play and seek then wait for the file, and the load
+carries both. So this is a fix and not a load-aware step. Making that look load-aware would have hidden a wrong
+frame the owner could see.
+
+**The fix** (`tools/three-sandbox.html`):
+- `songNow()`: a new element whose length isn't known yet (`m.__want` still set) counts as paused. It shows the spot
+  it will start from, and the audio clock starts fresh there once it really plays (the existing `AV.held` restart).
+  No sample is taken from it before then.
+- `loadMedia()`: the new element starts with `currentTime = startAt`, the browser's start spot before its length is
+  known. Before, it read 0 until then, including on a timeline length change while playing. The `loadedmetadata` step
+  still decides where it goes, so the last request still wins.
+
+The Lab side (`three-media.js`, `three.js`) and the avsync core are unchanged.
+
+**The check.** `dev/checks/seekfix135.js` gets a step C: the timeline is loaded again before every try, then play,
+then a seek 16 or 24 ms later, 12 tries at each delay, read at once and at 350 ms. `audio.time` may be the target,
+or the spot the timeline really sounded from (the reload's 1 s, for one output path), but never its start. The
+element and the playhead must be on the target. On the old page: 5 and 1 tries off. Now: 0.
+
+Before / after on the stall copy (the timeline loaded again every try, 0 and 10 ms, 60 tries each): 11 off in 480
+before, 0 in 240 after.
+
+Run: `seekfix135` ✓ · `audiomap134` ✓ · `perform131` ✓ · `beat108` ✓ (`run-checks.js --exact`, under the run lock) ·
+`node dev/boot-test.js` ✓ · `node dev/labaudio77-test.js` ✓.
+
 ## For the patch notes
 - **Seeking right after you press play now works every time.** Before, if you clicked the timeline, pressed a number in
   Perform or jumped to a cue just after pressing play, the song could start from the beginning or from where it was, as

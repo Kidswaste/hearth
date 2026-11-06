@@ -4593,6 +4593,9 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   m.defaultPlaybackRate = rate;
   m.playbackRate = rate;
   m.src = mediaUrl;
+  // (round 135, seekfix135 follow-up) until its length is known the element reads the load's spot, not 0 (its start
+  // spot for the browser too; the 'loadedmetadata' step below still decides where it goes): audio.time held 0 there
+  if (startAt > 0) { try { m.currentTime = startAt; } catch { /* set below */ } }
   // (round 135, seekfix135) a seek / play / pause that comes before the song's length is known (the file still being
   // read) is newer than the load's startAt / playing: kept here and used when it is, instead of being put back to
   // the load's spot (a play + a seek right after loading a song started it from 0)
@@ -4722,7 +4725,12 @@ function avSample(nowMs) {
 function songNow() {
   const m = mediaEl;
   if (!m) return 0;
-  if (m.paused || SQ.off || AV.off) { AV.held = true; return m.currentTime; }
+  // (round 135, seekfix135 follow-up) a new song whose length isn't known yet (m.__want: still being read) has sounded
+  // nothing, even with play pressed: it shows the spot it will start from, as paused, and the clock starts fresh there
+  // once it really plays. A frame drawn between a play and a seek right after a reload (the scene's timeline) used to
+  // start the clock at 0 on the unread element, and the seek then held that never-heard spot for one output path
+  // (audio.time ≈ 0 after the seek; seen on a busy box)
+  if (m.paused || m.__want || SQ.off || AV.off) { AV.held = true; return m.currentTime; }
   if (AV.el !== m || AV.held) { AV.el = m; AV.held = false; avJump(false, m.currentTime); } // (a start: before its 'play' event arrives)
   if (FR.inRaf) {
     if (AV.E === FR.E) return AV.t;
