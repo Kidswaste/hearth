@@ -62,3 +62,7 @@
 .dc-wrap { display: flex; flex-direction: column; gap: 8px; }
 .dc-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .dc-tabs .on { background: var(--hover); color: var(--fh-gold, var(--accent)); }
+/* (round 137, tour137) the ring and the card above a top-layer menu (#menu): a popover, without the browser's popover box */
+.tour-ring.tour-top, .tour-card.tour-top { margin: 0; right: auto; bottom: auto; overflow: visible; }
+.tour-ring.tour-top { padding: 0; border: 0; background: none; }
+.tour-card .tour-demo { white-space: nowrap; }
