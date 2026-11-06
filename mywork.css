@@ -1,0 +1,38 @@
+/* (round 134, starters134) ★ My work: the library card (mywork.js), opened from ＋ New project › Start from, the Lab's
+   ＋ Add and the sketch browser */
+.mw{width:min(860px,calc(100vw - 36px));max-height:calc(100vh - 60px);flex-direction:column;gap:8px;padding:14px 16px;box-sizing:border-box}
+.mw[open]{display:flex}
+.mw-head{display:flex;align-items:center;gap:10px}
+.mw-head h3{margin:0;font-size:15px;white-space:nowrap}
+.mw-q{flex:1;min-width:0}
+.mw-filters{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.mw-kinds{display:inline-flex;gap:4px}
+.mw-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid #ffffff1f;background:#ffffff06;color:#eee3ef;font-size:12px;cursor:pointer}
+.mw-chip:hover{border-color:#ffffff40}
+.mw-chip.on,.mw-lookbtn.on{border-color:#ffbd70aa;background:#ffbd7018;color:#ffd4a8}
+.mw-proj{max-width:200px}
+.mw-ai{margin-left:auto}
+.mw-looks{display:flex;flex-wrap:wrap;gap:4px}
+.mw-looks[hidden],.mw-aibox[hidden],.mw-bar[hidden]{display:none}
+.mw-sw{display:inline-flex;border-radius:4px;overflow:hidden;vertical-align:middle}
+.mw-sw i{width:9px;height:14px}
+.mw-aibox{border:1px solid #ffbd7040;border-radius:12px;padding:8px 10px;background:#ffbd700a;font-size:12px}
+.mw-cost{margin:0 0 6px}
+.mw-row{display:flex;gap:6px}
+.mw-ideas{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.mw-idea{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.mw-idea p{margin:0 0 4px;color:#cdbfd1}
+.mw-grid{flex:1;min-height:120px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;align-content:start}
+.mw-card{display:flex;flex-direction:column;gap:2px;border:1px solid #ffffff1f;border-radius:12px;background:#ffffff06;color:#eee3ef;padding:0 0 7px;cursor:pointer;text-align:left;font-size:12px;overflow:hidden}
+.mw-card.on{border-color:#ffbd70aa;background:#ffbd7018}
+.mw-card:focus-visible{outline:2px solid #ffbd70;outline-offset:-2px}
+.mw-img{aspect-ratio:16/9;background:#ffffff0d center/cover no-repeat;display:grid;place-items:center;color:#a89aad;font-size:18px}
+.mw-img .mw-sw i{width:18px;height:28px}
+.mw-name{padding:4px 8px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mw-sub{padding:0 8px;color:#a89aad;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.mw-card>.mw-sw{margin:2px 8px 0}
+.mw-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid #ffffff14;padding-top:8px}
+.mw-barname{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40%}
+.mw-go{margin-left:auto}
+.mw-status:empty{display:none}
+@media (max-width:560px){.mw-ai{margin-left:0}.mw-barname{max-width:100%}}
