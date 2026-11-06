@@ -4593,6 +4593,10 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
   m.defaultPlaybackRate = rate;
   m.playbackRate = rate;
   m.src = mediaUrl;
+  // (round 135, seekfix135) a seek / play / pause that comes before the song's length is known (the file still being
+  // read) is newer than the load's startAt / playing: kept here and used when it is, instead of being put back to
+  // the load's spot (a play + a seek right after loading a song started it from 0)
+  m.__want = { at: null, play: null };
   mediaEl = m;
   srcNode = actx.createMediaElementSource(m);
   srcNode.connect(analyser);
@@ -4608,6 +4612,9 @@ function loadMedia({ buffer, mime, video, name, startAt = 0, playing = false, lo
     // (a Lab sequence on the page owns the song: it goes to the sequence's time, not the music timeline's — the
     // sequence clock follows the song, so a page reloaded by a frame swap used to jump back to that spot: seqguard)
     const sq = SQ.on && SQ.plan?.song ? SQ.plan.song : null;
+    const want = m.__want || {}; m.__want = null;
+    if (want.play != null) playing = want.play; // (round 135, seekfix135) the last play / pause asked for wins
+    if (want.at != null) startAt = want.at; // …and the last seek
     if (sq) { playing = false; m.currentTime = Math.max(0, SQ.T - sq.offset); } else
     m.currentTime = Math.min(startAt, Math.max(0, (Number.isFinite(m.duration) ? m.duration : 0) - 0.05));
     if (playing) { actx.resume(); m.play().catch((err) => post({ type: 'console', level: 'warn', text: `Couldn't start playback: ${err.message}` })); }
@@ -4650,9 +4657,13 @@ function unloadMedia() {
 let pendingPlay = null;
 // (round 49, labscrub) a seek from the Lab's timeline is answered once a frame the fps cap let the layers draw has run
 // (at most 4 frames on): the Lab sends its next (newest) seek only then, so a fast scrub is one seek per drawn frame
-function ackSeek(n = 0) { realRAF((t) => { if (!fpsCap || capT === t || n >= 3) sendState({ seekAck: true }); else ackSeek(n + 1); }); }
+function ackSeek(n = 0) { realRAF((t) => { if (!fpsCap || capT === t || n >= 3) { if (mediaEl && !AVD.busy) sendState({ seekAck: true }); else post({ type: 'seek-ack' }); } else ackSeek(n + 1); }); } // (round 135, seekfix135: always answered, also while the sound output is made again)
 function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }) {
-  if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; return; }
+  // (round 135, seekfix135) a seek with no song here yet is still answered: the Lab sends its next seek only after an
+  // answer (labscrub), so a lost answer held the next one (a play's seek) back for up to a second; the song's
+  // media-load carries the Lab's time anyway
+  if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; if (cmd === 'seek' && ack) post({ type: 'seek-ack' }); return; }
+  if (mediaEl.__want) { if (cmd === 'seek') mediaEl.__want.at = value; if (cmd === 'play' || cmd === 'pause') mediaEl.__want.play = cmd === 'play'; } // (round 135, seekfix135: before its length is known)
   if (cmd === 'play') {
     actx.resume();
     if (mediaEl.ended) mediaEl.currentTime = 0;
