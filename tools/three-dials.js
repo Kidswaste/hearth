@@ -285,6 +285,8 @@ const LabDials = (() => {
       dial.maps.length ? [`Its sliders (${dial.maps.length})`, 'Range and curve of each', dial.maps.map(curveRow)] : null,
       dial.keys.length ? ['Remove its keys', `${dial.keys.length} keys`, () => editKeys(id, () => [], 'keys removed')] : null,
       ['Rename…', '', () => rename(id)],
+      // (round 138, favs138) ★ the dial in the scene's favourite controls (tools/three-favs.js)
+      (() => { const on = (hk()?.favs?.()?.list || []).some((x) => x.t === 'd' && x.dial === id); return [on ? '☆ Unpin from favourites' : '★ Pin to favourites', on ? 'Takes it out of the ★ panel' : 'Shows it in the ★ panel with your favourite sliders', () => (window.Lazy ? Lazy.load('favs') : Promise.resolve()).then(() => LabFavs.toggle({ t: 'd', dial: id })).catch((e) => toast(calm(e), { type: 'error' }))]; })(),
       ['Remove the dial', 'The sliders stay where they are', () => remove(id)]]);
   }
   const fmtV = (m, v) => (m.kind === 'color' ? v : r2(Number(v)));

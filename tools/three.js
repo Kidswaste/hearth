@@ -2481,6 +2481,7 @@ const ThreeLab = (() => {
         touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); },
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
         palette: () => current?.palette || [],
+        pins: { has: (key) => favPinned(id, key), toggle: (key) => favsDo((F) => F.toggle({ t: 's', layer: id, key })), open: (anchor) => favsDo((F) => F.toggle(null, { anchor })) }, // (round 138, favs138) ★ the scene's favourite controls
         explain: () => (window.LabEasy?.explainLayer ? LabEasy.explainLayer(id) : (window.Lazy ? Lazy.load('explain') : Promise.resolve()).then(() => LabExplain.open({ layerId: id })).catch((err) => toast(err.message, { type: 'error' }))), // (round 132, explain132) the Sliders ⋯ › ✦ Explain this layer
         clock: () => (!(player.loaded && player.playing) && window.ThreeStage?.clock?.()) || ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
@@ -2492,6 +2493,9 @@ const ThreeLab = (() => {
       return c;
     }
     const selCtl = () => (sel() ? ctlFor(sel()) : null);
+    // (round 138, favs138) ★ favourite controls (tools/three-favs.js, lazy group favs): the scene's pins, { v, list: [{ t: 's', layer, key } | { t: 'd', dial }] }
+    const favPinned = (lid, key) => (current?.favs?.list || []).some((x) => x.t === 's' && x.layer === lid && x.key === key);
+    const favsDo = (fn) => (window.Lazy && typeof LabFavs === 'undefined' ? Lazy.load('favs') : Promise.resolve()).then(() => fn(window.LabFavs)).catch((err) => toast(window.calmError ? calmError(err) : err.message, { type: 'error' }));
     // ---------- "building…" while the director works ----------
     // A shimmer on the preview's corner while a director turn runs on this scene (or its tool calls do), and on the
     // row of each layer that is being (re)built until its first new frame is drawn. CSS animations only (three-lab.css).
@@ -3201,6 +3205,10 @@ const ThreeLab = (() => {
       // (round 135, mooddial135) 🎛 the scene's mood dials (tools/three-dials.js): { v, sel, list: [{ id, name, value, maps, keys, follow }] }, saved with the scene
       dials: () => (current?.dials ? JSON.parse(JSON.stringify(current.dials)) : null),
       setDials: (v) => { if (!current) return false; if (v?.list?.length) current.dials = JSON.parse(JSON.stringify(v)); else delete current.dials; current.updatedAt = Date.now(); save(); return true; },
+      // (round 138, favs138) ★ the scene's favourite controls (tools/three-favs.js), saved with the scene; a slider's ◆ for the panel
+      favs: () => (current?.favs ? JSON.parse(JSON.stringify(current.favs)) : null),
+      setFavs: (v) => { if (!current) return false; if (v?.list?.length) current.favs = JSON.parse(JSON.stringify(v)); else delete current.favs; current.updatedAt = Date.now(); save(); return true; },
+      keyState: (id, prop) => { const L = layerById(id); return L ? keyStateFor(L, prop) : 'none'; }, toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
       peekPalette: (cols) => { if (!current) return; const was = current.palette; if (Array.isArray(cols)) current.palette = cols; try { sendRefs(); } finally { if (was) current.palette = was; else delete current.palette; } },
     };
     // ---------- everything the chat commands drive (tools/three-cmds.js); each returns a short result ----------
@@ -5116,7 +5124,7 @@ ${code}
       ...(Object.keys(L.overrides || {}).some((k) => k !== '@look') ? { placedByUser: Object.fromEntries(Object.entries(L.overrides).filter(([k]) => k !== '@look').map(([k, o]) => [k, { position: o.p, rotationDegrees: o.rd, scale: o.s, ...(o.v === false ? { hidden: true } : {}), ...(o.fov ? { fov: o.fov } : {}) }])) } : {}),
       plays: L.in == null && L.out == null ? 'whole song' : { from: L.in ?? 0, to: L.out ?? 'end', fadeIn: L.fadeIn || 0, fadeOut: L.fadeOut || 0 },
       ...(L.x || L.y || (L.scale ?? 1) !== 1 || L.rotate ? { transform: { x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0 } } : {}),
-      sliders: controllers.get(L.id)?.controls().map((c) => c.label) || [],
+      sliders: controllers.get(L.id)?.controls().map((c) => (favPinned(L.id, c.key) ? `${c.label}★` : c.label)) || [], // (round 138, favs138) ★ = pinned by the owner
       ...(Object.keys(L.keys || {}).length ? { keyframes: Object.fromEntries(Object.entries(L.keys).map(([p, ks]) => [p.replace(/^s:/, 'slider '), ks.map((k) => `${k.t}s=${k.v}${k.ease && k.ease !== 'ease' ? ` (${k.ease})` : ''}`)])) } : {}),
     }));
     const report = () => ({

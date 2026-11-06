@@ -205,6 +205,7 @@ const ThreePerform = (() => {
     const p = player();
     for (const id of P.held.keys()) h?.ctlOf(id)?.endLook?.();
     window.LabDials?.performEnd?.(); // (round 135, mooddial135) the dials turned here go back
+    window.LabFavs?.performEnd?.(); window.LabFavs?.close?.(); // (round 138, favs138) ★ favourites moved here go back
     P.held.clear();
     // paused: a cue's looks played by a jump go too (playback plays cue looks only while it plays; playing, they stay)
     if (!p?.playing) for (const L of h?.layers?.() || []) { const c = h.ctlOf(L.id); if (c?.playingLook) c.endLook(); }
@@ -303,8 +304,10 @@ const ThreePerform = (() => {
     Pp.rec = el('label', { class: 'pf-rec', title: 'Record this performance: your switches go on the timeline as cues when you stop (one undo)' }, Pp.recBox, ' ● Rec');
     Pp.ai = b('pf-ai', '✦ Set', 'The director prepared a set for this scene: review it', () => review());
     Pp.note = el('span', { class: 'pf-note' });
+    // (round 138, favs138) ★ the scene's favourite controls: folded to this button, a click opens the column here (live only)
+    Pp.favs = b('pf-favs', '★', 'Your ★ favourite controls (moves here are live only, put back when you leave)', (e) => (window.Lazy && typeof LabFavs === 'undefined' ? Lazy.load('favs') : Promise.resolve()).then(() => LabFavs.toggle(null, { anchor: e.currentTarget })));
     const strip = el('div', { class: 'pf-strip', attrs: { role: 'toolbar', 'aria-label': 'Perform' } },
-      el('span', { class: 'pf-dot', text: '◉' }), Pp.tempo, Pp.quant, Pp.cues, Pp.looks, Pp.next, Pp.play, Pp.freeze, Pp.black, Pp.rec, Pp.ai, Pp.note,
+      el('span', { class: 'pf-dot', text: '◉' }), Pp.tempo, Pp.quant, Pp.cues, Pp.looks, Pp.next, Pp.play, Pp.freeze, Pp.black, Pp.rec, Pp.ai, Pp.favs, Pp.note,
       b('pf-learn', '🎛', 'MIDI learn: a pad, knob or key for any cue, look or action', (e) => showMenu(e.clientX, e.clientY - 8, learnItems())),
       b('pf-more', '⋯', 'Screen, cue pictures, keys', (e) => showMenu(e.clientX, e.clientY - 8, moreItems())),
       b('pf-hide', '▾', 'Hide the strip (H shows it again)', () => { P.hidden = true; paint(); }),
@@ -350,6 +353,7 @@ const ThreePerform = (() => {
     if (Pp.recBox.checked !== P.rec) Pp.recBox.checked = P.rec;
     Pp.rec.classList.toggle('on', P.rec);
     Pp.ai.hidden = !pendingOf();
+    Pp.favs.hidden = !h?.favs?.()?.list?.length; // (round 138, favs138) only when the scene has favourites
     put(Pp.note, 'textContent', P.prepping ? 'getting the cue pictures…' : P.rec ? `● ${P.events.length}` : '');
     tick();
   }

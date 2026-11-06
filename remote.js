@@ -22,9 +22,17 @@ const Remote = (() => {
   const stage = () => (typeof ThreeStage !== 'undefined' ? ThreeStage : null);
   const uOf = (x) => (x.options ? Math.max(0, x.options.indexOf(x.value)) / Math.max(1, x.options.length - 1) : typeof x.value === 'boolean' ? (x.value ? 1 : 0) : x.min != null ? (x.value - x.min) / ((x.max - x.min) || 1) : null);
   const r3 = (n) => Math.round(n * 1000) / 1000;
+  // (round 138, favs138) ★ the scene's favourite controls (any layer) come first, as one more group: keys "★<layer>|<key>"
+  const FAV = '★';
+  function favPins() { const h = hk(); return (h?.favs?.()?.list || []).filter((p) => p.t === 's').map((p) => ({ ...p, c: h.ctlOf(p.layer), name: (h.layers?.() || []).find((L) => L.id === p.layer)?.name || '' })).filter((p) => p.c); }
+  function target(key) { // → { c, key } the controller and its own key for a phone's key
+    if (!key.startsWith(FAV)) return { c: hk()?.ctl() || null, key };
+    const [layer, k] = key.slice(FAV.length).split('|'); return { c: hk()?.ctlOf(layer) || null, key: k, layer };
+  }
   function controls() {
     const c = hk()?.ctl(); if (!c) return [];
-    return c.controls().flatMap((x) => {
+    const favs = favPins().flatMap((p) => (p.c.controls().filter((x) => x.key === p.key).map((x) => ({ ...x, key: `${FAV}${p.layer}|${p.key}`, label: `${x.label || x.key} · ${p.name}`, group: '★ Favourites' }))));
+    return [...favs, ...c.controls()].flatMap((x) => {
       const u = uOf(x); if (u == null || !Number.isFinite(u)) return [];
       const kind = x.options ? 'opt' : typeof x.value === 'boolean' ? 'bool' : 'num';
       return [{ key: x.key, label: x.label || x.key, group: x.group || 'Controls', kind, u: r3(u), ...(kind === 'num' ? { min: x.min, max: x.max, step: x.step || 0, value: x.value } : {}), ...(x.options ? { options: x.options.map(String), value: String(x.value) } : {}), ...(x.followsMusic ? { music: true } : {}) }];
@@ -86,13 +94,13 @@ const Remote = (() => {
   function flush() {
     raf = 0;
     const list = [...pending.values()]; pending.clear();
-    const h = hk(); const c = h?.ctl(); const L = h?.layer();
-    if (!c || !L) return;
-    const now = new Map(c.controls().map((x) => [x.key, x]));
+    const h = hk(); const L = h?.layer();
+    if (!h?.ctl() || !L) return;
     for (const m of list) {
-      const x = now.get(m.key); const p = peers.get(m.peer); if (!x || !p) continue;
+      const t = target(m.key); const c = t.c; // (round 138, favs138) a ★ favourite: its own layer's slider
+      const x = c?.controls().find((y) => y.key === t.key); const p = peers.get(m.peer); if (!x || !p) continue;
       const cur = uOf(x); if (cur == null) continue;
-      const pk = `${h.sketchId()}|${L.id}|${m.key}`;
+      const pk = `${h.sketchId()}|${t.layer || L.id}|${t.key}`;
       // soft takeover (like the MIDI path): the phone picks the value up under the finger before it sends; here, a
       // slider moved by something else since this finger's last value (the other phone, a shuffle, your hand) has
       // to be passed through again before this finger moves it
@@ -104,10 +112,10 @@ const Remote = (() => {
         else { s.last = m.u; p.pick.set(pk, s); skipped += 1; continue; }
       }
       s.picked = true; s.last = m.u; s.sent = m.u; p.pick.set(pk, s);
-      c.setNormalized(m.key, m.u, { release: m.rel });
+      c.setNormalized(t.key, m.u, { release: m.rel });
       applied += 1;
       clearTimeout(p.rel?.[pk]);
-      if (!m.rel) (p.rel ||= {})[pk] = setTimeout(() => { c.setNormalized(m.key, m.u, { release: true }); }, 300);
+      if (!m.rel) (p.rel ||= {})[pk] = setTimeout(() => { c.setNormalized(t.key, m.u, { release: true }); }, 300);
       if (m.rel) p.pick.delete(pk); // the finger is off: the next touch picks up again
     }
     soon(60);
@@ -119,13 +127,13 @@ const Remote = (() => {
   function push() {
     if (!peers.size) return;
     const h = hk(); if (!h) return;
-    const sig = `${h.sketchId()}|${h.layer()?.id || ''}|${h.ctl()?.controls().length || 0}`;
+    const sig = `${h.sketchId()}|${h.layer()?.id || ''}|${h.ctl()?.controls().length || 0}|${JSON.stringify(h.favs?.()?.list || [])}`; // (round 138, favs138: the ★ pins too)
     if (sig !== lastScene) { lastScene = sig; const snap = snapshot(); for (const p of peers.values()) p.sent = { vals: {}, meters: {}, info: '' }; toAll(snap); return; }
     const cs = controls();
     const inf = JSON.stringify(info());
     const meters = {};
     const M = typeof ThreeAudioMap !== 'undefined' ? ThreeAudioMap.lastMeter : null; const c = h.ctl();
-    if (M && c) for (const x of cs) if (x.music) { const mid = c.mapping?.(x.key)?.mid; const v = mid && M.get(mid); if (v) meters[x.key] = Math.round(v[0] * 50) / 50; }
+    if (M && c) for (const x of cs) if (x.music) { const t = target(x.key); const mid = t.c?.mapping?.(t.key)?.mid; const v = mid && M.get(mid); if (v) meters[x.key] = Math.round(v[0] * 50) / 50; }
     for (const p of peers.values()) {
       p.sent ||= { vals: {}, meters: {}, info: '' };
       const dv = {}; let n = 0;

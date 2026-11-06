@@ -346,7 +346,7 @@ const ThreeTweaks = (() => {
   // value went into a keyframe (the control is animated) }. Only named controls (tweak()) can be animated.
   // learn(key, label) → map a MIDI knob to it (optional); clock() → { t, bpm, playing, section } for motions (optional).
   // palette() → the sketch's colors (for "colors from the palette").
-  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette, explain }) { // (round 132, explain132) explain() → ✦ Explain this layer in ⋯
+  function controller({ send, rerun, goToLine, commit, askForSliders, quickAsk, persist, keyframes, touched, learn, clock, palette, explain, pins }) { // (round 138, favs138) pins: { has(key), toggle(key), open(anchor) } → the scene's ★ panel (tools/three-favs.js) // (round 132, explain132) explain() → ✦ Explain this layer in ⋯
     let scanned = null;
     let ids = [];
     let values = [];
@@ -396,6 +396,9 @@ const ThreeTweaks = (() => {
     shufMore.dataset.feature = 'Shuffle options';
     const moreBtn = btn('⋯', 'More: reset, undo, copy / paste values, knobs or sliders, auto-save, filters', (e) => moreMenu(e.currentTarget), 'ghost small tw-more');
     moreBtn.dataset.feature = 'Sliders more';
+    // (round 138, favs138) ★ the scene's favourite controls, from every layer: one small button, the panel folded until a click
+    const favBtn = pins ? btn('★', 'Your ★ favourite controls, from every layer (right-click a slider › ★ Pin to favourites)', (e) => pins.open(e.currentTarget), 'ghost small tw-favs') : null;
+    if (favBtn) favBtn.dataset.feature = 'Favourite controls';
     const unusedBox = el('input', { type: 'checkbox' });
     unusedBox.addEventListener('change', () => { showUnused = unusedBox.checked; applyFilter(); });
     const search = el('input', { type: 'search', class: 'tw-search', placeholder: 'Find a slider…  ( / )' });
@@ -467,7 +470,7 @@ const ThreeTweaks = (() => {
     // Group chips: one click shows a single group (your slider groups get a lot of clicks), again shows all.
     const chips = el('div', { class: 'tw-gchips' });
     const root = el('div', { class: 'tweaks' },
-      el('div', { class: 'tw-head' }, el('b', { text: 'Sliders' }), count, el('span', { class: 'spacer' }), moreBtn,
+      el('div', { class: 'tw-head' }, el('b', { text: 'Sliders' }), count, el('span', { class: 'spacer' }), favBtn, moreBtn,
         el('div', { class: 'tw-actions' }, el('span', { class: 'tw-act' }, shufBack, shuffleBtn, shufFwd, shufMore), el('span', { class: 'tw-act' }, saveBtn, saveMore))),
       status, slotsRow, looksBar,
       el('div', { class: 'tw-tools' }, search, matchCount, abBtn),
@@ -950,7 +953,9 @@ const ThreeTweaks = (() => {
         ['↺ Back to the code\'s value', fmtVal(it, it.orig), () => resetOne(i)],
         [locked ? '🔓 Unlock' : '🔒 Lock at this value', 'Shuffle, looks, resets and MIDI leave it alone', () => toggleLock(i)],
         ['🔒 Reset and lock', '', () => { if (locks.has(ids[i])) toggleLock(i); resetOne(i); toggleLock(i); }],
-        [favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', '', () => toggleFav(i)],
+        // (round 138, favs138) a named control is pinned to the scene's ★ panel (it stays in this layer's ★ Favorites group too)
+        pins && it.key != null ? [pins.has(it.key) ? '☆ Unpin from favourites' : '★ Pin to favourites', pins.has(it.key) ? 'Takes it out of the ★ panel' : 'Shows it in the ★ panel with your other layers\' favourites', () => { const on = !pins.has(it.key); pins.toggle(it.key); if (favs.has(ids[i]) !== on) toggleFav(i); }]
+          : [favs.has(ids[i]) ? '☆ Remove from Favorites' : '★ Add to Favorites', '', () => toggleFav(i)],
         it.key != null && it.kind !== 'bool' ? ['🎲 Shuffle just this one', '', () => shuffle({ only: [i] })] : null,
         !same(it, values[i]) ? ['💾 Save just this one', 'Into the code; your other changes stay', () => saveOne(i)] : null,
         it.kind === 'number' ? ['Type a value…', `now ${fmtVal(it, values[i])} · range ${trimNum(it.range.min)}…${trimNum(it.range.max)}`, async () => { const v = await Modal.prompt(labelOf(it) || 'Value', { value: fmtVal(it, values[i]) }); const x = Number(v); if (v != null && Number.isFinite(x)) set(it.int ? Math.round(x) : x); }] : null,

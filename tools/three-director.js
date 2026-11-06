@@ -1139,7 +1139,8 @@ return await new Promise((res) => { const tick = () => { if (!A.playing || A.tim
       // (report: 'full', as three_add_layer has): since the lean text below (round 37) their layer lookups threw
       // ("v?.layers?.find is not a function") and a layer they had just added wasn't found
       if (args.report === 'full') return { ok: true, value: r };
-      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected)`, ...(r.picked ? { picked: r.picked } : {}), ...(await sceneNow(d, r)), note: r.note }; // (round 92) picked: the object the owner picked in the scene editor
+      const value = { sketch: r.sketch, layers: `${layerLines(r.layers)}\n(bottom first, * = selected${Array.isArray(r.layers) && r.layers.some((L) => (L.sliders || []).some?.((x) => String(x).endsWith('★'))) ? ', ★ = the owner\'s favourite' : ''})`, // (round 138, favs138) ★ pinned sliders
+      ...(r.picked ? { picked: r.picked } : {}), ...(await sceneNow(d, r)), note: r.note }; // (round 92) picked: the object the owner picked in the scene editor
       const st = onlyNew({ sketch: value.sketch, note: value.note }, d, B);
       return { ok: true, value: { ...value, ...st, sketch: st.sketch, note: st.note } };
     }
