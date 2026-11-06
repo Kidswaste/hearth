@@ -60,8 +60,13 @@ const Tour = (() => {
     try { ended.tour.onEnd?.({ done, step: ended.i, total: ended.steps.length, how }); } catch (err) { console.warn('tour end', err); }
     return true;
   }
-  const reflow = debounce(() => { if (cur && target) { if (!target.isConnected) { show(cur.i); return; } placeRing(ring, target); placeCard(); } }, 80);
+  // (round 137, tour137) a ringed menu row whose menu was closed: the ring hides (it sat in the window's corner); after
+  // the step's Show me, a ringed row that went away (its menu closed for the feature) isn't opened again
+  const reflow = debounce(() => { if (cur && target) { if (!target.isConnected) { if (cur.demoed === cur.i) { if (ring) ring.hidden = true; return; } show(cur.i); return; } if (ring) ring.hidden = !visible(target); placeRing(ring, target); placeCard(); } }, 80);
+  // (round 137, tour137) tour.escSoft: Esc closes an open menu or dialog first (a Show me opened it); the next Esc pauses
+  const softOpen = () => document.querySelector('dialog[open], .mb-menu.lab-pop, #menu:not([hidden])');
   function onKey(e) {
+    if (e.key === 'Escape' && cur?.tour.escSoft && softOpen()) return;
     if (!cur || e.target?.closest?.('input, textarea, [contenteditable=true]')) { if (e.key === 'Escape' && cur && !e.target?.closest?.('input, textarea')) stop(); return; }
     if (e.key === 'Escape') { const name = cur.tour.name; stop(); toast(`${name} paused: it picks up there next time`, { timeout: 2200 }); }
   }
@@ -104,19 +109,24 @@ const Tour = (() => {
     toast(`${line}: in the chat box — add what you want and press Enter`, { timeout: 2600 });
     return 'draft';
   }
+  // (round 137, tour137) a later show() wins: a slow step that finished opening after Next painted over the new step
+  let showSeq = 0;
   async function show(i) {
     if (!cur) return;
+    const seq = ++showSeq;
     const steps = cur.steps;
     cur.i = Math.max(0, Math.min(steps.length - 1, i));
+    cur.demoed = -1; // (round 137, tour137) this step's Show me not clicked yet
     setProg(cur.tour.id, { step: cur.i });
     const step = steps[cur.i];
     // (round 71, whatsnew71) a "Show me" step: the card says it first; the place opens and the ring goes on at Show me
     if (step.showMe && !cur.opened.has(cur.i)) { clearTimeout(findT); target = null; ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); paint(step); return; }
     await openFor(step);
+    if (seq !== showSeq) return;
     // the control may take a moment to appear (a tool opening, a panel drawing): look a few times, never per frame
     target = null;
-    for (let k = 0; k < 8 && cur && !target; k += 1) { target = resolve(step.target); if (!target && step.target) await new Promise((r) => { findT = setTimeout(r, 180); }); }
-    if (!cur) return;
+    for (let k = 0; k < 8 && cur && !target && seq === showSeq; k += 1) { target = resolve(step.target); if (!target && step.target) await new Promise((r) => { findT = setTimeout(r, 180); }); }
+    if (!cur || seq !== showSeq) return;
     paint(step);
   }
   function paint(step) {
@@ -132,10 +142,12 @@ const Tour = (() => {
       el('div', { class: 'tour-btns' },
         i ? btn('‹ Back', 'ghost small', () => show(i - 1)) : null,
         // (round 64, newtour64) Skip / Later for tours that offer them (Try what's new): skip = not for me, later = paused here
-        tour.onEnd && tour.skippable ? btn('Skip', 'ghost small tour-skip', () => stop({ how: 'skip' }), 'Not for me: skip this one') : null,
-        tour.onEnd && tour.skippable ? btn('Later', 'ghost small tour-later', () => { stop({ how: 'later' }); toast(`${tour.name}: paused at step ${i + 1}`, { timeout: 2200 }); }, 'Pause here: it picks up at this step next time') : null,
+        tour.onEnd && tour.skippable ? btn(tour.skipText || 'Skip', 'ghost small tour-skip', () => stop({ how: 'skip' }), tour.skipTip || 'Not for me: skip this one') : null,
+        tour.onEnd && tour.skippable && !tour.noLater ? btn('Later', 'ghost small tour-later', () => { stop({ how: 'later' }); toast(`${tour.name}: paused at step ${i + 1}`, { timeout: 2200 }); }, 'Pause here: it picks up at this step next time') : null,
         step.cmd ? btn('Try it', 'ghost small tour-try', () => { try { tour.onTry?.(step); } catch { /* progress is a convenience */ } runLine(step.cmd); }, D.safeLine(step.cmd, (n) => Boolean(Commands.get(n))) ? 'Runs it' : 'Puts it in the chat box') : null,
         el('span', { class: 'spacer' }),
+        // (round 137, tour137) step.demo: Show me opens the feature itself (the tour decides where: a demo copy when it could change something)
+        step.demo ? btn('Show me', 'small ghost tour-demo', () => demo(step), step.demoTip || 'Opens it so you can see it') : null,
         step.showMe ? btn('Show me', `small ${waiting ? 'primary' : 'ghost'} tour-show`, () => { cur.opened.add(i); show(i); }, 'Takes you there and rings the button') : null, // (round 71, whatsnew71)
         btn(last ? 'Done ✓' : 'Next ›', `small ${waiting ? 'ghost' : 'primary'} tour-next`, () => (last ? (stop({ done: true }), toast(tour.doneText || `${tour.name}: done. Discover has the other tours.`, { timeout: 2200 })) : show(i + 1)))));
     if (!card) {
@@ -156,12 +168,17 @@ const Tour = (() => {
     // in the top layer, above anything in the page)
     const host = target?.closest('dialog[open]') || document.body;
     if (card.parentElement !== host) host.append(card);
+    // (round 137, tour137) a row of a menu in the top layer (#menu): the ring and the card go there too, above it
+    const top = Boolean(target?.closest?.('#menu, #menu-fly, #menu-fly2'));
     if (target) {
       if (!ring) { ring = el('div', { class: 'tour-ring', 'aria-hidden': 'true' }); }
       if (ring.parentElement !== host) host.append(ring);
+      ring.hidden = false;
+      lift(ring, top); lift(card, top);
       placeRing(ring, target);
       ro?.disconnect(); ro = new ResizeObserver(reflow); ro.observe(target);
       setTimeout(reflow, 320); // (round 64, newtour64) a panel that slides in: the ring and card follow once it has settled
+      if (target.closest('.mb-menu, #menu')) setTimeout(reflow, 700); // (round 137, tour137) a menu row: once the menu's pop-in has played
       // (round 64, newtour64) clicking the ringed control is doing it for real (tour.onTargetClick); with step.clickNext the
       // tour follows to the next step by itself
       unhookClick();
@@ -170,8 +187,30 @@ const Tour = (() => {
         const fn = () => { unhookClick(); if (cur !== me || me.i !== i) return; try { tour.onTargetClick?.(step); } catch { /* progress is a convenience */ } if (!step.clickNext) return; setTimeout(() => { if (cur !== me || me.i !== i) return; if (i === me.steps.length - 1) stop({ done: true }); else show(i + 1); }, 450); };
         t.addEventListener('click', fn); clickHook = { t, fn };
       }
-    } else { ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); }
+    } else { ring?.remove(); ring = null; ro?.disconnect(); unhookClick(); lift(card, false); }
     placeCard();
+  }
+  // (round 137, tour137) above a top-layer menu, or back down
+  function lift(node, on) {
+    if (!node) return;
+    try {
+      if (on) { node.setAttribute('popover', 'manual'); node.classList.add('tour-top'); if (node.matches(':popover-open')) node.hidePopover(); node.showPopover(); } else if (node.hasAttribute('popover')) { if (node.matches(':popover-open')) node.hidePopover(); node.removeAttribute('popover'); node.classList.remove('tour-top'); }
+    } catch { /* not connected */ }
+  }
+  // (round 137, tour137) Show me: the step's own demo; a modal it opened takes the card in (else the card sits under it)
+  async function demo(step) {
+    const me = cur;
+    me.demoed = me.i;
+    let said = null;
+    try { said = await step.demo(); } catch (err) { console.warn('tour demo', err); said = typeof calmError === 'function' ? calmError(err) : String(err?.message || err); }
+    if (cur !== me || !card) return;
+    const d = [...document.querySelectorAll('dialog[open]')].find((x) => x.matches(':modal'));
+    if (d && card.parentElement !== d) {
+      lift(card, false); d.append(card);
+      d.addEventListener('close', () => { if (card && card.parentElement === d) { document.body.append(card); placeCard(); } }, { once: true });
+    }
+    placeCard();
+    if (typeof said === 'string' && said) toast(said, { timeout: 3200 });
   }
   // start (or pick up) a tour: { restart } starts at step 1
   function start(name, { restart = false } = {}) {

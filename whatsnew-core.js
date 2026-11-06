@@ -36,6 +36,7 @@ const WhatsNewCore = (() => {
       .replace(/`([^`]*)`/g, '$1')
       .replace(/(^|\s)\/([a-z][\w-]{2,})\b/g, '$1$2') // (round 59) a bare /command in a sentence ("when /doctor finds…"): its plain word
       .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$|[,.;:])/g, '$1$2')
+      .replace(/\*\*/g, '') // (round 137, tour137) a bold cut by the end of its line (the bullet wraps: "**✦ Name these for" / "me**")
       .replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,;:.—-]+/, '').trim();
   }
   // one line: the first sentence, cut at a word when it's still long

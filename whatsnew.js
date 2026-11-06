@@ -73,6 +73,11 @@ const WhatsNew = (() => {
     h?.scrollIntoView({ block: 'start' });
   }
 
+  // (round 137, tour137) ◈ New in the Lab: one small button, a menu with the 2-minute tour and Lab features… (labtour137.js)
+  const labGo = (what) => { closeAll(); (window.Lazy ? Lazy.load('labtour137') : Promise.resolve()).then(() => (what === 'tour' ? LabTour.start() : LabTour.index())).catch((err) => toast(err.message, { type: 'error', timeout: 4000 })); };
+  const labBtn = () => el('button', { type: 'button', class: 'ghost small wn-lab', text: '◈ New in the Lab', title: 'A 2-minute tour of the Lab\'s new things, or the list of all of them',
+    on: { click: (e) => { const r = e.currentTarget.getBoundingClientRect(); showMenu(r.left, r.bottom + 4, [{ label: '◈ Show me (2-minute tour)', hint: 'a ring on each new control', action: () => labGo('tour') }, { label: 'Lab features…', hint: 'every new one, with Open', action: () => labGo('index') }]); } } });
+
   // ---------- the lines ----------
   function row(it) {
     const go = C.goFor(it, typeof AppSearchData !== 'undefined' ? AppSearchData : null);
@@ -107,6 +112,7 @@ const WhatsNew = (() => {
     closeCard();
     const foot = el('div', { class: 'wn-foot' },
       el('button', { type: 'button', class: 'small primary wn-full', text: 'Read the full notes', on: { click: () => fullNotes(d.to) } }),
+      labBtn(),
       j && goBack ? el('button', { type: 'button', class: 'ghost small up-back', text: '↶ Go back', title: `Go back to the version before this update (${j.from}): your chats and data stay`, on: { click: () => { closeCard(); goBack(); } } }) : null,
       el('span', { class: 'spacer' }),
       el('button', { type: 'button', class: 'ghost small wn-big', text: '⤢', title: 'Open it bigger', attrs: { 'aria-label': 'Open it bigger' }, on: { click: () => { closeCard(); open({ since: d.since }); } } }));
@@ -141,6 +147,7 @@ const WhatsNew = (() => {
       el('div', { class: 'wn-scroll' }, body(d)),
       el('div', { class: 'modal-buttons' },
         el('button', { type: 'button', class: 'ghost wn-full', text: 'Read the full notes', on: { click: () => fullNotes(d.to) } }),
+        labBtn(),
         el('span', { class: 'spacer' }),
         el('button', { type: 'button', class: 'primary', text: 'Done', autofocus: true, on: { click: () => dlg.close() } })));
     dlg.addEventListener('close', () => dlg.remove());

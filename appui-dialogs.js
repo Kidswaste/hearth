@@ -155,6 +155,8 @@ const AppUIDialogs = (() => {
           { label: 'Patch notes', hint: 'every change, round by round', action: () => { dialog.close(); Updater.patchNotes(); } },
           { label: 'What\'s new for me', hint: 'what fits how you work', action: run('/whats-new') },
           { label: 'Try what\'s new', hint: 'hands-on: rounds 61–63, 30–60 s each', action: run('/try') }, // (round 64, newtour64)
+          { label: '◈ What\'s new in the Lab', hint: 'a 2-minute tour', action: () => { dialog.close(); Lazy.load('labtour137').then(() => LabTour.start()).catch((err) => toast(err.message, { type: 'error' })); } }, // (round 137, tour137)
+          { label: 'Lab features…', hint: 'every new Lab feature, with Open', action: () => { dialog.close(); Lazy.load('labtour137').then(() => LabTour.index()).catch((err) => toast(err.message, { type: 'error' })); } }, // (round 137, tour137)
           // (round 37, updatesafe) after an update: back to the version before it, chats and data kept
           ...(Updater.status?.back ? [{ label: 'Go back to the previous version', hint: `before the last update (${Updater.status.back.from})`, action: () => { dialog.close(); Updater.goBack(); } }] : [])]); })),
       fold('updates', 'Updates and tips', 'Whether updates install by themselves, and whether tips show by themselves',

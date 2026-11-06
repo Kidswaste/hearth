@@ -1,0 +1,24 @@
+/* ◈ What's new in the Lab (round 137, tour137): the one-line note (a .speed-card, bottom left) and Lab features… */
+.speed-card.lt-note { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; width: auto; max-width: min(470px, calc(100vw - 24px)); padding: 6px 6px 6px 10px; }
+.lt-note .lt-nt { font-family: var(--font-head, inherit); font-size: 12.5px; color: var(--fh-gold, var(--accent)); white-space: nowrap; }
+.lt-note .spacer { flex: 1; }
+.lt-note button { white-space: nowrap; }
+
+.lt-index { width: min(620px, calc(100vw - 24px)); max-height: min(640px, calc(100vh - 24px)); display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; box-sizing: border-box; }
+.lt-index .modal-buttons { display: flex; align-items: center; gap: 8px; margin: 0; }
+.lt-index:not([open]) { display: none; }
+.lt-index .lt-head { display: flex; align-items: baseline; gap: 8px; }
+.lt-index .lt-head h2 { margin: 0; }
+.lt-index .spacer { flex: 1; }
+.lt-index .lt-q { width: 100%; box-sizing: border-box; }
+.lt-index .lt-scroll { overflow: auto; min-height: 0; flex: 1; }
+.lt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lt-row { display: grid; grid-template-columns: 22px 1fr auto auto; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--r-md, 7px); }
+.lt-row:hover { background: var(--hover); }
+.lt-ic { text-align: center; }
+.lt-text { display: flex; flex-direction: column; min-width: 0; }
+.lt-text b { font-weight: 600; }
+.lt-line { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.lt-round { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lt-none { padding: 10px 6px; }
+@media (max-width: 520px) { .lt-row { grid-template-columns: 18px 1fr auto; } .lt-round { display: none; } }
