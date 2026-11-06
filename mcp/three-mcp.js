@@ -92,7 +92,7 @@ const MORE_TOOLS = [
 const NODES_TOOL = { name: 'three_nodes', description: 'Node-graph layers (the Nodes view). command: layer <preset> (new layer) · presets · types · list · add · link · unlink · set · rm · preset <p> · rebuild (syntax: help nodes).', inputSchema: obj({ command: { type: 'string' } }, ['command']) };
 
 // add_layer stays a command (older habits keep working) but is described as its own tool now
-const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'play', 'brief', 'map_song', 'perform', 'help'];
+const DO_CMDS = ['layers', 'batch', 'contact_sheet', 'input', 'undo', 'crew', 'select_layer', 'add_layer', 'update_layer', 'remove_layer', 'keyframes', 'animate', 'timeline', 'timeline_edit', 'looks', 'notes', 'references', 'triggers', 'media_info', 'load_media', 'set_frame', 'new_sketch', 'run', 'task', 'footage', 'sequence', 'motion', 'model', 'comp', 'make', 'asset', 'particles', 'shader', 'type', 'physics', 'autoedit', 'loop', 'material', 'perf', 'play', 'brief', 'map_song', 'perform', 'blocks', 'help'];
 // (round 25, diet) three_do names its commands, grouped; each one's details come from three_do help <cmd> (DO_HELP,
 // MORE_TOOLS, the guide topics), answered here without a hub call. Was ≈ 370 tokens per message.
 const DO_TOOL = {
@@ -103,7 +103,7 @@ batch {ops: [{cmd, ...}]} · undo {force} · run {command} (a chat command)
 Look: contact_sheet {count|times} · input {actions} play-test · play {game, script}
 Layers: layers select_layer update_layer remove_layer keyframes animate looks references
 Time: timeline timeline_edit triggers media_info load_media footage sequence autoedit loop map_song perform
-Make: new_sketch set_frame model motion particles shader type physics asset comp crew make task notes`,
+Make: new_sketch set_frame model motion particles shader type physics blocks asset comp crew make task notes`,
   inputSchema: { type: 'object', properties: { cmd: { type: 'string' } }, required: ['cmd'] },
 };
 // the commands that have no own tool in full mode: their help line (round 25)
@@ -122,6 +122,7 @@ const DO_HELP = {
   looks: 'looks {action: list | save {name} | apply {name} | delete {name} | project {strength: subtle|full, layer, keepLocked: true}}: saved slider looks per layer; project puts the project\'s palette (the owner\'s pick, the moodboard\'s or the brief\'s) on the scene\'s color sliders and material looks, no code change, one undo step.', // (round 129, looks129)
   map_song: 'map_song {apply, plan: {cues: [{time, name, looks: [{layer, name}]}], keys: [{layer, property, keys: [{time, value, ease}]}], links: [{layer, slider, band: kick|snare|…}]}}: the scene mapped to the loaded song (cues on the sections, drop moves on real sliders, saved looks per section, kick / snare links), shown to the owner as ghosts; plan replaces the proposal; apply keeps it (one undo step).', // (round 130, songmap130)
   perform: 'perform {setup: {cues: [names] | {"1": name}, looks: [names] | {q: name}, layer, quant: now|beat|bar, note}}: a set for the owner\'s live ◉ Perform mode (keys 1–9 jump to cues, Q W E… play looks, on the beat or bar); the owner reviews it before it is used; the scene never changes. No args: what is on the keys.', // (round 131, perform131)
+  blocks: 'blocks {chain: [{block, values}] bottom → top}: 🧩 ready-made blocks (noise, bloom, trails, kaleido, particles, displace, chromatic, grain, pixelate, mirror, ramp, strobe, the owner\'s my-…) added above the selected layer as layers / filter layers, colors from the palette, one undo step; no chain: the list with each block\'s sliders.', // (round 134, blocks134)
   material: 'material {op: list | set {layer, preset, color: #hex, shine: 0–1, part: object path (none: whole layer)} | off {layer, part} | info}: a material look (chrome, glass, gold, plastic, velvet, neon, toon, wireframe…) on a 3D layer or one object, without code; kept with the layer, renders follow.',
 };
 

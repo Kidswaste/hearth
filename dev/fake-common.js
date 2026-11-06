@@ -324,6 +324,18 @@ function lyricsPlan(msg) {
   const calls = Object.entries(keys).map(([k, list]) => ['three_do', { cmd: 'keyframes', layer, property: k, keys: list }]);
   return { mcpCalls: calls, text: `Styled the lyrics per section: ${Object.entries(picks).map(([a, b]) => `${a} ${b}`).join(', ')}.` };
 }
+// (round 134, blocks134) ✦ Combine for me (tools/three-blocks-core.js askText): picks noise → displace → bloom → strobe
+// (those listed), turns each one's first number slider to 70 % of its range, and builds them with ONE three_do blocks
+function blocksPlan(msg) {
+  if (!/^✦ Combine blocks · mood: "/m.test(msg)) return null;
+  const mood = (msg.match(/^✦ Combine blocks · mood: "([^"]*)"/m) || [])[1] || '';
+  const listed = new Map([...msg.matchAll(/^- (\w+) \((?:generator|effect)\): .*? · (.*)$/gm)].map((m) => [m[1], m[2]]));
+  const chain = ['noise', 'displace', 'bloom', 'strobe'].filter((id) => listed.has(id)).map((id) => {
+    const n = /(\w+) (-?[\d.]+)–(-?[\d.]+) \(/.exec(listed.get(id) || '');
+    return { block: id, values: n ? { [n[1]]: Math.round((Number(n[2]) + (Number(n[3]) - Number(n[2])) * 0.7) * 100) / 100 } : {} };
+  });
+  return { mcpCalls: [['three_do', { cmd: 'blocks', chain }]], text: `Combined ${chain.length} blocks for "${mood}": ${chain.map((c) => c.block).join(' → ')}.` };
+}
 function draftPlan(msg) {
   if (!/^Draft · build /m.test(msg)) return null;
   const palette = ((msg.match(/^Palette: (.+)$/m) || [])[1] || '').match(/#[0-9a-f]{6}/gi) || [];
@@ -456,6 +468,8 @@ function plan(prompt, engine = 'claude') {
   if (comp) return { p: { mcp: true, mcpCalls: comp.mcpCalls }, text: comp.text, thinking: '' };
   const lyr = lyricsPlan(msg); // (round 133, lyrics133)
   if (lyr) return { p: { mcp: true, mcpCalls: lyr.mcpCalls }, text: lyr.text, thinking: '' };
+  const blk = blocksPlan(msg); // (round 134, blocks134)
+  if (blk) return { p: { mcp: true, mcpCalls: blk.mcpCalls }, text: blk.text, thinking: '' };
   const jam = jamPlan(msg, engine);
   const dir = jam ? null : likePlan(prompt, msg) || draftPlan(msg) || directorPlan(prompt, msg, engine); // (round 129, draft129: the draft first; round 131, refmatch131: a layer like a picture)
   if (dir) {

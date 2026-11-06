@@ -119,6 +119,7 @@ const LabEasy = (() => {
   const moreItems = (extra = [], tail = []) => [
     ...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.item()] : []), // (round 34) 🩺 fix my scene (tools/three-doctor-hook.js)
     ...(typeof LabSpeedHook !== 'undefined' ? [LabSpeedHook.item()] : []), // (round 133, speed133) ⚡ Speed check (tools/three-speed-hook.js)
+    ...(typeof LabBlocksHook !== 'undefined' ? [LabBlocksHook.item()] : []), // (round 134, blocks134) 🧩 Blocks (tools/three-blocks-hook.js)
     ...extra,
     '-',
     { label: 'ℹ What\'s going on', hint: 'what it shows, what it hears', items: infoItems },
@@ -144,8 +145,8 @@ const LabEasy = (() => {
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
   function toolbarItems() {
-    // (round 133, speed133) ⚡ Speed check, beside 🩺 Fix my scene (tools/three-speed-hook.js)
-    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ...(typeof LabSpeedHook !== 'undefined' ? [LabSpeedHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabBatchHook !== 'undefined' ? [LabBatchHook.toolbarRow()] : []), ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    // (round 133, speed133) ⚡ Speed check, beside 🩺 Fix my scene (tools/three-speed-hook.js); (round 134, blocks134) 🧩 Blocks after it
+    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ...(typeof LabSpeedHook !== 'undefined' ? [LabSpeedHook.toolbarRow()] : []), ...(typeof LabBlocksHook !== 'undefined' ? [LabBlocksHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabBatchHook !== 'undefined' ? [LabBatchHook.toolbarRow()] : []), ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------

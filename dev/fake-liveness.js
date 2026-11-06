@@ -19,7 +19,7 @@ const WORDS = ['subagents', 'marathon', 'hugeout', 'longthink', 'quiet', 'busyqu
 function wants(msg) {
   // (round 35, bugbash2) Hearth's own structured asks (a flow to write, the setup check) list command descriptions: a
   // word like "quiet" in one of them ran a long-task scenario instead (flows: /flow-make got "The contact sheet is ready.")
-  if (/^(Flow · make|Hearth setup check|Write the project brief|Critique this Lab scene|Explain this Lab layer|Tweak this Lab layer|✦ Style the lyrics)\b/.test(String(msg).trimStart())) return null; // (round 128, aiprep128: the brief names the song's "quiet" sections) (round 130, critique130: and a critique its "quiet part") (round 132, explain132: a layer's code or the owner's words) // (round 133, lyrics133: its sections are "quiet" / "loud")
+  if (/^(Flow · make|Hearth setup check|Write the project brief|Critique this Lab scene|Explain this Lab layer|Tweak this Lab layer|✦ Style the lyrics|✦ Combine blocks)\b/.test(String(msg).trimStart())) return null; // (round 128, aiprep128: the brief names the song's "quiet" sections) (round 130, critique130: and a critique its "quiet part") (round 132, explain132: a layer's code or the owner's words) // (round 133, lyrics133: its sections are "quiet" / "loud") (round 134, blocks134: a mood can say "quiet")
   const got = {};
   for (const w of WORDS) {
     const m = msg.match(new RegExp(`\\b${w}(?::(\\d+))?\\b`, 'i'));
