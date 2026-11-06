@@ -1,0 +1,32 @@
+/* ⚡ Why is this slow? (round 133, speed133; tools/three-speed*.js): the card over the top right of the Lab preview, on
+   lookmatch's card parts (.lm-head / .lm-btn / .lm-acts), plain and still like 🩺 Fix my scene's. The chip beside the
+   stats line is in tools/three-lab.css (it shows before this file loads). */
+.spd-card {
+  position: absolute; top: 46px; right: 8px; z-index: 7; width: 360px; max-width: calc(100% - 16px); max-height: calc(100% - 56px);
+  display: flex; flex-direction: column; gap: 6px; padding: 7px 9px 8px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; scrollbar-width: thin;
+  background: color-mix(in srgb, var(--panel, #15181b) 95%, transparent); color: var(--text, #eae0d5); font-size: 12px;
+  box-shadow: 0 10px 30px #0008, 0 0 0 1px color-mix(in srgb, var(--fh-gold, #ffd75e) 14%, transparent); contain: layout paint;
+}
+.spd-card.busy .spd-body { opacity: 0.6; }
+.spd-head { display: flex; align-items: center; gap: 8px; }
+.spd-head .spd-fps { flex: 1; color: var(--muted, #9a948c); font-size: 11px; }
+.spd-body { display: flex; flex-direction: column; gap: 4px; }
+.spd-row { display: flex; flex-direction: column; gap: 3px; padding: 4px 6px; border-radius: 6px; border-left: 2px solid var(--fh-orange, #ff9d4d); background: color-mix(in srgb, var(--fh-gold, #ffd75e) 4%, transparent); }
+.spd-row.spd-px, .spd-row.spd-aa, .spd-row.spd-shadows, .spd-row.spd-fx { border-left-color: var(--fh-blue, #6db3ff); }
+.spd-row.spd-gl { border-left-color: var(--fh-red, #ff5d5d); }
+.spd-row.fixed { border-left-color: var(--fh-gold, #ffd75e); opacity: 0.8; }
+.spd-t { line-height: 1.35; overflow-wrap: anywhere; }
+.spd-why { color: var(--muted, #9a948c); }
+.spd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.spd-fix { color: var(--fh-gold, #ffd75e); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 45%, var(--line)); }
+.spd-gain, .spd-cost, .spd-note, .spd-sub { color: var(--muted, #9a948c); font-size: 11px; }
+.spd-done { color: var(--fh-gold, #ffd75e); font-size: 11px; }
+.spd-ok { padding: 4px 6px; color: var(--muted, #9a948c); }
+.spd-tog { align-self: flex-start; }
+.spd-table { display: flex; flex-direction: column; gap: 1px; font: 11px Consolas, monospace; }
+.spd-tr { display: grid; grid-template-columns: minmax(70px, 1.6fr) repeat(6, minmax(0, 1fr)); gap: 4px; }
+.spd-tr > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spd-th { color: var(--muted, #9a948c); }
+.spd-ai { display: flex; }
+.spd-ask { color: var(--fh-gold, #ffd75e); }
+.spd-foot { flex-wrap: wrap; }
