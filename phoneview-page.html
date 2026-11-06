@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- (round 136, phone136) 📱 See it on my phone: the page the phone opens from the QR code (phoneviewmain.js serves it
+     under its one-time token). A render plays full screen, looping; live shows the Lab's preview as it plays. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#000000">
+<title>Hearth</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #eee; font: 14px/1.35 -apple-system, system-ui, sans-serif; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #stage video, #stage img { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+  #bar { position: fixed; left: 0; right: 0; top: 0; padding: calc(env(safe-area-inset-top) + 8px) 12px 8px; display: flex; gap: 8px; align-items: center;
+    background: linear-gradient(#000a, #0000); transition: opacity .4s; }
+  #bar.hide { opacity: 0; pointer-events: none; }
+  #what { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; }
+  #what .dot { color: #ff5a3d; }
+  button { font: inherit; color: #fff; background: #ffffff22; border: 1px solid #ffffff33; border-radius: 16px; padding: 5px 11px; }
+  #note { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); transform: translateX(-50%); padding: 8px 14px; border-radius: 18px; background: #000c; border: 1px solid #ffffff2a; max-width: 86vw; text-align: center; }
+  #note[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="bar"><span id="what">Hearth</span><button id="sound" type="button" hidden>🔇 Sound</button><button id="full" type="button" title="Full screen">⛶</button></div>
+<div id="note" hidden></div>
+<script src="page.js"></script>
+</body>
+</html>

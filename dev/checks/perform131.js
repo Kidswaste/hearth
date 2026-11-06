@@ -68,11 +68,26 @@ renderer.setAnimationLoop(() => { mesh.rotation.y += 0.01 * P.intensity; mesh.sc
   presentBtn?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 200, clientY: 120 }));
   const row = await until(() => [...document.querySelectorAll('.mb-menu.lab-pop .menu-item')].find((b) => /Perform/.test(b.textContent)), 5000);
   row?.click();
+  const lw0 = await smoke({ loadwait: 'snap' }).catch(() => null); // (round 136, phone136) see the settle wait below
   await until(() => window.ThreePerform?.state.on && ThreePerform.strip?.isConnected, 15000);
+  // (round 136, phone136) the window settles after the strip shows: start() awaits requestFullscreen (or the
+  // whole-window fallback) and only then sets the screen's own rate. With another Electron check running at the same
+  // time that took longer than this read, so it saw full: false, fps: -1 (the app was fine: it passed alone). Wait for
+  // the window itself, load-aware (dev/loadwait.js through smoke): 10 s on a calm box, 40 s more when the box was busy.
+  const settled = () => hk.fps === 0 && (window.ThreePerform?.state.where === 'output' || document.fullscreenElement === hk.host || hk.host.classList.contains('perform-window'));
+  let settle = { ms: 0, load: null };
+  { const t0 = Date.now(); let ok = await until(settled, 10000);
+    if (!ok && lw0?.snap) {
+      const w = await smoke({ loadwait: 1, since: lw0.snap, ms: Date.now() - t0, budget: 2000 }).catch(() => null);
+      const busy = w?.judge === 'load' || (w?.loadavg?.[0] / Math.max(1, w?.cpus || 1)) >= 0.75;
+      settle.load = { judge: w?.judge, waited: w?.waited, loadavg: w?.loadavg?.[0] };
+      if (busy) ok = await until(settled, 40000);
+    }
+    settle.ms = Date.now() - t0; settle.ok = Boolean(ok); }
   const st1 = window.ThreePerform?.state;
   const chips = () => [...(ThreePerform.strip?.querySelectorAll('.pf-cue') || [])];
   step('▣ Present › ◉ Perform: full screen with the strip (cues on 1–9, looks on Q W), at the screen\'s own rate', Boolean(row) && st1?.on && hk.host.classList.contains('perform-on') && chips().length === Math.min(9, P.cues.length) && ThreePerform.strip.querySelectorAll('.pf-look').length === 2 && hk.fps === 0,
-    { where: st1?.where, keys: st1?.keys, fps: hk.fps, full: document.fullscreenElement === hk.host || hk.host.classList.contains('perform-window') });
+    { where: st1?.where, keys: st1?.keys, fps: hk.fps, full: document.fullscreenElement === hk.host || hk.host.classList.contains('perform-window'), settle });
   await until(() => !/getting/.test(ThreePerform.strip.querySelector('.pf-note')?.textContent || ''), 15000);
   const thumb = ThreePerform.strip.querySelector('.pf-thumb');
   step('…the next cue shows its name and its picture (made before the show)', /next: /.test(ThreePerform.strip.querySelector('.pf-next-name')?.textContent || '') && thumb && !thumb.hidden && /^data:image/.test(thumb.src),

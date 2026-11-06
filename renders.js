@@ -281,7 +281,7 @@ const Renders = (() => {
   function notifyDone(j) {
     if (!j.output) return;
     const what = `✓ ${R.base(j.output)}${j.size ? ` · ${R.fmtSize(j.size)}` : ''}${j.seconds != null ? ` · ${R.fmtSecs(j.seconds)}` : ''}${j.note ? ` (${j.note})` : ''}`;
-    noteNode(what, 'rq-done', actionsFor(j).slice(0, 4).map((a) => ({ label: a.short || a.label, title: a.label, fn: a.action })));
+    noteNode(what, 'rq-done', actionsFor(j).slice(0, 5).map((a) => ({ label: a.short || a.label, title: a.label, fn: a.action })));
     if (document.hidden) window.hub.flashWindow?.().catch?.(() => {});
   }
   function notifyFail(j) {
@@ -292,6 +292,7 @@ const Renders = (() => {
   // ---------- what you can do with a job ----------
   const revealLabel = R.revealLabel(PLAT);
   const openIn = (p) => MediaFile.open(p); // the system's own player (round 17: no player inside Hearth)
+  const phoneOpen = (p) => (window.Lazy ? Lazy.load('phoneview') : Promise.resolve()).then(() => PhoneView.render(p, { title: R.base(p) })).catch((err) => toast(err.message, { type: 'error' })); // (round 136, phone136)
   function actionsFor(j) {
     const out = j.output;
     const A = [];
@@ -300,6 +301,8 @@ const Renders = (() => {
       A.push({ label: revealLabel, short: IS_MAC ? 'Finder' : PLAT === 'win32' ? 'Explorer' : 'Folder', action: () => window.hub.fs.reveal(out) });
       A.push({ label: 'Copy path', short: 'Copy path', action: () => copyText(out, 'Path copied') });
       // (round 27, publishkit) platform checks, cover, words, a post folder
+      // (round 136, phone136) 📱 the finished video on the owner's phone over his Wi-Fi (phoneview.js: a QR, LAN only)
+      if (/\.(mp4|m4v|mov|webm)$/i.test(out)) A.push({ label: '📱 Open on my phone', short: '📱 Phone', action: () => phoneOpen(out) });
       if (window.PublishHooks?.isVideo(out)) A.push({ label: '📮 Ready to post…', short: '📮 Post', action: () => PublishHooks.open(out, { job: j }) });
     }
     return A;
