@@ -1452,6 +1452,7 @@ const ThreeMedia = (() => {
     function sectionsMenu(anchor) {
       menuAt(anchor, [
         st.analysis?.sections?.length ? ['✦ Map the scene to the song…', 'Cues, drop moves, looks and beat links as ghosts first (/map-song)', () => mapSong()] : false, // (round 130, songmap130)
+        st.analysis?.sections?.length ? ['🎭 Give each section its mood…', 'Calm intro, rising build, punchy drop: the mood dials and saved looks per section, as ghosts first (from the brief\'s tempo plan when it has one)', () => (window.Lazy ? Lazy.load('sectionmood') : Promise.resolve()).then(() => window.SectionMood?.open()).catch((err) => toast(err.message, { type: 'error' }))] : false, // (round 138, sectionmood138)
         ['🎤 Lyrics synced to the song…', 'Paste or open an .lrc, auto-time on the bars, tap to time, a lyrics layer', () => (window.Lazy ? Lazy.load('lyrics') : Promise.resolve()).then(() => window.LabLyrics?.open(anchor)).catch((err) => toast(err.message, { type: 'error' }))], // (round 133, lyrics133)
         ['Mark sections from the song', st.analysis?.sections?.[0]?.label ? `${st.analysis.sections.map((x) => x.label).join(' · ')}` : 'Intro / Build / Drop / Break / Outro from its loud and quiet parts', () => autoSections()],
         null,
@@ -3323,6 +3324,7 @@ const ThreeMedia = (() => {
       scrubSound: (on) => (on == null ? scrubOn : setScrubSound(on)), // (round 49, labscrub) the scrub sound on / off
       get av() { return { leadMs: st.playing && st.lead ? Math.round(st.lead * 1000) : null, log: avLog.slice() }; }, // (round 77, labaudio77)
       pushUndo(entry) { mapUndo.push({ hook: entry }); if (mapUndo.length > 80) mapUndo.shift(); paint(); },
+      undoMark: () => ({ n: mapUndo.length, top: mapUndo[mapUndo.length - 1] ?? null }), // (round 138, sectionmood138) LabTxn: was a timeline step made after a reply?
       // J / L shuttle speeds (2×, 4×, 8×) outside the speed menu; 1 goes back to normal
       shuttleRate(r) { const t = now(); st.rate = r > 0 ? r : 1; st.time = t; st.stampAt = performance.now(); send({ type: 'media', cmd: 'rate', value: st.rate }); rateSel.classList.toggle('on', st.rate !== 1); paint(); },
       get view() { return view ? { ...view } : null; },

@@ -37,17 +37,22 @@ const ReplyDiff = (() => {
 
   // ---------- taking changes back: one undo step each ----------
   async function stepTo(cur, target, label, words) {
-    await LabTxn.restore(target, { keepRefs: true });
-    // the step's "after" once the scene has settled (layers re-run, sliders read back), so ↶ finds it as it was left
-    const sig = LabTxn._test.sigOf;
-    let after = null;
-    for (let i = 0; i < 15; i += 1) {
-      await wait(200);
-      const a = await LabTxn.snap(cur.id);
-      if (after && sig(a) === sig(after)) break;
-      after = a;
-    }
-    return LabTxn.step({ who: 'You', before: cur, after, label, words });
+    // (round 138, sectionmood138) the step is recorded at once and completed when the scene has settled: an undo pressed
+    // in between waits for it ("settling…") instead of taking back the step before it
+    const r = LabTxn.reserve?.({ who: 'You', before: cur, label, words });
+    try {
+      await LabTxn.restore(target, { keepRefs: true });
+      // the step's "after" once the scene has settled (layers re-run, sliders read back), so ↶ finds it as it was left
+      const sig = LabTxn._test.sigOf;
+      let after = null;
+      for (let i = 0; i < 15; i += 1) {
+        await wait(200);
+        const a = await LabTxn.snap(cur.id);
+        if (after && sig(a) === sig(after)) break;
+        after = a;
+      }
+      return r ? r.done(after) : LabTxn.step({ who: 'You', before: cur, after, label, words });
+    } catch (err) { r?.cancel(); throw err; }
   }
   async function current(sc) {
     await needLab();
