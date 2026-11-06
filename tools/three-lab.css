@@ -35,6 +35,7 @@ html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge
 .tweaks .tw-shuffle { border-color: color-mix(in srgb, var(--ui-gold) 45%, var(--line)); color: var(--ui-gold); }
 .tweaks .tw-step { padding-left: 8px; padding-right: 8px; font-size: 15px; line-height: 1; flex: none; }
 .tweaks .tw-more { padding: 3px 8px; }
+.tweaks .tw-favs { padding: 3px 7px; color: var(--ui-gold, #f0c060); } /* (round 138, favs138) ★ the folded favourites panel */
 .tweaks button:disabled.tw-big { opacity: .45; }
 .tw-flash { animation: tw-flash .35s ease-out; }
 @keyframes tw-flash { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-gold) 53%, transparent); } to { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ui-gold) 0%, transparent); } }

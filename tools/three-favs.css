@@ -1,0 +1,29 @@
+/* ★ Favourite controls (round 138, favs138: tools/three-favs.js): the folded panel's compact column */
+.fv-pop { position: fixed; z-index: 986; padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; gap: 5px; max-height: 70vh; overflow: auto; border: 1px solid var(--line-hi, #443e35); background: var(--fh-pop, #0f1214); color: var(--text, #e8e2d6); box-shadow: 0 10px 30px #000a; font-size: 12px; }
+.fv-head { display: flex; align-items: baseline; gap: 6px; }
+.fv-head b { color: var(--ui-gold, #f0c060); }
+.fv-suggest { margin-left: auto; }
+.fv-sub, .fv-k { opacity: .65; font-size: 10.5px; }
+.fv-k { display: flex; align-items: center; gap: 4px; }
+.fv-k span { flex: 1; }
+.fv-row { display: flex; flex-direction: column; gap: 1px; padding: 3px 4px; border-radius: 7px; }
+.fv-row:hover { background: color-mix(in srgb, var(--text, #fff) 4%, transparent); }
+.fv-row.over { outline: 1px dashed var(--ui-gold, #f0c060); }
+.fv-row.gone { opacity: .5; }
+.fv-top { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.fv-grip { cursor: grab; opacity: .45; font-size: 10px; letter-spacing: -2px; padding: 0 3px 0 0; user-select: none; }
+.fv-layer { flex: 1; min-width: 0; font-size: 10px; opacity: .6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-music { font-size: 11px; color: var(--ui-cyan, #48ddff); }
+.fv-lock, .fv-kf, .fv-x { padding: 0 3px; min-width: 0; font-size: 10.5px; line-height: 1.3; }
+.fv-lock:not(.on) { opacity: .45; }
+.fv-kf.on { color: var(--ui-cyan, #48ddff); }
+.fv-line { display: flex; align-items: center; gap: 5px; }
+.fv-name { width: 64px; flex: none; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-in[type=range] { flex: 1; min-width: 50px; accent-color: var(--ui-gold, #f0c060); }
+.fv-color { width: 34px; height: 18px; padding: 0; border: 0; background: none; }
+.fv-sel { flex: 1; min-width: 0; font-size: 11px; }
+.fv-val { width: 40px; text-align: right; font-variant-numeric: tabular-nums; opacity: .8; font-size: 10.5px; }
+.fv-sugs { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line, #2c2a26); padding-top: 5px; }
+.fv-sug { display: grid; grid-template-columns: 52px auto 1fr auto; align-items: center; gap: 4px; }
+.fv-sug .fv-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-keep { padding: 0 6px; min-width: 0; }
