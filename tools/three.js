@@ -2479,6 +2479,7 @@ const ThreeLab = (() => {
         touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); },
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
         palette: () => current?.palette || [],
+        explain: () => (window.LabEasy?.explainLayer ? LabEasy.explainLayer(id) : (window.Lazy ? Lazy.load('explain') : Promise.resolve()).then(() => LabExplain.open({ layerId: id })).catch((err) => toast(err.message, { type: 'error' }))), // (round 132, explain132) the Sliders ⋯ › ✦ Explain this layer
         clock: () => (!(player.loaded && player.playing) && window.ThreeStage?.clock?.()) || ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
       });
