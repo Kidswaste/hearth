@@ -82,6 +82,7 @@ const LabSpeedHook = (() => {
   addEventListener('hearth:lab-gl', (e) => {
     const st = e.detail?.state;
     if (st !== 'lost' && st !== 'remaking') return;
+    if (window.LabSafe?.on?.(sp()?.sceneId?.())) return; // (round 147, safeopen147) Safe open's own banner says it
     S.gl = { at: Date.now(), state: st };
     chip('gl', 'The graphics card dropped the preview ·');
     if (typeof LabSpeed !== 'undefined') LabSpeed.glLost?.(S.gl);

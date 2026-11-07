@@ -2101,6 +2101,7 @@ const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip &&
 // preview filling a 4K / 5K screen) a slow moment steps the resolution down after one window instead of two
 const AD_BIG_PX = 6e6;
 const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } return px > AD_BIG_PX; };
+const SAFEOPEN = { on: false }; // (round 147, safeopen147) held at the lowest step (see the 'safe-open' message)
 const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0, mode: 'smooth', qWant: 1, qAt: 0, half: null, halfN: 0, aaWish: false, tierAt: 0, tierBack: 20000, tiers: 0, log: [] };
 const ADW = new Float64Array(1); // (round 142, smooth142) the last drawn frame's work (ms of render calls; −1: none), for Smooth's budget
 AD.core.tune(true); // (round 142, smooth142) Smooth is the default; the Lab says which (its 'quality' message)
@@ -16451,6 +16452,10 @@ addEventListener('message', async (e) => {
   // (round 51) the window's end of this port hears 'close' the moment this page's process dies (tools/three.js
   // lifeLine): kept for the page's life, nothing is ever sent on it
   if (msg.type === 'life' && e.ports?.[0]) { window.__lifePort = e.ports[0]; e.ports[0].start(); return; }
+  // (round 147, safeopen147) the Lab asks after a quiet stretch whether this page still answers (a hung page doesn't), and
+  // Safe open holds the preview at the lowest quality step until the owner opens the scene normally (tools/three-safeopen.js)
+  if (msg.type === 'ping') { post({ type: 'pong' }); return; }
+  if (msg.type === 'safe-open') { SAFEOPEN.on = Boolean(msg.on); if (AD.on) { AD.core.set(SAFEOPEN.on ? 99 : 0, { hold: SAFEOPEN.on }); quality = AD.core.step.scale; post({ type: 'adapt', ...adaptInfo() }); } return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('seq-')) { sqMessage(msg); return; }
   if (typeof msg.type === 'string' && msg.type.startsWith('ready-')) { rdyMessage(msg); return; } // (round 52, presentready)
   if (msg.type === 'stage-mask') { stageMask(msg); return; }

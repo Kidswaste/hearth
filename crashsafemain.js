@@ -226,6 +226,22 @@ function register(ipcMain, { dataDir: dd, getWin: gw } = {}) {
   ipcMain.handle('crashsafe:take', async () => { await prevRun.cleaning; return { replies: prevRun.replies, leftovers: prevRun.leftovers, orphans: [...replies.values()].filter((e) => e.gen !== gen), gen }; });
   ipcMain.handle('crashsafe:done', () => done());
   ipcMain.handle('crashsafe:check', (e) => checkPids(e.sender)); // (round 51) a preview page's port closed: is its process gone?
+  // (round 147, safeopen147) the Lab's preview page stopped answering while it should draw (a layer's endless loop, a build
+  // that never ends): its own process is ended (only a sandbox page's, never the window's), and the crash path above makes
+  // the page again (tools/three-safeopen.js decides, once, then Safe open). n: that page's load id.
+  ipcMain.handle('crashsafe:unstick', (e, n) => {
+    const wc = e.sender; const main = wc.mainFrame.osProcessId;
+    for (const f of wc.mainFrame.framesInSubtree || []) {
+      try {
+        if (f === wc.mainFrame || !/three-sandbox\.html/.test(f.url) || (n && !new RegExp(`[?&]n=${String(n).replace(/\D/g, '')}(&|$)`).test(f.url))) continue;
+        const pid = f.osProcessId;
+        if (!pid || pid === main || pid === process.pid) continue;
+        process.kill(pid, 'SIGKILL');
+        return true;
+      } catch { /* disposed */ }
+    }
+    return false;
+  });
   ipcMain.handle('crashsafe:ack', (_e, chatId) => ack(String(chatId || '')));
   ipcMain.handle('crashsafe:test', async (_e, op, arg) => { // (tests only: dev/checks/crashsafe.js)
     if (!TEST) return null;
