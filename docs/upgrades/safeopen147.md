@@ -51,7 +51,19 @@ Screenshot `/tmp/hearth-checks/safeopen147.png`.
 
 ## Results
 
-See the round's report.
+One batch (software GL, `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package`), all ✓: **safeopen147** (13 steps, 84 s),
+**layercost146** (190 s), **smooth142** (136 s), **unit:lazymanifest-test**, **unit:boot-test** (first screen unchanged:
+the new code is in the lazy lab group; preload gains one IPC name). The hang path: 2 hangs noticed, 2 page processes
+ended, Safe open with the page answering.
+
+## Risks / not done
+
+- A GPU reset that has nothing to do with the scene, while the window is on screen, counts as that scene's crash: two in
+  one open (or one, then the next open) give Safe open. Hidden-window resets are ignored.
+- Killing a hung preview process also restarts any other Lab page sharing that process (the warm page, backstage);
+  each comes back through its own crash path.
+- The suspect is "the layers not yet drawn when it crashed", or "the layer just brought back"; a crash mid-play with
+  every layer drawn names no suspect (all layers are held, scene order).
 
 ## For Codex
 
