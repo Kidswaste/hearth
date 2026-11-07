@@ -60,8 +60,20 @@ light, and **Particles**: 300k triangles with a Count slider, 2× pixels and a s
 
 ## Results
 
-See the round's report (check lines). First screen stays under the 1547 KB budget (the hook and layers rows grew by a
-few hundred bytes; the card and the cost view are lazy).
+All with `HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package` on software GL, so compare the numbers with each
+other, not with an RTX 4080.
+
+- **layercost146** ✓ (12 steps, 194 s). The fixture ran at about 1.7 fps:
+  - Particles ranked first at ≈ 307 to 588 ms of a ≈ 525 to 625 ms frame;
+  - **Fewer** took it from 588 → 227 ms (600k → 300k triangles, 1.7 → 3.2 fps);
+  - 4 s of play with the view on: 0 measures, 0 badge builds, 0 Layers rebuilds.
+- **speed133** ✓, **smooth142** ✓, **unit:lazymanifest-test** ✓ and **unit:boot-test** ✓, in the same batch.
+- **panel142**: in the batch it missed its "a click selects a layer in under 16 ms" timing by a hair (p50 16.9 ms at load
+  5.1). Alone it missed again at 16.1 ms (load 2.6). The code before this round, run alone, gave 14.8 ms, and this
+  round's code, run alone again, gave 13.4 ms ✓ (the whole check passed). So it is box noise: the only change on that
+  path is one `typeof` per row in the row signature.
+- The first screen stays under the 1547 KB budget: the chip's ▦ and the Layers row hook add a few hundred bytes, and the
+  card and the cost view are lazy.
 
 ## Risks / not done
 
