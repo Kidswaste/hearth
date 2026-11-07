@@ -157,12 +157,13 @@ try {
     await until(() => S().done.find((d) => d.id === `lt:${pid}:half` && d.now != null), 300000, 300); await idle();
     const pg = await page();
     const on = sp.get().lay?.[pid]?.half === true && pg?.lay?.[pid]?.half === true;
+    out.measure.halfOn = { set: sp.get().lay || null, page: pg?.lay || null, done: S().done.map((d) => d.id) };
     const u = LabSpeed.card.querySelector(`.lc-row[data-layer="${CSS.escape(pid)}"] .lc-undo1`);
     const k1 = S().measures;
     u?.click();
     await until(() => !S().done.some((d) => d.id === `lt:${pid}:half`), 20000); await remeasured(k1);
     const pg2 = await page();
-    step('undo: "½ res" sets this layer\'s preview resolution on the page; the card\'s ↶ puts the settings back exactly (one step)', h && on && u && JSON.stringify(sp.get()) === DEF && !ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.speed && pg2 && !Object.keys(pg2.lay || {}).length, { set: sp.get(), page: pg2 && pg2.lay });
+    step('undo: "½ res" sets this layer\'s preview resolution on the page; the card\'s ↶ puts the settings back exactly (one step)', h && on && u && JSON.stringify(sp.get()) === DEF && !ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.speed && pg2 && !Object.keys(pg2.lay || {}).length, { set: sp.get(), page: pg2 && pg2.lay, h: Boolean(h), on, onSet: out.measure.halfOn, u: Boolean(u) });
   }, 700000);
 
   // ---------- play ----------

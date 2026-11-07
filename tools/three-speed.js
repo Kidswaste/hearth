@@ -112,6 +112,7 @@ const LabSpeed = (() => {
     paint();
     toast(`⚡ ${label}`, { timeout: 5000, action: { label: 'Undo', fn: () => undo1(entry).catch(err) } });
     await settled(cmd);
+    for (let i = 0; i < 600 && S.busy; i += 1) await sleep(200); // (round 146) a click during a measure: measured again once that one ends
     const keep = S.analysis;
     try { const a = await measure(3000, toggle); entry.now = a.ok ? a.fps : null; if (lt && a.ok) entry.costNow = a.layers.find((L) => L.id === c.layer)?.cost ?? 0; } catch { S.analysis = keep; }
     paint();
@@ -126,6 +127,7 @@ const LabSpeed = (() => {
     paint();
     const { cmd } = await lab();
     await settled(cmd);
+    for (let i = 0; i < 600 && S.busy; i += 1) await sleep(200);
     await measure(3000, entry.toggle ?? (entry.layer ? 1 : 0)).catch(() => null);
     return true;
   }
