@@ -3105,7 +3105,7 @@ function statsRun(on) {
   statsTimer = realSetInterval(statsTick, 500);
 }
 function statsTick() {
-  if (pagePlaying() && !FB.on && (++statsPlayN & 1)) return; // (round 142, smooth142) while it plays: the stats once a second (the fps counted over that second), not twice
+  if (pagePlaying() && !FB.prof && !SPD.meas && (++statsPlayN & 1)) return; // (round 142, smooth142) while it plays: the stats (and the frame bar's rows) once a second (the fps counted over that second), not twice; a ⚡ measure or a profile keeps its two
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
   frames = 0;

@@ -208,8 +208,8 @@ try {
     const s2 = await smoothState();
     c.play(false);
     const R = (s2?.renderers || []).find((x) => x.shadows?.length) || null;
-    out.measure.high = { level: s2?.level, quality: s2?.quality, on: s2?.on, renderers: s2?.renderers };
-    step('high: Force high quality keeps the full pixel ratio (the scene\'s 2×), antialias and the shadow maps\' own size, while it plays', st && s2 && s2.on === false && s2.level === 0 && s2.quality === 1 && s2.renderers.every((x) => x.q === 1 && (x.base == null || Math.abs(x.pr - x.base) < 1e-3)) && R && R.aa === true && R.pr >= 2 && R.shadows.length === 3 && R.shadows.every((x) => x === 512), out.measure.high);
+    out.measure.forced = { level: s2?.level, quality: s2?.quality, on: s2?.on, renderers: s2?.renderers };
+    step('high: Force high quality keeps the full pixel ratio (the scene\'s 2×), antialias and the shadow maps\' own size, while it plays', st && s2 && s2.on === false && s2.level === 0 && s2.quality === 1 && s2.renderers.every((x) => x.q === 1 && (x.base == null || Math.abs(x.pr - x.base) < 1e-3)) && R && R.aa === true && R.pr >= 2 && R.shadows.length === 3 && R.shadows.every((x) => x === 512), out.measure.forced);
     const chip = Q.chip();
     step('high: the chip says "Quality: high"', chip?.textContent === 'Quality: high', chip?.textContent);
   });

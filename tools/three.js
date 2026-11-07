@@ -6088,6 +6088,7 @@ ${frag}\`,
     get healthHost() { return api.healthHost || null; }, // (round 80, laberrors80) tools/three-health.js
     get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
     get speed() { return api.speed || null; }, // (round 133, speed133) ⚡ the speed check (tools/three-speed*.js)
+    get quality() { return api.quality || null; }, // (round 142, smooth142) Smooth (auto) · Balanced · Force high quality
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
