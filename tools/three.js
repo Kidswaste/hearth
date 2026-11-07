@@ -221,6 +221,7 @@ const ThreeLab = (() => {
     const unhide = (on) => { for (const [k, v] of [['visibility', 'visible'], ['opacity', '0'], ['pointerEvents', 'none']]) frame.style[k] = on ? v : ''; };
     const queryNow = () => `?mode=${mode}&v=${store.get('three.version', ThreeData.VERSIONS[0])}${extraParams()}${typeof H !== 'undefined' && H.config?.settings?.gpuPower === 'saver' ? '&gpu=low' : ''}`; // (round 52, gpu52: /graphics power saver)
     const load = (fresh = false) => {
+      if (!gl.again && gl.lost) { gl.lost = false; clearTimeout(gl.timer); gl.timer = 0; } // (round 147, safeopen147) a new page on purpose: the lost one isn't waited for (nor made again)
       if (holding) unhide(false); holding = false; held = null; // (round 74) a new load is never held
       if (tweaks.size) flushTweaks(); // to the page they were meant for, as before
       // (round 37, labboot) the first load of a warmed preview: the page is (or is getting) up for this same query, so it
@@ -335,6 +336,7 @@ const ThreeLab = (() => {
       get warm() { return Boolean(warmed); }, // (round 112, labopen112) a page from tools/three-boot.js waits to be taken at the first load
       // a load is on its way (its runs wait in the queue): no need to load again
       get loading() { return Boolean(nonce) && !ready; },
+      get n() { return nonce; }, // (round 147, safeopen147) this load's id: a hung page's process is ended by it (crashsafe:unstick)
       // the page was loaded for another three.js version or pixel ratio than the one wanted now
       get stale() { return loadedWith !== queryNow(); },
     };
@@ -1201,12 +1203,15 @@ const ThreeLab = (() => {
     const Q_NAMES = { smooth: 'Smooth (auto)', balanced: 'Balanced', high: 'Force high quality' };
     const qGlobal = () => { const v = store.get('three.quality', null); return Q_MODES.includes(v) ? v : store.get('three.adapt', true) === false ? 'high' : 'smooth'; };
     const qMode = (sk = current) => (Q_MODES.includes(sk?.speed?.q) ? sk.speed.q : qGlobal());
+    // (round 147, safeopen147) Safe open (tools/three-safeopen.js): the preview of a scene that crashed at its lowest step, 1× pixels,
+    // no antialias / shadows, filters at half, some layers held back; in memory only, never saved with the scene
+    const safeOn = () => Boolean(current && window.LabSafe?.on?.(current.id));
     const aaAuto = new Set(); // scenes Smooth asked to draw without antialias in the preview from their next run (this session only)
     adaptOn = qMode(null) !== 'high';
     // (checks and /lab: ThreeLab.cmd().adapt(false) holds the adaptive steps off for this session, the scene's ⚡ fixes
     // kept: round 72's "Quality: full", which the speed check measures with)
     let adaptHeld = false;
-    const sendQuality = () => { const m = qMode(); box.send({ type: 'quality', mode: m }); if (adaptHeld && m !== 'high') box.send({ type: 'adapt', on: false }); adaptOn = m !== 'high' && !adaptHeld; return m; };
+    const sendQuality = () => { if (safeOn()) { box.send({ type: 'quality', mode: 'smooth' }); box.send({ type: 'safe-open', on: true }); adaptOn = true; return 'smooth'; } const m = qMode(); box.send({ type: 'quality', mode: m }); if (adaptHeld && m !== 'high') box.send({ type: 'adapt', on: false }); adaptOn = m !== 'high' && !adaptHeld; return m; };
     function setQuality(mode, { scene = true, quiet = false } = {}) {
       if (!Q_MODES.includes(mode)) return qMode();
       const aaWas = speedMsg().noAA;
@@ -3602,7 +3607,7 @@ const ThreeLab = (() => {
     const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
     // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
     // "no antialias" once the page asked for it on this scene (from its next run)
-    const speedMsg = () => { const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    const speedMsg = () => { if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
@@ -3682,6 +3687,7 @@ const ThreeLab = (() => {
       editor.syncScroll();
     }
     function onMessage(msg) {
+      window.LabSafe?.msg?.(msg); // (round 147, safeopen147) crashes, hangs and healthy frames, per scene
       if (HEALTH_MSG.test(msg.type)) window.LabHealth?.fromBox(msg, current?.id, 'screen'); // (round 80, laberrors80) the scene's health → its chats
       if(msg.type==='stack-drawn'&&!msg.noGl)workspaceDrawn=current?.id;
       workspaceMessage?.(msg);
@@ -4236,6 +4242,15 @@ const ThreeLab = (() => {
     const glWait = (ms = 8000) => (!glp.phase ? Promise.resolve(true) : new Promise((r) => { glp.waits.push(r); setTimeout(() => r(false), ms); }));
     api.gl = { wait: glWait, state: () => ({ phase: glp.phase, since: glp.phase ? glp.at : 0, stuck: glp.stuck, log: glp.log.slice(), box: box.gl, runaway: glp.runaway.slice() }) };
     previewHost.append(stall);
+    // (round 147, safeopen147) what Safe open needs from the Lab (tools/three-safeopen.js)
+    api.safe = {
+      host: previewHost, box, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
+      layers: () => layersOf().map((L) => ({ id: L.id, name: L.name || 'Layer' })),
+      run: (o) => run({ quiet: true, ...o }), resend: () => { sendQuality(); box.send(speedMsg()); },
+      glDone: () => glBack('safe open'), // (the preview made again for Safe open drew: the graphics card's wait ends)
+      watching: () => Boolean(box.ready && !box.onStage && !parkedNow && !player.recording && document.visibilityState === 'visible' && previewHost.offsetParent),
+      unstick: () => (window.hub?.crashsafe?.unstick ? window.hub.crashsafe.unstick(box.n).catch(() => false) : Promise.resolve(false)),
+    };
     api.healthHost = { host: previewHost, send: (m) => box.send(m), sceneId: () => current?.id || null }; // (round 80, laberrors80) a paused layer's note + ▶ Resume
     // (round 38, inputlatency) the safety check runs when the window is idle: it asks the page whether the preview is on
     // screen (a style and layout of the whole Lab), and on a timer it landed in the middle of slider drags and scrubs,
@@ -4250,6 +4265,7 @@ const ThreeLab = (() => {
     };
     let idleAsked = false;
     const stallTick = () => {
+      window.LabSafe?.tick?.(); // (round 147, safeopen147) a page that stopped answering while it should draw
       if (typeof requestIdleCallback !== 'function') { idleCheck(); return; }
       if (idleAsked) return;
       idleAsked = true;
@@ -4297,6 +4313,10 @@ const ThreeLab = (() => {
         return false;
       }
       if (!quiet) snapshot();
+      // (round 147, safeopen147) a scene opening is noted (its crash marker), and Safe open's held layers stay out of the preview
+      if (!hot && !sync) window.LabSafe?.opening?.(current, { again, fresh: !up });
+      const held = window.LabSafe?.held?.(current.id) || null;
+      const shown = held?.size ? layersOf().filter((L) => !held.has(L.id)) : layersOf();
       window.LabShader?.beforeRun?.(layersOf(), sel(), editor); // (round 23) ◇ shader layers: their sliders follow their uniforms
       if (!quiet) window.ThreeHistory?.changed?.('run'); // (round 23) a version for the time machine (tools/three-history.js)
       const target = hot ? layerById(layer || selId) : null;
@@ -4314,7 +4334,7 @@ const ThreeLab = (() => {
       }
       const codeOf = (L) => preps.get(L.id)?.code ?? L.code;
       // sync: which layers actually need to run again
-      const rerun = sync ? layersOf().filter((L) => ranCode.get(L.id) !== codeOf(L)) : hot ? [target] : layersOf();
+      const rerun = (sync ? layersOf().filter((L) => ranCode.get(L.id) !== codeOf(L)) : hot ? [target] : layersOf()).filter((L) => !held?.has(L.id));
       const gone = sync ? [...ranCode.keys()].filter((id) => !layerById(id)) : [];
       const fresh = !hot && !sync && !up; // a new page
       const partial = hot || sync;
@@ -4346,16 +4366,16 @@ const ThreeLab = (() => {
       const fx = (L) => (ranCode.has(L.id) ? 'xfade' : 'reveal');
       if (partial) {
         for (const id of gone) { box.send({ type: 'remove-layer', id, fade: true }); ranCode.delete(id); }
-        for (const L of layersOf()) if (!rerun.includes(L)) box.send({ type: 'layer-props', id: L.id, props: layerProps(L) });
+        for (const L of shown) if (!rerun.includes(L)) box.send({ type: 'layer-props', id: L.id, props: layerProps(L) });
         for (const L of rerun) { box.send({ type: 'hot-layer', layer: { ...spec(L), fx: fx(L) } }); building(L.id, true); }
       } else {
         // (a warm run of another scene than this one, e.g. the chat on screen owns another: no cross-fade from it, as on a new page)
         // (round 73) a project opening swaps without the old picture: it lay under the opaque loading card, and taking it
         // read back every layer of the scene left (a few ms on a GPU, ≈ 0.1–0.4 s in software GL), in front of the new scene
-        box.send(fresh && !overWarm ? { type: 'run-layers', layers: layersOf().map(spec) } : { type: 'swap-layers', layers: layersOf().map(spec), fx: plainSwap ? '' : !overWarm || warmOf === current.id ? 'xfade' : '' });
+        box.send(fresh && !overWarm ? { type: 'run-layers', layers: shown.map(spec) } : { type: 'swap-layers', layers: shown.map(spec), fx: plainSwap ? '' : !overWarm || warmOf === current.id ? 'xfade' : '' });
         plainSwap = false;
         for (const id of [...builds.keys()]) if (!layerById(id)) building(id, false);
-        for (const L of layersOf()) building(L.id, true);
+        for (const L of shown) building(L.id, true);
       }
       if (!partial) { ranCode.clear(); ranRaw.clear(); }
       for (const L of rerun) { ranCode.set(L.id, codeOf(L)); ranRaw.set(L.id, L.code); }
@@ -4366,7 +4386,7 @@ const ThreeLab = (() => {
       if (fresh) box.send(capMsg());
       if (fresh) box.hold(false); // (round 74) a page preloaded at a project's click: its 'ready' now, with this scene's runs waiting
       ranOnce = true;
-      if (!partial && !quiet) scheduleThumb();
+      if (!partial && !quiet && !held) scheduleThumb(); // (round 147: never a picture of a scene with layers held back)
       if (!quiet) dispatchEvent(new CustomEvent('hearth:lab-ran', { detail: { id: current.id, partial } })); // (round 34) 🩺 the blank-frame hint (tools/three-doctor-hook.js)
       return true;
     }
@@ -6142,6 +6162,7 @@ ${frag}\`,
     get present() { return api.present || null; }, // (round 52, gamemode) the player (its song pauses while a game plays)
     get tm() { return api.tm || null; }, // (round 23) tools/three-history*.js
     get shaderHost() { return api.shaderHost || null; }, // (round 23) tools/three-shader.js: the code editor, its errors, the selected layer
+    get safe() { return api.safe || null; }, // (round 147, safeopen147) Safe open (tools/three-safeopen.js)
     get healthHost() { return api.healthHost || null; }, // (round 80, laberrors80) tools/three-health.js
     get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
     get speed() { return api.speed || null; }, // (round 133, speed133) ⚡ the speed check (tools/three-speed*.js)

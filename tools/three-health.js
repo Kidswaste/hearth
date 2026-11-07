@@ -23,7 +23,7 @@ const LabHealth = (() => {
   const keyOf = (r) => `${r.layer || ''}|${r.line || ''}|${r.message}`;
   const S = () => (typeof ThreeLab !== 'undefined' ? ThreeLab.scenes : null);
   const everyFrame = (r) => Boolean(r.paused || (r.kind === 'runtime' && r.count >= 30 && r.count / Math.max(0.5, (r.last - r.first) / 1000) >= 15));
-  const active = (r, now = Date.now()) => r.kind !== 'gpu' && (r.paused || everyFrame(r) || r.kind === 'camera' || r.kind === 'shader' || now - r.last < RECENT);
+  const active = (r, now = Date.now()) => r.kind !== 'gpu' && (r.kind === 'safe' /* (round 147, safeopen147) while Safe open is on */ || r.paused || everyFrame(r) || r.kind === 'camera' || r.kind === 'shader' || now - r.last < RECENT);
 
   // ---------- what the preview pages say ----------
   function layerOf(sceneId, id) {
