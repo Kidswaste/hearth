@@ -124,7 +124,12 @@ await state('song');
   const want = { 'Layers & sliders': ['⚡', 'Sliders'], Console: ['›_', 'Console'], Present: ['▣', 'Present'] };
   const bad = [];
   for (const [f, [ic, name]] of Object.entries(want)) {
+    // (round 143, lab143) ›_ Console and ✥ Edit sit in ⚙ Inspect ▾'s tray: the same buttons, checked with the tray out
+    const folded = [...lab().querySelectorAll(`.three-toolbar .rg-tray [data-feature="${f}"]`)][0];
+    const F = folded && window.LabRegroup?.folds.find((x) => x.tray.contains(folded));
+    if (F) LabRegroup.setOpen(F, true);
     const b = [...lab().querySelectorAll(`.three-toolbar [data-feature="${f}"]`)].find(vis);
+    if (F) LabRegroup.setOpen(F, false);
     if (!b || b.querySelector('.tb-ic')?.textContent !== ic || !(b.getAttribute('aria-label') || '').startsWith(name)) bad.push(f);
   }
   step('the View buttons each have an icon and one name (⚡ Sliders, ›_ Console, ▣ Present…)', !bad.length, bad);

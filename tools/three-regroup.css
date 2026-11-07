@@ -1,0 +1,83 @@
+/* (round 143, lab143) The Lab regrouped (tools/three-regroup.js) and its Forgeheart look. docs/upgrades/lab143.md
+   Cheap by design: CSS only, static scanlines, animations on transform / opacity only, all of them still while the
+   scene plays (html.lab-playing, round 142's smooth-first) and none under reduced motion (the system's or Hearth's
+   own Appearance › Motion: calm / off). Lab ⋯ › View & help › Lab look: Plain turns the look off (html[data-lablook]). */
+
+/* ---------- folds: a labelled button and its tray of real controls ---------- */
+.rg-fold { white-space: nowrap; position: relative; }
+.rg-fold .rg-fold-tx { pointer-events: none; }
+.rg-fold.rg-open { border-color: color-mix(in srgb, var(--fh-ember) 55%, var(--line)); color: var(--text); background: color-mix(in srgb, var(--fh-ember) 10%, transparent); }
+.rg-fold.on::after { content: ""; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--fh-ok); box-shadow: 0 0 6px var(--fh-ok); pointer-events: none; }
+.rg-tray {
+  position: fixed; z-index: 70; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  max-width: min(780px, calc(100vw - 12px)); border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--fh-ember) 28%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, #000 30%, var(--bg)), color-mix(in srgb, #000 45%, var(--bg)));
+  box-shadow: 0 14px 34px #000a, 0 0 0 1px #ffffff08 inset;
+  animation: rg-tray-in .14s ease-out;
+}
+.rg-tray[hidden] { display: none; }
+:is(.three-toolbar, .media-bar).rg-raised { position: relative; z-index: 80 !important; }
+.rg-tray.rg-up { animation-name: rg-tray-up; }
+@keyframes rg-tray-in { from { transform: translateY(-4px); } }
+@keyframes rg-tray-up { from { transform: translateY(4px); } }
+.rg-tray .rg-row, .media-bar .rg-tray .mb-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.media-bar .rg-tray .mb-grid { padding: 6px 0 0; margin: 0; border-top: 1px solid #ffffff0f; }
+.media-bar[data-size="compact"] .rg-tray .mb-grid { display: flex; }
+.rg-tray .rg-k { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); min-width: 34px; }
+.rg-inspect.rg-tray { flex-direction: row; }
+.media-bar.mb-empty .mb-g-tl,
+.media-bar.mb-footage-silent:not(.mb-all) .mb-g-tl,
+.media-bar.mb-clock:not(.mb-all) .mb-g-tl { display: none; }
+.media-bar .mb-main .mb-g-tl { padding: 2px 4px; }
+
+/* ---------- the Forgeheart look ---------- */
+html:not([data-lablook="plain"]) {
+  --lk-scan: repeating-linear-gradient(180deg, #ffffff09 0 1px, transparent 1px 3px);
+  --lk-rim: linear-gradient(90deg, transparent 2%, color-mix(in srgb, var(--fh-ember) 55%, transparent) 30%, color-mix(in srgb, var(--fh-ai) 55%, transparent) 70%, transparent 98%) top / 100% 1px no-repeat;
+  --lk-edge: color-mix(in srgb, var(--fh-ember) 22%, var(--line));
+}
+/* scanlines on the panel chrome (behind each panel's own content; never over the preview's picture) */
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) { position: relative; isolation: isolate; z-index: 1; }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: var(--lk-rim), var(--lk-scan), radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--fh-ai) 9%, transparent), transparent 55%), radial-gradient(120% 160% at 100% 100%, color-mix(in srgb, var(--fh-ember) 8%, transparent), transparent 60%);
+}
+html:not([data-lablook="plain"]) :is(.media-bar, .lk-merged .layers) { border-color: var(--lk-edge); }
+/* a slow glint drifting along the top edge of the timeline and the Layers & knobs head */
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head { position: relative; overflow: hidden; }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head::after,
+html:not([data-lablook="plain"]) .media-bar > .mb-handle::after {
+  content: ""; position: absolute; left: 0; top: 0; width: 38%; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--fh-ember), var(--fh-hot), var(--fh-ai), transparent);
+  opacity: .55; transform: translateX(-100%); animation: lk-glint 9s ease-in-out infinite; will-change: transform;
+}
+html:not([data-lablook="plain"]) .media-bar > .mb-handle { position: relative; overflow: hidden; }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle::after { animation-delay: -4.5s; }
+@keyframes lk-glint { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(270%); } }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b { letter-spacing: .14em; background: linear-gradient(90deg, var(--text), color-mix(in srgb, var(--fh-ember) 60%, var(--text))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* the ember playhead: a warm core and a soft halo that breathes while the song is stopped */
+html:not([data-lablook="plain"]) .media-bar .mb-playhead:not(.mini) { background: linear-gradient(180deg, #fff, var(--fh-gold-hi, #ffe7a8) 30%, var(--fh-ember)); box-shadow: 0 0 6px color-mix(in srgb, var(--fh-ember) 70%, transparent); }
+html:not([data-lablook="plain"]) .media-bar .mb-playhead:not(.mini)::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -3px; width: 8px; pointer-events: none; border-radius: 4px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-ember) 45%, transparent), transparent);
+  animation: lk-breathe 2.8s ease-in-out infinite;
+}
+@keyframes lk-breathe { 0%, 100% { opacity: .25; } 50% { opacity: .9; } }
+/* the selected layer, the lit toolbar buttons and the open fold: ember accents */
+html:not([data-lablook="plain"]) .lk-merged .ly-row.on { box-shadow: inset 2px 0 0 var(--fh-ember); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-ember) 12%, transparent), transparent 70%); }
+html:not([data-lablook="plain"]) .three-toolbar .tb-iconic.on { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fh-ai) 45%, transparent), 0 0 12px -3px var(--fh-ai); }
+html:not([data-lablook="plain"]) .rg-tray { background-image: var(--lk-scan), linear-gradient(180deg, color-mix(in srgb, #000 30%, var(--bg)), color-mix(in srgb, #000 45%, var(--bg))); }
+html:not([data-lablook="plain"]) .rg-tray::before { content: ""; position: absolute; left: 10px; right: 10px; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--fh-ember), var(--fh-ai), transparent); opacity: .8; pointer-events: none; }
+html:not([data-lablook="plain"]) .media-bar .mb-g-tl, html:not([data-lablook="plain"]) .media-bar .tb-group[data-cat="Beat"] { position: relative; }
+
+/* while the scene plays: every loop of the look holds still (smooth playback first, round 142) */
+html.lab-playing :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead)::after { animation-play-state: paused; }
+html.lab-playing .media-bar .mb-playhead:not(.mini)::after { opacity: .5; }
+/* reduced motion: the system's, and Hearth's own Motion setting (calm / off) */
+@media (prefers-reduced-motion: reduce) {
+  :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead)::after, .rg-tray { animation: none !important; }
+}
+:root:is([data-motion=calm], [data-motion=off]) :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead)::after,
+:root:is([data-motion=calm], [data-motion=off]) .rg-tray { animation: none !important; }
+:root:is([data-motion=calm], [data-motion=off]) .media-bar .mb-playhead:not(.mini)::after { opacity: .5; }

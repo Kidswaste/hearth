@@ -663,6 +663,7 @@ const ThreeLab = (() => {
           ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
           ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
           ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
+          ...(window.LabRegroup ? [LabRegroup.lookRow()] : []), // (round 143, lab143) Lab look: Forgeheart · Plain
           ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
           ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
           ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : [])]], // (round 31) ✦ What can I do here? (quickstart-hooks.js)
@@ -3982,6 +3983,7 @@ const ThreeLab = (() => {
           { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
           { label: '🎞 Contact sheet', action: () => showSheet() },
           { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
+          ...(typeof LabExport !== 'undefined' ? [{ label: '⇪ Render this…', hint: 'a video of this scene', tip: 'The Render card: what to render (full song, the loop…), format, quality', action: () => LabExport.panel() }] : []), // (round 143, lab143) the Render card from the picture
           // round 7's capture (screenshots / recordings of Hearth itself, in the captures folder) from here too
           ...(typeof Capture !== 'undefined' ? ['-',
             { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
@@ -3993,6 +3995,7 @@ const ThreeLab = (() => {
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setQuality(adaptOn ? 'high' : 'smooth', { scene: false, quiet: true }); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } }, // (round 142: Smooth ⇄ Force high quality, as the default)
+          { label: 'Quality', hint: Q_NAMES[adaptHeld ? 'high' : qMode()], tip: 'How the preview draws while it plays (renders are always full quality)', items: () => [['smooth', 'steady frame rate · lighter before frames drop'], ['balanced', 'lighter only while frames keep dropping'], ['high', 'full resolution, antialias and shadows']].map(([k, hint]) => ({ label: Q_NAMES[k], hint, checked: k === 'high' ? qMode() === 'high' || adaptHeld : qMode() === k && !adaptHeld, action: () => setQuality(k) })) }, // (round 143, lab143) the Quality chip's three choices
           { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
@@ -4740,6 +4743,7 @@ ${code}
         el('span', { class: 'spacer' }),
         group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
+      window.LabRegroup?.apply({ toolbar, bar: player.el }); // (round 143, lab143) ⚙ Inspect ▾ · ♩ Beat ▾ · ⚡ Sync ▾: folds holding the real controls (tools/three-regroup.js)
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
