@@ -113,7 +113,10 @@ try {
     const pb = document.querySelector(`.ly-row[data-id="${CSS.escape(pid)}"] .lc-badge`);
     out.measure.badges = badges().map((b) => [b.closest('.ly-row').querySelector('.ly-name').textContent, b.textContent, b.className]);
     step('badge: each Layers row shows its cost while the view is on, Particles marked heavy', badges().length === 3 && pb && /lc-heavy/.test(pb.className) && /ms/.test(pb.textContent), out.measure.badges);
-    try { await smoke({ shot: '/tmp/hearth-checks/layercost146.png' }); } catch { /* optional */ }
+    const pr = document.querySelector('.tw-column')?.getBoundingClientRect(); const br = pb?.getBoundingClientRect();
+    out.measure.badgeBox = pr && br && { panel: [Math.round(pr.left), Math.round(pr.right)], badge: [Math.round(br.left), Math.round(br.right)] };
+    step('badge: the heavy badge is on screen inside the panel', pb?.checkVisibility() && br.width > 20 && br.left >= pr.left && br.right <= pr.right + 1, out.measure.badgeBox);
+    try { await smoke({ shot: '/tmp/hearth-checks/layercost146-badges.png' }); } catch { /* optional */ }
   });
 
   // ---------- lighten ----------
@@ -186,7 +189,8 @@ try {
     await until(() => !LabCost.on && badges().length === 0, 5000);
     step('hide: the view off (the card\'s button) and no badge left on any Layers row', !LabCost.on && badges().length === 0 && Boolean(b), { badges: badges().length });
   });
-  LabSpeed.close();
+  // the picture the runner takes at the end (/tmp/hearth-checks/layercost146.png): the view on, the card open
+  try { await LabCost.toggle(true); await idle(); await until(() => badges().length >= 3, 5000); LabSpeed.card?.querySelector('.lc-sec')?.scrollIntoView({ block: 'nearest' }); } catch { /* the picture only */ }
   c.adapt(adaptWas !== false);
 } catch (err) { step('ran', false, { error: String(err?.stack || err).slice(0, 800) }); }
 out.failed = out.steps.filter((s) => !s.ok).map((s) => s.name);
