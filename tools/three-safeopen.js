@@ -101,7 +101,7 @@ const LabSafe = (() => {
     const building = lays.filter((L) => !s?.held.has(L.id) && !S.drawn.has(L.id)).map((L) => L.id);
     const culprit = layer ? [layer] : s?.lastBack && Date.now() - s.backAt < 30000 ? [s.lastBack] : building.length && building.length < lays.length ? building : [];
     const costs = costsNow();
-    const m = mark(id, (x) => ({ ...(x || {}), name: a.sceneName(), open: x?.open || Date.now(), n: (x?.n || 0) + 1, kind, step: building.length ? 'building' : 'drawing', layers: culprit, at: Date.now(), ...(costs ? { costs } : {}) }));
+    const m = mark(id, (x) => ({ ...(x || {}), name: a.sceneName(), open: x?.open || Date.now(), n: (x?.n || 0) + 1, kind, step: culprit.length ? (building.length ? 'building' : 'drawing') : x?.step || (building.length ? 'building' : 'drawing'), layers: culprit.length ? culprit : x?.layers || [], at: Date.now(), ...(costs ? { costs } : {}) }));
     if (s) { // a layer brought back crashed it again: kept off, named
       for (const c of culprit) { s.held.add(c); s.back = s.back.filter((b) => b !== c); }
       if (culprit.length) { s.culprit = culprit; s.hit = true; }
