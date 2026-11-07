@@ -198,8 +198,10 @@ const LabExport = (() => {
     const pg = C.page(sz.w, sz.h, o0.ss || 1, { cap: gpuCap() });
     const alpha = o0.alpha ?? Boolean(f.alpha);
     const gifLong = o0.gifLong ?? (f.id === 'gif' && !o0.size ? 720 : 0); // (a GIF: drawn at the frame size, scaled to 720 by ffmpeg)
-    return { ...o0, gifLong, f, format: f.id, source, w: sz.w, h: sz.h, F, ss: pg.ss, blur, shutter: o0.shutter ?? 0.5, quality: o0.quality || 'high', alpha, seed: Number(o0.seed) || 1, capped: pg.capped, sound: o0.sound ?? Boolean(f.audio) };
+    return { ...o0, gifLong, f, format: f.id, source, w: sz.w, h: sz.h, F, ss: pg.ss, blur, shutter: o0.shutter ?? 0.5, quality: o0.quality || 'high', alpha, seed: Number(o0.seed) || 1, capped: pg.capped, sound: o0.sound ?? (f.id === 'loop' ? loopSound() : Boolean(f.audio)) };
   }
+  // (round 145, loopsound145) a perfect-loop MP4 carries the song's sound unless the card's ♪ chip turned it off
+  const loopSound = () => store.get('three.loop.sound', true) !== false;
   // queue it: one export at a time (the others wait in the render queue as "waiting")
   function render(o0 = {}) {
     const o = resolve(o0);
@@ -287,8 +289,10 @@ const LabExport = (() => {
       const sp = { step: 0, merge: 0, enc: 0, wait: 0, ipc: 0, ff: 0, bytes: 0 }; // (round 41, renderfast) where the time goes
       // the sound and the encoder's arguments (known before the first frame unless the loop is searched in the frames)
       const soundOf = () => {
-        if (!(o.sound && f.audio && !f.loop && SEQ()?.audioPlan)) return null;
-        const parts = SEQ().audioPlan(e, (T0 * F + N) / F, T0);
+        if (!(o.sound && f.audio && SEQ()?.audioPlan)) return null;
+        // (round 145, loopsound145) a perfect-loop MP4: the loop's span of the song (the same parts a range render takes,
+        // round 142), a little past its end for the seam's blend (C.loopSeam cuts it to the loop's frames exactly)
+        const parts = SEQ().audioPlan(e, f.loop && loop ? T0 + loop.L / F + 0.1 : (T0 * F + N) / F, T0);
         return C.audio(parts, { fx: typeof SeqCut !== 'undefined' ? SeqCut : null, duck: SEQ().duckOf?.(e) || null, from: T0 });
       };
       const argsOf = async (input) => C.args({ format: f.id, F, n: N, input, w: o.w, h: o.h, quality: o.quality, audio: soundOf(), loop: f.loop ? loop : null, encoders: await encodersOf(), alpha: o.alpha, gifFps: F, gifLong: o.gifLong || 0, hw: Boolean(o.hw) }); // (o.hw: round 52, presentready)
@@ -643,6 +647,7 @@ const LabExport = (() => {
         f.kind === 'scene' ? null : el('div', { class: 'sq-rp-row' }, el('b', { text: 'Quality' }), el('div', { class: 'sq-chips' }, [
           ...Object.entries(C.QUALITY).filter(() => f.kind === 'video').map(([k, q]) => chip(st.quality === k, q.label, '', () => { st.quality = k; paint(); })),
           chip(st.ss > 1, st.ss > 1 ? `Supersample ${st.ss}×` : 'Supersample', 'Drawn at 2× (or 3×, 4×) the pixels and boxed down: clean edges, fine lines, no shimmer. Click: off → 2× → 3× → 4×', () => { st.ss = st.ss >= 4 ? 1 : st.ss + 1; paint(); }),
+          f.id === 'loop' ? chip(loopSound(), loopSound() ? '♪ Sound on' : '♪ Sound off', 'The loop\'s span of the song under it, blended at the seam so it repeats without a click (no song: silent). Click: on ↔ off', () => { store.set('three.loop.sound', !loopSound()); paint(); }) : null, // (round 145, loopsound145)
           f.kind === 'still' ? null : chip(st.blur > 1, st.blur > 1 ? `Motion blur ${st.blur}` : 'Motion blur', 'Real motion blur: sub-frames across a 180° shutter, averaged. Click: off → 8 → 16', () => { st.blur = st.blur === 1 ? 8 : st.blur === 8 ? 16 : 1; paint(); }),
         ])),
         el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop && !lenNow().secs ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` },

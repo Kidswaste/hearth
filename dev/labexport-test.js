@@ -63,6 +63,9 @@ t('sound: the plan becomes inputs and one [aout] mix', () => {
   assert.ok(args.includes('[aout]') && args.includes('aac'));
   assert.strictEqual(args[args.indexOf('-map') + 1], '0:v'); // (no video filter: the pictures map straight)
   assert.ok(!C.args({ format: 'gif', F: 30, n: 30, input: 'i', w: 2, h: 2, audio: a, loop: { L: 30, X: 0 } }).args.includes('[aout]'));
+  // (round 145, loopsound145) the perfect-loop MP4 carries the loop's span of the song, cut to its frames at 48 kHz
+  const la = C.args({ format: 'loop', F: 24, n: 44, input: 'i', w: 2, h: 2, audio: a, loop: { L: 38, X: 6 } }).args;
+  assert.ok(la.includes('[aloop]') && la.join(' ').includes('end_sample=76000') && la.includes('aac'));
 });
 t('loops on bars', () => {
   const l = C.loopLen({ bars: 2, bpm: 120, bpb: 4, F: 30 });
