@@ -2,7 +2,7 @@
    crash, folded to a pill with –. Forgeheart tokens, round 143's look: dark iron glass, a thin ember-to-gold rim on top,
    gold for the way forward, nothing animated. */
 .lab-safe {
-  position: absolute; z-index: 6; left: 50%; top: 10px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 20px);
+  position: absolute; z-index: 6; left: 50%; top: 46px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 20px);
   display: flex; align-items: center; gap: 10px; padding: 7px 7px 7px 11px; border-radius: 11px;
   border: 1px solid color-mix(in srgb, var(--fh-ember, #ff7a1a) 32%, var(--line, #ffffff22));
   background: linear-gradient(90deg, transparent 3%, color-mix(in srgb, var(--fh-ember, #ff7a1a) 70%, transparent) 30%, color-mix(in srgb, var(--fh-gold, #ffd75e) 70%, transparent) 70%, transparent 97%) top / 100% 1px no-repeat,
@@ -18,14 +18,14 @@
 .lab-safe button { font: inherit; font-size: 11.5px; padding: 3px 9px; border-radius: 7px; cursor: pointer; border: 1px solid var(--line, #ffffff22); background: color-mix(in srgb, var(--text, #eae0d5) 5%, transparent); color: var(--text, #eae0d5); }
 .lab-safe button:hover { background: color-mix(in srgb, var(--text, #eae0d5) 11%, transparent); }
 .lab-safe button:focus-visible { outline: 2px solid var(--fh-gold, #ffd75e); outline-offset: 1px; }
-.lab-safe .ls-go { color: #1a1206; font-weight: 650; border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 70%, #000);
+.lab-safe button.ls-go { color: #1a1206; font-weight: 650; border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 70%, #000);
   background: linear-gradient(180deg, var(--fh-gold-hi, #ffe89a), var(--fh-gold, #ffd75e) 55%, var(--fh-gold-lo, #e0a93a)); box-shadow: inset 0 1px 0 #ffffff55; }
-.lab-safe .ls-go:hover { filter: brightness(1.06); background: linear-gradient(180deg, var(--fh-gold-hi, #ffe89a), var(--fh-gold, #ffd75e) 55%, var(--fh-gold-lo, #e0a93a)); }
-.lab-safe .ls-norm { color: var(--fh-gold-text, var(--fh-gold, #ffd75e)); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 32%, var(--line, #ffffff22)); }
-.lab-safe .ls-fold { padding: 3px 7px; color: var(--muted, #9a948c); border-color: transparent; background: none; }
+.lab-safe button.ls-go:hover { filter: brightness(1.06); background: linear-gradient(180deg, var(--fh-gold-hi, #ffe89a), var(--fh-gold, #ffd75e) 55%, var(--fh-gold-lo, #e0a93a)); }
+.lab-safe button.ls-norm { color: var(--fh-gold-text, var(--fh-gold, #ffd75e)); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 32%, var(--line, #ffffff22)); }
+.lab-safe button.ls-fold { padding: 3px 7px; color: var(--muted, #9a948c); border-color: transparent; background: none; }
 .lab-safe .ls-all { color: var(--fh-ok, #7cd992); font-size: 11px; padding: 0 4px; }
-.lab-safe.folded { padding: 0; border-radius: 9px; left: 10px; transform: none; }
-.lab-safe .ls-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 7px; border: 0; background: none; color: var(--fh-gold-text, var(--fh-gold, #ffd75e)); font: 600 11px Consolas, ui-monospace, monospace; }
+.lab-safe.folded { padding: 0; border-radius: 9px; left: 10px; top: 46px; transform: none; }
+.lab-safe button.ls-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 7px; border: 0; background: none; color: var(--fh-gold-text, var(--fh-gold, #ffd75e)); font: 600 11px Consolas, ui-monospace, monospace; }
 .lab-safe .ls-pill .ls-ic { font-size: 12px; }
 .lab-show .lab-safe { display: none; }
 @media (max-width: 760px) { .lab-safe { flex-wrap: wrap; } .lab-safe .ls-acts { width: 100%; justify-content: flex-end; } }

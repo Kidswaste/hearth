@@ -120,7 +120,7 @@ const LabSafe = (() => {
     const lays = A()?.layers() || [];
     S.safe = { id, name: name || 'This scene', why, kind: m?.kind || 'gpu', step: m?.step || null, culprit: (m?.layers || []).filter((x) => lays.some((L) => L.id === x)), costs: m?.costs || null, held: new Set(lays.map((L) => L.id)), total: lays.length, back: [], lastBack: null, backAt: 0, folded: false, hit: false, cost: false, reload: false, at: Date.now() };
     st.safe += 1;
-    try { window.LabSpeedHook?.hideChip?.(); } catch { /* not loaded */ }
+    try { if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.hideChip(); } catch { /* not loaded */ }
     paint(); note();
   }
   function order() {

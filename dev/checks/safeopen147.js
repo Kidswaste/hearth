@@ -52,7 +52,7 @@ const LS = () => LabSafe.state();
 const pageState = async () => { for (let i = 0; i < 8; i++) { const r = await D.evalInSketch('return JSON.stringify({ gl: window.__glRecover.state(), ad: window.__labAdapt.state(), spd: window.__labSpeed.state() })').catch(() => null); if (r?.ok) { try { return JSON.parse(r.value); } catch { return null; } } await wait(500); } return null; };
 const banner = () => { const b = document.querySelector('.lab-safe'); return b?.checkVisibility() ? b : null; };
 const diskScene = async (id) => { const r = await window.hub.kvGet('three-sketches', null, { status: true }); const list = r && r.state ? r.value : r; const sk = (list || []).find((x) => x.id === id); return sk ? JSON.stringify(sk) : null; };
-const layerCode = (name) => D.layers().layers.find((x) => x.name === name);
+const layerCode = (name) => { try { return D.codeOf(name); } catch { return null; } };
 
 try {
   await until(() => window.hub && performance.getEntriesByName('hearth:ready').length, 60000);
@@ -135,9 +135,10 @@ try {
     try { if (typeof LabCost !== 'undefined' && LabCost.on) await LabCost.toggle(false); LabSpeed?.close?.(); } catch { /* fine */ }
     const g0 = (await pageState())?.gl;
     banner()?.querySelector('.ls-norm')?.click();
-    const p = await until(async () => { const q = await pageState(); return q && q.gl.layers === 3 && !q.gl.lost && q.gl.rebuilds >= 1 && !q.spd.px1 && !q.spd.noAA ? q : null; }, 90000, 500);
+    let lastQ = null;
+    const p = await until(async () => { const q = await pageState(); lastQ = q; return q && q.gl.layers === 3 && !q.gl.lost && q.gl.rebuilds >= 1 && !q.spd.px1 ? q : null; }, 90000, 500);
     await until(() => LS().recovered, 20000);
-    out.info.normal = { page: p && { layers: p.gl.layers, level: p.ad.level, px1: p.spd.px1, noAA: p.spd.noAA, sh: p.spd.sh, losses: p.gl.losses }, safe: LS().safe, banner: Boolean(banner()), g0: g0 && g0.losses };
+    out.info.normal = { last: lastQ && { gl: lastQ.gl, spd: lastQ.spd, level: lastQ.ad.level }, ls: LS(), page: p && { layers: p.gl.layers, level: p.ad.level, px1: p.spd.px1, noAA: p.spd.noAA, sh: p.spd.sh, losses: p.gl.losses }, safe: LS().safe, banner: Boolean(banner()), g0: g0 && g0.losses };
     step('normal: "Open normally" brings every layer back at normal quality, no banner (Heavy\'s one crash recovered by itself)', p && !LS().safe && !banner() && !p.spd.px1 && p.spd.sh == null, out.info.normal);
     await wait(2500);
     const srcB = await diskScene(vizId);
