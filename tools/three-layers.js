@@ -539,7 +539,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       // (round 44) S: this layer alone (lit while it is; shows on hover otherwise)
       const solo = onSolo ? el('button', { class: `ly-solo${L.solo === L.id ? ' on' : ''}`, text: 'S', title: L.solo === L.id ? 'Show every layer again' : 'Show only this layer (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo ${L.name}` }, on: { click: (e) => { e.stopPropagation(); onSolo(L.id); } } }) : null;
       const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}${open ? ' ly-open' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { GU()?.pickGroup?.(null); if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(cur(), e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = id; if (foldSel === id && id === selectedId) { toggleOpen(id); return; } onSelect(id); } } },
-        exp, eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), pin, solo);
+        exp, eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), window.LabCost?.badge?.(id) || null, pin, solo); // (round 146, layercost146) ⚡ its measured cost, only while the cost view is on
       // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
       row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(id); LabEasy.layerMenu(e.clientX, e.clientY, cur(), menuHandlers(cur())); });
       dragFrom(row, 'layer', L.id);
@@ -569,7 +569,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     const rowCache = new Map(); // key → { sig, node }
     const knobBoxes = new Map(); // layer id → the box under its row
     const tagsOf = (L) => [isFilter(L.code) ? 'FX' : '', L.blend || '', L.opacity ?? 1, L.in ?? null, L.out ?? null];
-    const layerSig = (L, r) => JSON.stringify([L.name, L.visible === false, L.hid || '', L.color || '', tagsOf(L), L.solo || '', L.id === selectedId, r.gid || '', Boolean(r.last), picked.has(L.id), L.group?.color || '', isOpen(L.id), pins.has(L.id)]);
+    const layerSig = (L, r) => JSON.stringify([L.name, L.visible === false, L.hid || '', L.color || '', tagsOf(L), L.solo || '', L.id === selectedId, r.gid || '', Boolean(r.last), picked.has(L.id), L.group?.color || '', isOpen(L.id), pins.has(L.id), window.LabCost?.sig?.(L.id) || '']);
     const groupSig = (r) => JSON.stringify([r.g, r.vis, r.n, Boolean(r.solo), layers.filter((L) => L.group?.id === r.g.id).map((L) => [L.id, picked.has(L.id)])]);
     function cached(key, sig, make) {
       const c = rowCache.get(key);

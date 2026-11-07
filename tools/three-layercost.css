@@ -1,0 +1,41 @@
+/* ⚡ Which layer costs the frames? (round 146, layercost146; tools/three-layercost.js). The cost badge on a Layers row
+   (only while the cost view is on) and the ⚡ card's "Each layer's cost" list. Forgeheart tokens, round 143's look:
+   a thin ember rim, mono numbers, nothing animated (the badges are static between measures). */
+.lc-badge {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 17px; margin-left: auto; padding: 0 6px 0 5px;
+  border: 1px solid color-mix(in srgb, var(--lc-c) 40%, var(--line)); border-radius: 9px; cursor: pointer;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lc-c) 14%, transparent), color-mix(in srgb, var(--lc-c) 5%, transparent));
+  color: color-mix(in srgb, var(--lc-c) 75%, var(--text)); font: 600 10px/1 Consolas, ui-monospace, monospace; letter-spacing: .02em;
+  box-shadow: inset 0 1px 0 #ffffff0d;
+  --lc-c: var(--muted, #9a948c);
+}
+.lc-badge + .ly-pin, .lc-badge ~ .ly-solo { margin-left: 0; }
+.lc-mid { --lc-c: var(--fh-gold, #ffd75e); }
+.lc-heavy { --lc-c: var(--fh-ember, #ff7a1a); }
+.lc-badge.lc-top { box-shadow: inset 0 1px 0 #ffffff14, 0 0 8px color-mix(in srgb, var(--fh-ember, #ff7a1a) 35%, transparent); }
+.lc-badge:hover { border-color: color-mix(in srgb, var(--lc-c) 70%, var(--line)); }
+.lc-meter { position: relative; display: inline-block; width: 26px; height: 4px; border-radius: 2px; overflow: hidden; background: #ffffff14; font-style: normal; }
+.lc-meter > i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, color-mix(in srgb, var(--lc-c) 70%, transparent), var(--lc-c)); }
+.lc-light .lc-meter > i { background: color-mix(in srgb, var(--lc-c) 60%, transparent); }
+
+/* the card's list */
+.lc-sec { display: flex; flex-direction: column; gap: 3px; padding: 6px 7px 7px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--fh-ember, #ff7a1a) 20%, var(--line));
+  background: linear-gradient(90deg, transparent 2%, color-mix(in srgb, var(--fh-ember, #ff7a1a) 45%, transparent) 30%, color-mix(in srgb, var(--fh-ai, #a76bff) 45%, transparent) 70%, transparent 98%) top / 100% 1px no-repeat, color-mix(in srgb, #000 18%, transparent); }
+.lc-h { display: flex; align-items: baseline; gap: 8px; margin-bottom: 1px; }
+.lc-h b { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text); }
+.lc-h span { color: var(--muted, #9a948c); font-size: 10.5px; }
+.lc-row { display: flex; flex-direction: column; gap: 3px; padding: 3px 5px; border-radius: 6px; border-left: 2px solid color-mix(in srgb, var(--lc-c) 70%, transparent); --lc-c: var(--muted, #9a948c); }
+.lc-row.lc-mid { --lc-c: var(--fh-gold, #ffd75e); }
+.lc-row.lc-heavy { --lc-c: var(--fh-ember, #ff7a1a); background: color-mix(in srgb, var(--fh-ember, #ff7a1a) 6%, transparent); }
+.lc-row.lc-off { opacity: .7; }
+.lc-line { display: grid; grid-template-columns: minmax(60px, 1fr) minmax(60px, 1.1fr) auto; align-items: center; gap: 8px; }
+.lc-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-line .lc-meter { width: 100%; height: 5px; }
+.lc-line .lc-ms { font: 11px Consolas, ui-monospace, monospace; color: color-mix(in srgb, var(--lc-c) 70%, var(--text)); text-align: right; min-width: 82px; }
+.lc-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.lc-acts .lm-btn { padding: 1px 7px; font-size: 11px; }
+.lc-act { color: var(--fh-gold, #ffd75e); border-color: color-mix(in srgb, var(--fh-gold, #ffd75e) 40%, var(--line)); }
+.lc-act.lc-hide { color: var(--text); border-color: var(--line); }
+.lc-done { display: inline-flex; align-items: center; gap: 2px; color: var(--fh-ok, #7cd992); font-size: 11px; }
+.lc-done .lm-btn { padding: 0 5px; }
+.spd-costview.on { color: var(--fh-ember, #ff7a1a); border-color: color-mix(in srgb, var(--fh-ember, #ff7a1a) 50%, var(--line)); background: color-mix(in srgb, var(--fh-ember, #ff7a1a) 10%, transparent); }

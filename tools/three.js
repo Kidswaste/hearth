@@ -3602,14 +3602,14 @@ const ThreeLab = (() => {
     const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
     // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
     // "no antialias" once the page asked for it on this scene (from its next run)
-    const speedMsg = () => { const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    const speedMsg = () => { const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
       set(next, { quiet = false } = {}) {
         if (!current) return null;
         const was = speedOf(); const now = { ...was, ...(next || {}) }; const aaWas = speedMsg().noAA;
-        const clean = Object.fromEntries(Object.entries(now).filter(([k, v]) => (k === 'sh' ? v !== null && v !== undefined : Boolean(v))));
+        const clean = Object.fromEntries(Object.entries(now).filter(([k, v]) => (k === 'sh' ? v !== null && v !== undefined : k === 'lay' ? Boolean(v && Object.keys(v).length) : Boolean(v)))); // (round 146, layercost146) lay: { layerId: { half, sh0 } }, one layer's own preview lightening
         if (current.speed?.q) clean.q = current.speed.q; // (round 142, smooth142) the scene's quality choice stays
         if (Object.keys(clean).length) current.speed = clean; else delete current.speed;
         current.updatedAt = Date.now(); saveSoon();
@@ -3623,6 +3623,7 @@ const ThreeLab = (() => {
       name: (id) => layerById(id)?.name || null,
       userCap: () => { const v = fpsPref(); return v > 0 ? v : 0; },
       light: () => lightOn, frozen: () => frozenNow, parked: () => parkedNow,
+      layers: () => renderLayers(), // (round 146, layercost146) the cost badges on the Layers rows shown / hidden
     };
     // (round 142, smooth142) the preview's quality: get() → 'smooth' | 'balanced' | 'high' (this scene's, else the default);
     // set(mode, { scene }) keeps it for this scene (sketch.speed.q) and as the default
