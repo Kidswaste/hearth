@@ -17,6 +17,7 @@
   animation: rg-tray-in .14s ease-out;
 }
 .rg-tray[hidden] { display: none; }
+:is(.three-toolbar, .media-bar).rg-raised { position: relative; z-index: 80 !important; }
 .rg-tray.rg-up { animation-name: rg-tray-up; }
 @keyframes rg-tray-in { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes rg-tray-up { from { opacity: 0; transform: translateY(4px); } }
@@ -32,14 +33,15 @@
 
 /* ---------- the Forgeheart look ---------- */
 html:not([data-lablook="plain"]) {
-  --lk-scan: repeating-linear-gradient(180deg, #ffffff06 0 1px, transparent 1px 3px);
+  --lk-scan: repeating-linear-gradient(180deg, #ffffff09 0 1px, transparent 1px 3px);
+  --lk-rim: linear-gradient(90deg, transparent 2%, color-mix(in srgb, var(--fh-ember) 55%, transparent) 30%, color-mix(in srgb, var(--fh-ai) 55%, transparent) 70%, transparent 98%) top / 100% 1px no-repeat;
   --lk-edge: color-mix(in srgb, var(--fh-ember) 22%, var(--line));
 }
 /* scanlines on the panel chrome (behind each panel's own content; never over the preview's picture) */
 html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) { position: relative; isolation: isolate; z-index: 1; }
 html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers)::before {
   content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: var(--lk-scan), radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--fh-ai) 7%, transparent), transparent 55%), radial-gradient(120% 160% at 100% 100%, color-mix(in srgb, var(--fh-ember) 6%, transparent), transparent 60%);
+  background: var(--lk-rim), var(--lk-scan), radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--fh-ai) 9%, transparent), transparent 55%), radial-gradient(120% 160% at 100% 100%, color-mix(in srgb, var(--fh-ember) 8%, transparent), transparent 60%);
 }
 html:not([data-lablook="plain"]) :is(.media-bar, .lk-merged .layers) { border-color: var(--lk-edge); }
 /* a slow glint drifting along the top edge of the timeline and the Layers & knobs head */

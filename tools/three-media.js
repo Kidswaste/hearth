@@ -3234,8 +3234,8 @@ const ThreeMedia = (() => {
         'When it plays',
         region && !onLoop ? ['Play it during the loop', `${fmtMs(region.a)} – ${fmtMs(region.b)} · or double-click the bar`, () => trackHandlers.onChange?.(id, { in: region.a, out: region.b }, { final: true })] : false,
         tr.in != null || tr.out != null ? ['Play it for the whole song', 'No start or end', () => trackHandlers.onChange?.(id, { in: null, out: null }, { final: true })] : false,
-        ['Starts at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: now(), out: tr.out != null && tr.out > now() ? tr.out : null }, { final: true })],
-        ['Ends at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: tr.in != null && tr.in < now() ? tr.in : null, out: now() }, { final: true })],
+        now() > 0.05 ? ['Starts at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: now(), out: tr.out != null && tr.out > now() ? tr.out : null }, { final: true })] : false,
+        now() > 0.05 && now() > (tr.in ?? 0) ? ['Ends at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: tr.in != null && tr.in < now() ? tr.in : null, out: now() }, { final: true })] : false,
         row ? ['More for this layer…', 'Its right-click in Layers & knobs: rename, duplicate, effects, react…', () => rowNow()?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }))] : false,
       ].filter((x) => x !== false), { width: 300 });
     }

@@ -31,7 +31,7 @@ const LabRegroup = (() => {
       el('span', { class: 'rg-fold-tx', text: label }));
     tray.append(...nodes.filter(Boolean));
     const F = { button, tray, label, lit, open: false };
-    button.addEventListener('click', (e) => { e.stopPropagation(); setOpen(F, !F.open); });
+    button.addEventListener('click', (e) => { e.stopPropagation(); setOpen(F, !F.open, { kb: e.detail === 0 }); }); // (a key press: focus goes into the tray)
     // (the tray's own right-clicks stay its controls'; the fold button's right-click lists the same actions)
     button.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); showMenu(e.clientX, e.clientY, trayItems(F)); });
     tray.addEventListener('click', () => { if (F.lit) queueMicrotask(() => paintLit(F)); });
@@ -52,13 +52,15 @@ const LabRegroup = (() => {
     t.style.left = `${Math.round(x - o.left)}px`; t.style.top = `${Math.round(y - o.top)}px`;
     t.classList.toggle('rg-up', y < r.top);
   }
-  function setOpen(F, on) {
+  function setOpen(F, on, { kb = false } = {}) {
     if (on) for (const G of folds) if (G !== F && G.open) setOpen(G, false);
     F.open = Boolean(on);
     F.tray.hidden = !F.open;
+    // its panel rises above the preview's overlays while the tray is out
+    F.button.closest('.three-toolbar, .media-bar')?.classList.toggle('rg-raised', F.open);
     F.button.classList.toggle('rg-open', F.open);
     F.button.setAttribute('aria-expanded', String(F.open));
-    if (F.open) { place(F); (F.tray.querySelector('button:not([hidden]), input') || F.button).focus?.({ preventScroll: true }); }
+    if (F.open) { place(F); if (kb) (F.tray.querySelector('button:not([hidden]), input') || F.button).focus?.({ preventScroll: true }); }
     paintLit(F);
     return F.open;
   }

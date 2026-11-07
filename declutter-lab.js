@@ -111,6 +111,8 @@
     if (e.target.closest('canvas')) return null;
     return [
       { label: 'Play / pause', key: 'Space', action: () => labCtl()?.player?.toggle?.() },
+      // (round 143, lab143) ♩ Beat ▾ and ⚡ Sync ▾: what each fold holds (tools/three-regroup.js)
+      ...(window.LabRegroup ? LabRegroup.folds.filter((F) => bar.contains(F.button)).map((F) => ({ label: F.label.replace(/\s*▾$/, ''), items: () => LabRegroup.trayItems(F) })) : []),
       { label: '🎵 Load audio / video…', action: lab('music') },
       { label: '🎧 Live sound on / off', key: 'Shift+L', action: lab('live') },
       { label: '⚡ Triggers', action: lab('triggers') },
