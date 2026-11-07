@@ -735,6 +735,7 @@ let fpsCap = Number(new URLSearchParams(location.search).get('cap')) || 0; let c
 // the preview at most 1× pixel ratio, soft filters at half resolution.
 const capWant = { value: fpsCap, auto: false, focused: true };
 let autoCap = 0; let lightMode = false;
+let adTier = 0; // (round 142, smooth142) Smooth's steady frame rate when the screen's own is out of reach (240 → 120 → 60), see "smooth playback"
 const SPD = { px1: false, noAA: false, sh: null, fxHalf: false, shOff: false, gen: 0, skip: null, meas: null }; // (round 133, speed133) ⚡ the preview's speed settings, see "speed check"
 function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
@@ -744,6 +745,7 @@ function applyCap() {
   // in every app (Spotify, the DAW). 60 is a quarter of the work; Max fps is still the screen's own rate.
   if (capWant.auto) c = c ? Math.min(c, 60) : 60;
   if (capWant.modal) c = c ? Math.min(c, 30) : 30; // (round 72, labfps72) a modal dialog over the Lab: 30 at most, whatever the setting
+  if (adTier && capWant.focused) c = c ? Math.min(c, adTier) : adTier; // (round 142, smooth142) a steady 120 / 60 instead of a jittery 170
   if (RDY.lock) c = 0; // (round 52, presentready) a show draws at the screen's own rate
   if (c !== fpsCap) { fpsCap = c; capT = capNext = -1; }
 }
@@ -1407,7 +1409,7 @@ function instrument(renderFn) {
       this.__inQ = true; try { this.setPixelRatio(this.__basePR * q); } finally { this.__inQ = false; }
     }
     const rvBack = RDY.reveal && !this.__helper && scene?.isObject3D && !this.getRenderTarget?.() ? rdyReveal(scene) : null; // (round 59, readylab59) ▶ Play's prep frame: what the game hides for now drawn once under the card
-    if (paceSkip(this, scene, camera, EL)) { rvBack?.(); lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays)
+    if ((AD.half === this && adHalfSkip(this, EL)) || paceSkip(this, scene, camera, EL)) { rvBack?.(); lvBack?.(); cmBack?.(); return; } // (labpace: the picture it shows is the one it would draw: it stays) (round 142, smooth142: or Smooth's heaviest layer, every other frame)
     PACE.drawn += 1; PACE.lastDraw = frameTick;
     if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); } // (round 44, idlecpu: it moved: full rate at once)
     const t0 = realNow(); // (performance.now inside a sequence scene / a precomp is that scene's clock)
@@ -1423,6 +1425,7 @@ function instrument(renderFn) {
     if (EL && EL.drawnGen !== EL.gen) layerDrew(EL, true);
     FT60[0] = realNow() - t0;
     FT60[1] += FT60[0]; frameCalls += this.info?.render?.calls || 0;
+    if (!this.__msA) this.__msA = new Float64Array(1); this.__msA[0] = this.__msA[0] * 0.9 + FT60[0] * 0.1; // (round 142, smooth142) what this renderer costs a frame (Smooth's half-rate layer)
     if (FB.on && EL) fbRender(this, EL); // (round 64, framebar64: only while the Lab's stats line shows, see "frame budget bar")
     if (EL) EL.drewTick = frameTick; // (a filter above it merges again only when something under it drew)
     if (EL?.props.pcOf) pcCost(EL, FT60[0]);
@@ -1986,12 +1989,20 @@ function adaptCore(opt = {}) {
   const UP0 = opt.upWait ?? 4000; const UP_MAX = opt.upMax ?? 64000; const FLIP = opt.flip ?? 10000; const SETTLE = opt.settle ?? 600; const HELD = opt.held ?? 60000;
   const useful = opt.useful || (() => true); // (knob) → does the scene have anything it lowers
   const quick = opt.quick || (() => false); // (round 38, bigscreen) a huge preview (a 4K / 5K screen): one slow window is enough to step down
-  const S = { level: 0, frames: 0, slow: 0, win0: 0, winMin: Infinity, prevGap: 0, since: -1e9, calm0: 0, upWait: UP0, lastUp: -1e9, lastDown: -1e9, slowWins: 0, downs: 0, ups: 0, flips: 0, hold: false, min: 0, byFloor: false };
+  const S = { level: 0, frames: 0, slow: 0, win0: 0, winMin: Infinity, prevGap: 0, since: -1e9, calm0: 0, upWait: UP0, lastUp: -1e9, lastDown: -1e9, slowWins: 0, downs: 0, ups: 0, flips: 0, hold: false, min: 0, byFloor: false, sum: 0, near: 0, work: 0, wn: 0, why: '' };
+  // (round 142, smooth142) Smooth (the Lab's default): the same ladder, judged sooner and before frames drop. A window
+  // closes after 20 frames (or 0.7 s); a frame "near" the budget (over 1.1×) counts as half a slow one, and the frames'
+  // own work (ms of render calls, when the page gives it) over 85 % of the budget is a tight window too. One tight
+  // window steps down (two levels when frames take over 2.5× the budget); climbing back needs calm windows AND work under
+  // 60 % of the budget, one level at a time. tune(false): the old rules (Balanced), exactly as before.
+  let SM = false; let WIN = 45; let WIN_MS = 1500;
+  function tune(smooth) { SM = Boolean(smooth); WIN = SM ? 20 : 45; WIN_MS = SM ? 700 : 1500; S.frames = 0; S.slow = 0; S.near = 0; S.sum = 0; S.work = 0; S.wn = 0; S.winMin = Infinity; if (S.upWait === UP0 || S.upWait === 2500) S.upWait = SM ? 2500 : UP0; return SM; }
   // the next level down / up that changes something here
   const nextDown = (l) => { for (let k = l + 1; k < STEPS.length; k += 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return l; };
   const nextUp = (l) => { for (let k = l - 1; k > S.min; k -= 1) if (KNOB[k] === 'scale' || useful(KNOB[k])) return k; return S.min; };
-  function down(now) {
-    const to = nextDown(S.level);
+  function down(now, n = 1) {
+    let to = nextDown(S.level);
+    if (n > 1) { const t2 = nextDown(to); if (t2 !== to && to < FLOOR) to = Math.min(t2, FLOOR); }
     if (to === S.level) return 0;
     // a climb that came straight back down: the next climb waits twice as long
     if (now - S.lastUp < FLIP) { S.upWait = Math.min(UP_MAX, S.upWait * 2); S.flips += 1; }
@@ -2005,17 +2016,19 @@ function adaptCore(opt = {}) {
   // one frame gap (ms) against the time a frame should take (target). A window closes after 45 frames (or 1.5 s of slow
   // ones): null while it's open, then { share (of slow frames), winMin (the shortest gap), step: +1 down / −1 up / 0 }.
   // onFloor() is asked before going below the lowest resolution: true when the page took it another way (an fps cap).
-  function feed(gap, target, now, onFloor) {
+  function feed(gap, target, now, onFloor, work) {
     const hitch = gap > 250 && S.prevGap < 100; // (a reload, a hidden window: says nothing)
     S.prevGap = gap;
     if (hitch || gap > 3000) return null;
     if (!S.frames) S.win0 = now;
-    S.frames += 1; if (gap > target * 1.35) S.slow += 1;
+    S.frames += 1; if (gap > target * (SM ? 1.25 : 1.35)) S.slow += 1; else if (SM && gap > target * 1.1) S.near += 1;
+    S.sum += gap; if (work >= 0) { S.work += work; S.wn += 1; }
     S.winMin = Math.min(S.winMin, gap);
-    if (S.frames < 45 && !(S.frames >= 4 && now - S.win0 > 1500)) return null;
-    const share = S.slow / S.frames; const winMin = S.winMin;
-    S.frames = 0; S.slow = 0; S.winMin = Infinity;
+    if (S.frames < WIN && !(S.frames >= (SM ? 3 : 4) && now - S.win0 > WIN_MS)) return null;
+    const share = S.slow / S.frames; const winMin = S.winMin; const mean = S.sum / S.frames; const near = S.near / S.frames; const load = S.wn ? S.work / S.wn / target : -1;
+    S.frames = 0; S.slow = 0; S.winMin = Infinity; S.near = 0; S.sum = 0; S.work = 0; S.wn = 0;
     let step = 0;
+    if (SM) return feedSmooth(share, winMin, mean, near, load, now, onFloor);
     if (share >= 0.04) S.calm0 = now; // (headroom is counted from the last window with dropped frames)
     if (S.lastUp > S.lastDown && now - S.lastUp > HELD) S.upWait = UP0; // (the last climb held for a minute: climbs are quick again)
     if (S.hold) return { share, winMin, step };
@@ -2031,8 +2044,37 @@ function adaptCore(opt = {}) {
     }
     return { share, winMin, step };
   }
+  // (round 142, smooth142) one closed window in Smooth: { share, winMin, mean (ms), load (work / budget, −1 unknown),
+  // step, far (frames take over 1.7× the budget: a lower frame rate holds better than steps), stuck (the last step and
+  // still tight), why }
+  function feedSmooth(share, winMin, mean, near, load, now, onFloor) {
+    let step = 0; let stuck = false;
+    const tight = share > 0.12 || share + near * 0.5 > 0.3 || load > 0.85;
+    const calm = share < 0.02 && near < 0.1 && (load < 0 || load < 0.6);
+    if (!calm) S.calm0 = now;
+    if (S.lastUp > S.lastDown && now - S.lastUp > HELD) S.upWait = 2500;
+    const far = share > 0.5 && mean > S.target17;
+    if (S.hold) return { share, winMin, mean, load, step, far, stuck, why: S.why };
+    if (tight) {
+      S.slowWins += 1;
+      if (now - S.since >= 350) {
+        S.why = share > 0.12 ? 'frames dropping' : load > 0.85 ? 'frames close to the budget' : 'frames running late';
+        if (S.level === FLOOR && onFloor?.()) { S.since = now; S.slowWins = 0; } else {
+          step = down(now, share > 0.8 && mean > S.target25 ? 2 : 1);
+          if (!step) stuck = true;
+        }
+      }
+    } else {
+      S.slowWins = 0;
+      if (calm && S.level > S.min && now - S.since > S.upWait && now - S.calm0 >= Math.min(S.upWait, 2500)) { step = up(now); S.why = 'headroom'; }
+    }
+    return { share, winMin, mean, load, step, far, stuck, why: S.why };
+  }
   return {
-    STEPS, KNOB, feed,
+    STEPS, KNOB, feed, tune,
+    get smooth() { return SM; },
+    // (round 142) the budget's multiples the page measured against (set with each window's target, see the page's adaptQuality)
+    budget(target) { S.target17 = target * 1.7; S.target25 = target * 2.5; },
     get level() { return S.level; },
     get step() { return STEPS[S.level]; },
     set(level, { hold = false } = {}) { S.level = Math.max(0, Math.min(STEPS.length - 1, Math.round(Number(level) || 0))); S.hold = Boolean(hold); S.since = -1e9; S.frames = 0; S.slow = 0; S.slowWins = 0; },
@@ -2046,7 +2088,7 @@ function adaptCore(opt = {}) {
       S.min = m;
       return S.level;
     },
-    state: () => ({ level: S.level, ...STEPS[S.level], upWait: S.upWait, downs: S.downs, ups: S.ups, flips: S.flips, hold: S.hold, min: S.min }),
+    state: () => ({ level: S.level, ...STEPS[S.level], upWait: S.upWait, downs: S.downs, ups: S.ups, flips: S.flips, hold: S.hold, min: S.min, smooth: SM, why: S.why }),
   };
 }
 // </adapt-core>
@@ -2058,7 +2100,9 @@ const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip &&
 // preview filling a 4K / 5K screen) a slow moment steps the resolution down after one window instead of two
 const AD_BIG_PX = 6e6;
 const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } return px > AD_BIG_PX; };
-const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0 };
+const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0, mode: 'smooth', qWant: 1, qAt: 0, half: null, halfN: 0, aaWish: false, tierAt: 0, tierBack: 20000, tiers: 0, log: [] };
+const ADW = new Float64Array(1); // (round 142, smooth142) the last drawn frame's work (ms of render calls; −1: none), for Smooth's budget
+AD.core.tune(true); // (round 142, smooth142) Smooth is the default; the Lab says which (its 'quality' message)
 // full quality right now: a still / screenshot / recording, an offline render step, the export page, adapting off
 const adFull = () => !AD.on || fullRes() || SQ.off || XP_PAGE || RDY.lock; // (RDY.lock: a show, round 52)
 const adStep = () => (adFull() ? AD.core.STEPS[0] : AD.core.step);
@@ -2074,7 +2118,7 @@ const fullRes = () => shotPending || shotFull > 0 || recorder != null || recUnti
 let dispMs = 16.7; let capSince = 0; let capBack = 20000;
 // (round 60, gcchurn60) one kept function (a closure per frame before), told the frame's time through adNow
 let adNow = 0;
-function adCapInstead() { if (!capWant.auto || !capWant.focused || lightMode || autoCap || dispMs >= 12) return false; autoCap = 60; capSince = adNow; applyCap(); return true; }
+function adCapInstead() { if (AD.core.smooth) return adTierDown('lowest resolution'); if (!capWant.auto || !capWant.focused || lightMode || autoCap || dispMs >= 12) return false; autoCap = 60; capSince = adNow; applyCap(); return true; }
 function adaptQuality(gap) {
   if (document.hidden || parked || !AD.on || RDY.lock) return; // (RDY.lock: a show holds full quality, round 52)
   const target = AD.target || Math.max(dispMs, fpsCap ? 1000 / fpsCap : 0);
@@ -2084,20 +2128,136 @@ function adaptQuality(gap) {
   // (round 74, labdraw74) while a slider is being moved (and 1.2 s after), slow frames are the edit's own work (a
   // rebuilt shape, a recompiled look): Quality auto doesn't step down for them; it judges the frames once you let go
   if (now < (AD.editUntil || 0)) { AD.editSkips = (AD.editSkips || 0) + 1; return; }
-  const v = AD.core.feed(gap, target, now, adCapInstead);
+  // (round 142, smooth142) a lighter step goes at once (frames are late already); a sharper one waits for a quiet moment:
+  // a frame on time, at least 0.6 s after the last change (each pixel-ratio change re-sizes the canvases' buffers)
+  if (AD.qWant > quality && AD.qWant === AD.core.step.scale && gap <= target * 1.05 && now - AD.qAt > 600) { quality = AD.qWant; AD.qAt = now; }
+  const sm = AD.core.smooth;
+  if (sm) AD.core.budget(target);
+  const v = AD.core.feed(gap, target, now, adCapInstead, sm ? ADW[0] : undefined);
   if (!v) return;
   if (v.winMin > 4 && v.winMin < 60) dispMs = dispMs * 0.5 + v.winMin * 0.5;
-  quality = AD.core.step.scale;
-  if (v.step) post({ type: 'adapt', ...adaptInfo() });
+  if (sm) {
+    AD.qWant = AD.core.step.scale;
+    if (AD.qWant <= quality) { if (quality !== AD.qWant) AD.qAt = now; quality = AD.qWant; }
+    smoothAfter(v, target, now);
+  } else quality = AD.core.step.scale;
+  if (v.step) { if (sm) adLog(v.step > 0 ? 'down' : 'up', v.why); post({ type: 'adapt', ...adaptInfo() }); }
+  if (sm) return;
   if (!capWant.auto || !capWant.focused || lightMode) return;
   if (v.share < 0.04 && autoCap && AD.core.level === 0 && now - capSince > capBack) { autoCap = 0; capSince = now; capBack = Math.min(160000, capBack * 2); applyCap(); }
 }
-function adaptInfo() { const s = AD.core.state(); return { editing: performance.now() < (AD.editUntil || 0), editSkips: AD.editSkips || 0, on: AD.on, battery: PACE.battery, floor: s.min || 0, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold }; }
+function adaptInfo() { const s = AD.core.state(); return { editing: performance.now() < (AD.editUntil || 0), editSkips: AD.editSkips || 0, on: AD.on, battery: PACE.battery, floor: s.min || 0, level: s.level, scale: s.scale, fx: s.fx, shadow: s.shadow, parts: s.parts, covered: AD.cull, flips: s.flips, hold: s.hold, mode: AD.mode, why: s.why || '', tier: adTier, half: AD.half?.__layer || null, aaWish: AD.aaWish, shown: quality }; }
 function setAdapt(on) {
   AD.on = Boolean(on) && !XP_PAGE;
-  if (!AD.on) { AD.core.reset(); quality = 1; adCoverClear(); }
+  if (!AD.on) { AD.core.reset(); quality = 1; AD.qWant = 1; adCoverClear(); adSmoothClear(); }
   post({ type: 'adapt', ...adaptInfo() });
 }
+// ---------- smooth playback (round 142, smooth142) ----------
+// The Lab's quality choice (its 'quality' message, per scene with a global default, tools/three.js):
+//   smooth    (default) the adaptive ladder above judged sooner and before frames drop (adaptCore's tune(true)): the
+//             pixel ratio in steps, filters at half then a third of their size, shadow maps smaller, particles fewer;
+//             where the screen's rate is out of reach (frames over 1.7× the budget, or the lowest resolution not enough),
+//             a steady lower rate (240 → 120 → 60: adTier) instead of a jittery one, tried back up after a calm while;
+//             at the last step and still tight, the heaviest layer draws every other frame (AD.half); and once it had to
+//             go past the resolution steps it asks the Lab for "no antialias in the preview" from the scene's next run
+//             (aaWish: a context's antialias is fixed when it's made, never switched mid-play)
+//   balanced  the old rules (round 31's ladder as it was, Auto fps's 60 only)
+//   high      Force high quality: nothing adapts (full resolution, filters, shadows, particles); the Lab also sends the
+//             scene's ⚡ speed settings all off (antialias, 1× pixels, shadows, half-size filters) while it's on
+// Renders never see any of it: the export page (?xp=1) has AD off, stills / recordings draw at full size (fullRes).
+function adLog(what, why) { AD.log.push({ at: Math.round(realNow()), what, why: why || '', level: AD.core.level, tier: adTier, q: AD.qWant }); if (AD.log.length > 24) AD.log.shift(); }
+function adSmoothClear() { AD.half = null; AD.halfN = 0; if (adTier || autoCap) { adTier = 0; autoCap = 0; applyCap(); } }
+function setQualityMode(mode) {
+  const m = mode === 'high' || mode === 'balanced' ? mode : 'smooth';
+  if (m === AD.mode && AD.on === (m !== 'high')) return;
+  AD.mode = m;
+  AD.core.tune(m === 'smooth');
+  AD.core.reset(); quality = 1; AD.qWant = 1; AD.aaWish = false;
+  adSmoothClear();
+  setAdapt(m !== 'high');
+}
+// the next lower steady rate: half the one now (240 → 120 → 60, 144 → 72), never under 50; false when there's none
+function adTierDown(why) {
+  if (!capWant.focused || lightMode || RDY.lock || XP_PAGE) return false;
+  const now = adNow || realNow();
+  if (now - AD.tierAt < 1500) return false;
+  const rate = fpsCap || Math.round(1000 / dispMs);
+  const next = Math.round(rate / 2);
+  if (next < 50) return false;
+  adTier = next; AD.tierAt = now; AD.tiers += 1; applyCap();
+  adLog('rate', `${why}: a steady ${next} fps`);
+  post({ type: 'adapt', ...adaptInfo() });
+  return true;
+}
+function smoothAfter(v, target, now) {
+  // far over the budget: a lower steady rate first (no step can halve a frame's time)
+  if (v.far && !v.step && adTierDown('frames over the budget')) return;
+  // back up a rate after a calm while at (nearly) full quality, when the frames' work would fit the faster rate
+  if (adTier && v.share < 0.02 && AD.core.level <= 1 && now - AD.tierAt > AD.tierBack) {
+    const up = adTier * 2; const hz = Math.round(1000 / Math.max(1, dispMs));
+    const fits = v.load < 0 || v.load * (target / (1000 / Math.min(up, hz))) < 0.6;
+    if (fits) {
+      adTier = up >= hz ? 0 : up; AD.tierAt = now; AD.tierBack = Math.min(160000, AD.tierBack * 2); applyCap();
+      adLog('rate', adTier ? `headroom: ${adTier} fps` : 'headroom: the screen rate'); post({ type: 'adapt', ...adaptInfo() });
+    }
+  }
+  // the last step and still tight: the heaviest layer every other frame; gone again with the first calm window
+  if (v.stuck && !AD.half) { AD.half = adHalfPick(); if (AD.half) { adLog('half', 'the heaviest layer every other frame'); post({ type: 'adapt', ...adaptInfo() }); } }
+  else if (AD.half && v.share < 0.04 && (v.load < 0 || v.load < 0.5)) { adLog('half', 'off'); AD.half = null; post({ type: 'adapt', ...adaptInfo() }); }
+  // past the resolution steps: antialias off from the scene's next run (asked once; the Lab keeps it for this session)
+  if (!AD.aaWish && (AD.core.level > 3 || v.stuck) && AD.mode === 'smooth') { AD.aaWish = true; adLog('aa', 'antialias off from the next run'); post({ type: 'adapt', ...adaptInfo() }); }
+}
+// the renderer that costs the most a frame (its own render calls' ms, smoothed), on screen, drawn straight to its
+// canvas and not read by a filter lately; only when it is at least 30 % of the frame's work
+function adHalfPick() {
+  let best = null; let bm = 0; let all = 0;
+  for (const r of rdyLive()) {
+    const m = r.__msA ? r.__msA[0] : 0; all += m;
+    if (!r.__layer || !adShows(r.__layer) || r.__gm || (r.__pace && frameTick - r.__pace.multi < 120)) continue;
+    const EL = layers.get(r.__layer);
+    if (!EL || realNow() - (EL.adReadAt ?? -1e9) < 5000 || EL.props?.pcOf) continue;
+    if (m > bm) { bm = m; best = r; }
+  }
+  return best && bm >= all * 0.3 ? best : null;
+}
+// (from the render wrapper) this frame of the half-rate layer is left out: its canvas keeps showing its last picture
+function adHalfSkip(r, EL) {
+  if (!AD.on || fullRes() || SQ.off || XP_PAGE || RDY.lock || stepping || edit.on || stackWait || r.getRenderTarget?.()) return false;
+  if (!EL || EL.drawnGen !== EL.gen || realNow() - (EL.adReadAt ?? -1e9) < 5000) { AD.half = null; return false; }
+  if ((frameTick & 1) === 0) return false;
+  AD.halfN += 1;
+  if (frameSeen !== frameTick) { frameSeen = frameTick; frames += 1; } // (the frame shows, with its last picture)
+  return true;
+}
+// Pre-compile at play start: every program the layers' scenes need (hidden things included: compile() walks them all;
+// in the background where the graphics card can) and their textures uploaded, right before the song starts, so a drop
+// that shows something new compiles nothing mid-play. The warm-gap watch (round 90, lcCheck) is switched back on for
+// scenes it had paused (a scene that changed on most frames before play).
+const SMW = { n: 0, ms: 0, programs: 0, textures: 0, scenes: 0 };
+function smoothPlayWarm() {
+  if (XP_PAGE || GAME || mode !== 'sketch') return;
+  const t0 = realNow(); const p0 = RDY.gl.compiles + RDY.gl.links;
+  for (const r of rdyLive()) {
+    if (r.__gm || r.getRenderTarget?.()) continue;
+    const khr = typeof r.compileAsync === 'function' && r.extensions?.has?.('KHR_parallel_shader_compile') === true;
+    for (const sc of new Set([...(r.__seen || []), r.__lastScene])) {
+      if (!sc?.isObject3D || !r.__lastCamera) continue;
+      if (sc.__lcOff) { sc.__lcOff = 0; sc.__lcOffN = 0; sc.__lcRate = 0; }
+      LC.inR += 1;
+      try { if (khr) r.compileAsync(sc, r.__lastCamera).catch(() => {}); else r.compile(sc, r.__lastCamera); } catch { /* its frame compiles what it draws */ } finally { LC.inR -= 1; }
+      try { SMW.textures += rdyTextures(r, sc); } catch { /* drawn with its frame */ }
+      SMW.scenes += 1;
+    }
+  }
+  SMW.n += 1; SMW.ms += realNow() - t0; SMW.programs += RDY.gl.compiles + RDY.gl.links - p0;
+}
+const pagePlaying = () => Boolean(mediaEl && !mediaEl.paused);
+// (checks, the Lab's ⚡ card) where Smooth is and why, each renderer's share / pixel ratio / antialias / shadow maps
+window.__labSmooth = {
+  state: () => ({ ...adaptInfo(), quality, qWant: AD.qWant, cap: fpsCap, hz: Math.round(1000 / dispMs), playing: pagePlaying(), halfSkips: AD.halfN, warm: { ...SMW, ms: Math.round(SMW.ms) }, log: AD.log.slice(-10),
+    renderers: rdyLive().map((r) => { let aa = null; try { aa = Boolean(r.getContext().getContextAttributes()?.antialias); } catch { /* lost */ } const sh = []; try { r.__lastScene?.traverse((o) => { if (o.isLight && o.castShadow && o.shadow?.mapSize) sh.push(o.shadow.mapSize.x); }); } catch { /* fine */ } return { layer: r.__layer || null, q: r.__q ?? 1, pr: r.getPixelRatio?.() ?? null, base: r.__basePR ?? null, aa, shadows: sh, ms: r.__msA ? Math.round(r.__msA[0] * 10) / 10 : 0 }; }) }),
+  mode: (m) => { if (m) setQualityMode(m); return AD.mode; },
+};
 // (tests and /lab perf: window.__labAdapt.state() / .set({ level, hold }) / .on(false) / .cover())
 window.__labAdapt = {
   state: adaptInfo,
@@ -2584,6 +2744,7 @@ window.__labHitch = {
 const tickFrames = (t) => {
   if (HX.on) hxTick(t, frameSeen === frameTick);
   if (RDY.rec && FT60[3]) { RDY.rec.g.push(t - FT60[3]); RDY.rec.w.push(frameSeen === frameTick ? FT60[1] : 0); } // (round 52, presentready: frame pacing)
+  ADW[0] = frameSeen === frameTick ? FT60[1] : -1; // (round 142, smooth142) that frame's work, for Smooth's budget
   if (frameSeen === frameTick) { WR[wrI] = Math.round(FT60[1] * 1000); wrI = (wrI + 1) % 120; if (wrN < 120) wrN += 1; lastCalls = frameCalls; }
   FT60[1] = 0; frameCalls = 0;
   frameTick += 1;
@@ -2935,7 +3096,7 @@ function setGuides(kind) {
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
-let statsTimer = 0; let statsDozed = 0; const statsW = new Int32Array(60);
+let statsTimer = 0; let statsDozed = 0; const statsW = new Int32Array(60); let statsPlayN = 0;
 function statsRun(on) {
   if (GAME) on = false; // (round 53, gameinput) ▶ Play: no Lab reads the stats (the game's chip counts its own frames)
   if (!on) { if (statsTimer) clearInterval(statsTimer); statsTimer = 0; return; }
@@ -2944,6 +3105,7 @@ function statsRun(on) {
   statsTimer = realSetInterval(statsTick, 500);
 }
 function statsTick() {
+  if (pagePlaying() && !FB.prof && !SPD.meas && (++statsPlayN & 1)) return; // (round 142, smooth142) while it plays: the stats (and the frame bar's rows) once a second (the fps counted over that second), not twice; a ⚡ measure or a profile keeps its two
   const now = performance.now();
   const fps = (frames * 1000) / (now - lastTick);
   frames = 0;
@@ -4668,6 +4830,7 @@ function mediaCommand({ cmd, value, req = null, frameStop = false, ack = false }
   if (!mediaEl) { if (cmd === 'play' || cmd === 'pause') pendingPlay = cmd === 'play'; if (cmd === 'seek' && ack) post({ type: 'seek-ack' }); return; }
   if (mediaEl.__want) { if (cmd === 'seek') mediaEl.__want.at = value; if (cmd === 'play' || cmd === 'pause') mediaEl.__want.play = cmd === 'play'; } // (round 135, seekfix135: before its length is known)
   if (cmd === 'play') {
+    if (mediaEl.paused) smoothPlayWarm(); // (round 142, smooth142) shaders compiled and textures up before the first frame of play
     actx.resume();
     if (mediaEl.ended) mediaEl.currentTime = 0;
     // Playing a locked-in loop from outside it starts at the loop start.
@@ -16346,6 +16509,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'speed') { spdSet(msg); return; } // (round 133, speed133) ⚡ the scene's preview-only speed settings
   if (msg.type === 'speed-measure') { spdMeasure(msg).catch((err) => post({ type: 'speed-result', id: msg.id, ok: false, error: String(err?.message || err) })); return; } // (round 133, speed133)
   if (msg.type === 'adapt') setAdapt(msg.on !== false); // (round 31 "labadapt": the Lab's right-click, View › Lighten to stay smooth)
+  if (msg.type === 'quality') { setQualityMode(msg.mode); return; } // (round 142, smooth142) Smooth (auto) · Balanced · Force high quality
   if (msg.type === 'eval') runEval(msg);
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view

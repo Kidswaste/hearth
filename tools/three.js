@@ -1139,6 +1139,7 @@ const ThreeLab = (() => {
     let adaptLast = null;
     function paintAdapt(a) {
       if (a) adaptLast = a;
+      if (a?.aaWish && a.mode === 'smooth' && current && !aaAuto.has(current.id)) aaAuto.add(current.id); // (round 142, smooth142) no antialias in the preview from this scene's next run
       const show = adaptOn && (adaptLast?.level || 0) > 0;
       // (round 33 "labpace") lighter only because the computer is on battery: the note says so
       const txt = adaptLast?.battery && (adaptLast.level || 0) <= (adaptLast.floor || 0) ? 'lighter on battery · full quality in renders' : 'lighter to stay smooth · full quality in renders';
@@ -1185,7 +1186,34 @@ const ThreeLab = (() => {
         upd(); b.addEventListener('chargingchange', upd);
       }).catch(() => { /* no battery API: plugged in */ });
     } catch { /* none */ }
-    function setAdaptOn(on) { adaptOn = Boolean(on); store.set('three.adapt', adaptOn); box.send({ type: 'adapt', on: adaptOn }); paintAdapt(); return adaptOn; }
+    // (round 142, smooth142) the preview's quality, three ways: Smooth (auto, the default: lighter before frames drop,
+    // a steady lower frame rate where the screen's is out of reach), Balanced (round 31's adaptive rules) and Force high
+    // quality (full resolution, antialias, shadows and filters whatever the cost; the scene's ⚡ preview settings are
+    // set aside meanwhile). Kept per scene (sketch.speed.q) and as the default for scenes without one (three.quality;
+    // the old three.adapt = false reads as Force high). Renders never see it: export pages and ▶ Play draw full quality.
+    const Q_MODES = ['smooth', 'balanced', 'high'];
+    const Q_NAMES = { smooth: 'Smooth (auto)', balanced: 'Balanced', high: 'Force high quality' };
+    const qGlobal = () => { const v = store.get('three.quality', null); return Q_MODES.includes(v) ? v : store.get('three.adapt', true) === false ? 'high' : 'smooth'; };
+    const qMode = (sk = current) => (Q_MODES.includes(sk?.speed?.q) ? sk.speed.q : qGlobal());
+    const aaAuto = new Set(); // scenes Smooth asked to draw without antialias in the preview from their next run (this session only)
+    adaptOn = qMode(null) !== 'high';
+    // (checks and /lab: ThreeLab.cmd().adapt(false) holds the adaptive steps off for this session, the scene's ⚡ fixes
+    // kept: round 72's "Quality: full", which the speed check measures with)
+    let adaptHeld = false;
+    const sendQuality = () => { const m = qMode(); box.send({ type: 'quality', mode: m }); if (adaptHeld && m !== 'high') box.send({ type: 'adapt', on: false }); adaptOn = m !== 'high' && !adaptHeld; return m; };
+    function setQuality(mode, { scene = true, quiet = false } = {}) {
+      if (!Q_MODES.includes(mode)) return qMode();
+      const aaWas = speedMsg().noAA;
+      if (scene && current) { current.speed = { ...(current.speed || {}), q: mode }; current.updatedAt = Date.now(); saveSoon(); }
+      store.set('three.quality', mode); store.set('three.adapt', mode !== 'high');
+      adaptHeld = false;
+      const m = sendQuality(); box.send(speedMsg());
+      if (speedMsg().noAA !== aaWas && current) run({ reload: true, quiet: true }); // (a context's antialias is fixed when it's made)
+      adaptLast = null; paintAdapt(); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
+      if (!quiet) toast(m === 'high' ? 'Force high quality: full resolution, antialias and shadows in the preview, whatever the cost' : m === 'balanced' ? 'Balanced: the preview lightens only while frames keep dropping' : 'Smooth: the preview lightens itself before frames drop (renders stay full quality)', { timeout: 2400 });
+      return m;
+    }
+    function setAdaptOn(on) { adaptHeld = !on; sendQuality(); if (!on) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); return adaptOn; }
     function setLight(on) { lightOn = Boolean(on); store.set('three.light', lightOn); box.send({ type: 'light', on: lightOn }); toast(lightOn ? '🪶 Light mode: 30 fps, 1× pixels, filters at half size (recordings and stills stay full size)' : 'Light mode off', { timeout: 2200 }); return lightOn; }
     const stageBtn = btn('🖥', 'Stage window: run the sketch in its own window, steady, smooth frames for recording or a second monitor (F11 there for fullscreen). The preview here sleeps meanwhile.', () => setStage(!box.onStage));
     stageBtn.dataset.feature = 'Stage window';
@@ -1556,8 +1584,13 @@ const ThreeLab = (() => {
       if ((parkedNow || player.recording) && !(split || previewHost).checkVisibility({ visibilityProperty: true }) && !box.onStage) { keyStop(); return; }
       if (!player.playing && Math.abs(player.time - lastSyncT) < 1e-3) { if (++keyQuiet >= 10) keyStop(); return; }
       keyQuiet = 0;
+      // (round 142, smooth142) while it plays: the keyed sliders' positions about 3× a second (was 10×; the preview
+      // animates them itself, these are the panels' readouts)
+      if (player.playing && (++keyPlayN % 3)) return;
+      if (player.playing) LabPlay.count('keyui');
       syncKeyUI();
     };
+    let keyPlayN = 0;
     function keyLoop() { keyQuiet = 0; if (!keyTimer) keyTimer = setInterval(keyTick, 100); }
     function keyedNow() { const keys = current ? sel()?.keys : null; return Boolean(keys && Object.values(keys).some((k) => k?.length)); }
     keyLoop();
@@ -2597,6 +2630,7 @@ const ThreeLab = (() => {
     });
     function renderLayers() {
       if (!current) return;
+      if (LabPlay.playing) LabPlay.count('layers'); // (round 142, smooth142: counted while playing, dev/checks/smooth142.js)
       layersPanel.render(layersOf(), selId);
       paintBuilding();
       player.setTracks(trackList(), trackHandlers, { soon: true }); // (round 54) the timeline draws in the coming frame (see setTracks)
@@ -3416,7 +3450,7 @@ const ThreeLab = (() => {
     let consoleLines = [];
     let lastStats = null;
     // the fps / draw-call line (on hover): rebuilt only when its text changes, and painted when it shows again
-    let lastStatsMsg = null; let statsSig = ''; let statsRaf = 0;
+    let lastStatsMsg = null; let statsSig = ''; let statsRaf = 0; let statsPaintAt = 0;
     // (round 72, labfps72) the preview's Quality, visible and one click away: "Quality: auto" (the preview draws lighter
     // while frames drop: resolution first, then filters, shadows, particles; stills, recordings and renders stay full)
     // or "Quality: full" (always full, frames may drop). It shows with the rest of the line on hover, and stays on screen
@@ -3425,18 +3459,42 @@ const ThreeLab = (() => {
     const qChip = el('button', { type: 'button', class: 'lab-q', dataset: { feature: 'Preview quality' } });
     qChip.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
     qChip.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
+    // (round 142, smooth142) three choices: Smooth (auto) · Balanced · Force high quality, for this scene (and the
+    // default for scenes without their own); the chip says which, and what Smooth lowered and why on its tooltip
     function qualityMenu(x, y) {
+      const m = qMode(); const own = Boolean(current?.speed?.q);
+      const pick = (k) => () => setQuality(k);
       showMenu(x, y, [
-        { label: 'Quality: auto', hint: 'lighter while frames drop · renders stay full', checked: adaptOn, action: () => { setAdaptOn(true); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg); } },
-        { label: 'Quality: full', hint: 'always full resolution · frames may drop', checked: !adaptOn, action: () => { setAdaptOn(false); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg); } },
+        { label: Q_NAMES.smooth, hint: 'lighter before frames drop · steady frame rate · renders stay full', checked: m === 'smooth' && !adaptHeld, action: pick('smooth') },
+        { label: Q_NAMES.balanced, hint: 'lighter only while frames keep dropping', checked: m === 'balanced' && !adaptHeld, action: pick('balanced') },
+        { label: Q_NAMES.high, hint: 'full resolution, antialias and shadows · frames may drop', checked: m === 'high' || adaptHeld, action: pick('high') },
+        '-',
+        own ? `Kept for this scene · the default: ${Q_NAMES[qGlobal()]}` : 'Your pick is kept for this scene and as the default',
       ]);
     }
+    // what Smooth lowered right now, in plain words (the chip's tooltip, the ⚡ Speed check card)
+    function qualityWhy(a = adaptLast) {
+      if (!a) return '';
+      const parts = [];
+      if ((a.shown ?? a.scale ?? 1) < 1) parts.push(`${Math.round((a.shown ?? a.scale) * 100)} % resolution`);
+      if (a.fx) parts.push(a.fx >= 2 ? 'filters at a third' : 'filters at half size');
+      if (a.shadow != null && a.shadow < 1) parts.push(`shadow maps at ${Math.round(a.shadow * 100)} %`);
+      if (a.parts != null && a.parts < 1) parts.push(`${Math.round(a.parts * 100)} % of the particles`);
+      if (a.tier) parts.push(`a steady ${a.tier} fps`);
+      if (a.half) parts.push('the heaviest layer every other frame');
+      if (a.aaWish && a.mode === 'smooth') parts.push('no antialias from the next run');
+      return parts.length ? `${parts.join(', ')}${a.why ? ` (${a.why})` : ''}` : '';
+    }
     function qualityChip(msg) {
+      const m = qMode();
       const lighter = adaptOn && msg.quality < 1;
-      const t = !adaptOn ? 'Quality: full' : lighter ? `Quality: auto · ${Math.round(msg.quality * 100)} %` : 'Quality: auto';
+      const name = adaptHeld || m === 'high' ? 'high' : m === 'balanced' ? 'balanced' : 'auto';
+      const t = name === 'high' ? 'Quality: high' : lighter ? `Quality: ${name} · ${Math.round(msg.quality * 100)} %` : `Quality: ${name}`;
       if (qChip.textContent !== t) qChip.textContent = t;
-      qChip.classList.toggle('lighter', lighter); qChip.classList.toggle('warn', lighter);
-      const title = lighter ? 'Frames were dropping, so the preview draws lighter while you watch (resolution first, then filters, shadows, particles). Stills, screenshots, recordings and renders stay full quality. Click: Auto or Full.' : adaptOn ? 'Quality: auto — the preview draws lighter only while frames drop (renders stay full). Click: Auto or Full.' : 'Quality: full — the preview always draws at full resolution, even when frames drop. Click: Auto or Full.';
+      const tier = adaptOn && msg.adapt?.tier;
+      qChip.classList.toggle('lighter', lighter || Boolean(tier)); qChip.classList.toggle('warn', lighter);
+      const why = adaptOn ? qualityWhy(msg.adapt) : '';
+      const title = name === 'high' ? 'Force high quality: the preview keeps full resolution, antialias and shadows, even when frames drop. Click: Smooth, Balanced or Force high.' : why ? `${name === 'auto' ? 'Smooth' : 'Balanced'}: the preview draws lighter to stay smooth: ${why}. Renders stay full quality. Click: Smooth, Balanced or Force high.` : `${name === 'auto' ? 'Smooth (auto): the preview lightens itself before frames drop' : 'Balanced: the preview lightens only while frames keep dropping'} (renders stay full). Click: Smooth, Balanced or Force high.`;
       if (qChip.title !== title) qChip.title = title; // (round 73) the same title written again still woke every page observer
       return qChip;
     }
@@ -3488,27 +3546,34 @@ const ThreeLab = (() => {
     // scene (sketch.speed: px1 · noAA · sh · fxHalf; never read by an export page or ▶ Play), the 3-second measure, and
     // the place of the slow chip (beside the stats line). set(): saved, sent to the page; a change of antialias runs the
     // scene again on a fresh page (a context's antialias is fixed when it's made). The card's undo goes through set() too.
-    const speedOf = (sk = current) => ({ px1: false, noAA: false, sh: null, fxHalf: false, ...(sk?.speed || {}) });
-    const speedMsg = () => ({ type: 'speed', ...speedOf() });
+    const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
+    // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
+    // "no antialias" once the page asked for it on this scene (from its next run)
+    const speedMsg = () => { const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
       set(next, { quiet = false } = {}) {
         if (!current) return null;
-        const was = speedOf(); const now = { ...was, ...(next || {}) };
+        const was = speedOf(); const now = { ...was, ...(next || {}) }; const aaWas = speedMsg().noAA;
         const clean = Object.fromEntries(Object.entries(now).filter(([k, v]) => (k === 'sh' ? v !== null && v !== undefined : Boolean(v))));
+        if (current.speed?.q) clean.q = current.speed.q; // (round 142, smooth142) the scene's quality choice stays
         if (Object.keys(clean).length) current.speed = clean; else delete current.speed;
         current.updatedAt = Date.now(); saveSoon();
         box.send(speedMsg());
-        if (Boolean(was.noAA) !== Boolean(now.noAA)) run({ reload: true, quiet });
+        if (aaWas !== speedMsg().noAA) run({ reload: true, quiet });
         return speedOf();
       },
+      quality: () => ({ mode: qMode(), own: current?.speed?.q || null, global: qGlobal(), held: adaptHeld, why: qualityWhy(), adapt: adaptLast }), // (round 142, smooth142) for the ⚡ card
       measure: (ms = 3000, toggle = 3) => sandboxCall({ type: 'speed-measure', ms, toggle }, ms * 20 + 30000), // (a slow software GPU stretches each window to 6 frames)
       reopen: () => run({ reload: true }), // a fresh page for the scene (safe mode after the graphics card dropped it)
       name: (id) => layerById(id)?.name || null,
       userCap: () => { const v = fpsPref(); return v > 0 ? v : 0; },
       light: () => lightOn, frozen: () => frozenNow, parked: () => parkedNow,
     };
+    // (round 142, smooth142) the preview's quality: get() → 'smooth' | 'balanced' | 'high' (this scene's, else the default);
+    // set(mode, { scene }) keeps it for this scene (sketch.speed.q) and as the default
+    api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
     let perfHudOn = Boolean(store.get('three.perfHud', false));
@@ -3644,7 +3709,7 @@ const ThreeLab = (() => {
         // message between two frames, twice a second) it styled and laid out the whole Lab first whenever a drag had
         // just changed it (in the frame's rAF it did the same before the frame's own writes)
         // (round 73) parked behind a chat or the window hidden: the line can't be seen, nothing is scheduled (the next message after it shows paints it)
-        if (!statsRaf && !parkedNow && document.visibilityState === 'visible') statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; const vis = stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }); fbShown(vis); if (lastStatsMsg && vis) { paintStats(lastStatsMsg); if (typeof FrameBar !== 'undefined') FrameBar.paint(lastStatsMsg); } }, 0));
+        if (!statsRaf && !parkedNow && document.visibilityState === 'visible') statsRaf = requestAnimationFrame(() => setTimeout(() => { statsRaf = 0; const vis = stats.checkVisibility({ opacityProperty: true, visibilityProperty: true }); fbShown(vis); if (lastStatsMsg && vis && !(LabPlay.playing && Date.now() - statsPaintAt < 900)) { statsPaintAt = Date.now(); if (LabPlay.playing) LabPlay.count('stats'); paintStats(lastStatsMsg); if (typeof FrameBar !== 'undefined') FrameBar.paint(lastStatsMsg); } }, 0)); // (round 142, smooth142: the line once a second at most while it plays)
       }
       if (/^edit-/.test(msg.type)) { onEditMessage(msg); return; }
       if (/^audio-/.test(msg.type) && typeof ThreeAudio !== 'undefined' && ThreeAudio.onMessage(msg)) return; // (round 23, labaudio)
@@ -3659,7 +3724,7 @@ const ThreeLab = (() => {
       if (msg.type === 'refs-need') { if (msg.n === pageN) { for (const x of msg.sigs || []) pageHeld.sigs.delete(x); refsSig = null; const want = current; loadRefBytes().then(() => { if (current === want) run({ sync: true }); }).catch(() => {}); } return; }
       if (msg.type === 'asset-progress') return;
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
-      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (!adaptOn) box.send({ type: 'adapt', on: false }); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); sendQuality(); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -3880,7 +3945,7 @@ const ThreeLab = (() => {
           { label: '▶ Play', hint: 'as a game, its own window', action: () => playGame() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
-          { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setAdaptOn(!adaptOn); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } },
+          { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setQuality(adaptOn ? 'high' : 'smooth', { scene: false, quiet: true }); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } }, // (round 142: Smooth ⇄ Force high quality, as the default)
           { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
@@ -4212,6 +4277,7 @@ const ThreeLab = (() => {
       // on the contexts and compiled shaders it left (tools/three-boot.js)
       const warmOf = fresh ? box.takeWarmRun() : false;
       const overWarm = Boolean(warmOf);
+      sendQuality(); // (round 142, smooth142) the scene's quality choice (Smooth · Balanced · Force high)
       box.send(speedMsg()); // (round 133, speed133) ⚡ the scene's preview speed settings, before its layers make their renderers
       box.send({ type: 'tweak-init', values, keys, mods: mergedMods() });
       if (fresh) { player.attach(); sendRefs({ fresh: true }); } else if (!partial && ranSketch !== current.id) { sendRefs(); sendTriggers(); }
@@ -6022,6 +6088,7 @@ ${frag}\`,
     get healthHost() { return api.healthHost || null; }, // (round 80, laberrors80) tools/three-health.js
     get framebar() { return api.framebar || null; }, // (round 64, framebar64) ▮ the frame budget bar (tools/framebar.js)
     get speed() { return api.speed || null; }, // (round 133, speed133) ⚡ the speed check (tools/three-speed*.js)
+    get quality() { return api.quality || null; }, // (round 142, smooth142) Smooth (auto) · Balanced · Force high quality
     get groupsHost() { return api.groupsHost || null; }, // (round 44) layer groups (tools/three-groups.js)
     get search() { return api.search || null; }, // (round 36) 🔎 Lab search: the menus, layers and sliders it lists (tools/three-search.js)
     // resolves when no director call is changing the sketch on screen (a chat switch waits for it)
