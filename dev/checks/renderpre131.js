@@ -55,7 +55,7 @@ renderer.setAnimationLoop((t) => { mesh.rotation.y = t / 1000; renderer.render(s
 
   // ---------- 1. each preset fills the card ----------
   await openCard();
-  step('the Render card has a Presets row at the top, with the five presets', card()?.querySelector('.sq-rp-body')?.firstElementChild?.classList.contains('rp-row') && ['reel', 'loop', 'full', 'master', 'square'].every((id) => chip(id)), [...(card()?.querySelectorAll('.rp-chip') || [])].map((b) => b.textContent));
+  step('the Render card has a Presets row at the top (under round 142\'s What to render), with the five presets', [...(card()?.querySelector('.sq-rp-body')?.children || [])].slice(0, 2).some((x) => x.classList.contains('rp-row')) && ['reel', 'loop', 'full', 'master', 'square'].every((id) => chip(id)), [...(card()?.querySelectorAll('.rp-chip') || [])].map((b) => b.textContent));
   const prores = await LabRenderPre.hasProres();
   const want = {
     reel: (r) => /^MP4/.test(r.format) && r.fps === '30' && /1080×1920/.test(r.sum) && /drop/.test(r.len),
