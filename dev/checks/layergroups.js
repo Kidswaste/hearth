@@ -60,6 +60,7 @@ step('a scene of 3 layers draws red / green / blue thirds', await settle('RGB') 
 // ---------- pick with Ctrl+click, group with a real Ctrl+G in the Layers list ----------
 const rowOf = (id) => document.querySelector(`.ly-row[data-id="${id}"]`);
 const mouse = async (node, modifiers = 0) => {
+  node.scrollIntoView({ block: 'nearest' }); await wait(60); // (round 142, panel142) the selected layer's knobs sit under its row now: the row may be below them
   const r = node.getBoundingClientRect(); const x = r.left + r.width * 0.6; const y = r.top + r.height / 2;
   for (const type of ['mousePressed', 'mouseReleased']) await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type, x, y, button: 'left', clickCount: 1, modifiers } });
   await wait(120);

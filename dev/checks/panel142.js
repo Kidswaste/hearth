@@ -90,9 +90,13 @@ requestAnimationFrame(loop);
   // preview counted in the preview page, frames here counted
   const dragKnob = async (moves = 60) => {
     await settle(200);
-    const knob = [...panelEl().querySelectorAll('.tweaks .tw-knob')].find((k) => k.getClientRects().length && k.getBoundingClientRect().top > 0 && k.getBoundingClientRect().bottom < innerHeight);
+    // the first knob the panel shows (merged: in the one scroller, brought into its view; before: the Sliders box's),
+    // and the point a real press lands on it
+    const knob = [...panelEl().querySelectorAll('.tweaks .tw-knob')].find((k) => k.getClientRects().length);
     if (!knob) return null;
+    knob.scrollIntoView({ block: 'center' }); await settle(150);
     const kr = knob.getBoundingClientRect(); const x = kr.left + kr.width / 2; let y = kr.top + kr.height / 2;
+    if (!document.elementFromPoint(x, y)?.closest('.tw-knob')) return { error: 'the knob is covered', per: [], frames: 0, msgs: 0 };
     await RS.pv("window.__p142 = window.__p142 || { n: 0 }; if (!window.__p142on) { window.__p142on = 1; addEventListener('message', (e) => { if (e.data && (e.data.type === 'tweak' || e.data.type === 'tweaks')) window.__p142.n += 1; }); } window.__p142.n = 0; return 1");
     const per = []; let a = 0;
     const cap = (e) => { if (e.type === 'pointermove') a = performance.now(); };
@@ -101,7 +105,8 @@ requestAnimationFrame(loop);
     let frames = 0; let on = true; const fr = () => { if (!on) return; frames += 1; requestAnimationFrame(fr); }; requestAnimationFrame(fr);
     const undo0 = hk.ctl()?.undoDepth;
     await mouse('mousePressed', x, y);
-    for (let k = 0; k < moves; k += 1) { y -= 1.5; await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'left', buttons: 1 }); await wait(14); }
+    // a 240 Hz mouse: 4 moves a frame, sent together (each awaited one by one, the harness' round trip paced them at ~60 Hz)
+    for (let k = 0; k < moves; k += 4) { const burst = []; for (let b = 0; b < 4 && k + b < moves; b += 1) { y -= 1.5; burst.push(cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'left', buttons: 1 })); } await Promise.all(burst); await wait(12); }
     await mouse('mouseReleased', x, y);
     await settle(200);
     on = false; removeEventListener('pointermove', cap, true); removeEventListener('pointermove', bub, false);
@@ -141,25 +146,30 @@ requestAnimationFrame(loop);
     const j = await judged(snap, ms.length, pct(ms, 0.5), 16);
     out.numbers.openFold = { how: merged() ? 'a layer folded / opened in place' : 'the ⚡ Sliders column hidden / shown', p50: pct(ms, 0.5), max: ms.length ? r1(Math.max(...ms)) : null, n: ms.length, ...j };
   }
-  // scroll: the wheel over the panel (merged: the one list, with the selected layer and 2 more open; before: the Sliders
-  // box of the 40-slider layer); long tasks and the longest gap between two frames here
-  {
-    if (merged()) { for (const n of ['Kick rings', 'Pad clouds']) panelEl().querySelector(`.ly-row[data-id="${CSS.escape(idOf(n))}"] .ly-pin`)?.click(); }
-    ThreeLab.search.selectLayer(idOf('Big mixer'));
-    await settle(400);
+  // scroll: the wheel over the panel (merged: the one list with the selected 40-slider layer open, then with 2 more
+  // pinned open; before: the Sliders box of the 40-slider layer); long tasks and the gaps between two frames here
+  const scrollRun = async (key) => {
     const sc = merged() ? merged().querySelector('.ly-list') : [...document.querySelectorAll('.tweaks .tw-body')].find((b) => b.getClientRects().length);
     if (sc) {
       sc.scrollTop = 0; await settle(100);
       const r = sc.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + Math.min(r.height / 2, 200);
       const snap = await lw();
-      let last = performance.now(); let gap = 0; let on = true; const fr = (t) => { if (!on) return; gap = Math.max(gap, t - last); last = t; requestAnimationFrame(fr); }; requestAnimationFrame((t) => { last = t; requestAnimationFrame(fr); });
+      let last = performance.now(); let gap = 0; const gaps = []; let on = true; const fr = (t) => { if (!on) return; gap = Math.max(gap, t - last); gaps.push(t - last); last = t; requestAnimationFrame(fr); }; requestAnimationFrame((t) => { last = t; requestAnimationFrame(fr); });
       const t0 = performance.now();
       for (let k = 0; k < 40; k += 1) { await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: Math.round(x), y: Math.round(y), deltaX: 0, deltaY: k < 20 ? 120 : -120 }); await wait(16); }
       await settle(150); on = false;
       const lt = tasksIn(t0, performance.now());
       const j = await judged(snap, 1, lt.length ? Math.max(...lt.map((t) => t.ms)) : 0, 50);
-      out.numbers.scroll = { scrollHeight: sc.scrollHeight, longTasks: lt.length, longestTask: lt.length ? r1(Math.max(...lt.map((t) => t.ms))) : 0, longestFrameGap: r1(gap), ...j };
-    } else out.numbers.scroll = { error: 'no scroller' };
+      out.numbers[key] = { scrollHeight: sc.scrollHeight, longTasks: lt.length, longestTask: lt.length ? r1(Math.max(...lt.map((t) => t.ms))) : 0, longestFrameGap: r1(gap), frameGapP50: pct(gaps, 0.5), frameGapP95: pct(gaps, 0.95), frames: gaps.length, ...j };
+    } else out.numbers[key] = { error: 'no scroller' };
+  };
+  ThreeLab.search.selectLayer(idOf('Big mixer'));
+  await settle(400);
+  await scrollRun('scroll');
+  if (merged()) {
+    for (const n of ['Kick rings', 'Pad clouds']) panelEl().querySelector(`.ly-row[data-id="${CSS.escape(idOf(n))}"] .ly-pin`)?.click();
+    await settle(400);
+    await scrollRun('scrollPinned');
   }
   // a reply landing while the panel is open: a director edit of another layer's code (as a chat's reply does); the
   // panel's rows added / removed in that time (a whole rebuild replaces every row) and the long tasks
@@ -185,7 +195,7 @@ requestAnimationFrame(loop);
     step('timing: a knob input costs under 4 ms of main-thread time (p50, load-aware), with no forced layout per input', N.knob?.verdict !== 'over' && N.knobTrace?.forcedInInput === 0, { knob: N.knob, trace: N.knobTrace });
     step('timing: the knob\'s moves reach the preview at most once a frame (batched)', N.knob?.msgsPerFrame != null && N.knob.msgsPerFrame <= 1.2, { msgs: N.knob?.msgsToPreview, frames: N.knob?.framesHere });
     step('timing: a layer opens / folds in place in under 16 ms (p50, load-aware)', N.openFold?.verdict !== 'over', N.openFold);
-    step('timing: scrolling the panel has no long task over 50 ms (load-aware)', N.scroll?.verdict !== 'over', N.scroll);
+    step('timing: scrolling the panel has no long task over 50 ms (load-aware)', N.scroll?.verdict !== 'over' && N.scrollPinned?.verdict !== 'over', { scroll: N.scroll, pinned: N.scrollPinned });
     step('timing: a reply landing while the panel is open patches rows, it doesn\'t rebuild them all', N.reply && N.reply.rowsAdded < 6 && N.reply.verdict !== 'over', N.reply);
   } else step('timing (before): numbers only', true, N);
   if (ONLY === 'timing') throw Object.assign(new Error('timing only'), { done: true });
@@ -270,7 +280,9 @@ requestAnimationFrame(loop);
     const unsolo = ThreeLab.search.layers().filter((L) => L.visible).length;
     // Alt+↑: a real click on the row, then the key
     const hid = idOf('Haze'); const where = () => JSON.stringify(ThreeLab.groupsHost.layers().map((L) => [L.id, L.group?.id || ''])); const before = where();
-    (await selectRow(hid)); const hr = rowOf(hid).getBoundingClientRect();
+    rowOf(hid).scrollIntoView({ block: 'center' }); await settle(150); const hr = rowOf(hid).getBoundingClientRect();
+    const hit = document.elementFromPoint(hr.left + 60, hr.top + hr.height / 2);
+    if (!hit?.closest('.ly-row')) out.altUpAt = { rect: [Math.round(hr.left), Math.round(hr.top), Math.round(hr.width), Math.round(hr.height)], hit: `${hit?.tagName}.${hit?.className} in ${hit?.parentElement?.className}`, list: (() => { const b = panelEl().querySelector('.ly-list').getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom)]; })() };
     await mouse('mousePressed', hr.left + 60, hr.top + hr.height / 2); await mouse('mouseReleased', hr.left + 60, hr.top + hr.height / 2);
     await settle(150);
     await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: 1, key: 'ArrowUp', code: 'ArrowUp', windowsVirtualKeyCode: 38 });
@@ -298,10 +310,11 @@ requestAnimationFrame(loop);
       [...document.querySelectorAll('.mb-menu .menu-item')].find((x) => /Lock at this value/.test(x.textContent))?.click();
       await settle(150);
     }
+    const icons = { key: Boolean(cell?.querySelector('.kf-btn')), music: Boolean(cell?.querySelector('.tw-music-btn')) }; // (◆ and ♪ / 〰 on the knob itself; ◆ Keyframe is in the menu's Moves ›)
     const locked = hk.ctlOf(lid).locked('glow');
     hk.ctlOf(lid).lock('glow', false);
     const has = (re) => items.some((t) => re.test(t));
-    step('a knob keeps its right-click: 🔒 Lock, ♪ / 🎚 follow the music, ◆ Keyframe, ★ Pin; Lock works from here', has(/Lock at this value/) && has(/Move with the music|Follow the music|React to a sound/) && has(/Keyframe at the playhead/) && has(/Pin to favourites/) && locked, { items, locked });
+    step('a knob keeps its right-click: 🔒 Lock, ♪ / 🎚 follow the music, ◆ Keyframe, ★ Pin; Lock works from here', has(/Lock at this value/) && has(/Move with the music|Follow the music|React to a sound/) && (has(/Keyframe at the playhead/) || (has(/^Moves/) && icons.key)) && icons.music && has(/Pin to favourites/) && locked, { items, icons, locked });
     step('a knob drag in the panel is ONE undo step on release', N.knob?.undoSteps === 1, { undoSteps: N.knob?.undoSteps });
   }
 } catch (err) {
