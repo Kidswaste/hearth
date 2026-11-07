@@ -171,6 +171,13 @@ const LabSpeed = (() => {
     const body = [];
     if (S.gl) body.push(el('div', { class: 'spd-row spd-gl' }, el('div', { class: 'spd-t', text: 'The graphics card dropped the preview.' }), el('div', { class: 'spd-acts' }, btn('Reopen in safe mode', 'spd-fix spd-safe', safe, 'Run it again at 1× pixels, without antialias or shadows, in the preview only (one undo step)'), el('span', { class: 'spd-gain', text: '1× pixels, no antialias, no shadows' }))));
     if (a && !a.ok) body.push(el('div', { class: 'spd-row' }, el('div', { class: 'spd-t', text: a.error })));
+    // (round 142, smooth142) the preview's quality now: Smooth's automatic level and why, Balanced, or Force high
+    const q = sp()?.quality?.();
+    if (q) {
+      const qn = { smooth: 'Smooth (auto)', balanced: 'Balanced', high: 'Force high quality' }[q.held ? 'high' : q.mode] || q.mode;
+      const lvl = q.adapt && !q.held && q.mode !== 'high' ? `level ${q.adapt.level || 0} of 9` : '';
+      body.push(el('div', { class: 'spd-sub spd-quality', text: `Quality: ${qn}${q.own ? ' (this scene)' : ''}${lvl ? ` · ${lvl}` : ''}${q.why ? ` · ${q.why}` : q.mode === 'high' || q.held ? ' · full resolution, antialias and shadows' : ' · full quality now'}` }));
+    }
     if (a?.ok) {
       const list = a.causes.slice();
       for (const [id, e] of S.done) if (!list.some((x) => x.id === id)) list.push({ id, title: e.title, fix: { label: e.label }, gainLine: '', done: true });
