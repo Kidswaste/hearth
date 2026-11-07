@@ -19,8 +19,8 @@
 .rg-tray[hidden] { display: none; }
 :is(.three-toolbar, .media-bar).rg-raised { position: relative; z-index: 80 !important; }
 .rg-tray.rg-up { animation-name: rg-tray-up; }
-@keyframes rg-tray-in { from { opacity: 0; transform: translateY(-4px); } }
-@keyframes rg-tray-up { from { opacity: 0; transform: translateY(4px); } }
+@keyframes rg-tray-in { from { transform: translateY(-4px); } }
+@keyframes rg-tray-up { from { transform: translateY(4px); } }
 .rg-tray .rg-row, .media-bar .rg-tray .mb-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .media-bar .rg-tray .mb-grid { padding: 6px 0 0; margin: 0; border-top: 1px solid #ffffff0f; }
 .media-bar[data-size="compact"] .rg-tray .mb-grid { display: flex; }

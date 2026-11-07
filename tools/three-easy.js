@@ -173,8 +173,8 @@ const LabEasy = (() => {
       { label: L.visible === false ? '👁 Show' : '◌ Hide', cmd: 'layer', action: () => h.change?.({ visible: L.visible === false }) },
       h.solo ? { label: 'Show only this one', hint: 'solo · again: all', action: () => h.solo() } : null,
       // (round 143, lab143) its knobs, as ▸ / ▾ and 📌 on its row do
-      h.knobs ? { label: h.knobs.open() ? '▾ Fold its knobs' : '▸ Show its knobs here', hint: '▸ / ▾ on its row', action: () => h.knobs.toggle() } : null,
-      h.knobs ? { label: h.knobs.pinned() ? '📌 Unpin its knobs' : '📌 Keep its knobs open', hint: 'while you select other layers', more: !h.knobs.pinned(), action: () => h.knobs.pin() } : null,
+      h.knobs ? { label: h.knobs.open() ? '▾ Fold its knobs' : '▸ Show its knobs here', hint: '▸ / ▾ on its row', more: true, action: () => h.knobs.toggle() } : null,
+      h.knobs ? { label: h.knobs.pinned() ? '📌 Unpin its knobs' : '📌 Keep its knobs open', hint: 'while you select other layers', more: true, action: () => h.knobs.pin() } : null,
       ...(typeof LabGroups !== 'undefined' ? LabGroups.layerItems(L) : []), // (round 44) 📁 Group layers › (tools/three-groups.js)
       h.rename ? { label: 'Rename…', action: () => h.rename() } : null,
       h.copy ? { label: '⧉ Duplicate', action: () => { h.select?.(); h.copy(); } } : null,

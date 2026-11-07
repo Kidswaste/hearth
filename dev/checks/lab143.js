@@ -105,8 +105,9 @@ try {
 
   // ---------- 2. context menus ----------
   const lrow = q('.ly-row[data-id]').find(drawn);
-  if (lrow) await ctxCheck('a layer row', ...center(lrow), [/knobs/, /Rename/, /Duplicate/]);
+  if (lrow) await ctxCheck('a layer row', ...center(lrow), [/More…/, /Rename/, /Duplicate/]);
   else step('a layer row is on screen', false);
+  { const id = lrow?.dataset.id; const m = id && ThreeLab.search.layerMenu(id); const items = m ? LabEasy.layerItems(m.L, m.h) : []; step('a layer\'s right-click has its knobs rows (▸ / ▾, 📌, under More…)', items.some((x) => /its knobs here|Fold its knobs/.test(x?.label || '')) && items.some((x) => /📌/.test(x?.label || ''))); }
   const cv = one('.mb-timeline'); const cr = cv.getBoundingClientRect();
   const lastTrackY = Math.round(cr.bottom - 9); // the bottom track (TRACK_H 16)
   await ctxCheck('a timeline track', Math.round(cr.left + 260), lastTrackY, [/Mute|Show it/, /Solo|every layer/, /curves/, /More for this layer/]);
