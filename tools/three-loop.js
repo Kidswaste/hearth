@@ -251,30 +251,17 @@ const PerfectLoop = (() => {
   // o: { format: 'loop' | 'gif', size, fps, sound (default: the song when the scene has one), name, quiet }
   async function render(o = {}) {
     if (!stateOf()?.on) await make({ check: false, quiet: true });
-    const st = stateOf(); const P = player();
+    const st = stateOf();
     if (typeof LabExport === 'undefined') throw new Error('The Lab export is not loaded.');
     const name = `${hooks()?.sketchName?.() || 'Lab'} loop`;
-    const res = await LabExport.render({ format: o.format || 'loop', source: 'scene', at: st.a, secs: st.len, fade: st.fade ? st.beat || 0.5 : 0, perfect: true, name, size: o.size || undefined, fps: o.fps || undefined, quiet: true });
-    let out = res.path;
-    const song = songOf(P);
-    if (song?.path && (o.format || 'loop') === 'loop' && o.sound !== false) out = await withSound(out, song.path, st).catch((e) => { console.warn('perfectloop: sound', e); return out; });
+    // (round 145, loopsound145) the MP4's sound is made with its frames (the loop's span of the song, blended at the seam)
+    const res = await LabExport.render({ format: o.format || 'loop', source: 'scene', at: st.a, secs: st.len, fade: st.fade ? st.beat || 0.5 : 0, perfect: true, name, size: o.size || undefined, fps: o.fps || undefined, sound: o.sound, quiet: true });
+    const out = res.path;
     S.made.add(out);
     if (!o.quiet) toast(`∞ Perfect loop ready: ${base(out)} (${C().label(st)})`, { timeout: 7000, action: typeof PublishKit !== 'undefined' || window.Lazy ? { label: '📮 Post', fn: () => openPost(out) } : undefined });
     return { ...res, path: out, loop: { ...res.loop, a: st.a, len: st.len, blend: st.fade } };
   }
   async function openPost(file) { if (typeof PublishKit === 'undefined') await window.Lazy?.load?.('publishkit'); return PublishKit.open(file, {}); }
-  // the song's bars under the loop (the same N bars: the music loops too)
-  async function withSound(video, songPath, st) {
-    if (typeof Renders === 'undefined') await window.Lazy?.load?.('renders');
-    const output = video.replace(/(\.[^.]+)$/, ' + sound$1');
-    const id = `pl${Date.now().toString(36)}`;
-    const t = (x) => (Math.round(x * 1e4) / 1e4).toFixed(4);
-    await Renders.transcode({ id, input: video, output, duration: st.len, args: ['-hide_banner', '-y', '-i', 'INPUT', '-ss', t(st.a), '-t', t(st.len), '-i', songPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-t', t(st.len), '-movflags', '+faststart', 'OUTPUT'] }, undefined, { title: `∞ Loop + its bars · ${base(video)}`, owner: 'perfectloop', quiet: true });
-    const r = await Renders.whenDone(id);
-    if (r.code !== 0) throw new Error(r.error || 'the sound could not be added');
-    window.hub.fs.trash?.([video]).catch(() => {});
-    return r.output || output;
-  }
   // what export renders need (tools/three-export.js): the scene's loop clock for its helpers (a perfect loop: exactly
   // its frames long)
   function clockFor(o, loop) {

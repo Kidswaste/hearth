@@ -256,7 +256,7 @@ function probe(file, overrides) {
           fps: v ? Math.round(rate(v.avg_frame_rate && v.avg_frame_rate !== '0/0' ? v.avg_frame_rate : v.r_frame_rate) * 1000) / 1000 : 0,
           w: v?.width, h: v?.height, codec: v?.codec_name, profile: v?.profile, pixFmt: v?.pix_fmt, frames: Number(v?.nb_frames) || null,
           bitrate: Number(j.format?.bit_rate) || null, duration: Number(j.format?.duration) || null,
-          audio: a ? { codec: a.codec_name, rate: Number(a.sample_rate), channels: a.channels } : null,
+          audio: a ? { codec: a.codec_name, rate: Number(a.sample_rate), channels: a.channels, duration: Number(a.duration) || null } : null, // (round 145, loopsound145: the sound's own length)
           rotation: Number(v?.tags?.rotate || v?.side_data_list?.find((x) => x.rotation != null)?.rotation || 0),
         });
       } catch { resolve(null); }

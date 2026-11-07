@@ -21,7 +21,7 @@ const LabExportCore = (() => {
     { id: 'webm', name: 'WebM · VP9 + alpha', ext: 'webm', kind: 'video', frames: 'png', alpha: true, audio: 'opus', tip: 'for websites, keeps transparency' },
     { id: 'png', name: 'PNG sequence + alpha', ext: 'png', kind: 'seq', frames: 'png', alpha: true, tip: 'one lossless picture per frame, for compositing' },
     { id: 'gif', name: 'GIF · perfect loop', ext: 'gif', kind: 'video', frames: 'png', loop: true, tip: 'loops without a seam, palette tuned per clip' },
-    { id: 'loop', name: 'MP4 · perfect loop', ext: 'mp4', kind: 'video', frames: 'jpeg', loop: true, tip: 'loops without a seam (Instagram, websites, wallpapers)' },
+    { id: 'loop', name: 'MP4 · perfect loop', ext: 'mp4', kind: 'video', frames: 'jpeg', loop: true, audio: 'aac', tip: 'loops without a seam (Instagram, websites, wallpapers), with the song\'s sound under it' },
     { id: 'still', name: 'Still · PNG', ext: 'png', kind: 'still', frames: 'png', alpha: true, tip: 'the frame at the playhead, any size, with alpha' },
     { id: 'still16', name: 'Still · 16-bit PNG', ext: 'png', kind: 'still', frames: 'raw16', alpha: true, tip: 'for print: 16 bits per channel (smooth gradients after grading)' },
     { id: 'glb', name: '3D model · GLB', ext: 'glb', kind: 'scene', tip: 'the scene\'s 3D content at the playhead (Blender, Spline, web)' },
@@ -103,7 +103,7 @@ const LabExportCore = (() => {
     const enc = o.encoders || null;
     const F = o.F || 30;
     const a = ['-y', '-framerate', String(F), '-i', o.input];
-    const ain = (f.audio && o.audio?.inputs?.length && !f.loop) ? o.audio.inputs : [];
+    const ain = (f.audio && o.audio?.inputs?.length && (!f.loop || o.loop?.L)) ? o.audio.inputs : []; // (round 145, loopsound145: a perfect-loop MP4 carries its span of the song)
     for (const p of ain) a.push('-i', p);
     const chain = [];
     let v = '[0:v]';
@@ -122,12 +122,16 @@ const LabExportCore = (() => {
       chain.push(`${v}fps=${gf}${sc},split[ga][gb];[ga]palettegen=max_colors=256:stats_mode=full:reserve_transparent=${o.alpha ? 1 : 0}[gp];[gb][gp]paletteuse=dither=${q.gif}${o.alpha ? ':alpha_threshold=128' : ''}[gv]`);
       v = '[gv]';
     }
+    let aout = '[aout]';
     if (ain.length) {
       chain.push(o.audio.filter);
+      // (round 145, loopsound145) the loop's sound: exactly its L frames of the song, the few ms after its end blended into
+      // its start (equal power), so the file repeats without a click
+      if (f.loop && L) { chain.push(loopSeam(L, F)); aout = '[aloop]'; }
     }
     if (chain.length) a.push('-filter_complex', chain.join(';'));
     a.push('-map', v === '[0:v]' ? '0:v' : v); // (a filter graph for the sound alone leaves the pictures as they are)
-    if (ain.length) a.push('-map', '[aout]');
+    if (ain.length) a.push('-map', aout);
     // (round 52, presentready) o.hw: a baked show may use the computer's hardware H.264 encoder (the Mac's VideoToolbox,
     // Windows' Media Foundation) at a high bit rate; only when ffmpeg lists it (the caller falls back to x264 on a failure)
     const hw = (f.id === 'mp4' || f.id === 'loop') && o.hw && enc ? ['h264_videotoolbox', 'h264_mf'].find((x) => enc.includes(x)) : null;
@@ -178,6 +182,17 @@ const LabExportCore = (() => {
   }
 
   // ---------- loops ----------
+  // (round 145, loopsound145) [aout] (the song from the loop's start, a little past its end) → [aloop]: L / F seconds to
+  // the sample at 48 kHz; its first `ms` are the song just after the end fading out (equal power, qsin) while the
+  // start fades in, the way the picture's cross-fade puts the tail into the head. Past the song's end: silence pads it.
+  const RATE = 48000;
+  function loopSeam(L, F = 30, { ms = 20 } = {}) {
+    const ns = Math.max(2, Math.round((L * RATE) / F));
+    const nd = Math.max(1, Math.min(Math.round((ms * RATE) / 1000), Math.floor(ns / 4)));
+    // (afade + amix rather than acrossfade: ffmpeg 6's acrossfade gives nothing when its first input is exactly the fade)
+    const pad = (n) => `apad=whole_len=${n},atrim=end_sample=${n}`;
+    return `[aout]aresample=${RATE},asplit[lsa][lsb];[lsa]atrim=start_sample=${ns}:end_sample=${ns + nd},asetpts=PTS-STARTPTS,${pad(nd)},afade=t=out:ss=0:ns=${nd}:curve=qsin,${pad(ns)}[lst];[lsb]atrim=end_sample=${ns},asetpts=PTS-STARTPTS,${pad(ns)},afade=t=in:ss=0:ns=${nd}:curve=qsin[lsh];[lst][lsh]amix=inputs=2:normalize=0:duration=longest[aloop]`;
+  }
   // a loop on the song's bars: n bars at bpm with bpb beats a bar → frames; the cross-fade is half a beat (≥ 4 frames)
   function loopLen({ bars = 2, bpm = 120, bpb = 4, F = 30, secs = null, fade = null } = {}) {
     const len = secs > 0 ? secs : (bars * bpb * 60) / (bpm || 120);
@@ -293,6 +308,6 @@ const LabExportCore = (() => {
     }
     return o;
   }
-  return { FORMATS, ALIASES, get, SIZES, size, page, subTimes, BLUR, SS, QUALITY, args, streamArgs, audio, loopLen, dist, findLoop, speed, eta, etaModel, fmtSecs, fmtSize, preset, readPreset, sheet, safe, parse, MAX_SIDE };
+  return { FORMATS, ALIASES, get, SIZES, size, page, subTimes, BLUR, SS, QUALITY, args, streamArgs, audio, loopSeam, loopLen, dist, findLoop, speed, eta, etaModel, fmtSecs, fmtSize, preset, readPreset, sheet, safe, parse, MAX_SIDE };
 })();
 if (typeof module !== 'undefined') module.exports = LabExportCore;
