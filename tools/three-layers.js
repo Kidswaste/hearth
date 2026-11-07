@@ -450,7 +450,9 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
 
     // what a layer's right-click acts with (LabEasy.layerItems); (round 36, labsearch) also for 🔎 Lab search: menuFor(id)
     const menuHandlers = (L) => ({ select: () => onSelect(L.id), change: (p) => onChange(L.id, p, { live: false }), solo: onSolo ? () => onSolo(L.id) : null, copy: () => onAdd('copy'), remove: layers.length > 1 ? () => onRemove(L.id) : null,
-      rename: () => { const n = list.querySelector(`.ly-row[data-id="${CSS.escape(L.id)}"] .ly-name`); if (n) n.dispatchEvent(new MouseEvent('dblclick')); } });
+      rename: () => { const n = list.querySelector(`.ly-row[data-id="${CSS.escape(L.id)}"] .ly-name`); if (n) n.dispatchEvent(new MouseEvent('dblclick')); },
+      // (round 143, lab143) its knobs from its right-click: open / fold them here, 📌 keep them open
+      knobs: knobs ? { open: () => isOpen(L.id), toggle: () => toggleOpen(L.id), pinned: () => pins.has(L.id), pin: () => setPin(L.id, !pins.has(L.id)) } : null });
     let dragId = null;
     // (round 44, layergroups) dragKind: 'layer' | 'group' (a group's header drags its whole run); picked: layers chosen
     // with Ctrl/⌘+click or Shift+click for Group (Ctrl/⌘+G); the groups' own work is tools/three-groups*.js

@@ -2411,8 +2411,9 @@ const ThreeMedia = (() => {
         g.fillRect(w + 3, y + 1, W - w - 6, TRACK_H - 2);
         g.fillStyle = tr.color || '#7ad0ff';
         g.fillRect(w + 3, y + 1, 3, TRACK_H - 2);
-        g.fillStyle = shown ? '#ffd75e' : '#cfc6bb';
-        const label = `▾ ${shown ? `${shown} curve${shown === 1 ? '' : 's'}` : 'Automation'}${tr.animated ? ` · ${tr.animated}●` : ''}`;
+        // (round 143, lab143) quieter: "▾ curves" dimmed until a layer has some (was "▾ Automation" on every track)
+        g.fillStyle = shown ? '#ffd75e' : tr.animated || tr.selected ? '#cfc6bb' : '#8f877d';
+        const label = `▾ ${shown ? `${shown} curve${shown === 1 ? '' : 's'}` : 'curves'}${tr.animated ? ` · ${tr.animated}●` : ''}`;
         g.fillText(label.length > 13 ? `${label.slice(0, 12)}…` : label, w + 10, y + 11);
         // M (mute = hide the layer) and S (solo: only this layer, until you click again)
         for (const [i, txt, on, col] of [[0, 'M', tr.visible === false, '#ff8a6a'], [1, 'S', tr.solo, '#ffd75e']]) {
@@ -3214,8 +3215,30 @@ const ThreeMedia = (() => {
           null,
           ['Delete keyframe', `At ${fmtMs(hit.key.t)}`, () => keysChange([hit.track.id], () => trackHandlers.onKeyDelete?.(hit.track.id, hit.key.t))],
         ]);
+        return;
       }
+      // (round 143, lab143) a layer's track (its bar, its header: ▾ curves, M, S): the track's own actions in one menu
+      if ((hit.zone === 'track' || hit.zone === 'chip' || hit.zone === 'mute' || hit.zone === 'solo') && hit.track) { e.preventDefault(); trackMenu(e, hit.track); }
     });
+    function trackMenu(e, tr) {
+      const id = tr.id;
+      const onLoop = region && Math.abs((tr.in ?? -1) - region.a) < 1e-3 && Math.abs((tr.out ?? -1) - region.b) < 1e-3;
+      const rowNow = () => document.querySelector(`.ly-row[data-id="${CSS.escape(id)}"]`);
+      const row = rowNow();
+      trackHandlers.onSelect?.(id);
+      popMenu(e.clientX, e.clientY, [
+        tr.name || 'Layer',
+        [tr.visible === false ? '👁 Show it (M)' : '◌ Mute: hide it (M)', 'The M at the right of its track', () => trackHandlers.onMute?.(id)],
+        [tr.solo ? 'Show every layer (S)' : 'Solo: only this one (S)', 'Until you click again · not saved', () => trackHandlers.onSolo?.(id)],
+        ['▾ Its curves…', 'Which settings show as curves under it', () => trackHandlers.onLanePick?.(id, e.clientX, e.clientY)],
+        'When it plays',
+        region && !onLoop ? ['Play it during the loop', `${fmtMs(region.a)} – ${fmtMs(region.b)} · or double-click the bar`, () => trackHandlers.onChange?.(id, { in: region.a, out: region.b }, { final: true })] : false,
+        tr.in != null || tr.out != null ? ['Play it for the whole song', 'No start or end', () => trackHandlers.onChange?.(id, { in: null, out: null }, { final: true })] : false,
+        ['Starts at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: now(), out: tr.out != null && tr.out > now() ? tr.out : null }, { final: true })],
+        ['Ends at the playhead', fmtMs(now()), () => trackHandlers.onChange?.(id, { in: tr.in != null && tr.in < now() ? tr.in : null, out: now() }, { final: true })],
+        row ? ['More for this layer…', 'Its right-click in Layers & knobs: rename, duplicate, effects, react…', () => rowNow()?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }))] : false,
+      ].filter((x) => x !== false), { width: 300 });
+    }
     canvas.addEventListener('wheel', (e) => {
       if (!D()) return;
       e.preventDefault();
@@ -3288,6 +3311,14 @@ const ThreeMedia = (() => {
         region ? ['Remove the loop', '', () => setRegion(null)] : false,
         cueRow ? false : ['Cue here', 'C at the playhead', () => addCue(t)],
         ['Section here', 'Intro, Build, Drop…', SECTION_NAMES.map((n) => [n, '', () => addCue(t, n)])],
+        // (round 143, lab143) the grid's 1 and the zoom, one level up
+        ['Set 1 here', 'The grid\'s downbeat on the nearest kick', () => editGrid((g) => { g.anchor = r4(snapToHit(t + 0.05, 'kick')); })],
+        ['Zoom', view ? 'in, out, the loop, the whole song' : 'in here, the loop', [
+          ['Zoom in here', '+ · or the wheel', () => zoomBy(0.5, t)],
+          view ? ['Zoom out', '−', () => zoomBy(2, t)] : false,
+          region ? ['Zoom to the loop', '', () => fitLoop()] : false,
+          view ? ['The whole song', '0 · or double-click the ruler', () => setView(null)] : false,
+        ].filter((x) => x !== false)],
         ['More', 'Loop 4 bars, trim, save as a file, the 1, zoom out', [
           ['Loop 4 bars from here', '', () => setRegion({ a, b: Math.min(D(), a + bar * 4) })],
           ['Song starts here', '{ · the sketch hears only the trimmed part', () => setTrimEdge('a', t)],
