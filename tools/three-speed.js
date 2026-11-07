@@ -36,8 +36,10 @@ const LabSpeed = (() => {
   // ---------- measuring ----------
   // toggle: how many of the heaviest layers are left out in turn (0 after a fix: the frames only; each layer's cost is
   // then the median kept from this scene's measures)
+  const LC = () => (typeof LabCost !== 'undefined' ? LabCost : null); // (round 146, layercost146) the cost on each layer
   async function measure(ms = 3000, toggle = 3) {
     const { cmd } = await lab();
+    if (toggle === 3 && LC()?.on) toggle = 8; // (round 146) the cost view: up to 8 layers left out in turn, each one's own cost
     if (S.busy) throw new Error('Already measuring.');
     S.busy = true; paint();
     try {
@@ -47,6 +49,8 @@ const LabSpeed = (() => {
       // each layer's GPU time: the median of this scene's last 3 measures (one measure on a busy computer jitters)
       if (res?.ok) for (const L of res.layers || []) { if (L.gpuMs == null) { const k = S.hist.get(L.id); if (k?.length) L.gpuMs = k.slice().sort((a, b) => a - b)[Math.floor(k.length / 2)]; continue; } const h = [...(S.hist.get(L.id) || []), L.gpuMs].slice(-3); S.hist.set(L.id, h); L.gpuMs = h.slice().sort((a, b) => a - b)[Math.floor(h.length / 2)]; }
       S.analysis = C().analyse(res, { nameOf: (id) => sp().name(id), sliders: slidersOf, set: sp().get() });
+      if (S.analysis.ok) S.analysis.acts = S.analysis.layers.flatMap((L) => C().lighten(L, { sliders: slidersOf, lay: sp().get().lay || {} })); // (round 146) each layer's lighten actions
+      LC()?.measured?.(S.analysis);
       return S.analysis;
     } finally { S.busy = false; paint(); }
   }
@@ -64,10 +68,30 @@ const LabSpeed = (() => {
       S.hist.delete(f.layer); // (that layer's cost changed: measured afresh)
       return async () => { S.hist.delete(f.layer); try { ThreeLab.director.sliders(f.layer, { [f.key]: f.from }); } catch { /* the layer went away */ } };
     }
+    // (round 146, layercost146) one layer at ½ resolution / without shadows in the preview (sketch.speed.lay, saved with
+    // the scene like the other preview fixes), or hidden (its eye); the undo puts back only what this one changed
+    if (f.kind === 'lay') {
+      const lay0 = sp().get().lay || {}; const was = { ...(lay0[f.layer] || {}) };
+      sp().set({ lay: { ...lay0, [f.layer]: { ...was, ...f.set } } });
+      S.hist.delete(f.layer);
+      return async () => {
+        S.hist.delete(f.layer);
+        const lay = { ...(sp().get().lay || {}) }; const o = { ...(lay[f.layer] || {}) };
+        for (const k of Object.keys(f.set)) { if (was[k] === undefined) delete o[k]; else o[k] = was[k]; }
+        if (Object.keys(o).length) lay[f.layer] = o; else delete lay[f.layer];
+        sp().set({ lay: Object.keys(lay).length ? lay : null });
+      };
+    }
+    if (f.kind === 'hide') {
+      const L = ThreeLab.director.layers().layers.find((x) => x.id === f.layer);
+      const vis = L?.visible !== false;
+      await ThreeLab.director.updateLayer(f.layer, { visible: false }, 0.3);
+      return async () => { try { await ThreeLab.director.updateLayer(f.layer, { visible: vis }, 0.3); } catch { /* the layer went away */ } };
+    }
     return null;
   }
   async function fix(id) {
-    const c = (S.analysis?.all || []).find((x) => x.id === id);
+    const c = [...(S.analysis?.all || []), ...(S.analysis?.acts || [])].find((x) => x.id === id);
     if (!c) throw new Error('Measure first.');
     if (c.fix.kind === 'ai') return aiOpen(c.fix.layer);
     if (S.done.has(id)) return false;
@@ -77,13 +101,20 @@ const LabSpeed = (() => {
     let undo;
     try { undo = await apply(c); } finally { abDone?.(); }
     if (!undo) return false;
-    const entry = { id, label: c.fix.label, title: c.title, preview: c.preview, undo, was, now: null, layer: c.fix.kind === 'slider' ? c.fix.layer : null };
+    const lt = c.kind === 'lighten'; // (round 146, layercost146) a layer's lighten action: measured again with that layer left out in turn
+    const label = lt ? `${c.fix.label} · ${sp().name(c.layer) || 'layer'}` : c.fix.label;
+    const toggle = lt ? (LC()?.on ? 8 : 3) : c.fix.kind === 'slider' ? 1 : 0;
+    const costWas = lt ? S.analysis.layers.find((L) => L.id === c.layer)?.cost ?? null : null;
+    const entry = { id, label, title: c.title, preview: c.preview, undo, was, now: null, layer: c.fix.kind === 'slider' || lt ? c.fix.layer : null, toggle, costWas, costNow: null };
     S.undos.push(entry); S.done.set(id, entry);
+    // the Lab's Ctrl/⌘+Z takes it back too, as one step (tools/three-direct.js); undone already from the card: nothing
+    if (lt) window.LabDirect?.push?.(c.layer, `⚡ ${label}`, () => { if (!S.undos.includes(entry)) return false; undo1(entry).catch(err); return true; });
     paint();
-    toast(`⚡ ${c.fix.label}`, { timeout: 5000, action: { label: 'Undo', fn: () => undo1(entry).catch(err) } });
+    toast(`⚡ ${label}`, { timeout: 5000, action: { label: 'Undo', fn: () => undo1(entry).catch(err) } });
     await settled(cmd);
+    for (let i = 0; i < 600 && S.busy; i += 1) await sleep(200); // (round 146) a click during a measure: measured again once that one ends
     const keep = S.analysis;
-    try { const a = await measure(3000, c.fix.kind === 'slider' ? 1 : 0); entry.now = a.ok ? a.fps : null; } catch { S.analysis = keep; }
+    try { const a = await measure(3000, toggle); entry.now = a.ok ? a.fps : null; if (lt && a.ok) entry.costNow = a.layers.find((L) => L.id === c.layer)?.cost ?? 0; } catch { S.analysis = keep; }
     paint();
     return entry;
   }
@@ -96,7 +127,8 @@ const LabSpeed = (() => {
     paint();
     const { cmd } = await lab();
     await settled(cmd);
-    await measure(3000, entry.layer ? 1 : 0).catch(() => null);
+    for (let i = 0; i < 600 && S.busy; i += 1) await sleep(200);
+    await measure(3000, entry.toggle ?? (entry.layer ? 1 : 0)).catch(() => null);
     return true;
   }
   async function undo() {
@@ -180,7 +212,7 @@ const LabSpeed = (() => {
     }
     if (a?.ok) {
       const list = a.causes.slice();
-      for (const [id, e] of S.done) if (!list.some((x) => x.id === id)) list.push({ id, title: e.title, fix: { label: e.label }, gainLine: '', done: true });
+      for (const [id, e] of S.done) if (!id.startsWith('lt:') && !list.some((x) => x.id === id)) list.push({ id, title: e.title, fix: { label: e.label }, gainLine: '', done: true });
       if (!list.length) body.push(el('div', { class: 'spd-ok', text: 'Nothing heavy stands out: every layer is light, at 1× pixels, without extra shadows.' }));
       list.forEach((x, i) => {
         const e = S.done.get(x.id);
@@ -191,6 +223,9 @@ const LabSpeed = (() => {
             e ? btn('↶', 'spd-undo1', () => undo1(e), 'Undo this fix') : el('span', { class: 'spd-gain', text: `(${x.gainLine})` })));
         body.push(row);
       });
+      // (round 146, layercost146) each layer's cost, heaviest first, with its one-click lighten actions
+      const sec = LC()?.section?.(a, { done: S.done, fix, undo1, btn });
+      if (sec) body.push(sec);
       // the layers, folded
       const tog = btn(`${S.showLayers ? '▾' : '▸'} Each layer (${a.layers.length})`, 'spd-tog', () => { S.showLayers = !S.showLayers; paint(); }, 'GPU time, draw calls, triangles, shaders, textures, offscreen passes');
       body.push(tog);
@@ -212,6 +247,7 @@ const LabSpeed = (() => {
     }
     const foot = el('div', { class: 'lm-acts spd-foot' },
       btn('Measure again', 'spd-again', () => measure(), 'Another 3 s on this computer'),
+      LC() ? btn(`${LC().on ? '▣' : '▦'} Cost on layers`, `spd-costview${LC().on ? ' on' : ''}`, () => LC().toggle(), LC().on ? 'Hide the cost badges on the Layers rows' : 'Show each layer\'s measured cost on its row in Layers & knobs (measured now, not while it plays)') : null,
       S.undos.length ? btn('↶ Undo', 'spd-undo', undo, 'Undo the last fix (one step)') : null,
       Object.values(set).some((v) => v != null && v !== false) ? el('span', { class: 'spd-note', text: 'Preview settings are this scene\'s; renders stay full quality.' }) : null);
     c.classList.toggle('busy', S.busy);
@@ -233,6 +269,6 @@ const LabSpeed = (() => {
   function close() { S.card?.remove(); S.ai = null; }
   addEventListener('hearth:sketch', () => { if (S.card?.isConnected) close(); });
   const isOpen = () => Boolean(S.card?.isConnected);
-  const state = () => ({ open: isOpen(), busy: S.busy, analysis: S.analysis, raw: S.raw, undos: S.undos.map((e) => e.label), done: [...S.done.values()].map((e) => ({ id: e.id, label: e.label, was: e.was, now: e.now })), gl: S.gl, ai: S.ai ? { layer: S.ai.layer, text: S.ai.text, line: S.ai.line, est: S.ai.est } : null, sent: S.sent.slice(), measures: S.measures, set: sp()?.get?.() || null });
-  return { open, close, measure, fix, undo, safe, glLost, aiOpen, aiSend, state, isOpen, get card() { return S.card; } };
+  const state = () => ({ costOn: Boolean(LC()?.on), open: isOpen(), busy: S.busy, analysis: S.analysis, raw: S.raw, undos: S.undos.map((e) => e.label), done: [...S.done.values()].map((e) => ({ id: e.id, label: e.label, was: e.was, now: e.now })), gl: S.gl, ai: S.ai ? { layer: S.ai.layer, text: S.ai.text, line: S.ai.line, est: S.ai.est } : null, sent: S.sent.slice(), measures: S.measures, set: sp()?.get?.() || null });
+  return { repaint: () => paint(), open, close, measure, fix, undo, safe, glLost, aiOpen, aiSend, state, isOpen, get card() { return S.card; } };
 })();

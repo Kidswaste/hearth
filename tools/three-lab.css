@@ -364,6 +364,7 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .lab-speedchip .lab-speedchip-go { text-decoration: underline dotted; text-underline-offset: 3px; color: var(--fh-gold, #ffd75e); }
 .lab-speedchip button:hover { background: color-mix(in srgb, var(--text, #eae0d5) 10%, transparent); }
 .lab-show .lab-speedchip { display: none; }
+.lab-speedchip .lab-speedchip-cost::before { content: "▦"; } /* (round 146, layercost146) which layer costs the frames (the glyph from CSS: the chip's words stay "Slow: N fps · Why?") */
 /* Layer masks and explicit, color-coded object axes. Loaded with the Lab only. */
 .ly-mask { border: 1px solid #ffffff20; border-radius: 8px; padding: 6px; }
 .ly-mask summary { display:flex; align-items:center; gap:8px; cursor:pointer; }

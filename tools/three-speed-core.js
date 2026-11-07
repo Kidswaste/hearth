@@ -80,6 +80,25 @@ const SpeedCore = (() => {
     return { ok: true, fps: Math.round(fps * 10) / 10, frameMs: Math.round(T * 10) / 10, hz: num(res.hz), layers, causes: causes.slice(0, 3), all: causes };
   }
 
+  // ---------- (round 146, layercost146) one layer's lighten actions, heaviest layers first ----------
+  // lighten(L, { sliders, lay }) → [{ id, kind: 'lighten', layer, preview, title, fix: { kind, label, … } }]
+  //   fewer   its count slider halved (a scene change, renders too)        → fix.kind 'slider'
+  //   half    this layer at ½ resolution in the preview                     → fix.kind 'lay' { half: true }
+  //   sh      no shadows on this layer in the preview (it has shadow lights) → fix.kind 'lay' { sh0: true }
+  //   hide    hide the layer (its eye: a scene change)                      → fix.kind 'hide'
+  function lighten(L, { sliders = () => [], lay = {} } = {}) {
+    if (!L) return [];
+    const own = lay?.[L.id] || {};
+    const out = [];
+    const mk = (k, fix, title, preview) => out.push({ id: `lt:${L.id}:${k}`, kind: 'lighten', act: k, layer: L.id, preview, title, fix: { ...fix, layer: L.id } });
+    const sl = L.fx ? null : countSlider(sliders(L.id));
+    if (sl) mk('fewer', { kind: 'slider', key: sl.key, from: sl.value, to: Math.max(num(sl.min) > 0 ? num(sl.min) : 1, snap(sl.value * 0.5, sl.step)), label: 'Fewer' }, `Halve “${sl.label || sl.key}” on '${L.name}' (${big(sl.value)} → ${big(snap(sl.value * 0.5, sl.step))})`, false);
+    if (!L.fx && !own.half) mk('half', { kind: 'lay', set: { half: true }, label: '½ res' }, `'${L.name}' at half resolution in the preview (renders unaffected)`, true);
+    if (L.shadowLights && !own.sh0) mk('sh', { kind: 'lay', set: { sh0: true }, label: 'No shadows' }, `No shadows on '${L.name}' in the preview (renders unaffected)`, true);
+    mk('hide', { kind: 'hide', label: 'Hide' }, `Hide '${L.name}' (its eye in Layers)`, false);
+    return out;
+  }
+
   // ---------- the optional AI help (only on a click, the cost shown first) ----------
   function ask(L, a) {
     if (!L) return '';
@@ -96,7 +115,7 @@ const SpeedCore = (() => {
   const kfmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
   const costLine = (e, who = 'Claude') => `About ${kfmt(e.input)} tokens in (most re-read from the cache) and ${kfmt(e.output)} out · ${who}`;
 
-  const api = { SAFE, COUNT_RE, countSlider, analyse, ask, estimate, costLine, big, ms1 };
+  const api = { SAFE, COUNT_RE, countSlider, analyse, lighten, ask, estimate, costLine, big, ms1 };
   if (typeof module !== 'undefined') module.exports = api;
   return api;
 })();
