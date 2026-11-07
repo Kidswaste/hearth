@@ -195,7 +195,7 @@ const LabSafe = (() => {
     const head = s.hit && who.length ? `${clip(who.join(', '), 30)} ${WORD[s.kind] || 'crashed'} the preview when it came back · kept off`
       : `${s.why === 'again' ? `${WORD[s.kind] || 'crashed'} again` : `${WORD[s.kind] || 'crashed'} last time`} · opened safely`;
     const sub = [`${on} of ${s.total} layer${s.total === 1 ? '' : 's'} on`, 'lowest quality, 1× pixels, no shadows (preview only)'];
-    if (!s.hit && who.length) sub.push(`${clip(who.join(', '), 30)} was ${s.step === 'building' ? 'building' : 'drawing'} when it ${s.kind === 'hang' ? 'hung' : 'crashed'}`);
+    if (!s.hit && who.length) sub.push(`${clip(who.join(', '), 30)} ${who.length > 1 ? 'were' : 'was'} ${s.step === 'building' ? 'building' : 'drawing'} when it ${s.kind === 'hang' ? 'hung' : 'crashed'}`);
     const goTxt = !nx ? null : !s.back.length ? 'Bring layers back one by one' : `Bring back ${clip(nxName || 'the next layer', 22)}`;
     S.el.replaceChildren(
       el('span', { class: 'ls-ic', text: '🛟', attrs: { 'aria-hidden': 'true' } }),
