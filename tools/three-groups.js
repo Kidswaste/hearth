@@ -327,7 +327,7 @@ const LabGroups = (() => {
 
   // ---------- keys: only while you work in the Layers list ----------
   let armed = false;
-  const inPanel = (n) => { const p = host()?.panel; return Boolean(p && n && p.contains(n)); };
+  const inPanel = (n) => { const p = host()?.panel; return Boolean(p && n && p.contains(n) && !n.closest?.('.ly-knobs, .lk-secs')); }; // (round 142, panel142) not in a layer's knobs or the ★ / 🎛 sections
   addEventListener('pointerdown', (e) => { armed = inPanel(e.target); }, true);
   addEventListener('keydown', (e) => {
     // (round 136, outline136) Alt+↑ / Alt+↓: the selected layer (or the group header clicked last) one step up / down
