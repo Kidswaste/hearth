@@ -55,6 +55,8 @@ let c = null; let D = null; let sp = null;
 const page = async () => { for (let i = 0; i < 6; i++) { const r = await D.evalInSketch('return JSON.stringify(window.__labSpeed ? window.__labSpeed.state() : null)'); if (r?.ok) { try { return JSON.parse(r.value); } catch { return null; } } await wait(500); } return null; };
 const S = () => LabSpeed.state();
 const idle = () => until(() => (typeof LabSpeed !== 'undefined' && !S().busy ? true : null), 300000, 300);
+// an undo measures again (after the page settles): wait for that measure to finish, not just for "not busy now"
+const remeasured = async (k) => { await until(() => S().measures > k && !S().busy, 300000, 300); };
 const badges = () => [...document.querySelectorAll('.ly-row[data-id] .lc-badge')];
 const DEF = JSON.stringify({ px1: false, noAA: false, sh: null, fxHalf: false });
 
@@ -142,8 +144,9 @@ try {
   await safe('undo', async () => {
     const n0 = S().undos.length; const d0 = LabDirect.steps.length;
     const pane = sp.host.closest('.three-pane') || sp.host;
+    const k0 = S().measures;
     LabDirect.undo(); // (the Lab's Ctrl/⌘+Z: its newest step)
-    await until(() => S().undos.length === n0 - 1, 20000); await idle();
+    await until(() => S().undos.length === n0 - 1, 20000); await remeasured(k0);
     step('undo: ONE Ctrl/⌘+Z step (LabDirect) puts Particles\' Count back to 300000', cnt() === 300000 && S().undos.length === n0 - 1 && LabDirect.steps.length === d0 - 1, { count: cnt(), undos: S().undos, steps: LabDirect.steps.length, pane: Boolean(pane) });
     // ½ res, the preview only: the scene's preview settings, then the card's ↶
     const h = LabSpeed.card.querySelector(`.lc-row[data-layer="${CSS.escape(pid)}"] .lc-half`);
@@ -152,8 +155,9 @@ try {
     const pg = await page();
     const on = sp.get().lay?.[pid]?.half === true && pg?.lay?.[pid]?.half === true;
     const u = LabSpeed.card.querySelector(`.lc-row[data-layer="${CSS.escape(pid)}"] .lc-undo1`);
+    const k1 = S().measures;
     u?.click();
-    await until(() => !S().done.some((d) => d.id === `lt:${pid}:half`), 20000); await idle();
+    await until(() => !S().done.some((d) => d.id === `lt:${pid}:half`), 20000); await remeasured(k1);
     const pg2 = await page();
     step('undo: "½ res" sets this layer\'s preview resolution on the page; the card\'s ↶ puts the settings back exactly (one step)', h && on && u && JSON.stringify(sp.get()) === DEF && !ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.speed && pg2 && !Object.keys(pg2.lay || {}).length, { set: sp.get(), page: pg2 && pg2.lay });
   }, 700000);
