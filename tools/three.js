@@ -1800,6 +1800,7 @@ const ThreeLab = (() => {
       midiBtn.title = n ? `MIDI: ${midiDevices().join(', ')}` : 'Use a MIDI controller: knobs move sliders, pads drop kick / snare / hit markers';
     }
     const midiRelease = {};
+    let lastTouched = null; // (round 141, cmdbar141) the slider moved last ({ layer, key, label, at }): stageHooks.lastSlider
     function midiTouched(layer, key, label) {
       if (midiLearn?.stage !== 'slider') return;
       midiLearn = { stage: 'control', layer, key, label };
@@ -2486,7 +2487,7 @@ const ThreeLab = (() => {
           changed: (key, value, o) => autoKey(id, `s:${key}`, value, o),
           writing: () => writing(),
         },
-        touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); },
+        touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); lastTouched = { layer: id, key, label, at: Date.now() }; }, // (round 141, cmdbar141) lastTouched: the bar's "follow bass"
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
         palette: () => current?.palette || [],
         pins: { has: (key) => favPinned(id, key), toggle: (key) => favsDo((F) => F.toggle({ t: 's', layer: id, key })), open: (anchor) => favsDo((F) => F.toggle(null, { anchor })) }, // (round 138, favs138) ★ the scene's favourite controls
@@ -3218,6 +3219,7 @@ const ThreeLab = (() => {
       // (round 138, favs138) ★ the scene's favourite controls (tools/three-favs.js), saved with the scene; a slider's ◆ for the panel
       favs: () => (current?.favs ? JSON.parse(JSON.stringify(current.favs)) : null),
       setFavs: (v) => { if (!current) return false; if (v?.list?.length) current.favs = JSON.parse(JSON.stringify(v)); else delete current.favs; current.updatedAt = Date.now(); save(); return true; },
+      lastSlider: () => lastTouched, // (round 141, cmdbar141) the command bar's "follow bass"
       keyState: (id, prop) => { const L = layerById(id); return L ? keyStateFor(L, prop) : 'none'; }, toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
       // (round 140, dropmedia140) media dropped on the timeline (tools/three-dropmedia.js): its layers added at once, with
       // their times, fades, colour and group ([{ name, code, props }] at index, bottom = 0), and taken away again by its undo
