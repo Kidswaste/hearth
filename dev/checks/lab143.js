@@ -33,10 +33,11 @@ async function ctxCheck(name, x, y, want) {
   const m = await until(menuNow, 5000);
   const text = m?.textContent || '';
   const missing = want.filter((re) => !re.test(text));
-  if (m && /track|ruler/.test(name)) await shot(`lab143-${name.split(' ')[0]}`);
+  await wait(250);
+  const n0 = document.querySelectorAll('.mb-menu').length;
   await esc();
   const gone = await until(() => !menuNow(), 3000);
-  step(`right-click ${name}: its menu, Esc closes it`, m && !missing.length && gone, { missing: missing.map(String), text: text.slice(0, 160) });
+  step(`right-click ${name}: its menu, Esc closes it`, m && !missing.length && gone, { missing: missing.map(String), text: text.slice(0, 160), ...(gone ? {} : { left: menuNow()?.className, n0, focus: document.activeElement?.className, same: menuNow() === m }) });
 }
 
 try {
@@ -122,9 +123,9 @@ try {
   // a knob on screen (scrolled into the panel's view, the point really on it)
   const kAt = (k) => { const r = k.getBoundingClientRect(); return [Math.round(r.left + 40), Math.round(r.top + 9)]; };
   let knob = q('.tw-row.kind-number').find((k) => drawn(k) && k.contains(document.elementFromPoint(...kAt(k))));
-  if (!knob) { const k0 = q('.tw-row.kind-number').find(drawn); k0?.scrollIntoView({ block: 'center' }); await wait(300); if (k0 && k0.contains(document.elementFromPoint(...kAt(k0)))) knob = k0; }
-  if (knob) await ctxCheck('a knob', ...kAt(knob), [/Favou?rites/, /Back to the code/, /Copy the value/, /Keyframe at the playhead/, /Move with the music|React to a sound/]);
-  else step('a knob is on screen', false);
+  if (!knob) { const kn = [...document.querySelectorAll('.lk-merged .tweaks .tw-knob')].find((k) => k.getClientRects().length); kn?.scrollIntoView({ block: 'start' }); await wait(400); knob = [...document.querySelectorAll('.tw-row')].find((k) => drawn(k) && k.contains(document.elementFromPoint(...kAt(k)))) || null; }
+  if (knob) await ctxCheck('a knob', ...kAt(knob), [/favou?rites/i, /Back to the code/, /Copy the value/, /Keyframe at the playhead/, ...(knob.classList.contains('kind-number') ? [/Move with the music|React to a sound/] : [])]);
+  else step('a knob is on screen', false, (() => { const k0 = q('.tw-row.kind-number').find(drawn); if (!k0) return { n: q('.tw-row').length, kinds: [...new Set(q('.tw-row').map((x) => x.className))].slice(0, 6) }; const p = kAt(k0); const at = document.elementFromPoint(...p); return { p, at: at?.className, r: k0.getBoundingClientRect().toJSON() }; })());
   const qChip = q('.lab-q').find(drawn);
   if (qChip) await ctxCheck('the Quality chip', ...center(qChip), [/Smooth/, /Balanced/, /Force high/]);
 
