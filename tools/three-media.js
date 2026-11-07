@@ -1,6 +1,32 @@
 // Three.js Lab media: loads an mp3/mp4 for audio-reactive sketches, analyzes it (tempo, beats, drops,
 // energy per band), shows a clickable overview with play controls, frames the preview at exact output
 // sizes (1080×1920…) and records the canvas with its audio to a video file.
+// (round 142, smooth142) one "playing" signal for the Lab's window: LabPlay.playing (the song / the scene's timeline
+// plays), the 'hearth:lab-playing' event { playing } on each change, and html.lab-playing. Panels that rebuild themselves
+// (the Layers / Sliders panels, panel142's files) read it to hold a full re-render until play stops:
+// LabPlay.later(key, fn) runs fn now when paused, else once when play stops (the last fn per key). count(k) / counts():
+// the UI work done while playing, for dev/checks/smooth142.js.
+const LabPlay = window.LabPlay || (() => {
+  const P = { playing: false, since: 0, n: {}, later: new Map() };
+  const api = {
+    get playing() { return P.playing; },
+    get since() { return P.since; },
+    set(on) {
+      on = Boolean(on);
+      if (on === P.playing) return;
+      P.playing = on; P.since = performance.now();
+      document.documentElement.classList.toggle('lab-playing', on);
+      dispatchEvent(new CustomEvent('hearth:lab-playing', { detail: { playing: on } }));
+      if (!on) { const q = [...P.later.values()]; P.later.clear(); for (const fn of q) { try { fn(); } catch (err) { console.error(err); } } }
+    },
+    later(key, fn) { if (!P.playing) { fn(); return false; } P.later.set(key, fn); return true; },
+    count(k) { P.n[k] = (P.n[k] || 0) + 1; },
+    counts: () => ({ ...P.n }),
+    reset() { P.n = {}; },
+  };
+  window.LabPlay = api;
+  return api;
+})();
 const ThreeMedia = (() => {
   const AUDIO_EXT = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'opus'];
   const VIDEO_EXT = ['mp4', 'mov', 'webm', 'm4v', 'mkv'];
@@ -675,7 +701,7 @@ const ThreeMedia = (() => {
       }
       window.TwoComputers?.noteFile?.(path, bytes.byteLength).catch?.(() => {}); // its place + content, for the other computer
       if (seq !== loadSeq) return { ok: false, error: 'Another file was loaded meanwhile' };
-      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false });
+      Object.assign(st, { path, name: base(path), bytes, mime: MIME[extOf(path)], video: VIDEO_EXT.includes(extOf(path)), clock: null, analysis: null, samples: null, wave: null, time: startAt, duration: 0, playing: false }); LabPlay.set(false); // (round 142, smooth142)
       wish = null; // (round 135, seekfix135) a new song starts paused unless play is pressed from here on (attach below)
       emit('load', { path, video: st.video });
       const saved = store.get(loopKey(path), null);
@@ -716,7 +742,7 @@ const ThreeMedia = (() => {
       loadSeq += 1; loadingMini = 0;
       analyzing = false;
       const from = st.path; const wasClock = Boolean(st.clock);
-      Object.assign(st, { path: null, name: null, bytes: null, clock: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false });
+      Object.assign(st, { path: null, name: null, bytes: null, clock: null, analysis: null, samples: null, wave: null, time: 0, duration: 0, playing: false }); LabPlay.set(false); // (round 142, smooth142)
       region = null; locked = false; view = null; selected = null;
       emit('unload', {});
       map = { grid: null, marks: emptyMarks(), cues: [] };
@@ -754,7 +780,7 @@ const ThreeMedia = (() => {
       const seq = ++loadSeq;
       const len = Math.max(1, Math.min(600, Number(seconds) || 10));
       analyzing = false;
-      Object.assign(st, { path, name: `⏱ Scene timeline · ${fmtLen(len)}`, bytes: silentWav(len), mime: 'audio/wav', video: false, clock: { fps: fps > 0 ? fps : 30, len }, analysis: null, samples: null, wave: null, time: Math.min(Math.max(0, startAt), len), duration: len, playing: false });
+      Object.assign(st, { path, name: `⏱ Scene timeline · ${fmtLen(len)}`, bytes: silentWav(len), mime: 'audio/wav', video: false, clock: { fps: fps > 0 ? fps : 30, len }, analysis: null, samples: null, wave: null, time: Math.min(Math.max(0, startAt), len), duration: len, playing: false }); LabPlay.set(false); // (round 142, smooth142)
       emit('load', { path, video: false, clock: true });
       const saved = store.get(loopKey(path), null);
       region = saved?.a != null ? { a: saved.a, b: saved.b } : null;
@@ -934,6 +960,7 @@ const ThreeMedia = (() => {
           if (Math.abs(err) < 0.3) { st.time = predicted + err * 0.15; st.stampAt = performance.now(); if (!wish) return; }
         }
         Object.assign(st, { time: hooks.stateTime ? hooks.stateTime(msg.time, msg.playing) : msg.time, duration: finiteDur(msg.duration) || st.duration, playing: msg.playing, stampAt: performance.now() });
+        LabPlay.set(st.playing); // (round 142, smooth142) the Lab's "playing" signal
         if (same && !wish) { if (!st.playing) { if (dragging?.kind === 'seek') paintSoon(); else livePaint(); } return; }
         if (wish && wish.play === msg.playing) wish = null;
         if (recording && !recording.stopping && msg.ended && recording.kind === 'track') stopRecord();
@@ -1782,7 +1809,7 @@ const ThreeMedia = (() => {
     const shown = () => onScreen && (sizes.cOk ? sizes.cw > 0 && sizes.ch > 0 : Boolean(canvas.offsetParent)); // the timeline is on screen (display: none → 0 × 0)
     const ghostHint = {}; // lane → right edge (px) of its "✦ N found · keep them" note, for clicks
     const laneTop = (h) => h - shownLanes().length * LANE_H - tracksH();
-    let raf = 0;
+    let raf = 0; let tickN = 0;
     const waveCache = { key: '', canvas: document.createElement('canvas') };
     const gridCache = { key: '', canvas: document.createElement('canvas') };
     // what the main canvas shows, as one string: draw() skips the canvas when it's unchanged
@@ -1832,8 +1859,12 @@ const ThreeMedia = (() => {
       if (dragging) { paint(); return; }
       // While it plays only the picture, the time and the playhead move: the control row is repainted by paint()
       // when something actually changes (play / pause / loop / markers…), not ten times a second.
-      if (performance.now() - lastFull > 100) livePaint();
-      placePlayheads();
+      // (round 142, smooth142) while it plays: the timeline's picture 5× a second (was 10) and the playheads placed
+      // every other frame (they glide on the compositor between: the main thread is left to the preview)
+      const playing = st.playing && !recording;
+      if (performance.now() - lastFull > (playing ? 200 : 100)) { livePaint(); if (playing) LabPlay.count('timeline'); }
+      if (playing) LabPlay.count('tick');
+      if (!playing || (tickN++ & 1) === 0) { placePlayheads(); if (playing) LabPlay.count('playhead'); }
       raf = requestAnimationFrame(tick);
     }
     function livePaint() {
