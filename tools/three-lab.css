@@ -390,3 +390,37 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
 .msg.note.scene-health-note { padding-top: 5px; padding-bottom: 5px; border-style: solid; border-color: color-mix(in srgb, var(--ui-red, #e5484d) 35%, var(--line)); background: color-mix(in srgb, var(--ui-red, #e5484d) 6%, transparent); font-size: 12.5px; }
 .msg.note.scene-health-note .body p { margin: 0; }
 .msg.note.scene-health-note .note-acts { margin-top: 4px; }
+
+/* (round 142, panel142) ONE Layers & knobs panel: the layers' list is the panel's one scroller; an open layer's knobs sit
+   right under its row (the selected one's, and the 📌 pinned ones'); ★ Favourites and 🎛 Dials fold at the top. Rows
+   off screen are not drawn (content-visibility), and the knobs scroll with their layer (no box of their own). */
+.tw-column.lk-merged > .layers { flex: 1; max-height: none; }
+.lk-merged .layers .ly-list { flex: 1; max-height: none; overscroll-behavior: contain; }
+.lk-merged .ly-row { content-visibility: auto; contain-intrinsic-size: auto 26px; }
+.lk-merged .ly-row:not(.ly-group) { padding-left: 2px; }
+.lk-merged .ly-row.in-group:not(.ly-group) { padding-left: 18px; }
+.ly-exp { flex: none; width: 16px; padding: 0; border: none; background: none; color: var(--muted); font-size: 10px; cursor: pointer; }
+.ly-exp:hover, .ly-exp.open { color: inherit; }
+.ly-pin { flex: none; width: 18px; padding: 0; border: none; background: none; font-size: 10.5px; cursor: pointer; opacity: 0; filter: grayscale(1); }
+.ly-row:hover .ly-pin, .ly-pin:focus-visible { opacity: .6; }
+.ly-pin.on { opacity: 1; filter: none; }
+.ly-knobs { margin: 0 0 4px 8px; padding: 2px 0 2px 6px; border-left: 2px solid var(--ly-gc, color-mix(in srgb, var(--ui-gold) 55%, var(--line))); }
+.ly-knobs .tw-slot { display: block; }
+.ly-knobs .tweaks { border: none; border-radius: 0; background: none; overflow: visible; max-height: none !important; }
+.ly-knobs .tweaks .tw-head { padding: 4px 4px 4px 2px; }
+.ly-knobs .tweaks .tw-head b { font-size: 10.5px; color: var(--muted); }
+.ly-knobs .tw-body { overflow: visible; padding: 2px 2px 6px; }
+.ly-knobs .tw-sec { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.ly-knobs .tw-foot { display: none; }
+.ly-knobs .tw-slots, .ly-knobs .tw-tools, .ly-knobs .tw-status { padding-left: 2px; padding-right: 2px; margin-left: 2px; }
+.ly-settings > summary { display: flex; gap: 6px; align-items: baseline; cursor: pointer; font-size: 11.5px; color: var(--muted); padding: 3px 2px; }
+.ly-settings-state { font: 10.5px Consolas, monospace; opacity: .8; }
+.ly-settings .ly-props { border-top: none; padding: 2px 2px 6px; overflow: visible; }
+.lk-secs { display: flex; flex-direction: column; gap: 2px; padding: 0 10px 4px; }
+.lk-sec > summary { display: flex; gap: 6px; align-items: baseline; cursor: pointer; font-size: 12px; padding: 2px 2px; list-style-position: inside; }
+.lk-sec.lk-favs > summary { color: var(--ui-gold, #f0c060); }
+.lk-sec-n { font: 10.5px Consolas, monospace; color: var(--muted); }
+.lk-sec-body:empty { display: none; }
+.fv-pop.lk-inline, .md-pop.lk-inline { position: static; width: auto !important; max-width: 100%; max-height: 48vh; box-shadow: none; margin: 2px 0 4px; }
+@container (max-width: 760px) { .three-split.with-tweaks .lk-merged .tweaks { max-height: none; } }
+.fv-pop.lk-inline { max-width: 268px; } /* (its compact column, as the card was) */
