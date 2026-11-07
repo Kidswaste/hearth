@@ -42,11 +42,27 @@ const LabRenderPre = (() => {
     const song = P.loaded && !P.isClock;
     const an = song && P.analysis ? { ...P.analysis, grid: grid || P.analysis.grid } : null;
     let perfect = null; try { perfect = window.PerfectLoop?.state?.() || null; } catch { /* no loop */ }
-    return { analysis: an, duration: song ? P.duration : P.clock?.seconds || 0, playhead: P.time || 0, ab: P.loop || null, grid, perfect };
+    let loopOn = true; try { loopOn = store.get('three.mediaLoop', true) !== false; } catch { /* the default: looping */ } // (round 142, renderrange142) the timeline's ⟲ Loop
+    return { analysis: an, duration: song ? P.duration : P.clock?.seconds || 0, playhead: P.time || 0, ab: P.loop || null, grid, perfect, loopOn, song };
+  }
+  // (round 142, renderrange142) the Lab sequence the scene on screen is in: the one open now (when it has the scene), else
+  // the scene's own (▤ Sequence's list: a sequence it owns or starts with); never makes one
+  async function seqOf() {
+    const Q = SEQ(); const sid = sketchId();
+    if (!Q) return null;
+    try {
+      const e = Q.edit;
+      if (e && Q.key && (!sid || e.seq?.scene === sid || (e.clips || []).some((c) => c.sketch === sid) || Q.active)) return { key: Q.key, name: e.seq?.name || String(Q.key).replace(/^seq:/, ''), secs: Q.compile(e).plan.dur || 0 };
+      if (!sid) return null;
+      const all = await Q.list();
+      const by = store.get('three.seq.byScene', {})[sid];
+      const x = all.find((s) => s.key === by && s.scene === sid) || all.find((s) => s.scene === sid) || all.find((s) => !s.scene && s.firstScene === sid);
+      return x ? { key: x.key, name: x.name || String(x.key).replace(/^seq:/, ''), secs: x.seconds || 0 } : null;
+    } catch { return null; }
   }
   async function ctxOf(st, frame) {
     const p = projectNow();
-    return { ...songCtx(), frame, fps: Number(prefs(p).fps || p?.workspace?.fps) || null, prores: await hasProres(), source: st.source };
+    return { ...songCtx(), frame, fps: Number(prefs(p).fps || p?.workspace?.fps) || null, prores: await hasProres(), source: st.source, seq: await seqOf() };
   }
 
   // ---------- the row in the card ----------
@@ -74,6 +90,56 @@ const LabRenderPre = (() => {
     // the project's last-used preset (the project menu's "Render the main scene…"), or the one asked for
     const start = preset === 'last' ? prefs(R.p).renderLast : preset;
     if (start && (C.get(start) || savedOf(R.p).some((x) => x.id === start))) { R.ticked.push(start); put(start); }
+
+    // ---------- (round 142, renderrange142) What to render: Full song · Loop · Sequence · Custom ----------
+    // The card's own choice (R.kind, R.len) renders when no preset is ticked; a preset shown on the chips shows its own
+    // pick there (the reel's window, the loop preset's loop) and a click on a chip changes that preset's length.
+    const savedRange = () => { const x = prefs(R.p).renderRange; return x && typeof x === 'object' ? x : null; };
+    R.custom = (() => { const c = savedRange()?.custom; return Array.isArray(c) && c[1] > c[0] ? { a: c[0], b: c[1] } : null; })();
+    R.kind = st.source === 'seq' && R.ctx.seq ? 'seq' : C.firstKind(R.ctx, savedRange());
+    R.len = C.lengthFor(R.kind, R.ctx, R.custom) || C.lengthFor('full', R.ctx);
+    st.source = R.kind === 'seq' ? 'seq' : 'scene';
+    const shownFill = () => (R.shown ? fillOf(R.shown) : null);
+    const ctxNow = () => ({ ...R.ctx, source: st.source });
+    const kindNow = () => { const f = shownFill(); return f ? C.kindOf(f.length, ctxNow()) : R.kind; };
+    const lenNow = () => { const f = shownFill(); return f ? f.length : R.len; };
+    function remember() {
+      if (!R.p) return;
+      const L = C.loopOf(R.ctx);
+      const was = savedRange() || {};
+      const next = { kind: R.kind, loop: C.loopKey(L), ...(R.custom ? { custom: [R.custom.a, R.custom.b] } : {}) };
+      if (was.kind === next.kind && was.loop === next.loop && JSON.stringify(was.custom || null) === JSON.stringify(next.custom || null)) return;
+      setPrefs(R.p, { renderRange: next });
+    }
+    async function choose(kind) {
+      if (kind === 'custom') {
+        const L = lenNow() || {};
+        const a0 = L.range ? L.range.a : L.whole ? 0 : Number(L.at) || 0; const b0 = L.range ? L.range.b : L.whole ? (R.ctx.duration || 10) : a0 + (Number(L.secs) || 10);
+        const v = await Modal.prompt('From – to (seconds)', { value: `${a0}-${b0}`, label: 'Where the render starts and ends in the song, e.g. 22.5-45' });
+        const m = String(v || '').match(/^\s*(\d+(?:\.\d+)?)\s*[-–to ]+\s*(\d+(?:\.\d+)?)\s*$/);
+        if (!m || Number(m[2]) <= Number(m[1])) return;
+        R.custom = { a: Number(m[1]), b: Number(m[2]) };
+      }
+      if (kind === 'seq') { // the scene's sequence, loaded (not shown) so the render has it
+        const Q = SEQ();
+        try { if (Q && R.ctx.seq && Q.key !== R.ctx.seq.key) await Q.open(R.ctx.seq.key, { show: false }); } catch (err) { toast(`The sequence: ${err.message}`, { type: 'error' }); return; }
+      }
+      const len = C.lengthFor(kind, R.ctx, R.custom);
+      if (!len) return;
+      st.source = kind === 'seq' ? 'seq' : 'scene';
+      const f = shownFill();
+      if (f) { f.length = { ...len }; f.note = len.why; }
+      R.kind = kind; R.len = len;
+      remember();
+      paint();
+    }
+    function rangeRow() {
+      const can = C.offered(R.ctx);
+      const k = kindNow(); const len = lenNow(); const f = shownFill();
+      const chips = C.RANGES.filter((x) => can.includes(x.id)).map((x) => el('button', { type: 'button', class: `sq-chip rr-chip${k === x.id ? ' on' : ''}`, text: x.label, title: x.tip, attrs: { 'data-range': x.id }, on: { click: () => choose(x.id) } }));
+      const line = `${f ? `${f.name} chose · ` : ''}${C.rangeLine(k, len, ctxNow())}`;
+      return el('div', { class: 'sq-rp-row rr-row' }, el('b', { text: 'What to render' }), el('div', { class: 'rp-wrap' }, el('div', { class: 'sq-chips' }, chips), el('div', { class: 'rr-line', text: line, title: line })));
+    }
 
     async function editLength() {
       const f = R.shown && fillOf(R.shown); if (!f) return;
@@ -123,7 +189,10 @@ const LabRenderPre = (() => {
       return el('div', { class: 'sq-rp-row rp-row' }, el('b', { text: 'Presets' }), el('div', { class: 'rp-wrap' }, el('div', { class: 'sq-chips' }, chips), line));
     }
     const api = {
-      row,
+      row, rangeRow, choose, // (round 142, renderrange142)
+      // what the card renders now: the shown preset's length, else the card's choice → LabExport.render options
+      lengthOpts: (format) => C.lengthOpts(lenNow(), format),
+      range: () => ({ kind: kindNow(), length: lenNow() && JSON.parse(JSON.stringify(lenNow())), line: C.rangeLine(kindNow(), lenNow(), ctxNow()), source: st.source }),
       active: () => R.ticked.length > 0,
       label: () => (R.ticked.length > 1 ? `⇪ Export ${R.ticked.length} presets` : null),
       state: () => ({ ticked: R.ticked.slice(), shown: R.shown, filled: JSON.parse(JSON.stringify(R.filled)) }),
@@ -170,7 +239,9 @@ const LabRenderPre = (() => {
     if (check && typeof LabPreflight !== 'undefined') {
       const baseOf = (id) => (C.get(id) ? id : savedOf(project).find((x) => x.id === id)?.base || 'full');
       let song = false; try { song = Boolean(ThreeLab.scenes.songOf?.(sketchId())); } catch { /* none */ }
-      const pf = await check({ jobs: jobs.map((j) => LabPreflight.jobOf(j, { label: j.label, shape: /^(reel|square)$/.test(baseOf(j.preset)) ? 'fixed' : 'free', song })), dir, source, title: list.length > 1 ? `Before these ${list.length} presets` : null,
+      const ctxR = { ...songCtx(), source, seq: source === 'seq' ? await seqOf() : null }; // (round 142, renderrange142) each preset's range on the check
+      const ranges = list.map((f) => `${f.name}: ${C.rangeLine(C.kindOf(f.length, ctxR), f.length, ctxR)}`);
+      const pf = await check({ jobs: jobs.map((j) => LabPreflight.jobOf(j, { label: j.label, shape: /^(reel|square)$/.test(baseOf(j.preset)) ? 'fixed' : 'free', song })), dir, source, range: ranges.join(' · '), title: list.length > 1 ? `Before these ${list.length} presets` : null,
         wantSong: source === 'seq' ? [] : list.filter((f) => /^(reel|full|master|square)$/.test(baseOf(f.id))).map((f) => f.name) });
       if (!pf) return null;
       jobs = jobs.map((j, k) => (pf.jobs[k] ? { ...j, size: { w: pf.jobs[k].w, h: pf.jobs[k].h }, fps: pf.jobs[k].fps } : j));

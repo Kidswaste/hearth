@@ -10,6 +10,16 @@
 //   tiny(jobs, t)              the same jobs, small and short (the check renders 1 s at 160 px, never a full song)
 //   stem(project, preset, d)   "<project> – <preset> – 2026-11-06" (the file's name without its extension)
 //   saved(list) / makeSaved()  a project's own presets (p.prefs.renderPresets): kept tidy, at most 12
+// (round 142, renderrange142) "What to render" (the chips at the top of the card: docs/upgrades/renderrange142.md)
+//   RANGES                     Full song · Loop · Sequence · Custom
+//   loopOf(ctx)                the timeline's loop { a, b, perfect, on } (its A–B loop, else ∞ Make it loop's), or null
+//   offered(ctx)               the chips this scene offers (Loop: a loop is set; Sequence: the scene is in one)
+//   lengthFor(kind, ctx, cus)  a range → a length (the presets' shape: { range } / { whole } / { at, secs }), or null
+//   kindOf(len, ctx)           which chip a length is (a preset's own pick shows on the chips)
+//   firstKind(ctx, saved)      the chip the card opens on: a loop that is on (unless he picked another for that very
+//                              loop), else the project's remembered one, else the sequence when it is open, else Full song
+//   rangeLine(kind, len, ctx)  "Your loop: 0:32 – 0:48 (16 s, 8 bars)"
+//   lengthOpts(len, format)    → LabExport.render's range / at+secs (a perfect loop or GIF: a start and a length)
 const RenderPreCore = (() => {
   const r3 = (x) => Math.round(Number(x) * 1000) / 1000;
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -160,6 +170,78 @@ const RenderPreCore = (() => {
   function makeSaved(name, base, fields, now = Date.now()) {
     return { id: `my-${now.toString(36)}`, name: String(name || 'My preset').trim().slice(0, 40) || 'My preset', base: get(base) ? base : 'full', fields: Object.fromEntries(FIELDS.filter((k) => fields?.[k] != null).map((k) => [k, fields[k]])), at: now };
   }
-  return { PRESETS, get, gridOf, dropOf, reelWindow, loopWindow, fill, fillSaved, lengthText, stem, dateOf, jobs, tiny, saved, makeSaved, EXT, fmt };
+  // ---------- what to render (round 142, renderrange142) ----------
+  // ctx (the card's, see fill): ab (the timeline's A–B loop), loopOn (looping is on), perfect (∞ Make it loop's state),
+  // grid, duration (the song's, else the scene's own timeline), song (a song is loaded), seq ({ key, name, secs } the
+  // scene's Lab sequence, or null)
+  const RANGES = [
+    { id: 'full', label: '♫ Full song', tip: 'The whole song, start to end (a scene with no song: its whole timeline)' },
+    { id: 'loop', label: '⟲ Loop', tip: 'Exactly your loop on the timeline, frame for frame, with its sound' },
+    { id: 'seq', label: '▤ Sequence', tip: 'The Lab sequence this scene is in, whole' },
+    { id: 'custom', label: '✎ Custom', tip: 'From – to, in seconds' },
+  ];
+  // 0:32, 0:03.75 (hundredths only when it isn't on a whole second)
+  const clock = (t) => { const s = Math.max(0, Math.round((Number(t) || 0) * 100) / 100); const m = Math.floor(s / 60); const r = Math.round((s - m * 60) * 100) / 100; const frac = Math.round((r % 1) * 100); return `${m}:${String(Math.floor(r)).padStart(2, '0')}${frac ? `.${String(frac).padStart(2, '0').replace(/0$/, '')}` : ''}`; };
+  const secsText = (x) => { const v = r3(x); return v >= 90 ? clock(v) : `${Math.round(v * 100) / 100} s`; };
+  function loopOf(ctx = {}) {
+    const ab = ctx.ab; const pf = ctx.perfect;
+    if (ab && ab.b > ab.a) return { a: r3(ab.a), b: r3(ab.b), on: ctx.loopOn !== false || Boolean(pf?.on), perfect: Boolean(pf?.on && Math.abs((pf.a || 0) - ab.a) < 1e-3), fade: pf?.fade ? pf.beat || 0.5 : 0 };
+    if (pf?.on && pf.len > 0) return { a: r3(pf.a || 0), b: r3((pf.a || 0) + pf.len), on: true, perfect: true, fade: pf.fade ? pf.beat || 0.5 : 0 };
+    return null;
+  }
+  const loopKey = (L) => (L ? `${L.a}-${L.b}` : null);
+  function offered(ctx = {}) { return ['full', ...(loopOf(ctx) ? ['loop'] : []), ...(ctx.seq ? ['seq'] : []), 'custom']; }
+  function lengthFor(kind, ctx = {}, custom = null) {
+    const dur = Number(ctx.duration) || 0;
+    if (kind === 'full') return dur ? { range: { a: 0, b: r3(dur) }, full: true, why: ctx.song === false ? 'the scene\'s whole timeline' : 'the whole song' } : { at: 0, secs: 10, why: '10 s (no song, no timeline)' };
+    if (kind === 'loop') { const L = loopOf(ctx); return L ? { range: { a: L.a, b: L.b }, loop: true, perfect: L.perfect, fade: L.fade, why: L.perfect ? 'your ∞ loop' : 'your loop' } : null; }
+    if (kind === 'seq') return ctx.seq ? { whole: true, seq: true, why: `the whole sequence “${ctx.seq.name || 'Sequence'}”` } : null;
+    if (kind === 'custom') { const c = custom && Number(custom.b) > Number(custom.a) ? custom : null; return c ? { range: { a: r3(c.a), b: r3(c.b) }, why: 'set by hand' } : null; }
+    return null;
+  }
+  const near = (x, y) => Math.abs(x - y) < 0.02;
+  function kindOf(len, ctx = {}) {
+    if (!len) return 'full';
+    if (len.seq || (len.whole && ctx.source === 'seq')) return 'seq';
+    if (len.whole) return 'full';
+    const a = len.range ? len.range.a : Number(len.at) || 0; const b = len.range ? len.range.b : a + (Number(len.secs) || 0);
+    const L = loopOf(ctx);
+    if (L && near(a, L.a) && near(b, L.b)) return 'loop';
+    const dur = Number(ctx.duration) || 0;
+    if (dur && near(a, 0) && near(b, dur)) return 'full';
+    return 'custom';
+  }
+  // saved: the project's p.prefs.renderRange { kind, loop (the loop it was picked with), custom }
+  function firstKind(ctx = {}, saved = null) {
+    const can = offered(ctx); const L = loopOf(ctx);
+    const kept = saved && can.includes(saved.kind) && (saved.kind !== 'custom' || saved.custom) ? saved.kind : null;
+    if (L?.on && !(kept && saved.loop === loopKey(L))) return 'loop';
+    if (kept) return kept;
+    if (ctx.source === 'seq' && can.includes('seq')) return 'seq';
+    return 'full';
+  }
+  function rangeLine(kind, len, ctx = {}) {
+    if (!len) return '';
+    if (kind === 'seq' || len.whole) return `The sequence “${ctx.seq?.name || 'Sequence'}”${ctx.seq?.secs ? `: ${secsText(ctx.seq.secs)}` : ''}`;
+    const a = len.range ? len.range.a : Number(len.at) || 0; const b = len.range ? len.range.b : a + (Number(len.secs) || 0);
+    const g = ctx.grid?.bpm ? gridOf({ grid: ctx.grid }) : null;
+    const bars = g ? (b - a) / g.bar : 0;
+    const barsText = bars > 0.99 && Math.abs(bars - Math.round(bars)) < 0.02 ? `, ${Math.round(bars)} bar${Math.round(bars) === 1 ? '' : 's'}` : '';
+    const what = kind === 'loop' ? (len.perfect || loopOf(ctx)?.perfect ? 'Your ∞ loop' : 'Your loop') : kind === 'full' ? (ctx.song === false ? 'The whole timeline' : 'The whole song') : len.why === 'set by hand' ? 'From – to' : '';
+    const why = kind === 'custom' && len.why && len.why !== 'set by hand' ? ` · ${len.why}` : '';
+    return `${what ? `${what}: ` : ''}${clock(a)} – ${clock(b)} (${secsText(b - a)}${barsText})${why}`;
+  }
+  // a length → LabExport.render's options for this format (a still: none; a perfect loop / GIF: a start and a length,
+  // its cross-fade frames come after the end; a range: frame-exact, T0 = a, b − a seconds of frames, the sound from a)
+  function lengthOpts(len, format) {
+    if (!len || len.whole) return {};
+    if (/^(still|still16|glb|html|preset)$/.test(format)) return {};
+    const loopFmt = /^(loop|gif)$/.test(format);
+    const o = len.range && !loopFmt ? { range: { ...len.range } } : len.range ? { at: len.range.a, secs: r3(len.range.b - len.range.a) } : { at: len.at, secs: len.secs };
+    if (loopFmt && len.perfect) { o.perfect = true; o.fade = len.fade || 0; }
+    return o;
+  }
+
+  return { RANGES, loopOf, loopKey, offered, lengthFor, kindOf, firstKind, rangeLine, lengthOpts, clock, PRESETS, get, gridOf, dropOf, reelWindow, loopWindow, fill, fillSaved, lengthText, stem, dateOf, jobs, tiny, saved, makeSaved, EXT, fmt };
 })();
 if (typeof module !== 'undefined') module.exports = RenderPreCore;

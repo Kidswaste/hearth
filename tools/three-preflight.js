@@ -225,7 +225,8 @@ const LabPreflight = (() => {
   }
 
   // ---------- the gate: nothing found → go at once; else the card ----------
-  // o: { jobs (jobOf), dir (the output folder), template (a batch's), wantSong (preset names), skipped, canDir, source }
+  // o: { jobs (jobOf), dir (the output folder), template (a batch's), wantSong (preset names), skipped, canDir, source,
+  //      range (round 142, renderrange142: "Your loop: 0:32 – 0:48 (16 s, 8 bars)", shown above the time) }
   // → { jobs, dir, flags, est } to render, or null (Cancel)
   async function gate(o = {}) {
     const t0 = performance.now();
@@ -239,7 +240,7 @@ const LabPreflight = (() => {
       g.res = C.check(g.plan);
     };
     await run();
-    S.last = { items: g.res.items.map((x) => ({ id: x.id, text: x.text, fixes: x.fixes.map((f) => f.label) })), est: g.res.est, ms: Math.round(performance.now() - t0), card: false };
+    S.last = { items: g.res.items.map((x) => ({ id: x.id, text: x.text, fixes: x.fixes.map((f) => f.label) })), est: g.res.est, range: o.range || null, ms: Math.round(performance.now() - t0), card: false }; // (round 142, renderrange142: o.range, what it renders)
     if (!g.res.items.length) return { jobs: g.jobs, dir: g.dir, flags: g.flags, est: g.res.est };
     S.cards += 1; S.last.card = true;
     return card(g, run, o);
@@ -250,10 +251,11 @@ const LabPreflight = (() => {
       const list = el('ul', { class: 'pf-list' });
       const done = el('div', { class: 'pf-done' });
       const est = el('div', { class: 'pf-est' });
+      const range = o.range ? el('div', { class: 'pf-range', text: `▸ ${o.range}`, title: o.range }) : null; // (round 142, renderrange142) the range it renders
       const go = el('button', { type: 'button', class: 'primary pf-go', text: 'Render anyway' });
       const dlg = el('dialog', { class: 'ui-modal pf-card' },
         el('h3', { text: o.title || (g.jobs.length > 1 ? `Before these ${g.jobs.length} renders` : 'Before you render') }),
-        list, done, est,
+        list, done, range, est,
         el('div', { class: 'modal-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'button', class: 'ghost pf-cancel', text: 'Cancel', on: { click: () => end(null) } }), go));
       let busy = false; let over = false;
       function end(v) { if (over) return; over = true; S.card = null; try { if (dlg.open) dlg.close(); } catch { /* gone */ } dlg.remove(); resolve(v); }
@@ -265,7 +267,7 @@ const LabPreflight = (() => {
         done.hidden = !g.done.length;
         est.textContent = `⏱ ${g.res.est.line}`;
         go.textContent = g.res.items.length ? 'Render anyway' : (g.jobs.length > 1 ? `⇪ Render ${g.jobs.length}` : '⇪ Render');
-        S.last = { ...S.last, items: g.res.items.map((x) => ({ id: x.id, text: x.text, fixes: x.fixes.map((f) => f.label) })), est: g.res.est };
+        S.last = { ...S.last, range: o.range || null, items: g.res.items.map((x) => ({ id: x.id, text: x.text, fixes: x.fixes.map((f) => f.label) })), est: g.res.est };
       }
       async function doFix(f) {
         if (busy) return; busy = true; dlg.classList.add('pf-busy');

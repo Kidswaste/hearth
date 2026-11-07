@@ -627,15 +627,15 @@ const LabExport = (() => {
       if (r) dlg.close();
       return r;
     };
-    const lenNow = () => { try { const s = rp?.state?.(); const L = s?.shown && s.filled[s.shown]?.length; return !L || L.whole ? {} : L.range ? { range: L.range } : { at: L.at, secs: L.secs }; } catch { return {}; } }; // (the shown preset's length)
+    const lenNow = () => { try { if (rp?.lengthOpts) return rp.lengthOpts(st.format); const s = rp?.state?.(); const L = s?.shown && s.filled[s.shown]?.length; return !L || L.whole ? {} : L.range ? { range: L.range } : { at: L.at, secs: L.secs }; } catch { return {}; } }; // (the shown preset's length · round 142, renderrange142: else What to render's)
     function paint() {
       const f = C.get(st.format);
       const frame = st.source === 'seq' && SEQ()?.edit ? { w: SEQ().edit.seq.w, h: SEQ().edit.seq.h } : frameNow();
       const sz = st.size === 'custom' ? C.size(st.custom || 'frame', frame) : C.size(st.size, frame);
       const pg = C.page(sz.w, sz.h, st.ss, { cap: gpuCap() });
       body.replaceChildren(
+        rp?.rangeRow ? rp.rangeRow() : el('div', { class: 'sq-rp-row' }, el('b', { text: 'What' }), el('div', { class: 'sq-chips' }, chip(st.source === 'scene', 'This scene', 'The scene on screen, with its sliders as they are', () => { st.source = 'scene'; paint(); }), chip(st.source === 'seq', '▤ The sequence', 'The Lab sequence, whole (or its In–Out range from /lab-export)', () => { st.source = 'seq'; paint(); }))), // (round 142, renderrange142) What to render: Full song · Loop · Sequence · Custom, at the top
         ...(rp ? [rp.row()] : []), // (round 131, renderpre131)
-        el('div', { class: 'sq-rp-row' }, el('b', { text: 'What' }), el('div', { class: 'sq-chips' }, chip(st.source === 'scene', 'This scene', 'The scene on screen, with its sliders as they are', () => { st.source = 'scene'; paint(); }), chip(st.source === 'seq', '▤ The sequence', 'The Lab sequence, whole (or its In–Out range from /lab-export)', () => { st.source = 'seq'; paint(); }))),
         el('div', { class: 'sq-rp-row' }, el('b', { text: 'Format' }), el('div', { class: 'sq-chips' }, [...main.map((id) => chip(st.format === id, C.get(id).name.split(' · ')[0].replace('PNG sequence + alpha', 'PNG seq'), C.get(id).tip, () => { st.format = id; paint(); })),
           chip(!main.includes(st.format), main.includes(st.format) ? 'More ▾' : `${f.name} ▾`, 'HEVC, WebM + alpha, MP4 loop, 16-bit still, GLB, web page, preset, contact sheet', (ev) => showMenu(ev.clientX, ev.clientY, C.FORMATS.filter((x) => !main.includes(x.id)).map((x) => ({ label: x.name, hint: x.tip, checked: st.format === x.id, action: () => { st.format = x.id; paint(); } }))))])),
         f.kind === 'scene' && f.id !== 'sheet' ? null : el('div', { class: 'sq-rp-row' }, el('b', { text: 'Size' }), el('div', { class: 'sq-chips' }, SIZE_CHIPS.map(([id, label]) => chip(st.size === id, id === 'frame' ? `${label} (${frame.w}×${frame.h})` : label, id === 'custom' ? 'Any size: 2560x1440, 6000x4000…' : `${C.size(id, frame).w}×${C.size(id, frame).h}`, async () => { if (id === 'custom') { const v = await Modal.prompt?.('Size (width × height)', st.custom || `${frame.w * 2}x${frame.h * 2}`); if (!v) return; st.custom = v; } st.size = id; paint(); })))),
@@ -645,7 +645,7 @@ const LabExport = (() => {
           chip(st.ss > 1, st.ss > 1 ? `Supersample ${st.ss}×` : 'Supersample', 'Drawn at 2× (or 3×, 4×) the pixels and boxed down: clean edges, fine lines, no shimmer. Click: off → 2× → 3× → 4×', () => { st.ss = st.ss >= 4 ? 1 : st.ss + 1; paint(); }),
           f.kind === 'still' ? null : chip(st.blur > 1, st.blur > 1 ? `Motion blur ${st.blur}` : 'Motion blur', 'Real motion blur: sub-frames across a 180° shutter, averaged. Click: off → 8 → 16', () => { st.blur = st.blur === 1 ? 8 : st.blur === 8 ? 16 : 1; paint(); }),
         ])),
-        el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` },
+        el('div', { class: 'sq-rp-sum', text: `${f.tip}${f.kind !== 'scene' || f.id === 'sheet' ? ` · ${sz.w}×${sz.h}` : ''}${pg.ss > 1 ? ` · drawn at ${sz.w * pg.ss}×${sz.h * pg.ss}` : ''}${pg.capped.length ? ` · ${pg.capped.join(', ')}` : ''}${st.blur > 1 && f.kind !== 'still' ? ` · ${st.blur} sub-frames a frame` : ''}${f.loop && !lenNow().secs ? ' · length: 2 bars of the song (or the loop the frames make)' : ''}` },
           f.kind !== 'scene' && typeof LabPreflight !== 'undefined' ? el('span', { class: 'lx-est', text: ` · ${LabPreflight.estimateLine({ format: st.format, source: st.source, size: sz, fps: st.fps, quality: st.quality, ss: pg.ss, blur: st.blur, ...lenNow() })}` }) : null), // (round 140, preflight140) about how long and how big
       );
       go.textContent = rp?.label?.() || `⇪ ${f.kind === 'scene' && f.id !== 'sheet' ? 'Save' : 'Export'} ${f.name.split(' · ')[0]}`; // (round 131, renderpre131: "⇪ Export 2 presets")
@@ -668,12 +668,12 @@ const LabExport = (() => {
         if (f.kind === 'scene') dlg.close(); else { // (round 140, preflight140) the check before a render
           await pfLoad;
           const song = st.source === 'scene' && Boolean(LAB()?.scenes?.songOf?.(LAB().sketchId()));
-          const pf = await preflight({ jobs: typeof LabPreflight !== 'undefined' ? [LabPreflight.jobOf({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur }, { song })] : [], dir: await outDir(), source: st.source });
+          const pf = await preflight({ jobs: typeof LabPreflight !== 'undefined' ? [LabPreflight.jobOf({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur, ...lenNow() }, { song })] : [], dir: await outDir(), source: st.source, range: rp?.range?.().line || null }); // (round 142, renderrange142: the range and its time on the check)
           if (!pf) return; // Cancel: the card stays open
           if (pf.jobs[0]) { size = { w: pf.jobs[0].w, h: pf.jobs[0].h }; fps = pf.jobs[0].fps; }
           if (pf.flags?.dir) dir = pf.dir;
         }
-        render({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur, ...(dir ? { dir } : {}) })
+        render({ format: st.format, source: st.source, size, fps, quality: st.quality, ss: st.ss, blur: st.blur, ...lenNow(), ...(dir ? { dir } : {}) }) // (round 142, renderrange142) exactly What to render's range
           .catch((err) => { if (!window.Renders || /^(Open|No )/.test(err.message)) toast(err.message, { type: 'error' }); });
       } finally { pfBusy = false; }
     });

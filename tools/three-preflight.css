@@ -11,3 +11,4 @@
 .pf-card .pf-est { margin-top: 8px; font-size: 12px; opacity: .7; }
 .pf-card.pf-busy .pf-fix { pointer-events: none; opacity: .5; }
 .sq-render-panel .lx-est { opacity: .8; }
+.pf-card .pf-range { margin-top: 8px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* (round 142, renderrange142) the range it renders */

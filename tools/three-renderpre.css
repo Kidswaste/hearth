@@ -9,3 +9,8 @@
 .sq-render-panel .rp-len { opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .sq-render-panel .rp-line .spacer { flex: 1; }
 .sq-render-panel .rp-line button.small { padding: 1px 7px; font-size: 12px; }
+/* (round 142, renderrange142) What to render: Full song · Loop · Sequence · Custom, one compact row at the top */
+.sq-render-panel .rr-row { align-items: start; }
+.sq-render-panel .rr-row > b { padding-top: 5px; }
+.sq-render-panel .rr-chip { font-size: 12px; padding: 3px 9px; }
+.sq-render-panel .rr-line { font-size: 12px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
