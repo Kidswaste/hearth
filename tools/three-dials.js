@@ -22,7 +22,7 @@ const LabDials = (() => {
   const HEX = /^#[0-9a-f]{6}$/i;
   const calm = (e) => (window.calmError ? calmError(e) : String(e?.message || e));
   const r2 = (x) => Math.round(x * 100) / 100;
-  const S = { pop: null, anchor: null, sid: null, drag: null, learn: null, props: [], ai: { phase: 'idle', line: '', error: '', sent: [] }, timer: 0, perf: null, raf: 0 };
+  const S = { pop: null, inline: null, anchor: null, sid: null, drag: null, learn: null, props: [], ai: { phase: 'idle', line: '', error: '', sent: [] }, timer: 0, perf: null, raf: 0 };
   const stats = { turns: 0, releases: 0, learned: 0, kept: 0, suggested: 0, baked: 0, aiRuns: 0 };
 
   // ---------- the scene: its dials and its sliders ----------
@@ -113,7 +113,7 @@ const LabDials = (() => {
   }
 
   // ---------- the card ----------
-  function close() { clearInterval(S.timer); S.timer = 0; S.pop?.remove(); S.pop = null; S.learn = null; removeEventListener('keydown', esc, true); }
+  function close() { const sec = S.pop?.closest('details.lk-sec'); clearInterval(S.timer); S.timer = 0; S.pop?.remove(); S.pop = null; S.learn = null; removeEventListener('keydown', esc, true); if (sec?.open) sec.open = false; } // (round 142, panel142) its section folds with it
   const esc = (e) => { if (e.key === 'Escape' && S.pop && !document.querySelector('.mb-menu') && !/^(INPUT|TEXTAREA)$/.test(e.target?.tagName)) { e.stopPropagation(); close(); } };
   async function lab() {
     if (typeof ThreeLab === 'undefined' && window.Lazy) await Lazy.load('lab');
@@ -121,13 +121,17 @@ const LabDials = (() => {
     for (let i = 0; i < 100 && !hk()?.ctlOf; i += 1) await new Promise((r) => setTimeout(r, 50));
     if (!hk()?.ctlOf) throw new Error('The Lab is not ready yet.');
   }
-  async function open({ anchor = null } = {}) {
+  // (round 142, panel142) inline: a box of the Lab's Layers & knobs panel (its 🎛 Dials section) the card sits in
+  async function open({ anchor = null, inline = null } = {}) {
     await lab();
     if (!sceneNow()) throw new Error('Open a scene in the Lab first.');
     S.anchor = anchor || null;
+    if (!inline && !window.ThreePerform?.state?.on && hk()?.lkOpen) inline = hk().lkOpen('dials'); // (round 142, panel142) every way in: the panel's 🎛 section
+    if (S.pop && Boolean(inline) !== Boolean(S.inline)) close();
+    S.inline = inline || null;
     if (!S.pop) {
-      S.pop = el('div', { class: 'md-pop lab-pop', role: 'dialog', attrs: { 'aria-label': 'Mood dials' } });
-      document.body.append(S.pop);
+      S.pop = el('div', { class: `md-pop lab-pop${S.inline ? ' lk-inline' : ''}`, role: 'dialog', attrs: { 'aria-label': 'Mood dials' } });
+      (S.inline || document.body).append(S.pop);
       addEventListener('keydown', esc, true);
       S.timer = setInterval(tick, 300);
     }
@@ -136,7 +140,7 @@ const LabDials = (() => {
     return state();
   }
   function place() {
-    if (!S.pop) return;
+    if (!S.pop || S.inline) return; // (round 142, panel142) in its section: no placing
     const a = S.anchor?.isConnected ? S.anchor : document.querySelector('.three-preview') || document.body;
     const r = a.getBoundingClientRect(); const w = 300;
     const left = Math.max(8, Math.min(innerWidth - w - 8, S.anchor?.isConnected ? r.right - w : r.left + 8));

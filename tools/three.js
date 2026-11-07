@@ -702,7 +702,7 @@ const ThreeLab = (() => {
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Shows or hides the selected layer\'s code (the director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
-    const slidersBtn = btn('⚡ Sliders', 'Shows or hides the layers and the selected layer\'s sliders', () => setSlidersVisible(column.hidden));
+    const slidersBtn = btn('⚡ Sliders', 'Shows or hides the Layers & knobs panel: every layer, the selected one open with its sliders', () => setSlidersVisible(column.hidden)); // (round 142, panel142) one panel
     slidersBtn.dataset.feature = 'Layers & sliders';
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));
     focusBtn.dataset.feature = 'Focus';
@@ -2459,7 +2459,7 @@ const ThreeLab = (() => {
       revealSlider(layerId, label) {
         if (!layerById(layerId)) return false;
         if (selId !== layerId) selectLayer(layerId);
-        setSlidersVisible(true);
+        lkOpen(); // (round 142, panel142) its layer open in the panel
         const c = ctlFor(layerById(layerId));
         c?.find?.(label);
         c?.focusSearch?.();
@@ -2484,6 +2484,15 @@ const ThreeLab = (() => {
     };
     // Sliders: one controller per layer (tools/three-tweaks.js); the panel shows the selected layer's.
     const controllers = new Map();
+    // (round 142, panel142) slider moves reach the preview once a frame: a knob dragged with a 240 Hz mouse sent 4 messages
+    // a drawn frame, each one cloned and handled by the page; now the newest value of each slider goes in the coming frame
+    // (a timer stands in when no frame comes: a hidden window, a busy GPU)
+    const tweakQ = new Map(); let tweakRaf = 0; let tweakT = 0;
+    const tweakFlush = () => { cancelAnimationFrame(tweakRaf); clearTimeout(tweakT); tweakRaf = 0; tweakT = 0; const q = [...tweakQ.values()]; tweakQ.clear(); for (const m of q) box.send(m); };
+    function tweakSoon(m) {
+      tweakQ.delete(`${m.layer}:${m.index}`); tweakQ.set(`${m.layer}:${m.index}`, m);
+      if (!tweakRaf) { tweakRaf = requestAnimationFrame(tweakFlush); tweakT = setTimeout(tweakFlush, 50); }
+    }
     api.parkTweaks=on=>{for(const c of controllers.values())c.setParked(on);};
     const layerMods = {};
     const mergedMods = () => Object.assign({}, ...Object.values(layerMods));
@@ -2495,7 +2504,7 @@ const ThreeLab = (() => {
         send: (msg) => {
           const Lx = layerById(id);
           if (!Lx) return;
-          if (msg.type === 'tweak') box.send({ ...msg, index: msg.index + baseOf(Lx), layer: id });
+          if (msg.type === 'tweak') tweakSoon({ ...msg, index: msg.index + baseOf(Lx), layer: id }); // (round 142, panel142) once a frame
           else if (msg.type === 'tweak-mods') {
             layerMods[id] = Object.fromEntries(Object.entries(msg.mods || {}).map(([i, m]) => [Number(i) + baseOf(Lx), m]));
             box.send({ type: 'tweak-mods', mods: mergedMods() });
@@ -2523,7 +2532,7 @@ const ThreeLab = (() => {
         touched: (key, label) => { midiTouched(id, key, label); window.ThreeStage?.touched?.(id, key, label); lastTouched = { layer: id, key, label, at: Date.now() }; }, // (round 141, cmdbar141) lastTouched: the bar's "follow bass"
         learn: async (key, label) => { if (!(await midiInit())) return; midiLearn = { stage: 'control', layer: id, key, label }; toast(`Turn the knob or fader for "${label}"`, { timeout: 4000 }); },
         palette: () => current?.palette || [],
-        pins: { has: (key) => favPinned(id, key), toggle: (key) => favsDo((F) => F.toggle({ t: 's', layer: id, key })), open: (anchor) => favsDo((F) => F.toggle(null, { anchor })) }, // (round 138, favs138) ★ the scene's favourite controls
+        pins: { has: (key) => favPinned(id, key), toggle: (key) => favsDo((F) => F.toggle({ t: 's', layer: id, key })), open: () => { const s = lkSecs.favs; if (s.d.open) s.d.open = false; else lkOpen('favs'); } }, // (round 142, panel142) the ★ section at the top of the panel // (round 138, favs138) ★ the scene's favourite controls
         explain: () => (window.LabEasy?.explainLayer ? LabEasy.explainLayer(id) : (window.Lazy ? Lazy.load('explain') : Promise.resolve()).then(() => LabExplain.open({ layerId: id })).catch((err) => toast(err.message, { type: 'error' }))), // (round 132, explain132) the Sliders ⋯ › ✦ Explain this layer
         clock: () => (!(player.loaded && player.playing) && window.ThreeStage?.clock?.()) || ({ t: player.loaded ? player.time : performance.now() / 1000, bpm: player.loaded ? player.bpm : (liveBpm?.bpm || 120), playing: player.playing, section: player.loaded ? player.sectionAt().energy : null }),
         askForSliders: () => askDirector(`Add clearly named sliders to the layer "${layerById(id)?.name}" of "${current?.name}" with tweak(): the 4–8 settings I'd most want to play with (motion, colors, lighting, glow, how much it reacts to the music…), with labels, groups and hints, read every frame so they change live. Keep everything else the same.`, { send: false }),
@@ -2593,8 +2602,44 @@ const ThreeLab = (() => {
       toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
       valueAt: (L, prop) => valueAt(L, prop),
       onPreset: (id, presetId) => applyPreset(id, presetId),
+      // (round 142, panel142) ONE Layers & knobs panel: under an open layer's row, its knobs (the selected layer's in the
+      // slot the Lab fills; a pinned one's own sliders), built only once it is open
+      knobs: (id, selected) => { if (selected) return tweaksSlot; const L = layerById(id); return L ? ctlFor(L).el : null; },
+      shown: (id) => { const L = layerById(id); if (L) { const c = ctlFor(L); c.setVisible(!column.hidden); c.showUI(); } },
     });
-    const column = el('div', { class: 'tw-column' }, layersPanel.el, tweaksSlot);
+    const column = el('div', { class: 'tw-column lk-merged' }, layersPanel.el);
+    // (round 142, panel142) ★ Favourites and 🎛 Dials: two folded sections at the top of the panel, their cards inside
+    const lkSecs = {};
+    const lkSection = (key, label, title, group, glob) => {
+      const body = el('div', { class: 'lk-sec-body' });
+      const n = el('span', { class: 'lk-sec-n' });
+      const d = el('details', { class: `lk-sec lk-${key}`, dataset: { feature: label } }, el('summary', { title }, el('span', { text: label }), n), body);
+      d.addEventListener('toggle', () => {
+        if (d.open) (window.Lazy && !window[glob] ? Lazy.load(group) : Promise.resolve()).then(() => window[glob].open({ inline: body })).catch((err) => { d.open = false; toast(window.calmError ? calmError(err) : err.message, { type: 'error' }); });
+        else if (window[glob]?.state?.().open && body.firstChild) window[glob].close();
+      });
+      lkSecs[key] = { d, n, body };
+      return d;
+    };
+    layersPanel.el.insertBefore(el('div', { class: 'lk-secs' },
+      lkSection('favs', '★ Favourites', 'Your ★ favourite controls, from every layer (right-click a slider › ★ Pin to favourites)', 'favs', 'LabFavs'),
+      lkSection('dials', '🎛 Dials', 'Mood dials: a few scene-wide knobs that move many sliders at once', 'dials', 'LabDials')), layersPanel.el.querySelector('.ly-find'));
+    function paintSecs() {
+      const f = (current?.favs?.list || []).length; const d = (current?.dials?.list || []).length;
+      const ft = f ? String(f) : ''; const dt = d ? String(d) : '';
+      if (lkSecs.favs.n.textContent !== ft) lkSecs.favs.n.textContent = ft;
+      if (lkSecs.dials.n.textContent !== dt) lkSecs.dials.n.textContent = dt;
+    }
+    // open the panel at the right place: a section (favs / dials), or the selected layer's knobs
+    function lkOpen(key) {
+      setSlidersVisible(true);
+      const s = lkSecs[key];
+      if (s) { if (!s.d.open) s.d.open = true; requestAnimationFrame(() => s.d.scrollIntoView({ block: 'nearest' })); return s.body; }
+      const L = sel(); if (!L) return null;
+      layersPanel.open?.(L.id, true);
+      requestAnimationFrame(() => { const b = layersPanel.knobsOf?.(L.id); (b?.previousElementSibling || b)?.scrollIntoView({ block: 'start' }); });
+      return layersPanel.knobsOf?.(L.id) || null;
+    }
     // Right-click a layer: everything for it in one menu (its ⧉ / 🗑 buttons were never used, so they're tucked away)
     layersPanel.el.addEventListener('contextmenu', (e) => {
       const row = e.target.closest('.ly-row');
@@ -2632,6 +2677,7 @@ const ThreeLab = (() => {
       if (!current) return;
       if (LabPlay.playing) LabPlay.count('layers'); // (round 142, smooth142: counted while playing, dev/checks/smooth142.js)
       layersPanel.render(layersOf(), selId);
+      paintSecs(); // (round 142, panel142)
       paintBuilding();
       player.setTracks(trackList(), trackHandlers, { soon: true }); // (round 54) the timeline draws in the coming frame (see setTracks)
       syncKeyUI(true);
@@ -3238,6 +3284,7 @@ const ThreeLab = (() => {
       get light() { return lightOn; }, setLight: (on) => (on !== lightOn ? setLight(on) : lightOn),
       get fps() { return fpsPref(); }, setFps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); },
       ctl: () => selCtl(), layer: () => sel() || null, layerById: (id) => layerById(id), ctlOf: (id) => { const L = layerById(id); return L ? ctlFor(L) : null; },
+      lkOpen: (key) => lkOpen(key), lkPanel: () => layersPanel, // (round 142, panel142) the Layers & knobs panel at a place: 'favs', 'dials' or the selected layer
       sketchId: () => current?.id || null, sketchName: () => current?.name || '', blackout: (on) => setBlackout(on),
       // (round 37, abcompare) a palette on the preview for a moment, not saved (null: the scene's own again)
       // (round 130, songmap130) ✦ Map to the song (tools/three-songmap.js): a layer's keys as they are, and put back exactly
@@ -3249,10 +3296,10 @@ const ThreeLab = (() => {
       setLyrics: (v) => { if (!current) return false; if (v) current.lyrics = JSON.parse(JSON.stringify(v)); else delete current.lyrics; current.updatedAt = Date.now(); save(); return true; },
       // (round 135, mooddial135) 🎛 the scene's mood dials (tools/three-dials.js): { v, sel, list: [{ id, name, value, maps, keys, follow }] }, saved with the scene
       dials: () => (current?.dials ? JSON.parse(JSON.stringify(current.dials)) : null),
-      setDials: (v) => { if (!current) return false; if (v?.list?.length) current.dials = JSON.parse(JSON.stringify(v)); else delete current.dials; current.updatedAt = Date.now(); save(); return true; },
+      setDials: (v) => { if (!current) return false; if (v?.list?.length) current.dials = JSON.parse(JSON.stringify(v)); else delete current.dials; current.updatedAt = Date.now(); save(); paintSecs(); return true; }, // (round 142, panel142) paintSecs: the section's count
       // (round 138, favs138) ★ the scene's favourite controls (tools/three-favs.js), saved with the scene; a slider's ◆ for the panel
       favs: () => (current?.favs ? JSON.parse(JSON.stringify(current.favs)) : null),
-      setFavs: (v) => { if (!current) return false; if (v?.list?.length) current.favs = JSON.parse(JSON.stringify(v)); else delete current.favs; current.updatedAt = Date.now(); save(); return true; },
+      setFavs: (v) => { if (!current) return false; if (v?.list?.length) current.favs = JSON.parse(JSON.stringify(v)); else delete current.favs; current.updatedAt = Date.now(); save(); paintSecs(); return true; }, // (round 142, panel142) paintSecs: the section's count
       lastSlider: () => lastTouched, // (round 141, cmdbar141) the command bar's "follow bass"
       keyState: (id, prop) => { const L = layerById(id); return L ? keyStateFor(L, prop) : 'none'; }, toggleKey: (id, prop, value) => toggleKeyFor(id, prop, value),
       // (round 140, dropmedia140) media dropped on the timeline (tools/three-dropmedia.js): its layers added at once, with
@@ -3296,7 +3343,7 @@ const ThreeLab = (() => {
       follow: (q, band, amount) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); if (!c.bind(hit.key, band, amount)) throw new Error(`"${hit.label}" isn't a number slider`); return hit; },
       learn: (q) => { const c = ctl(); const hit = c.resolve(q); if (!hit) throw new Error(q ? `No slider "${q}"` : `Name a slider: ${c.controls().map((x) => x.label).slice(0, 12).join(', ') || 'none'}`); midiInit().then((ok) => { if (ok) { midiLearn = { stage: 'control', layer: sel().id, key: hit.key, label: hit.label }; toast(`Turn a knob for "${hit.label}"`, { timeout: 4000 }); } }); return hit; },
       sliders: () => ctl().controls(),
-      searchSliders: () => { setSlidersVisible(true); selCtl()?.focusSearch(); },
+      searchSliders: () => { lkOpen(); selCtl()?.focusSearch(); },
       // preview
       customSize: (w, h) => stage.setCustom(w, h),
       size: (id) => { if (!ThreeMedia.SIZES.some((z) => z.id === id)) throw new Error(`Sizes: ${ThreeMedia.SIZES.map((z) => z.id).join(', ')}`); stage.setMode(id); return stage.size; },
@@ -3395,7 +3442,7 @@ const ThreeLab = (() => {
     if (typeof LabCamera !== 'undefined') LabCamera.attach({ send: (msg) => box.send(msg), player, layers: () => layersOf(), layerById: (id) => layerById(id), sel: () => sel() || null, edit: (id, patch) => editLayer(id, patch, { direct: true }), sketchId: () => current?.id || null, host: previewHost, ensureClock: () => { if (!player.loaded) ensureTimeline(); } });
     // (round 46, labdirect) ✥ click / drag / scale / turn layers on the picture itself (tools/three-direct.js; the gestures are in the preview)
     if (typeof LabDirect !== 'undefined') LabDirect.attach({ send: (msg) => box.send(msg), pane, player, layerById: (id) => layerById(id), sel: () => sel() || null, select: (id) => selectLayer(id), edit: (id, patch, o) => editLayer(id, patch, o), sketchId: () => current?.id || null, setEdit: (on) => setEdit(on), frame: () => box.frame,
-      openSliders: (id) => { if (selId !== id) selectLayer(id); setSlidersVisible(true); },
+      openSliders: (id) => { if (selId !== id) selectLayer(id); lkOpen(); },
       snapshot: (L) => ({ x: L.x || 0, y: L.y || 0, scale: L.scale ?? 1, rotate: L.rotate || 0, keys: JSON.parse(JSON.stringify(Object.fromEntries(['x', 'y', 'scale', 'rotate'].filter((p) => L.keys?.[p]?.length).map((p) => [p, L.keys[p]])))) }),
       restore: (L, b) => { Object.assign(L, { x: b.x, y: b.y, scale: b.scale, rotate: b.rotate }); L.keys ||= {}; for (const p of ['x', 'y', 'scale', 'rotate']) { if (b.keys?.[p]) L.keys[p] = JSON.parse(JSON.stringify(b.keys[p])); else delete L.keys[p]; } box.send({ type: 'layer-props', id: L.id, props: layerProps(L) }); touch(); renderLayers(); } });
     // (round 50, labmaterials) ◉ looks on 3D things: the picker, undo, the director's op (tools/three-materials-hook.js)
@@ -3418,7 +3465,7 @@ const ThreeLab = (() => {
       if (e.ctrlKey && !e.altKey && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); stepSketch(e.key === 'PageDown' ? 1 : -1); return; }
       if (plain && e.key === '`') { e.preventDefault(); consolePeek = !consoleShown(); syncConsole(); return; }
       // (round 36, labsearch) / opens 🔎 Lab search (sliders are in it too); in the sliders column it still finds a slider there
-      if (plain && e.key === '/') { e.preventDefault(); if (typeof LabSearchHook !== 'undefined' && !e.target.closest?.('.tw-column')) { LabSearchHook.open(); return; } setSlidersVisible(true); selCtl()?.focusSearch(); return; }
+      if (plain && e.key === '/') { e.preventDefault(); if (typeof LabSearchHook !== 'undefined' && !e.target.closest?.('.tw-column')) { LabSearchHook.open(); return; } lkOpen(); selCtl()?.focusSearch(); return; }
       if (plain && e.key === '|') { e.preventDefault(); pinFrame(); return; }
       if (plain && e.shiftKey && e.key.toLowerCase() === 'l') { e.preventDefault(); setLive(liveKind ? null : store.get('three.lastLive', /Mac/.test(navigator.platform) ? 'mic' : 'system')); return; }
       if (!typing && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }

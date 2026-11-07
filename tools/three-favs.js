@@ -18,7 +18,7 @@ const LabFavs = (() => {
   const sceneNow = () => hk()?.sketchId?.() || null;
   const calm = (e) => (window.calmError ? calmError(e) : String(e?.message || e));
   const perfOn = () => Boolean(window.ThreePerform?.state?.on);
-  const S = { pop: null, anchor: null, sid: null, timer: 0, sig: '', sug: null, sugNote: '', perf: null, dragFrom: -1, busy: null };
+  const S = { pop: null, inline: null, anchor: null, sid: null, timer: 0, sig: '', sug: null, sugNote: '', perf: null, dragFrom: -1, busy: null };
   const stats = { opens: 0, moves: 0, releases: 0, steps: 0, pins: 0, unpins: 0, reorders: 0, suggests: 0 };
 
   // ---------- the scene's pins ----------
@@ -153,14 +153,18 @@ const LabFavs = (() => {
     for (let i = 0; i < 100 && !hk()?.ctlOf; i += 1) await new Promise((r) => setTimeout(r, 50));
     if (!hk()?.ctlOf) throw new Error('The Lab is not ready yet.');
   }
-  const host = () => (document.fullscreenElement && document.fullscreenElement.contains(hk()?.host || null) ? document.fullscreenElement : (perfOn() && hk()?.host) || document.body);
-  async function open({ anchor = null } = {}) {
+  // (round 142, panel142) inline: a box of the Lab's Layers & knobs panel (its ★ Favourites section) the card sits in
+  const host = () => (document.fullscreenElement && document.fullscreenElement.contains(hk()?.host || null) ? document.fullscreenElement : (perfOn() && hk()?.host) || (S.inline?.isConnected && S.inline) || document.body);
+  async function open({ anchor = null, inline = null } = {}) {
     await lab();
     if (!sceneNow()) throw new Error('Open a scene in the Lab first.');
     if (dataNow().list.some((x) => x.t === 'd') && typeof LabDials === 'undefined' && window.Lazy) await Lazy.load('dials').catch(() => {});
     S.anchor = anchor || null;
+    if (!inline && !perfOn() && hk()?.lkOpen) inline = hk().lkOpen('favs'); // (round 142, panel142) Ctrl/⌘+K and the ★: the panel's section
+    if (S.pop && Boolean(inline) !== Boolean(S.inline)) close(); // (from a card to the section, or back)
+    S.inline = inline || null;
     if (!S.pop) {
-      S.pop = el('div', { class: 'fv-pop', role: 'dialog', attrs: { 'aria-label': 'Favourite controls' } });
+      S.pop = el('div', { class: `fv-pop${S.inline ? ' lk-inline' : ''}`, role: 'dialog', attrs: { 'aria-label': 'Favourite controls' } });
       S.pop.addEventListener('keydown', onKey);
       addEventListener('keydown', esc, true);
       S.timer = setInterval(tick, 300);
@@ -171,7 +175,7 @@ const LabFavs = (() => {
     paint(true);
     return state();
   }
-  function close() { clearInterval(S.timer); S.timer = 0; S.pop?.remove(); S.pop = null; S.sug = null; S.sig = ''; removeEventListener('keydown', esc, true); }
+  function close() { const sec = S.pop?.closest('details.lk-sec'); clearInterval(S.timer); S.timer = 0; S.pop?.remove(); S.pop = null; S.sug = null; S.sig = ''; removeEventListener('keydown', esc, true); if (sec?.open) sec.open = false; } // (round 142, panel142) its section folds with it
   const esc = (e) => { if (e.key === 'Escape' && S.pop && !perfOn() && !document.querySelector('.mb-menu') && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName)) { e.stopPropagation(); close(); } };
   // Ctrl/⌘+Z in the panel: the Lab's own undo (a pinned slider's move, a pin, a reorder)
   function onKey(e) {
@@ -180,7 +184,7 @@ const LabFavs = (() => {
     window.LabDirect?.undo?.();
   }
   function place() {
-    if (!S.pop) return;
+    if (!S.pop || (S.inline && S.pop.parentElement === S.inline)) return; // (round 142, panel142) in its section: no placing
     const a = S.anchor?.isConnected ? S.anchor : null; const w = 250;
     const r = (a || hk()?.host || document.body).getBoundingClientRect();
     const hgt = S.pop.offsetHeight || 200;

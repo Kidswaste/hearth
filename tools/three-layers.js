@@ -371,7 +371,9 @@ ${solid?'scene.add(new THREE.HemisphereLight(0xffffff,0x24202b,2));const light=n
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(P.size);mesh.rotation.x=P.tilt;mesh.rotation.y=(layer.scene??layer.time)*P.spin;renderer.render(scene,camera);});`;
   }
-  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo }) {
+  // (round 142, panel142) knobs: ONE Layers & knobs panel. knobs(id, selected) → the node shown under an open layer's row
+  // (the selected layer's: the Lab's slot with its sliders; a pinned one's: its own sliders), shown(id) after it is placed
+  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo, knobs = null, shown = null }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -399,14 +401,23 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       renderList();
       if (q != null) findIn.focus({ preventScroll: true });
     }
-    const root = el('div', { class: 'layers' },
-      el('div', { class: 'tw-head' }, el('b', { text: 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn, moreBtn),
-      findRow, list, props);
+    // (round 142, panel142) the open layers: the selected one (unless folded with ▾) and the pinned ones (📌, kept on this
+    // computer); the Layer settings (opacity, blend, mask, timing) fold into one line above the selected layer's knobs
+    const pins = new Set(store.get('three.lkPins', []));
+    const savePins = () => store.set('three.lkPins', [...pins].slice(-60));
+    let foldSel = null; // the selected layer's id while it is folded (a new selection opens again)
+    const isOpen = (id) => Boolean(knobs) && ((id === selectedId && foldSel !== id) || pins.has(id));
+    const settings = knobs ? el('details', { class: 'ly-settings', open: store.get('three.lkSettings', false), on: { toggle: (e) => store.set('three.lkSettings', e.currentTarget.open) } },
+      el('summary', { title: 'This layer\'s opacity, blend, mask, when it plays, position' }, el('span', { text: 'Layer settings' }), el('span', { class: 'ly-settings-state' })), props) : null;
+    const root = el('div', { class: `layers${knobs ? ' lk-panel' : ''}` },
+      el('div', { class: 'tw-head' }, el('b', { text: knobs ? 'Layers & knobs' : 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn, moreBtn),
+      findRow, list, knobs ? null : props);
     root.tabIndex = 0;
     root.setAttribute('role', 'group'); { const say = 'Layers (Ctrl+C / Ctrl+V copy and paste layers, Delete removes the selected one)'; root.setAttribute('aria-label', window.WinMac ? WinMac.keyLabel(say) : say); } // (round 73) a focusable box says what it is · (round 74, checkhealth74) ⌘C / ⌘V on a Mac
-    root.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,textarea,select,button,[contenteditable]')) root.focus({ preventScroll: true }); });
+    // (round 142, panel142) a layer's knobs and the ★ / 🎛 sections sit inside the panel now: their keys and focus are theirs
+    root.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,textarea,select,button,[contenteditable],.ly-knobs,.lk-secs')) root.focus({ preventScroll: true }); });
     root.addEventListener('keydown', (e) => {
-      if (e.target.closest('input,textarea,select,[contenteditable]') || e.altKey || e.repeat) return;
+      if (e.target.closest('input,textarea,select,[contenteditable],.ly-knobs,.lk-secs') || e.altKey || e.repeat) return;
       const mod = e.ctrlKey || e.metaKey;
       const ids = picked.size ? picked : new Set([selectedId]);
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') { e.preventDefault(); e.stopPropagation(); setFind(findQ); return; } // (round 136, outline136) find a layer
@@ -508,20 +519,26 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       return inp;
     }
     function layerRow(L, r = {}) {
-      const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}${L.hid ? ' by-group' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? (L.hid === 'solo' ? 'Hidden by a solo: show it too' : L.hid === 'group' ? 'Hidden with its group: show it' : 'Show this layer') : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(L.id); return; } onChange(L.id, { visible: L.visible === false }, { live: false }); } } });
+      // (round 142, panel142) a row is kept between renders while it looks the same: its handlers read the layer now
+      const id = L.id; const cur = () => layers.find((x) => x.id === id) || L;
+      const eye = el('button', { class: `ly-eye${L.visible === false ? ' off' : ''}${L.hid ? ' by-group' : ''}`, text: L.visible === false ? '◌' : '👁', title: `${L.visible === false ? (L.hid === 'solo' ? 'Hidden by a solo: show it too' : L.hid === 'group' ? 'Hidden with its group: show it' : 'Show this layer') : 'Hide this layer'} · Alt+click: show only this one (again: all)`, on: { click: (e) => { e.stopPropagation(); if (e.altKey && onSolo) { onSolo(id); return; } onChange(id, { visible: cur().visible === false }, { live: false }); } } });
       const name = el('span', { class: 'ly-name', text: L.name, title: 'Double-click to rename' });
       name.addEventListener('dblclick', (e) => {
         e.stopPropagation();
         // (round 136, outline136) in place, one undo step (LabGroups.renameLayer: the Lab's Ctrl/⌘+Z)
-        inlineEdit(name, L.name, (v) => { if (!GU()?.renameLayer?.(L.id, v)) onChange(L.id, { name: v }, { live: false }); });
+        inlineEdit(name, cur().name, (v) => { if (!GU()?.renameLayer?.(id, v)) onChange(id, { name: v }, { live: false }); });
       });
+      // (round 142, panel142) ▸ / ▾ opens or folds this layer's knobs in place; 📌 keeps them open when another is selected
+      const open = isOpen(id);
+      const exp = knobs ? el('button', { class: `ly-exp${open ? ' open' : ''}`, text: open ? '▾' : '▸', title: open ? 'Fold its knobs' : 'Show its knobs here', attrs: { 'aria-label': `${open ? 'Fold' : 'Show'} the knobs of ${L.name}`, 'aria-expanded': String(open) }, on: { click: (e) => { e.stopPropagation(); toggleOpen(id); } } }) : null;
+      const pin = knobs ? el('button', { class: `ly-pin${pins.has(id) ? ' on' : ''}`, text: '📌', title: pins.has(id) ? 'Unpin: its knobs fold when another layer is selected' : 'Pin its knobs open (they stay while you select other layers)', attrs: { 'aria-label': `${pins.has(id) ? 'Unpin' : 'Pin'} the knobs of ${L.name}`, 'aria-pressed': String(pins.has(id)) }, on: { click: (e) => { e.stopPropagation(); setPin(id, !pins.has(id)); } } }) : null;
       const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
       // (round 44) S: this layer alone (lit while it is; shows on hover otherwise)
       const solo = onSolo ? el('button', { class: `ly-solo${L.solo === L.id ? ' on' : ''}`, text: 'S', title: L.solo === L.id ? 'Show every layer again' : 'Show only this layer (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo ${L.name}` }, on: { click: (e) => { e.stopPropagation(); onSolo(L.id); } } }) : null;
-      const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { GU()?.pickGroup?.(null); if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(L, e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = L.id; onSelect(L.id); } } },
-        eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), solo);
+      const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}${open ? ' ly-open' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { GU()?.pickGroup?.(null); if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(cur(), e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = id; if (foldSel === id && id === selectedId) { toggleOpen(id); return; } onSelect(id); } } },
+        exp, eye, el('span', { class: 'ly-swatch', style: { background: L.color } }), name, el('span', { class: 'ly-tags', text: tags }), pin, solo);
       // (round 26) right-click: hide, solo, rename, duplicate, react, a filter above… (tools/three-easy.js)
-      row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(L.id); LabEasy.layerMenu(e.clientX, e.clientY, L, menuHandlers(L)); });
+      row.addEventListener('contextmenu', (e) => { if (typeof LabEasy === 'undefined') return; e.preventDefault(); onSelect(id); LabEasy.layerMenu(e.clientX, e.clientY, cur(), menuHandlers(cur())); });
       dragFrom(row, 'layer', L.id);
       dropInto(row, { layer: L.id }, () => dragId === L.id);
       if (L.group?.color) row.style.setProperty('--ly-gc', L.group.color); // (round 136, outline136) its group's colour tag
@@ -544,20 +561,84 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       if (g.color) { row.style.setProperty('--ly-gc', g.color); row.classList.add('ly-tagged'); } // (round 136, outline136)
       return row;
     }
+    // (round 142, panel142) diff and patch: each row is kept while what it shows is the same (its signature), and only
+    // the rows that changed are built again and moved into place; a reply that edits one layer touches one row, not 30
+    const rowCache = new Map(); // key → { sig, node }
+    const knobBoxes = new Map(); // layer id → the box under its row
+    const tagsOf = (L) => [isFilter(L.code) ? 'FX' : '', L.blend || '', L.opacity ?? 1, L.in ?? null, L.out ?? null];
+    const layerSig = (L, r) => JSON.stringify([L.name, L.visible === false, L.hid || '', L.color || '', tagsOf(L), L.solo || '', L.id === selectedId, r.gid || '', Boolean(r.last), picked.has(L.id), L.group?.color || '', isOpen(L.id), pins.has(L.id)]);
+    const groupSig = (r) => JSON.stringify([r.g, r.vis, r.n, Boolean(r.solo), layers.filter((L) => L.group?.id === r.g.id).map((L) => [L.id, picked.has(L.id)])]);
+    function cached(key, sig, make) {
+      const c = rowCache.get(key);
+      if (c && (c.sig === sig || c.node.querySelector('.ly-rename'))) return c.node; // (a name being typed stays as it is)
+      const node = make();
+      rowCache.set(key, { sig, node });
+      return node;
+    }
+    function knobBox(id) {
+      let box = knobBoxes.get(id);
+      if (!box) { box = el('div', { class: 'ly-knobs', dataset: { for: id } }); knobBoxes.set(id, box); }
+      const want = (id === selectedId ? [settings, knobs(id, true)] : [knobs(id, false)]).filter(Boolean);
+      if (box.childNodes.length !== want.length || want.some((n, k) => box.childNodes[k] !== n)) box.replaceChildren(...want);
+      const L = layers.find((x) => x.id === id);
+      if (L?.group?.color) box.style.setProperty('--ly-gc', L.group.color); else box.style.removeProperty('--ly-gc');
+      return box;
+    }
+    function patch(parent, nodes) {
+      const want = new Set(nodes);
+      for (const n of [...parent.childNodes]) if (!want.has(n)) n.remove(); // (stale rows first: the rest then stays in place)
+      let at = parent.firstChild;
+      for (const n of nodes) {
+        if (at === n) { at = at.nextSibling; continue; }
+        parent.insertBefore(n, at);
+      }
+      while (at) { const nx = at.nextSibling; at.remove(); at = nx; }
+    }
     function renderList() {
-      count.textContent = layers.length > 1 ? `${layers.length}` : '';
       delBtn.disabled = layers.length <= 1;
       picked = new Set([...picked].filter((id) => layers.some((x) => x.id === id)));
       let rows = GC() ? GC().rows(layers) : [...layers].reverse().map((L) => ({ kind: 'layer', L }));
-      if (findQ.trim() && GC()?.filterRows) { rows = GC().filterRows(rows, findQ); count.textContent = `${rows.filter((r) => r.kind === 'layer').length} of ${layers.length}`; } // (round 136, outline136) 🔍
-      list.replaceChildren(...rows.filter((r) => !r.folded).map((r) => (r.kind === 'group' ? groupRow(r) : layerRow(r.L, r))));
-      if (findQ.trim() && !rows.length) list.append(el('div', { class: 'ly-none', text: 'No layer or group by that name' }));
+      let ct = layers.length > 1 ? `${layers.length}` : '';
+      if (findQ.trim() && GC()?.filterRows) { rows = GC().filterRows(rows, findQ); ct = `${rows.filter((r) => r.kind === 'layer').length} of ${layers.length}`; } // (round 136, outline136) 🔍
+      if (count.textContent !== ct) count.textContent = ct;
+      const nodes = []; const seen = new Set(); const opened = [];
+      for (const r of rows) {
+        if (r.folded) continue;
+        if (r.kind === 'group') { const k = `g:${r.g.id}`; seen.add(k); nodes.push(cached(k, groupSig(r), () => groupRow(r))); continue; }
+        const k = `l:${r.L.id}`; seen.add(k);
+        nodes.push(cached(k, layerSig(r.L, r), () => layerRow(r.L, r)));
+        if (isOpen(r.L.id)) { nodes.push(knobBox(r.L.id)); opened.push(r.L.id); }
+      }
+      if (findQ.trim() && !rows.length) nodes.push(el('div', { class: 'ly-none', text: 'No layer or group by that name' }));
+      for (const k of [...rowCache.keys()]) if (!seen.has(k)) rowCache.delete(k);
+      for (const id of [...knobBoxes.keys()]) if (!layers.some((x) => x.id === id)) knobBoxes.delete(id);
+      patch(list, nodes);
+      for (const id of opened) shown?.(id);
       const sid = GC()?.soloId(layers);
-      root.classList.toggle('ly-soloing', Boolean(sid));
+      if (root.classList.contains('ly-soloing') !== Boolean(sid)) root.classList.toggle('ly-soloing', Boolean(sid));
+    }
+    function toggleOpen(id) {
+      if (!knobs) return;
+      if (isOpen(id)) { if (pins.has(id)) { pins.delete(id); savePins(); } if (id === selectedId) foldSel = id; } else if (id === selectedId) foldSel = null; else { onSelect(id); return; }
+      renderList();
+    }
+    function setPin(id, on) {
+      if (on) pins.add(id); else pins.delete(id);
+      savePins();
+      renderList();
     }
 
-    function renderProps() {
+    // (round 142, panel142) built again only when what it shows changed (the selected layer's settings, the layers it
+    // can take a mask from, the song); a reply that edits another layer's code leaves it as it is
+    let propsSig = '';
+    function renderProps(force = false) {
       const L = layers.find((x) => x.id === selectedId);
+      const lp0 = L ? loop() : null;
+      const sig = L ? JSON.stringify([L.id, L.name, L.color, L.opacity ?? 1, L.blend || '', L.mask || null, L.in ?? null, L.out ?? null, L.fadeIn || 0, L.fadeOut || 0, L.x || 0, L.y || 0, L.scale ?? 1, L.rotate || 0, Boolean(L.precomp), layers.map((x) => [x.id, x.name, Boolean(x.precomp), x.mask?.kind || '']), duration() > 0, lp0 ? [lp0.a, lp0.b] : null]) : '';
+      if (!force && sig === propsSig) return;
+      propsSig = sig;
+      const st = settings?.querySelector('.ly-settings-state');
+      if (st && L) st.textContent = [`${Math.round((L.opacity ?? 1) * 100)}%`, (BLENDS.find((b) => b[0] === (L.blend || 'normal')) || BLENDS[0])[1].split(' ')[0], L.mask ? 'mask' : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
       props.replaceChildren();
       liveRanges = {};
       if (!L) return;
@@ -676,8 +757,14 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
 
     return {
       el: root,
-      render(next, sel) { layers = next; selectedId = sel; renderList(); renderProps(); },
-      refreshProps: () => renderProps(),
+      render(next, sel) { if (sel !== selectedId) foldSel = null; layers = next; selectedId = sel; renderList(); renderProps(); },
+      refreshProps: () => renderProps(true),
+      // (round 142, panel142) the merged panel: open / fold a layer's knobs in place, pin one open, what is open
+      open: (id, on = true) => { if (isOpen(id) !== on) toggleOpen(id); return isOpen(id); },
+      pin: (id, on = true) => setPin(id, on),
+      opened: () => layers.filter((L) => isOpen(L.id)).map((L) => L.id),
+      pinned: () => [...pins].filter((id) => layers.some((L) => L.id === id)),
+      knobsOf: (id) => knobBoxes.get(id) || null,
       picked: () => [...picked], // (round 44) the layers picked with Ctrl/⌘ / Shift+click (Group)
       clearPicks: () => { picked.clear(); paintPicks(); },
       find: (q = '') => setFind(q), // (round 136, outline136) 🔍 the filter field (null: closed)
