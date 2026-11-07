@@ -408,7 +408,8 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     let foldSel = null; // the selected layer's id while it is folded (a new selection opens again)
     const isOpen = (id) => Boolean(knobs) && ((id === selectedId && foldSel !== id) || pins.has(id));
     const settings = knobs ? el('details', { class: 'ly-settings', open: store.get('three.lkSettings', false), on: { toggle: (e) => store.set('three.lkSettings', e.currentTarget.open) } },
-      el('summary', { title: 'This layer\'s opacity, blend, mask, when it plays, position' }, el('span', { text: 'Layer settings' }), el('span', { class: 'ly-settings-state' })), props) : null;
+      el('summary', { title: 'This layer\'s opacity, blend, mask, position' }, el('span', { text: 'Layer settings' }), el('span', { class: 'ly-settings-state' })), props) : null;
+    const playsSlot = knobs ? el('div', { class: 'ly-plays-slot' }) : null;
     const root = el('div', { class: `layers${knobs ? ' lk-panel' : ''}` },
       el('div', { class: 'tw-head' }, el('b', { text: knobs ? 'Layers & knobs' : 'Layers' }), count, el('span', { class: 'spacer' }), addBtn, dupBtn, delBtn, moreBtn),
       findRow, list, knobs ? null : props);
@@ -534,7 +535,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       const open = isOpen(id);
       const exp = knobs ? el('button', { class: `ly-exp${open ? ' open' : ''}`, text: open ? '▾' : '▸', title: open ? 'Fold its knobs' : 'Show its knobs here', attrs: { 'aria-label': `${open ? 'Fold' : 'Show'} the knobs of ${L.name}`, 'aria-expanded': String(open) }, on: { click: (e) => { e.stopPropagation(); toggleOpen(id); } } }) : null;
       const pin = knobs ? el('button', { class: `ly-pin${pins.has(id) ? ' on' : ''}`, text: '📌', title: pins.has(id) ? 'Unpin: its knobs fold when another layer is selected' : 'Pin its knobs open (they stay while you select other layers)', attrs: { 'aria-label': `${pins.has(id) ? 'Unpin' : 'Pin'} the knobs of ${L.name}`, 'aria-pressed': String(pins.has(id)) }, on: { click: (e) => { e.stopPropagation(); setPin(id, !pins.has(id)); } } }) : null;
-      const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
+      const tags = [isFilter(L.code) ? 'FX' : '', L.blend && L.blend !== 'normal' ? BLENDS.find((b) => b[0] === L.blend)?.[1].split(' ')[0] : '', (L.opacity ?? 1) < 1 ? `${Math.round(L.opacity * 100)}%` : ''].filter(Boolean).join(' · ');
       // (round 44) S: this layer alone (lit while it is; shows on hover otherwise)
       const solo = onSolo ? el('button', { class: `ly-solo${L.solo === L.id ? ' on' : ''}`, text: 'S', title: L.solo === L.id ? 'Show every layer again' : 'Show only this layer (solo; Alt+click its eye does it too)', attrs: { 'aria-label': `Solo ${L.name}` }, on: { click: (e) => { e.stopPropagation(); onSolo(L.id); } } }) : null;
       const row = el('div', { class: `ly-row${L.id === selectedId ? ' on' : ''}${L.visible === false ? ' hidden-layer' : ''}${r.gid ? ' in-group' : ''}${r.last ? ' group-last' : ''}${picked.has(L.id) ? ' picked' : ''}${open ? ' ly-open' : ''}`, attrs: { draggable: 'true' }, dataset: { id: L.id }, title: 'Click to select · Ctrl/⌘ or Shift+click: pick several (Ctrl/⌘+G groups them) · drag to reorder, onto a group to put it in', on: { click: (e) => { GU()?.pickGroup?.(null); if ((e.ctrlKey || e.metaKey || e.shiftKey) && GC()) { pickRow(cur(), e); return; } if (picked.size) { picked.clear(); paintPicks(); } lastPick = id; if (foldSel === id && id === selectedId) { toggleOpen(id); return; } onSelect(id); } } },
@@ -580,7 +581,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     function knobBox(id) {
       let box = knobBoxes.get(id);
       if (!box) { box = el('div', { class: 'ly-knobs', dataset: { for: id } }); knobBoxes.set(id, box); }
-      const want = (id === selectedId ? [settings, knobs(id, true)] : [knobs(id, false)]).filter(Boolean);
+      const want = (id === selectedId ? [settings, playsSlot, knobs(id, true)] : [knobs(id, false)]).filter(Boolean);
       if (box.childNodes.length !== want.length || want.some((n, k) => box.childNodes[k] !== n)) box.replaceChildren(...want);
       const L = layers.find((x) => x.id === id);
       if (L?.group?.color) box.style.setProperty('--ly-gc', L.group.color); else box.style.removeProperty('--ly-gc');
@@ -640,8 +641,9 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       if (!force && sig === propsSig) return;
       propsSig = sig;
       const st = settings?.querySelector('.ly-settings-state');
-      if (st && L) st.textContent = [`${Math.round((L.opacity ?? 1) * 100)}%`, (BLENDS.find((b) => b[0] === (L.blend || 'normal')) || BLENDS[0])[1].split(' ')[0], L.mask ? 'mask' : '', L.in != null || L.out != null ? '⏱' : ''].filter(Boolean).join(' · ');
+      if (st && L) st.textContent = [`${Math.round((L.opacity ?? 1) * 100)}%`, (BLENDS.find((b) => b[0] === (L.blend || 'normal')) || BLENDS[0])[1].split(' ')[0], L.mask ? 'mask' : ''].filter(Boolean).join(' · ');
       props.replaceChildren();
+      playsSlot?.replaceChildren();
       liveRanges = {};
       if (!L) return;
       const live = (patch) => onChange(L.id, patch, { live: true });
@@ -717,17 +719,9 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
       };
       const hasSong = duration() > 0;
       const lp = loop();
-      props.append(
-        el('div', { class: 'ly-sel' }, el('span', { class: 'ly-swatch', style: { background: L.color } }), el('b', { text: L.name })),
-        el('div', { class: 'ly-mask-choices' },
-          btn('Copy', 'Copy selected layers (Ctrl/⌘ C)', () => root.dispatchEvent(new KeyboardEvent('keydown', { key:'c', ctrlKey:true, bubbles:true }))),
-          btn('Paste', 'Paste copied layers (Ctrl/⌘ V)', () => { if (!clipboard.length) { toast('Copy a layer first'); return; } onPaste?.(JSON.parse(JSON.stringify(clipboard))); }),
-          btn('Delete', 'Delete this layer (Delete / Backspace)', () => onRemove(L.id))),
-        range('Opacity', 'opacity', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`),
-        el('label', { class: 'ly-field' }, el('span', { text: 'Blend' }), blend),
-        L.precomp ? null : mask,
-        // (round 48, labcalm) when it plays, its fades and Animate ▾ fold into one row that says where it stands
-        // ("whole song", "0:02.000 → 0:08.000"); it was 8 controls and a hint always open under every layer
+      // (round 144, calm144) with the merged panel, "When it plays" is its own folded line under Layer settings (where it
+      // stands shows at rest, as round 48 had it), not a fold inside that fold
+      const plays =
         el('details', { class: 'ly-plays', open: store.get('three.layerPlays', false), on: { toggle: (e) => store.set('three.layerPlays', e.currentTarget.open) } },
         el('summary', { title: 'When this layer plays in the song, its fades and one-click animations' }, 'When it plays', el('span', { class: 'ly-plays-state', text: !hasSong ? 'load a song to time it' : L.in == null && L.out == null ? 'whole song' : `${L.in == null ? 'start' : fmtMs(L.in)} → ${L.out == null ? 'end' : fmtMs(L.out)}` })),
         el('div', { class: 'ly-time' },
@@ -747,7 +741,20 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
             const close = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); removeEventListener('pointerdown', close, true); } };
             setTimeout(() => addEventListener('pointerdown', close, true));
           }),
-          el('span', { class: 'hint', text: 'over this layer\'s time (or the loop)' })) : null),
+          el('span', { class: 'hint', text: 'over this layer\'s time (or the loop)' })) : null);
+      playsSlot?.replaceChildren(plays);
+      props.append(
+        el('div', { class: 'ly-sel' }, el('span', { class: 'ly-swatch', style: { background: L.color } }), el('b', { text: L.name })),
+        el('div', { class: 'ly-mask-choices' },
+          btn('Copy', 'Copy selected layers (Ctrl/⌘ C)', () => root.dispatchEvent(new KeyboardEvent('keydown', { key:'c', ctrlKey:true, bubbles:true }))),
+          btn('Paste', 'Paste copied layers (Ctrl/⌘ V)', () => { if (!clipboard.length) { toast('Copy a layer first'); return; } onPaste?.(JSON.parse(JSON.stringify(clipboard))); }),
+          btn('Delete', 'Delete this layer (Delete / Backspace)', () => onRemove(L.id))),
+        range('Opacity', 'opacity', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`),
+        el('label', { class: 'ly-field' }, el('span', { text: 'Blend' }), blend),
+        L.precomp ? null : mask,
+        // (round 48, labcalm) when it plays, its fades and Animate ▾ fold into one row that says where it stands
+        // ("whole song", "0:02.000 → 0:08.000"); it was 8 controls and a hint always open under every layer
+        knobs ? null : plays,
         el('details', { class: 'ly-transform', open: store.get('three.layerTransform', false), on: { toggle: (e) => store.set('three.layerTransform', e.currentTarget.open) } },
           el('summary', { text: 'Position, size, rotation' }),
           range('Move X', 'x', -100, 100, 0.5, (v) => `${v}%`, 'Move left / right (% of the frame)'),
