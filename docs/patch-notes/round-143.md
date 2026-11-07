@@ -16,8 +16,8 @@
 - **A layer's bar on the timeline:** mute, solo, its curves, play it during the loop or the whole song, start / end at
   the playhead, and "More for this layer…".
 - **The time ruler:** **Set 1 here** and **Zoom ›** (in, out, the loop, the whole song).
-- **The picture:** **Quality ›** (Smooth · Balanced · Force high quality) and **⇪ Render this…**.
-- **A layer in Layers & knobs:** show / fold its knobs, 📌 keep them open.
+- **The picture:** **View › Quality ›** (Smooth · Balanced · Force high quality) and **Capture › ⇪ Render this…**.
+- **A layer in Layers & knobs:** show / fold its knobs, and (under More…) 📌 keep them open.
 - The timeline's tracks now say "▾ curves", dimmed, instead of "▾ Automation" on every line.
 
 ## ✦ Forgeheart look

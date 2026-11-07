@@ -119,7 +119,12 @@ try {
   const pmText = pm?.textContent || '';
   await esc();
   const pmGone = await until(() => !menuNow(), 3000);
-  step('right-click the preview: Freeze, Frame size, Quality, ⇪ Render this…, Capture; Esc closes it', pm && [/Freeze/, /Frame size/, /Quality/, /Render this/, /Capture/].every((re) => re.test(pmText)) && pmGone, pmText.slice(0, 200));
+  const PM = ThreeLab.search.menus().preview;
+  const sub = (label) => { const it = PM.find((x) => x && typeof x === 'object' && x.label === label); return it ? (typeof it.items === 'function' ? it.items() : it.items) : []; };
+  const qSub = sub('View').find((x) => x?.label === 'Quality');
+  const qRows = qSub ? qSub.items().map((x) => x.label) : [];
+  const render = sub('Capture').find((x) => /Render this/.test(x?.label || ''));
+  step('right-click the preview: Freeze, Frame size ›, Capture › (… ⇪ Render this…), View › (… Quality › Smooth · Balanced · Force high); Esc closes it', pm && [/Freeze/, /Frame size/, /Capture/, /View/].every((re) => re.test(pmText)) && pmGone && Boolean(render) && qRows.length === 3 && /Smooth/.test(qRows[0]), { top: pmText.slice(0, 120), qRows });
   // a knob on screen (scrolled into the panel's view, the point really on it)
   const kAt = (k) => { const r = k.getBoundingClientRect(); return [Math.round(r.left + 40), Math.round(r.top + 9)]; };
   let knob = q('.tw-row.kind-number').find((k) => drawn(k) && k.contains(document.elementFromPoint(...kAt(k))));

@@ -3968,9 +3968,6 @@ const ThreeLab = (() => {
           ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
           '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
         ] },
-        // (round 143, lab143) the Quality chip's three choices and ⇪ Render this, from the picture's right-click too
-        { label: 'Quality', hint: Q_NAMES[adaptHeld ? 'high' : qMode()], tip: 'How the preview draws while it plays (renders are always full quality)', items: () => [['smooth', 'steady frame rate · lighter before frames drop'], ['balanced', 'lighter only while frames keep dropping'], ['high', 'full resolution, antialias and shadows']].map(([k, hint]) => ({ label: Q_NAMES[k], hint, checked: k === 'high' ? qMode() === 'high' || adaptHeld : qMode() === k && !adaptHeld, action: () => setQuality(k) })) },
-        typeof LabExport !== 'undefined' ? { label: '⇪ Render this…', hint: 'a video of this scene', tip: 'The Render card: what to render (full song, the loop…), format, quality', action: () => LabExport.panel() } : null,
         ctl ? { label: 'Sliders', tip: 'Shuffle, save into the code, looks, for the selected layer', items: () => [
           { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
           { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
@@ -3986,6 +3983,7 @@ const ThreeLab = (() => {
           { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
           { label: '🎞 Contact sheet', action: () => showSheet() },
           { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
+          ...(typeof LabExport !== 'undefined' ? [{ label: '⇪ Render this…', hint: 'a video of this scene', tip: 'The Render card: what to render (full song, the loop…), format, quality', action: () => LabExport.panel() }] : []), // (round 143, lab143) the Render card from the picture
           // round 7's capture (screenshots / recordings of Hearth itself, in the captures folder) from here too
           ...(typeof Capture !== 'undefined' ? ['-',
             { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
@@ -3997,6 +3995,7 @@ const ThreeLab = (() => {
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setQuality(adaptOn ? 'high' : 'smooth', { scene: false, quiet: true }); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } }, // (round 142: Smooth ⇄ Force high quality, as the default)
+          { label: 'Quality', hint: Q_NAMES[adaptHeld ? 'high' : qMode()], tip: 'How the preview draws while it plays (renders are always full quality)', items: () => [['smooth', 'steady frame rate · lighter before frames drop'], ['balanced', 'lighter only while frames keep dropping'], ['high', 'full resolution, antialias and shadows']].map(([k, hint]) => ({ label: Q_NAMES[k], hint, checked: k === 'high' ? qMode() === 'high' || adaptHeld : qMode() === k && !adaptHeld, action: () => setQuality(k) })) }, // (round 143, lab143) the Quality chip's three choices
           { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
           ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
           ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
