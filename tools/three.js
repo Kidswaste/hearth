@@ -625,14 +625,15 @@ const ThreeLab = (() => {
       ];
     }
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
-    const labMoreBtn = btn('⋯', 'More: variations, all formats, a batch, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
+    const labMoreBtn = btn('⋯', 'More: variations, dials, make & export, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
     // (round 64, clickfirst64) ▶ Playtest (notes and the hitch map) at the end of Capture & playtest (round 116, slim116: moved here from clickfirst.js)
-    function playtestRows() {
+    function playtestRows(extra = []) {
       const say = (t) => { if (t && typeof t === 'string') toast(t, { timeout: 4000 }); };
       const run = (fn) => () => Promise.resolve().then(fn).catch((err) => toast(window.calmError ? calmError(err) : String(err?.message || err), { type: 'error' }));
       const gm = () => Lazy.load('gamemode');
       return ['▶ Playtest',
+        ...extra, // (round 144, calm144) ⚡ Speed check
         ['✎ Playtest log', 'Your F8 notes with their pictures · a click jumps back there', run(async () => { await gm(); return PlayNotes.open(); })],
         ['● Record the hitch map', 'Off by default · while on, ▶ Play records where it stutters', run(async () => { await gm(); say(await HitchMap.set(!HitchMap.isOn())); }), store.get('hitchmap.on', false) === true],
         ['▦ Hitch map', 'The last recording of this scene', run(async () => { await gm(); return HitchMap.open(); })]];
@@ -642,17 +643,20 @@ const ThreeLab = (() => {
       // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
       // the Lab itself (🩺 Fix my scene, Capture ›, Code & console ›, View & help ›); 17 rows → 11, every row ≤ 2 clicks
       const easy = typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []; // (round 26) Director › (tools/three-easy.js)
-      const fix = easy.filter((r) => /Fix my scene|Speed check/.test(r[0])); // (round 133, speed133: ⚡ Speed check beside it)
+      // (round 144, calm144) ten rows at most, so popMenu never folds "This Lab" into a submenu of its own (its rows were 3
+      // clicks deep): ⚡ Speed check went into Capture & playtest, beside the hitch map (tools/three-easy.js has the rest)
+      const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
+      const speed = easy.filter((r) => /Speed check/.test(r[0])); // (round 133, speed133)
       return ['Make',
-        ...easy.filter((r) => !fix.includes(r)),
+        ...easy.filter((r) => !fix.includes(r) && !speed.includes(r)),
         'This Lab',
         ...fix,
-        ['Capture & playtest', 'Screenshot, contact sheet, playtest log, hitch map', [ // (round 64, clickfirst64) + ▶ Playtest at its end
+        ['Capture & playtest', 'Screenshot, contact sheet, speed check, hitch map', [ // (round 64, clickfirst64) + ▶ Playtest at its end
           ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
           ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
           ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
           ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
-          ...playtestRows()]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (round 116, slim116: here since clickfirst.js left with the quests) // (round 8) the Lab reaches the whole capture menu
+          ...playtestRows(speed)]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (round 116, slim116: here since clickfirst.js left with the quests) // (round 8) the Lab reaches the whole capture menu
         ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
           ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
           [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
@@ -703,6 +707,7 @@ const ThreeLab = (() => {
     const toolbar = el('div', { class: 'three-toolbar' }, runBtn, liveLabel, picker, newBtn, sketchMenuBtn, snippetSel, version, el('span', { class: 'spacer' }), shotBtn);
     // Prompt-first: the code editor stays hidden until asked for.
     const codeBtn = btn('</> Code', 'Shows or hides the selected layer\'s code (the director writes it for you)', () => setCodeVisible(split.classList.contains('no-code')));
+    codeBtn.classList.add('tb-code'); // (round 144, calm144) it sits in ⚙ Inspect ▾'s tray (tools/three-regroup.js)
     const slidersBtn = btn('⚡ Sliders', 'Shows or hides the Layers & knobs panel: every layer, the selected one open with its sliders', () => setSlidersVisible(column.hidden)); // (round 142, panel142) one panel
     slidersBtn.dataset.feature = 'Layers & sliders';
     const focusBtn = btn('⛶ Focus', 'Almost fullscreen: hides the chat, side panels, toolbar, sliders and console, and shrinks the timeline to the strip (F · Esc to leave)', () => setFocus(!focusOn));

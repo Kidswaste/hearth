@@ -144,9 +144,13 @@ const LabEasy = (() => {
   ] : [item('Make the Three Director', 'Docked here in the Lab', '/director-setup')]);
   // ThreeTweaks.menu rows ([label, hint, fn | [rows]]) from showMenu items
   const toRow = (it) => (it.items ? [it.label, it.hint || '', (typeof it.items === 'function' ? it.items() : it.items).map(toRow)] : [it.label, it.hint || '', it.action]);
+  // (round 144, calm144) ▦ All formats and ⧉ Make a batch sit in ⋯'s ⇪ Make & export › (the preview's own rows that open
+  // straight away; ∞ loops, with its lengths, stay in the right-click), and 📐 My templates in Sketch ▾ and ✦ More: ⋯ keeps
+  // ten rows, so it no longer folds "This Lab" (Capture, Code, View) a level deeper
+  const makeRow = () => ['⇪ Make & export', 'Every format, a batch, 4 variations…', makeItems().filter((x) => x && typeof x === 'object' && !x.items).map(toRow), false, 'Make & export'];
   function toolbarItems() {
     // (round 133, speed133) ⚡ Speed check, beside 🩺 Fix my scene (tools/three-speed-hook.js); (round 134, blocks134) 🧩 Blocks after it; (round 135, mooddial135) 🎛 Dials after 🎲 Variations
-    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ...(typeof LabSpeedHook !== 'undefined' ? [LabSpeedHook.toolbarRow()] : []), ...(typeof LabBlocksHook !== 'undefined' ? [LabBlocksHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['🎛 Dials', 'A few knobs that move many sliders at once', () => (window.Lazy ? Lazy.load('dials') : Promise.resolve()).then(() => LabDials.open()).catch((err) => toast(err.message, { type: 'error' })), false, 'Dials'], ['▦ All formats', '16:9, 9:16, 1:1, 4:5 in one go, each reframed', formatsItem().action, false, 'All formats'], ...(typeof LabBatchHook !== 'undefined' ? [LabBatchHook.toolbarRow()] : []), ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.toolbarRow()] : []), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
+    return [...(typeof SceneDoctorHook !== 'undefined' ? [SceneDoctorHook.toolbarRow()] : []), ...(typeof LabSpeedHook !== 'undefined' ? [LabSpeedHook.toolbarRow()] : []), ...(typeof LabBlocksHook !== 'undefined' ? [LabBlocksHook.toolbarRow()] : []), ['🎲 Variations', '6 takes on this scene to click (no tokens)', varItem().action, false, 'Variations'], ['🎛 Dials', 'A few knobs that move many sliders at once', () => (window.Lazy ? Lazy.load('dials') : Promise.resolve()).then(() => LabDials.open()).catch((err) => toast(err.message, { type: 'error' })), false, 'Dials'], makeRow(), ...(typeof LabRecipesHook !== 'undefined' ? [LabRecipesHook.toolbarRow()] : []), ['Director', 'What it\'s making, did, costs', directorItems().map(toRow), false, 'Director menu']];
   }
 
   // ---------- a layer's right-click (tools/three-layers.js) ----------
@@ -184,7 +188,7 @@ const LabEasy = (() => {
       { label: '✦ Explain this layer', hint: 'plain words · cost first', action: () => { h.select?.(); explainLayer(L.id); } },
       sel(item('✦ Make it react to the music', 'Its sliders follow the kick, bass and loudness', '/make-it-react', { undo: '/make-it-react undo' })),
       { label: 'Add a filter above…', hint: 'glow, grain, blur…', cmd: 'fx', action: fx('filter') },
-      { label: 'Apply a look…', hint: 'palette and filters', cmd: 'look-apply', action: fx('look') },
+      { label: 'Apply a look…', hint: 'palette and filters', more: true, cmd: 'look-apply', action: fx('look') }, // (round 144, calm144) under More… (nine rows at the top)
       { label: 'Blend…', more: true, cmd: 'blend', action: fx('blend') },
       { label: 'Animate…', hint: 'bounce in, heartbeat, punch zoom…', more: true, cmd: 'animate', action: fx('animate') },
       { label: 'Ease every keyframe…', more: true, cmd: 'ease', action: fx('ease') },

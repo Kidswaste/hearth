@@ -3,7 +3,7 @@
 // controls (moved, not copied: same element, classes, data-feature, listeners and keys), so every action works as before
 // and checks / the tour still find them; click the fold to show them in a small floating tray, Esc or a click outside
 // folds it again. Folds made here (the Lab calls LabRegroup.apply once its toolbar and timeline are built):
-//   Lab bar   ⚙ Inspect ▾   ›_ Console · ✥ Edit
+//   Lab bar   ⚙ Inspect ▾   </> Code · ›_ Console · ✥ Edit · Credits (round 144, calm144: Code and Credits joined)
 //   Timeline  ♩ Beat ▾      Tap · K Kick · S Snare · H Hit, then the whole grid row (BPM, Set 1 here, ◂ ▸, RGB, and with
 //                           ⋯ on the grid tools); the BPM readout stays beside it, flashing on the beat
 //             ⚡ Sync ▾      🎧 Live ▾ · ⚡ Triggers · the trigger preset · Auto bars (lit while live sound is on)
@@ -102,16 +102,22 @@ const LabRegroup = (() => {
     bar.dataset.rg = '1';
     wire();
     const made = {};
-    // Lab bar: ›_ Console and ✥ Edit behind ⚙ Inspect ▾ (Sliders, Code, Present and Play stay one click away)
+    // Lab bar: </> Code, ›_ Console and ✥ Edit behind ⚙ Inspect ▾ (Sliders, Present and Play stay one click away);
+    // (round 144, calm144) Code and Credits joined it, so the bar keeps one row with the director docked
     const view = toolbar.querySelector('.tb-group[data-cat="View"]');
+    const codeBtn = view?.querySelector('.tb-code');
     const consoleBtn = view?.querySelector('[data-feature="Console"]');
     const editBtn = view?.querySelector('[data-feature="Edit scene"]');
     if (view && consoleBtn && editBtn) {
-      const F = fold({ label: '⚙ Inspect ▾', title: 'The scene\'s console (errors and messages) and ✥ Edit (move things in the picture)', feature: 'Inspect', cls: 'rg-inspect', nodes: [consoleBtn, editBtn], lit: () => consoleBtn.classList.contains('on') || editBtn.classList.contains('on') });
+      const F = fold({ label: '⚙ Inspect ▾', title: 'The scene\'s code, its console (errors and messages), ✥ Edit (move things in the picture) and Credits (who made what)', feature: 'Inspect', cls: 'rg-inspect', nodes: [codeBtn, consoleBtn, editBtn], lit: () => consoleBtn.classList.contains('on') || editBtn.classList.contains('on') });
       const present = view.querySelector('[data-feature="Present"]');
       view.insertBefore(F.button, present || null);
       view.append(F.tray);
       made.inspect = F;
+      // Credits (credits.js) puts its button in the bar itself, whenever it loads: it moves into the tray, last
+      const adopt = () => { for (const b of toolbar.querySelectorAll('.cr-open')) if (!F.tray.contains(b)) F.tray.append(b); };
+      adopt();
+      new MutationObserver(adopt).observe(toolbar, { childList: true });
     }
     // Timeline: ♩ Beat ▾ (Tap, K S H and the grid row), the BPM readout beside it
     const main = bar.querySelector('.mb-main');
