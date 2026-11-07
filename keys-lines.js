@@ -146,6 +146,7 @@ const KeysLines = (() => {
       { area: 'Command bar', keys: 'Ctrl+Z', what: 'In an empty bar: take back the last command (when it can be undone)' },
       { area: 'Command bar', keys: 'Ctrl+L', what: 'Clear the result card' },
       { area: 'Command bar', keys: 'Alt+1…9', what: 'Run your pinned command 1…9 (☆ in the / menu pins one)' },
+      { area: 'Command bar', keys: 'Type in the Lab', what: 'Plain words: "glow 0.8", "glow 0.8 on the drop", "add bloom", "hide sparks", "energy up", "jump to drop" (a line shows what Enter does; one undo; ? lists them)', run: () => CmdBar.open() }, // (round 141, cmdbar141)
       { area: 'Command bar', keys: 'Esc', what: 'Clear the line, then close' },
       { area: 'Command bar', keys: 'F1', what: 'Every command, searchable', run: () => CmdBar.help() },
       { area: 'Command palette', keys: '↑ / ↓ / Enter', what: 'Pick an action', run: () => AppUI.palette() },

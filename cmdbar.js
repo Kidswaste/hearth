@@ -43,25 +43,46 @@ const CmdBar = (() => {
     ]);
   }
 
+  // ---------- (round 141, cmdbar141) a place reads the bar's plain words itself first ----------
+  // The Lab (tools/three-say.js, lazy group labsay): a line under the bar says what Enter will do ("Glow ring · glow →
+  // 0.8 at Drop 1"), Enter applies it as one undo step, "?" lists what it understands. A provider: { when(), preview(text)
+  // → { ok, node }, run(text, { show, close }), help({ show }), placeholder(), opened(input), rect() }.
+  const PLAIN_GROUPS = { three: 'labsay' };
+  const plains = [];
+  const plainNow = () => plains.find((p) => { try { return p.when(); } catch { return false; } }) || null;
+  const plainText = (t) => { const s = String(t || '').trim(); return s && !/^[/?!=>]/.test(s) ? s : ''; };
+  let sayEl = null;
+  function wakePlain() { const g = PLAIN_GROUPS[Commands.place().id]; if (g && window.Lazy && !Lazy.loaded(g)) Lazy.load(g).then(() => { if (isOpen()) { place(); sayLine(); plainNow()?.opened?.(input); } }).catch((err) => console.warn('cmdbar plain words', err)); }
+  function sayLine() {
+    if (!sayEl) return;
+    const p = plainNow(); const t = plainText(input.value);
+    let r = null; try { r = p && t ? p.preview(t) : null; } catch (err) { console.warn('cmdbar preview', err); }
+    sayEl.replaceChildren(...(r?.node ? [r.node] : [])); sayEl.hidden = !r?.node;
+    if (r?.node) menuApi?.close(); // the line is what Enter does (its card lists matching commands): the "/" menu stays out of the way
+  }
+  function addPlain(p) { plains.push(p); if (isOpen()) { place(); sayLine(); } }
+  const plainApi = () => ({ show: (t, o) => show(t, o), close: () => close() });
+
   // ---------- the bar ----------
   let bar = null, input = null, out = null, chip = null, menuApi = null;
   let histAt = -1, histDraft = '';
   const pos = () => ls.get('cmdbar.pos', 'top');
+  const PH = 'Say what you want (“make it 9 by 16”)  ·  ↑ what you did before  ·  ? everything it can do';
   function build() {
-    input = el('textarea', { class: 'cmdbar-input', rows: 1, spellcheck: false, placeholder: 'Say what you want (“make it 9 by 16”)  ·  ↑ what you did before  ·  ? everything it can do', attrs: { 'aria-label': 'Command' } });
+    input = el('textarea', { class: 'cmdbar-input', rows: 1, spellcheck: false, placeholder: PH, attrs: { 'aria-label': 'Command' } });
     chip = el('button', { type: 'button', class: 'cmdbar-place', title: 'Commands run here (the chat of what\'s on screen)', on: { mousedown: (e) => e.preventDefault(), click: chipMenu } });
-    const helpBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn', text: '?', title: 'Everything it can do, searchable (F1)', on: { mousedown: (e) => e.preventDefault(), click: () => help(input.value.replace(/^\//, '')) } });
+    const helpBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn', text: '?', title: 'Everything it can do, searchable (F1)', on: { mousedown: (e) => e.preventDefault(), click: () => { const p = plainNow(); if (p && !input.value.trim()) { clearOut(); p.help(plainApi()); } else help(input.value.replace(/^\//, '')); } } }); // (round 141, cmdbar141) in the Lab: what its plain words do
     const timersBtn = el('button', { type: 'button', class: 'ghost cmdbar-btn cmdbar-timers', hidden: true, title: 'Your timers', on: { mousedown: (e) => e.preventDefault(), click: () => runLine('/timers') } });
     out = el('div', { class: 'cmdbar-out', hidden: true });
     bar = el('div', { class: `cmdbar ${pos()}`, hidden: true, attrs: { role: 'dialog', 'aria-label': 'Command bar' } },
-      el('div', { class: 'cmdbar-row' }, chip, el('span', { class: 'cmdbar-field' }, input), timersBtn, helpBtn), out);
+      el('div', { class: 'cmdbar-row' }, chip, el('span', { class: 'cmdbar-field' }, input), timersBtn, helpBtn), sayEl = el('div', { class: 'cmdbar-say', hidden: true }), out); // (round 141, cmdbar141) sayEl
     document.body.append(bar);
     menuApi = Prompts.attach(input, (text) => { const a = target(); if (a) { close(); activate(a.id); Native.setDraft(a.id, text); } }, {
       agentId: () => target()?.id || null, bare: true, below: pos() === 'top',
       // plain words: the last row sends them as a message (same as "> text")
       onSend: (text) => { input.value = ''; runLine(`> ${text}`); }, sendLabel: () => `➤ Send to ${target()?.name || 'the chat'}`,
     });
-    input.addEventListener('input', () => { histAt = -1; grow(); });
+    input.addEventListener('input', () => { histAt = -1; grow(); sayLine(); }); // (round 141, cmdbar141) sayLine (after the menu's own update)
     addEventListener('resize', () => { if (isOpen()) place(); });
     input.addEventListener('keydown', onKey);
     input.addEventListener('blur', () => setTimeout(() => {
@@ -73,7 +94,9 @@ const CmdBar = (() => {
   const grow = () => { input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 120)}px`; };
   function place() {
     // over the visible surface (Lab, Video Review, a chat…), centered
-    const r = document.getElementById('surfaces')?.getBoundingClientRect() || { left: 0, width: innerWidth, top: 0, bottom: innerHeight };
+    const lab = plainNow(); // (round 141, cmdbar141) over the Lab's preview, with its examples as ghost text
+    input.placeholder = lab?.placeholder?.() || PH;
+    const r = lab?.rect?.() || document.getElementById('surfaces')?.getBoundingClientRect() || { left: 0, width: innerWidth, top: 0, bottom: innerHeight };
     const w = Math.min(680, Math.max(320, r.width - 32));
     bar.style.width = `${w}px`;
     bar.style.left = `${Math.round(r.left + (r.width - w) / 2)}px`;
@@ -107,6 +130,7 @@ const CmdBar = (() => {
     if (text) input.dispatchEvent(new Event('input'));
     else showPins();
     histAt = -1;
+    wakePlain(); plainNow()?.opened?.(input); sayLine(); // (round 141, cmdbar141)
     if (typeof Usage !== 'undefined') Usage.track('Command bar › open');
   }
   // what you were typing when the bar closed comes back next time (Esc on an empty bar forgets it)
@@ -150,7 +174,7 @@ const CmdBar = (() => {
       menuApi?.close();
       input.value = histAt === h.length ? histDraft : h[histAt];
       if (histAt === h.length) histAt = -1;
-      grow();
+      grow(); sayLine(); // (round 141, cmdbar141)
       input.setSelectionRange(input.value.length, input.value.length);
       return;
     }
@@ -159,6 +183,15 @@ const CmdBar = (() => {
       e.preventDefault();
       const text = input.value.trim();
       if (!text) { close(); return; }
+      // (round 141, cmdbar141) plain words in the Lab: its own reading first (the line under the bar), one undo step
+      const lab = plainNow();
+      if (lab && plainText(text)) {
+        if (!e.altKey) { input.value = ''; grow(); }
+        histAt = -1; menuApi?.close(); sayLine(); clearOut(); lastBarLine = '';
+        Commands.addHistory(text);
+        Promise.resolve(lab.run(text, plainApi())).catch((err) => show(err.message, { type: 'error' }));
+        return;
+      }
       if (!e.altKey) { input.value = ''; grow(); }
       histAt = -1; menuApi?.close();
       runLine(text).then(() => { if (e.ctrlKey || e.metaKey) setTimeout(close, out?.hidden ? 0 : 2500); });
@@ -244,7 +277,7 @@ const CmdBar = (() => {
     if (++outRun && !quiet && !keep) { clearOut(); lastBarLine = ''; }
     if (!agent) { show('Add a native chat agent first (＋ in the rail).', { type: 'error' }); return false; }
     // shell-like prefixes: "?" help · "!!" the last command · "!calc" the last /calc line · "=" math · ">" a message
-    if (text === '?') { help(); return true; }
+    if (text === '?') { const lab = plainNow(); if (lab) lab.help(plainApi()); else help(); return true; } // (round 141, cmdbar141) the Lab's words
     if (/^\?\S/.test(text)) { help(text.slice(1).trim()); return true; }
     if (text === '!!' || text === '/!!') { text = Commands.last(); if (!text) { show('Nothing ran yet.'); return false; } }
     else if (/^!\S/.test(text)) {
@@ -967,5 +1000,5 @@ const CmdBar = (() => {
   // (round 29, fastboot) loaded after the first screen: the replies already on screen get their clickable commands too
   if (performance.getEntriesByName('hearth:ready').length) setTimeout(() => decorate(), 0);
 
-  return { open, close, toggle, isOpen, help, runLine, target, decorate, timers: () => timers.slice(), parseDur, parseAt, recording: () => rec && { ...rec } };
+  return { open, close, toggle, isOpen, help, runLine, target, decorate, addPlain, timers: () => timers.slice(), parseDur, parseAt, recording: () => rec && { ...rec } }; // (round 141, cmdbar141) addPlain
 })();
