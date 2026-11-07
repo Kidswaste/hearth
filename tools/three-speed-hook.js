@@ -47,6 +47,7 @@ const LabSpeedHook = (() => {
       S.chip = el('div', { class: `lab-speedchip ${mode}`, attrs: { role: 'status' } },
         el('span', { class: 'lab-speedchip-t' }),
         el('button', { type: 'button', class: 'lab-speedchip-go', text: go.t, title: go.tip, on: { click: (e) => { e.stopPropagation(); go.fn(); } } }),
+        mode === 'slow' ? el('button', { type: 'button', class: 'lab-speedchip-cost', title: 'Which layer costs the frames? Measures once, then shows each layer\'s cost on its row in Layers & knobs', attrs: { 'aria-label': 'Show the cost of each layer' }, on: { click: (e) => { e.stopPropagation(); hideChip(true); card(() => LabCost.toggle(true)).catch((x) => toast(x.message, { type: 'error' })); } } }) : null, // (round 146, layercost146) ▦ (its glyph from tools/three-lab.css)
         el('button', { type: 'button', class: 'lab-speedchip-x', text: '✕', title: 'Hide (for this scene)', attrs: { 'aria-label': 'Hide' }, on: { click: (e) => { e.stopPropagation(); if (mode === 'gl') S.gl = null; hideChip(true); } } }));
       S.chip.addEventListener('contextmenu', (e) => e.stopPropagation());
       S.mode = mode;
