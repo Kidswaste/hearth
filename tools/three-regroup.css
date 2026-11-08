@@ -183,7 +183,7 @@ html:not([data-lablook="plain"]) .rg-tray .rg-k { font-family: var(--rx-mono); c
    At rest: the scene picker, ▶ Run, ▶ Play, ⋯ (the Lab bar); ▶ and the time (the timeline); the panels' titles,
    the layers' names and their knobs. The rest stays in place (same element, same spot: a click there always lands)
    but transparent until its area is under the pointer, it has keyboard focus, its tray / menu is open, or I pins the
-   Lab (html.lab-pinned, tools/three-hudstage.js). Plain shows everything.
+   Lab (html.lab-pinned, tools/three-hudstage.js) or a tour's ring is out (it may point at one). Plain shows everything.
    ============================================================================================================ */
 /* the Lab bar's order: picker · ▶ Run · ▶ Play first, the rest after them (the groups' boxes are gone, so their
    buttons line up as one row; a static order: nothing moves when they come in) */
@@ -228,7 +228,7 @@ html[data-lablook="forge"]:not(#rx-none) :is(
   .lk-merged .ly-row:hover .ly-eye:not(.some):not(.by-group),
   .ly-knobs:is(:hover, :focus-within) .tweaks .tw-head > button
 ),
-html.lab-pinned[data-lablook="forge"]:not(#rx-none) :is(
+html:is(.lab-pinned, :has(> body > .tour-ring:not([hidden])))[data-lablook="forge"]:not(#rx-none) :is(
   .three-toolbar .tb-group > *, .media-bar .mb-main > *, .media-bar .mb-main > .tb-group > *, .media-bar > .mb-handle > *, .media-bar > .mb-handle > .ih-tl > .ih-meta,
   .lk-merged .layers > .tw-head > *, .lk-merged .ly-row .ly-eye, .ly-knobs .tweaks .tw-head > *
 ) {
