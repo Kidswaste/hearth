@@ -415,6 +415,8 @@ async function cdpConnect(dir) {
           const s2 = (name) => mine.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
           const r1 = (v) => Math.round(v * 10) / 10;
           result.window = { pid, paints: mine.filter((e) => e.name === 'Paint').length, paintMs: r1(s2('Paint')), rasterMs: r1(s2('RasterTask')), layerizeMs: r1(s2('Layerize') + s2('UpdateLayer') + s2('UpdateLayerTree')), compositeMs: r1(s2('CompositeLayers') + s2('Commit') + s2('PrePaint')), styleMs: r1(s2('UpdateLayoutTree')), layoutMs: r1(s2('Layout')), styles: mine.filter((e) => e.name === 'UpdateLayoutTree').length, frames: mine.filter((e) => e.name === 'BeginFrame' || e.name === 'DrawFrame').length };
+          const byNode = {}; for (const e of mine) if (e.name === 'Paint') { const k = e.args?.data?.nodeId ?? '?'; const b = byNode[k] ||= { node: k, n: 0, ms: 0 }; b.n += 1; b.ms += (e.dur || 0) / 1000; }
+          result.window.paintNodes = Object.values(byNode).sort((x, y) => y.ms - x.ms).slice(0, 8).map((x) => ({ ...x, ms: r1(x.ms) })); // (the painted layers' nodes: DOM.describeNode them)
         }
         if (req.detail) result.detail = require('./trace-stats.js').stats(traceEvents, req.detail);
         if (req.dump) fs.writeFileSync(req.dump, JSON.stringify(traceEvents));

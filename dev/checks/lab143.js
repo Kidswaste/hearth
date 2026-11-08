@@ -7,9 +7,9 @@
 //   2. context menus open with a real right-click and Esc closes them: a layer row (its knobs rows), a timeline track
 //      (mute, solo, curves, when it plays), the ruler (Set 1 here, Zoom ›), the preview (Freeze, Frame size, Quality ›,
 //      ⇪ Render this…), a knob (★, back to the code's value, ◆ keyframe, ♪ move with the music, copy the value)
-//   3. the look: Forgeheart's glint and ember playhead run while stopped, hold still while the scene plays
-//      (html.lab-playing), are off under prefers-reduced-motion and Hearth's Motion: off; Lab ⋯ › View & help has
-//      "Lab look", Plain turns the look off and it comes back
+//   3. the look (round 151: Hearth Redux): flat panels, nothing loops at rest or while the scene plays, an ember
+//      playhead, no motion under prefers-reduced-motion and Hearth's Motion: off; Lab ⋯ › View & help has "Lab look",
+//      Plain turns the look off and it comes back
 //   pictures: <out>/lab143.png (the Lab), lab143-beat.png (♩ Beat ▾ open)
 //   node dev/smoke.js --fake-engines --check-timeout 600000 --lib dev/checks/realscene-lib.js --script dev/checks/lab143.js
 const out = { steps: [] };
@@ -141,19 +141,22 @@ try {
   const anim = (n) => { const s = getComputedStyle(n, '::after'); return { name: s.animationName, state: s.animationPlayState, content: s.content }; };
   document.documentElement.dataset.motion = '';
   step('Forgeheart is the default look', LabRegroup.look() === 'forge' && document.documentElement.dataset.lablook === 'forge');
+  // (round 151, redux151) the look is Hearth Redux: flat panels (no scanlines / textures), nothing loops (the glint and
+  // the breathing playhead are gone), an ember playhead; motion only on the way in / out (dev/checks/redux151.js)
   const scan = getComputedStyle(one('.media-bar'), '::before').backgroundImage;
   const pvScan = getComputedStyle(pv, '::before').backgroundImage;
-  step('scanlines on the panel chrome (the timeline), never on the preview', /repeating-linear-gradient/.test(scan) && !/repeating-linear-gradient/.test(pvScan || ''));
-  const stopped = [anim(head), anim(ph)];
-  step('stopped: the glint on the panel head and the ember playhead move', stopped.every((a) => a.name !== 'none' && a.state === 'running'), stopped);
+  step('flat panel chrome (no scanlines on the timeline), nothing on the preview', !/repeating-linear-gradient/.test(scan) && !/repeating-linear-gradient/.test(pvScan || ''));
+  const loops = () => [anim(head), anim(ph)].filter((a) => a.name !== 'none');
+  const phc = getComputedStyle(ph).backgroundColor;
+  step('stopped: nothing loops on the panel head or the playhead; the playhead is ember', !loops().length && /255, 122, 26/.test(phc), { loops: loops(), phc });
   (await ThreeLab.cmd()).play(true);
   const playing = await until(() => LabPlay.playing && document.documentElement.classList.contains('lab-playing'), 8000);
   await wait(200);
-  const whilePlaying = [anim(head), anim(ph)];
-  step('while the scene plays: every loop of the look holds still (html.lab-playing)', playing && whilePlaying.every((a) => a.state === 'paused'), whilePlaying);
+  const whilePlaying = loops();
+  step('while the scene plays: still nothing loops (html.lab-playing)', playing && !whilePlaying.length, whilePlaying);
   (await ThreeLab.cmd()).play(false);
   await until(() => !LabPlay.playing, 5000); await wait(150);
-  step('paused again: they move again', [anim(head), anim(ph)].every((a) => a.state === 'running'));
+  step('stopped again: still nothing loops', !loops().length);
   await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }); await wait(200);
   const reduced = [anim(head), anim(ph)];
   await cdp('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] }); await wait(150);
@@ -169,7 +172,7 @@ try {
   const plainScan = getComputedStyle(one('.media-bar'), '::before').backgroundImage;
   step('Plain: no glint, no ember, no scanlines', plain.every((a) => a.name === 'none' || a.content === 'none') && !/repeating-linear-gradient/.test(plainScan), { plain, plainScan: plainScan.slice(0, 40) });
   LabRegroup.setLook('forge'); await wait(100);
-  step('…and Forgeheart again', anim(head).name !== 'none' && store.get('three.labLook') === 'forge');
+  step('…and Forgeheart again', document.documentElement.dataset.lablook === 'forge' && store.get('three.labLook') === 'forge');
   closeMenus(); LabRegroup.closeAll();
   await wait(600);
   await shot('lab143');

@@ -62,8 +62,8 @@ html[data-lablook="plain"] { --fh-hud-mono: "JetBrains Mono", "Cascadia Mono", "
 
 /* the room and the panels: flat graphite, one hairline each, no textures, no shadows */
 html:not([data-lablook="plain"]) .three-split { background: var(--rx-ink); border-radius: 2px; }
-html:not([data-lablook="plain"]) :is(.media-bar, .lk-merged .layers) { background: var(--rx-panel); border: 1px solid var(--rx-line); border-radius: 2px; box-shadow: none; color: var(--rx-text); }
-html:not([data-lablook="plain"]) .three-toolbar { position: relative; background: transparent; border: 0; border-bottom: 1px solid var(--rx-line); border-radius: 0; box-shadow: none; color: var(--rx-text); }
+html:not([data-lablook="plain"]) :is(.media-bar, .lk-merged .layers) { isolation: isolate; background: var(--rx-panel); border: 1px solid var(--rx-line); border-radius: 2px; box-shadow: none; color: var(--rx-text); }
+html:not([data-lablook="plain"]) .three-toolbar { position: relative; isolation: isolate; background: transparent; border: 0; border-bottom: 1px solid var(--rx-line); border-radius: 0; box-shadow: none; color: var(--rx-text); }
 html:not([data-lablook="plain"]) .three-preview:not(.presenting) { outline: 1px solid var(--rx-line); outline-offset: 0; border-radius: 2px; }
 /* the panels' own accents: gold sliders and favourites */
 html:not([data-lablook="plain"]) :is(.lk-merged .layers, .media-bar, .rg-tray, .three-toolbar) { --ui-gold: var(--rx-gold); --accent: var(--rx-gold); --line: var(--rx-line-hi); --line-hi: #ffffff2e; --muted: var(--rx-mute); --text: var(--rx-text); --hover: #ffffff0a; }
@@ -78,7 +78,7 @@ html:not([data-lablook="plain"]) .ih {
 html:not([data-lablook="plain"]) .ih-no { font-style: normal; color: var(--rx-gold); letter-spacing: .08em; }
 html:not([data-lablook="plain"]) .ih-name { font-weight: 600; color: var(--rx-text); letter-spacing: .24em; }
 /* the live dot: still; ember while the scene plays (no pulse: nothing loops) */
-html:not([data-lablook="plain"]) .ih-live { width: 4px; height: 4px; border-radius: 50%; background: var(--rx-dim); flex: none; transition: background-color .2s ease; }
+html:not([data-lablook="plain"]) .ih-live { width: 4px; height: 4px; border-radius: 50%; background: var(--rx-dim); flex: none; }
 html.lab-playing:not([data-lablook="plain"]) .ih-live { background: var(--rx-ember); }
 html:not([data-lablook="plain"]) .ih-sweep { position: relative; flex: 1 1 auto; min-width: 12px; height: 1px; background: var(--rx-line); }
 html:not([data-lablook="plain"]) .ih-meta { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; letter-spacing: .14em; }
@@ -126,6 +126,10 @@ html:not([data-lablook="plain"]) .lk-merged .ly-settings > summary, html:not([da
 
 /* readouts: mono, tabular numbers, no glow */
 html:not([data-lablook="plain"]) :is(.media-bar .mb-time, .media-bar .mb-bpmread, .media-bar .mb-minitime) { font-family: var(--rx-mono); font-variant-numeric: tabular-nums slashed-zero; color: var(--rx-gold-hi); text-shadow: none; letter-spacing: .03em; }
+/* the readouts that change while the scene plays (the time a few times a second, the 01 header's fps) get a tiny layer
+   of their own, so a new number repaints a few dozen pixels instead of the window's whole page layer */
+.media-bar :is(.mb-time, .mb-minitime), .ih-pv > .ih-meta { will-change: transform; contain: layout paint; } /* (every look) */
+:is(.three-toolbar, .media-bar, .lk-merged .layers) { isolation: isolate; } /* (every look: a cached paint boundary each) */
 html:not([data-lablook="plain"]) .media-bar .mb-name { font-family: var(--rx-mono); font-size: 11px; color: var(--rx-mute); }
 html:not([data-lablook="plain"]) .three-preview .three-stats { font-family: var(--rx-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: .02em; }
 
@@ -267,6 +271,9 @@ html[data-lablook="forge"] :is(.three-toolbar:is(:hover, :focus-within, .rg-rais
 }
 html[data-lablook="forge"] .lk-merged .layers > .tw-head { overflow: visible; }
 
+/* the BPM readout's beat flash only while you can see it (the timeline under the pointer): nothing animates out of sight */
+html[data-lablook="forge"]:not(.lab-pinned) .media-bar:not(:hover):not(:focus-within):not(.rg-raised) .mb-bpmread.beat { animation: none; }
+
 /* ---------- things that appear: trays, a layer's knobs, the Lab's pop-overs ---------- */
 /* a tray opens: a clip from its top edge, its gold line drawing across, its rows one after another; it folds away
    with a short fade (display stays a moment: allow-discrete) */
@@ -275,10 +282,10 @@ html[data-lablook="forge"] .rg-tray {
 }
 html[data-lablook="forge"] .rg-tray[hidden] { opacity: 0; transform: translateY(-3px); }
 html[data-lablook="forge"] .rg-tray.rg-up[hidden] { transform: translateY(3px); }
-html[data-lablook="forge"] .rg-tray:not([hidden]) { animation: rx-tray-in .2s var(--rx-ease) both; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) { animation: rx-tray-in .2s var(--rx-ease) backwards; }
 html[data-lablook="forge"] .rg-tray.rg-up:not([hidden]) { animation-name: rx-tray-up; }
-html[data-lablook="forge"] .rg-tray:not([hidden])::before { animation: rx-line-in .22s var(--rx-ease) both; }
-html[data-lablook="forge"] .rg-tray:not([hidden]) > * { animation: rx-rise .2s var(--rx-ease) both; }
+html[data-lablook="forge"] .rg-tray:not([hidden])::before { animation: rx-line-in .22s var(--rx-ease) backwards; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) > * { animation: rx-rise .2s var(--rx-ease) backwards; }
 html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(2) { animation-delay: 30ms; }
 html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(3) { animation-delay: 60ms; }
 html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(n+4) { animation-delay: 90ms; }
@@ -287,11 +294,11 @@ html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(n+4) { animation-
 @keyframes rx-line-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes rx-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 /* a layer's knobs open under its row: a short rise, the edge line in ember → gold */
-html[data-lablook="forge"] .lk-merged .ly-knobs { position: relative; animation: rx-rise .2s var(--rx-ease) both; }
-html[data-lablook="forge"] .lk-merged .ly-knobs::before { content: ""; position: absolute; left: -1px; top: 0; width: 1px; height: 120px; background: linear-gradient(180deg, var(--rx-ember), var(--rx-gold) 60%, transparent); transform-origin: 50% 0; animation: rx-drop .26s var(--rx-ease) both; pointer-events: none; }
+html[data-lablook="forge"] .lk-merged .ly-knobs { position: relative; animation: rx-rise .2s var(--rx-ease) backwards; }
+html[data-lablook="forge"] .lk-merged .ly-knobs::before { content: ""; position: absolute; left: -1px; top: 0; width: 1px; height: 120px; background: linear-gradient(180deg, var(--rx-ember), var(--rx-gold) 60%, transparent); transform-origin: 50% 0; animation: rx-drop .26s var(--rx-ease) backwards; pointer-events: none; }
 @keyframes rx-drop { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 /* the Lab's own pop-overs (a timeline menu, the music-link / audio-map cards) */
-html[data-lablook="forge"] :is(.mb-menu, .lab-pop) { animation: rx-rise .18s var(--rx-ease) both; }
+html[data-lablook="forge"] :is(.mb-menu, .lab-pop) { animation: rx-rise .18s var(--rx-ease) backwards; }
 
 /* ---------- motion off: reduced motion (the system's), Hearth's Motion: calm / off ---------- */
 @media (prefers-reduced-motion: reduce) {

@@ -32,7 +32,7 @@ html .ih.ih-pv.st-head { pointer-events: auto; }
 .three-preview.st-on.st-idle:not(.st-pin) > .lab-safe.st-warn:not(.st-fresh):not(:hover)::before { content: "🛟"; font-size: 11px; text-shadow: none; }
 .three-preview.st-on > .st-warn { transition: width .2s ease, height .2s ease, border-radius .2s ease; }
 /* (round 151) a notice comes in: wiped in from its left edge, a gold → ember edge drawn first */
-.three-preview.st-on > .st-warn.st-fresh { animation: st-warn-in .22s cubic-bezier(.2,.8,.2,1) both; }
+.three-preview.st-on > .st-warn.st-fresh { animation: st-warn-in .22s cubic-bezier(.2,.8,.2,1) backwards; }
 @keyframes st-warn-in { from { opacity: 0; transform: translateY(4px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(-4px); } }
 
 /* ---------- 2. the stage frame ---------- */
@@ -201,3 +201,9 @@ html:not([data-lablook="plain"]) .three-preview.st-on > .st-warn { border-left: 
   .three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones), .ih-pv.st-head > .ih-meta { transition: none !important; }
 }
 :root:is([data-motion=calm], [data-motion=off]) :is(.three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones), .ih-pv.st-head > .ih-meta) { transition: none !important; }
+/* nothing moves out of sight: the stats line's frame bar holds still while the line is tucked away, and the scene
+   cover's fade-out ends as a plain style (its animation held its last frame: a composited layer kept for nothing) */
+.three-preview.st-on:not(.st-pin):not(.st-z-b) > .three-stats * { transition: none !important; }
+.three-preview > .scene-cover.out { animation: rx-cover-out .35s ease backwards; opacity: 0; visibility: hidden; }
+:root[data-motion=off] .three-preview > .scene-cover.out { animation-duration: 1ms; }
+@keyframes rx-cover-out { from { opacity: 1; visibility: visible; } to { opacity: 0; visibility: visible; } }
