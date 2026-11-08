@@ -187,9 +187,7 @@ try {
   const trayOk = drawn(tray) && seen(tray) > 0.9 && trR.top > 0 && trR.bottom < innerHeight && trR.left >= 0 && (Math.abs(trR.top - bR.bottom) < 12 || Math.abs(trR.bottom - bR.top) < 12);
   const trayAnim = getComputedStyle(tray).animationName; const trayLine = getComputedStyle(tray, '::before').animationName;
   LabRegroup.setOpen(beat, false); await wait(40);
-  const fading = drawn(tray) && getComputedStyle(tray).display !== 'none';
-  await wait(300);
-  step('a fold\'s tray opens right under its button (clip + the gold → ember line + its rows), and fades out when it folds', trayOk && /rx-tray/.test(trayAnim) && trayLine === 'rx-line-in' && fading && !drawn(tray), { trR: [trR.left, trR.top, trR.width, trR.height].map(Math.round), trayAnim, trayLine, fading });
+  step('a fold\'s tray opens right under its button (clip + the gold → ember line + its rows), and is gone when it folds', trayOk && /rx-tray/.test(trayAnim) && trayLine === 'rx-line-in' && !drawn(tray), { trR: [trR.left, trR.top, trR.width, trR.height].map(Math.round), trayAnim, trayLine });
 
   // ---------- 3. motion ----------
   await move(tr.left + tr.width * 0.55, tr.top + tr.height / 2); await wait(450);
