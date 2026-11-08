@@ -263,7 +263,9 @@ const Usage = (() => {
     document.addEventListener('click', onClick, true);
     document.addEventListener('change', onChange, true);
     // Re-check buttons when the layout changes, not for every clock tick or streamed word.
-    const NOISY = '.mb-time, .mb-minitime, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, #menu-fly2, .palette, .slash-menu'; // the meter ticks while replies stream
+    // (round 151, perf151) nor for the Lab's live readouts while a scene plays (the Slow chip's text, a knob's live badge,
+    // the instrument header's meta, the stage's labels): a 2 ms pass 0.7 times a second for nothing
+    const NOISY = '.mb-time, .mb-minitime, .lab-speedchip-t, .tw-badge, .ih-meta, .st-hud, .three-stats, .messages, .three-console, .tw-kval, .ed-panel, #toasts, .msg, .meter-strip, .meter-pill, .cp-list, .cp-right, .juice-layer, #menu, #menu-fly, #menu-fly2, .palette, .slash-menu'; // the meter ticks while replies stream
     // (round 17, hz240) what comes and goes right under <body> without new buttons to note: tips, sparks, menus, the
     // palette (a tooltip or a press re-ran the whole decorate pass 0.8 s later)
     const QUIET = '.juice-tip, .juice-layer, .juice-glint, #menu, #menu-fly, #menu-fly2, .palette, #toasts, .quote-sel, .sel-bar, .ms-pop, .opt-sheet'; // (round 26: ◎ Missions, ⋯ AI setup)

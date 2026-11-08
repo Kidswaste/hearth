@@ -1065,7 +1065,16 @@ const ThreeLab = (() => {
     // (round 41, renderfast) while a Lab export renders, Auto eases the preview to its background rate (30): the export
     // page gets the GPU / CPU it would share with it. Never the Stage window, never during a recording.
     let xpOn = false;
-    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording)), modal: modalUp && !box.onStage && !player.recording }; };
+    // (round 151, perf151) nobody has used Hearth for a minute (idlecpu.js's hush, <html data-hush>) and nothing is
+    // playing: Auto eases the preview to its background rate (30), as when another window is in front. A moving scene
+    // left on screen paused drew 60 frames a second for nobody, the graphics card shared with every other app. Never
+    // while the song plays, with live sound, recording, rendering or on the Stage window; the first input: full rate.
+    // A still picture is left alone (it already dozes at 4 frames a second, and a cap keeps it from dozing): the rest
+    // starts only after the preview reported a moving picture 3 times in a row, and once it ended because the picture
+    // went still it stays off until the next input (no flip-flop: each change is a message that wakes the page).
+    const RST = { on: false, moving: 0, out: false };
+    const idleRest = () => document.documentElement.hasAttribute('data-hush') && !player.playing && !player.recording && !liveKind && !xpOn && RST.moving >= 3 && !RST.out;
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording) && !RST.on), modal: modalUp && !box.onStage && !player.recording }; };
     // (round 72, labfps72) a modal over the Lab (a <dialog> opened with showModal(), the ⌘K Find anything palette): the
     // preview behind it draws 30 frames a second at most, whatever the fps setting (it still moves under the dim; at
     // 240 Hz the graphics card does an eighth of the work while you read or type in the dialog). Never on the Stage
@@ -1095,6 +1104,13 @@ const ThreeLab = (() => {
     let focusT = 0;
     const onFocusChange = () => { clearTimeout(focusT); focusT = setTimeout(() => { const f = document.hasFocus(); if (f === winFocused) return; winFocused = f; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }, 250); };
     addEventListener('blur', onFocusChange); addEventListener('focus', onFocusChange);
+    let restCheck = () => {}; // (round 151, perf151) see idleRest
+    { restCheck = (pace) => { // (round 151, perf151) see idleRest
+        if (!document.documentElement.hasAttribute('data-hush')) { RST.moving = 0; RST.out = false; }
+        if (pace === true) { if (paceLast?.still) { RST.moving = 0; if (RST.on) RST.out = true; } else RST.moving += 1; }
+        const r = idleRest(); if (r === RST.on) return; RST.on = r; if (fpsPref() < 0 && box.ready) box.send(capMsg()); };
+      try { new MutationObserver(() => restCheck()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-hush'] }); } catch { /* no rest */ }
+      addEventListener('hearth:lab-playing', () => setTimeout(restCheck, 0)); window.__labRest = () => ({ ...RST, cap: capMsg() }); }
     // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
@@ -3769,7 +3785,7 @@ const ThreeLab = (() => {
         if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.stats(msg); // (round 133, speed133) ⚡ "Slow: 21 fps · Why?" after 5 s under 50 fps / half the screen's rate
         paintPerfHud(msg);
         if (msg.adapt) paintAdapt(msg.adapt);
-        if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
+        if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); restCheck(true); } // (round 33 "labpace") (round 151: a picture gone still / moving again)
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
         // (round 38, inputlatency) asked right after the coming frame, when the page's style is fresh: asked here (a

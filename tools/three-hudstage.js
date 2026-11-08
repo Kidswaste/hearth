@@ -169,7 +169,9 @@ const LabHudStage = (() => {
 
   // ---------- 2. labels (written only while they show: awake or pinned, ≤ 4 a second) ----------
   function labels(on) {
-    if (!on || look() === 'plain') { clearInterval(S.labT); S.labT = 0; return; }
+    // (round 151, perf151) and only while the stage can be seen: pinned, the 4-a-second writer ran on forever with the Lab
+    // closed (another surface in front, Hearth hidden in the tray)
+    if (!on || look() === 'plain' || !S.vis || document.hidden) { clearInterval(S.labT); S.labT = 0; return; }
     if (S.labT) return;
     writeLabels(); S.labT = setInterval(writeLabels, 250);
   }
@@ -335,7 +337,8 @@ const LabHudStage = (() => {
     }
     S.ro = new ResizeObserver(() => measure());
     S.ro.observe(preview);
-    S.io = new IntersectionObserver((es) => { const v = es[es.length - 1]?.isIntersecting; if (v !== S.vis) { S.vis = Boolean(v); config(); } });
+    S.io = new IntersectionObserver((es) => { const v = es[es.length - 1]?.isIntersecting; if (v !== S.vis) { S.vis = Boolean(v); if (!S.vis) sleep(); config(); paint(); } });
+    document.addEventListener('visibilitychange', () => paint()); // (round 151, perf151) the label writer stops while Hearth is hidden
     S.io.observe(preview);
     preview.addEventListener('pointermove', onPtrLocal, { passive: true });
     preview.addEventListener('pointerleave', () => wake('out'));
