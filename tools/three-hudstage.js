@@ -122,11 +122,11 @@ const LabHudStage = (() => {
   function maybeSleep() {
     S.timer = 0;
     // still pointing at a control of the stage (reading it, about to click): it stays until the pointer leaves
-    const busy = S.pv?.querySelector(':scope > :is(.stage-pill, .three-stats, .lab-speedchip, .lab-safe):hover, :scope > :is(.stage-pill, .three-stats):focus-within') || document.querySelector('#menu:not([hidden]) , .stage-more:focus');
+    const busy = S.overCtl || S.pv?.querySelector(':scope > :is(.stage-pill, .three-stats):has(:focus-visible)') || document.querySelector('#menu:not([hidden]), .stage-more:focus');
     if (busy) { S.timer = setTimeout(maybeSleep, IDLE_MS); return; }
     sleep();
   }
-  function sleep() { clearTimeout(S.timer); S.timer = 0; S.idle = true; S.zone = ''; paint(); }
+  function sleep() { clearTimeout(S.timer); S.timer = 0; S.idle = true; S.zone = ''; S.overCtl = false; paint(); }
   function pin(on = !S.pinned, { say = false } = {}) {
     S.pinned = Boolean(on);
     if (!S.pinned) { S.idle = true; S.zone = ''; }
@@ -137,10 +137,14 @@ const LabHudStage = (() => {
   function onPtrLocal(e) {
     if (!S.rect) measure();
     const P = S.pv.getBoundingClientRect(); const k = S.rect?.k || 1;
-    wake(zoneAt((e.clientX - P.left) / k, (e.clientY - P.top) / k));
+    // on a control itself: its own corner (the window's :hover can stay on it after the pointer went into the picture)
+    const t = e.target;
+    S.overCtl = Boolean(t?.closest?.('.stage-pill, .three-stats, .lab-adapt-note, .lab-speedchip, .lab-safe'));
+    const z = t?.closest?.('.stage-pill') ? 'tr' : t?.closest?.('.three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud') ? 'b' : zoneAt((e.clientX - P.left) / k, (e.clientY - P.top) / k);
+    wake(z);
   }
   function onPtrMsg(msg) {
-    S.counts.ptrMsgs += 1;
+    S.counts.ptrMsgs += 1; S.overCtl = false;
     if (msg.out) { if (!S.pv.matches(':hover')) wake('out'); return; }
     if (!S.fb) measure();
     const f = S.fb; if (!f) return;

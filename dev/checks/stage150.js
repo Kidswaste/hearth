@@ -100,7 +100,7 @@ try {
     const fit = [...pill.querySelectorAll('.stage-size-btn')].find((b) => b.textContent.trim() === 'Fit'); fit?.click();
     await until(() => c.state.frame?.id === 'fit', 5000); await wait(800);
     const r2 = R();
-    await move(r2.left + r2.width * 0.5, r2.bottom - 18); await wait(500);
+    await move(r2.left + r2.width * 0.5, r2.bottom - 18); await wait(900);
     const bot = view();
     step('bottom edge: the stats / quality line comes back (and the view controls stay away)', bot.zone === 'b' && bot.stats[0] > 0.9 && bot.stats[1] && bot.pill[0] < 0.05, bot);
     const hr = head.getBoundingClientRect();
@@ -112,17 +112,18 @@ try {
 
   // ---------- pin: the key, the command, the bar's words ----------
   await safe('pin', async () => {
-    const [x, y] = mid();
-    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
-    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 });
-    await wait(300);
+    // the Lab's keys: focus in the Lab (not a click on the picture: that would pick a layer to move)
+    (pv.closest('[tabindex="-1"]') || pv.parentElement).focus({ preventScroll: true });
+    await wait(200);
     await key('i', 'KeyI', 73);
     await until(() => S().pinned, 3000);
     await wait(2800);
     const pinned = view();
     step('I pins the controls: through a 2 s idle the view controls, the stats line and the header readouts stay', pinned.pinned && pinned.pill[0] > 0.9 && pinned.pill[1] && pinned.stats[0] > 0.9 && pinned.head > 0.9 && c.state.stage === 'pinned', pinned);
+    const focused = document.activeElement; focused?.blur?.(); // (the picture without the Lab's focus ring)
     await move(...mid()); await wait(350);
     await shot('stage150-reveal');
+    focused?.focus?.({ preventScroll: true }); await wait(150);
     await key('i', 'KeyI', 73);
     await until(() => !S().pinned, 3000); await wait(2700);
     const clean = view();
