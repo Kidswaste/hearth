@@ -1835,9 +1835,11 @@ const ThreeMedia = (() => {
     let tickHidden = false;
     const checkOnScreen = () => {
       const v = canvas.checkVisibility ? canvas.checkVisibility({ visibilityProperty: true }) : true;
-      if (v === onScreen) return;
       onScreen = v;
-      if (v && tickHidden && (st.playing || recording)) { cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); } // one full paint, then on
+      // (round 151, perf151) restarted whenever it can be seen again, not only when the visibility itself changed: a play
+      // that began while the timeline's canvas was still 0 × 0 (a song loading as the bar opens) parked the tick with the
+      // canvas "visible", and the timeline and playheads stayed frozen for the whole song
+      if (shown() && tickHidden && (st.playing || recording)) { cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); } // one full paint, then on
     };
     // (a way back on screen that sends none of these events can't leave it stopped: a look once a second while parked)
     let parkT = 0;
@@ -3380,6 +3382,7 @@ const ThreeMedia = (() => {
       // (round 94) the draw goes to the next frame: drawing inside the observer could change an observed size in the
       // same frame ("ResizeObserver loop completed with undelivered notifications", labsync88)
       if (!sizeDraw) sizeDraw = requestAnimationFrame(() => { sizeDraw = 0; draw(); });
+      if (tickHidden && (st.playing || recording) && sizes.cw > 0 && sizes.ch > 0) checkOnScreen(); // (round 151, perf151) a size that arrives after play began: the tick goes on
     });
     let sizeDraw = 0;
     sizeRo.observe(minimap); sizeRo.observe(canvas);

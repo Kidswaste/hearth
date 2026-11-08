@@ -7,6 +7,8 @@
 //             headers' live dot / sweep, the glints, the playhead's halo) are paused, not one endless animation runs
 //   rest      a moving scene left on screen, stopped, nobody using Hearth: Auto fps eases the preview to 30 (from 60);
 //             the first input brings 60 back; playing never rests
+//   timeline  while the song plays the timeline's tick runs (a play that began while its canvas had no size yet parked
+//             it for the whole song: fixed this round)
 //   readouts  while a scene plays, the usage pass (usage.js decorate) is not woken by the Lab's live readouts
 //   pointer   a quick flick into the preview's top-right corner that stops inside one 120 ms step: the view controls
 //             come back (the pointer's last position is always sent; round 150 dropped it and they stayed hidden)
@@ -139,7 +141,13 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
     step('rest: the first input brings the preview back to 60', back === 60, { cap: back ?? await sbx('return window.__labPace.state().cap'), hushed: document.documentElement.hasAttribute('data-hush') });
     await park();
     await until(() => document.documentElement.hasAttribute('data-hush'), 15000);
+    // (a song on the timeline: realscene-lib's 124 BPM one, the check's own temp file)
+    try { const f = await RS.files(); await c.loadSong(f.song); await until(() => c.state.bpm > 0, 30000); } catch (err) { out.songNote = String(err).slice(0, 200); }
+    await park(); await until(() => document.documentElement.hasAttribute('data-hush'), 15000);
+    const t0 = window.LabPlay?.counts?.().tick || 0;
     c.play(true); await until(() => window.LabPlay?.playing, 5000); await wait(1200);
+    const ticks = await until(() => ((window.LabPlay?.counts?.().tick || 0) - t0) >= 5 ? (window.LabPlay.counts().tick - t0) : null, 6000);
+    step('timeline: while the song plays the timeline ticks (its playheads and picture move), the window hushed', Boolean(ticks), { ticks, song: Boolean(c.state.bpm) });
     const capPlay = await sbx('return window.__labPace.state().cap');
     // readouts: the usage pass is not woken while it plays
     P.take(); await wait(6000); const pg = P.take();

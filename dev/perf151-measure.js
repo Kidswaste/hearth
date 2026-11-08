@@ -39,6 +39,7 @@ const probe = () => {
   };
 };
 await smoke({ cdp: 'Page.addScriptToEvaluateOnNewDocument', params: { source: `(${probe.toString()})();` } });
+localStorage.setItem('idlecpu.hushMs', '8000'); // (the owner away: the minute before the hush shortened, the same before and after)
 return 'probe installed';
 //@@ reload
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -162,6 +163,7 @@ await wait(4000);
 await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 2, y: 600, button: 'none' } });
 await measure('lab playing', { target: 'three-sandbox' });
 await RS.close(); await wait(4000);
+await until(() => document.documentElement.hasAttribute('data-hush'), 20000); await wait(1500); // (nobody using Hearth: the song stopped, the scene still moving)
 await measure('lab paused', { target: 'three-sandbox' });
 // the same scene small enough for this software GPU to keep ~60 fps: the Lab window's own work per preview frame at the
 // rate the owner's graphics card gives it (the window follows the preview's frames)
