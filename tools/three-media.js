@@ -1848,13 +1848,26 @@ const ThreeMedia = (() => {
     addEventListener('hearth:view', lookSoon);
     document.addEventListener('hearth:activate', lookSoon);
     document.addEventListener('visibilitychange', () => checkOnScreen());
-    function tick() {
+    // (round 149, play149) on a fast screen (120 / 144 / 240 Hz) while the song plays, the tick's work runs at most 60
+    // times a second: the playheads glide on the compositor between placements, the timeline's picture is drawn 5× a
+    // second anyway, and the preview draws at 60 at most in Auto fps; 240 ticks a second did the same work 4× over on the
+    // Lab window's thread. Never with the click track (its clicks are timed by the tick), while dragging or recording.
+    // TK.scr: the screen's frame (ms, an average of the tick's own frame gaps); TK.off (checks): every frame, as before.
+    const TK = { scr: 16.7, prev: -1, work: -1e9, off: false, skips: 0 };
+    LabPlay.tickInfo = () => ({ scr: Math.round(TK.scr * 100) / 100, skips: TK.skips, off: TK.off });
+    LabPlay.tickOff = (v) => { TK.off = Boolean(v); return TK.off; };
+    function tick(ts) {
       // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the
       // playheads aren't placed, 10 times a second for nothing; the beat still ticks for the click track. Back on
       // screen: one full paint.)
       // (round 21: without the click track nothing ticks at all while hidden; showing the Lab again starts it)
       if (!shown() && !recording && !dragging) { tickHidden = true; if (gridView.click) { beatTick(); raf = requestAnimationFrame(tick); } else { raf = 0; parkWatch(); } return; }
       if (tickHidden) { tickHidden = false; paint(); return; }
+      const playing0 = st.playing && !recording;
+      if (typeof ts === 'number') { const d = ts - TK.prev; TK.prev = ts; if (d > 1 && d < 50) TK.scr += (d - TK.scr) * 0.1; }
+      const fast = playing0 && !dragging && !gridView.click && !TK.off && TK.scr < 10 && typeof ts === 'number';
+      if (fast && ts - TK.work < 1000 / 60 - TK.scr / 2) { TK.skips += 1; LabPlay.count('tickSkip'); raf = requestAnimationFrame(tick); return; }
+      if (typeof ts === 'number') TK.work = ts;
       beatTick();
       if (dragging) { paint(); return; }
       // While it plays only the picture, the time and the playhead move: the control row is repainted by paint()
@@ -1864,7 +1877,7 @@ const ThreeMedia = (() => {
       const playing = st.playing && !recording;
       if (performance.now() - lastFull > (playing ? 200 : 100)) { livePaint(); if (playing) LabPlay.count('timeline'); }
       if (playing) LabPlay.count('tick');
-      if (!playing || (tickN++ & 1) === 0) { placePlayheads(); if (playing) LabPlay.count('playhead'); }
+      if (!playing || fast || (tickN++ & 1) === 0) { placePlayheads(); if (playing) LabPlay.count('playhead'); } // (play149: on a fast screen each worked tick, ≤ 60 a second)
       raf = requestAnimationFrame(tick);
     }
     function livePaint() {
