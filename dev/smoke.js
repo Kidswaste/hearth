@@ -304,6 +304,7 @@ async function cdpConnect(dir) {
       if (msg.method === 'Runtime.bindingCalled' && msg.params.name === '__smoke') { smokeCall(msg.params.payload); return; }
       if (msg.method === 'Tracing.dataCollected') { traceEvents.push(...msg.params.value); return; }
       if (msg.method === 'Tracing.tracingComplete') { traceDone?.(); return; }
+      if (msg.method === 'LayerTree.layerTreeDidChange' && !msg.sessionId) { if (layerWait && msg.params.layers) layerWait(msg.params); return; }
       if (msg.method === 'HeapProfiler.addHeapSnapshotChunk') { snapChunks?.push(msg.params.chunk); return; } // (round 39, labmemory: { snapshot })
       if (msg.method === 'Runtime.exceptionThrown') {
         const d = msg.params.exceptionDetails;
@@ -335,6 +336,7 @@ async function cdpConnect(dir) {
       send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, sid);
     };
     // The `smoke()` bridge for check scripts: real input events (Input.*), screenshots and other CDP calls.
+    let layerWait = null; // (round 151) { layers }
     let traceEvents = []; let traceDone = null; let snapChunks = null; let traceDelay0 = null;
     // (round 88, checkfix88) how long each process's main thread has waited for a CPU so far (Linux schedstat's run delay,
     // ms; null elsewhere): a busy box shows as run delay, a slow app as CPU time
@@ -403,8 +405,41 @@ async function cdpConnect(dir) {
         const sum = (name) => traceEvents.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
         result = { paints: paints.length, paintedPx: Math.round(paints.reduce((a, e) => a + area(e.args.data.clip), 0)), paintMs: Math.round(sum('Paint')), rasterMs: Math.round(sum('RasterTask')), layerizeMs: Math.round(sum('Layerize')), styleMs: Math.round(sum('UpdateLayoutTree')), layoutMs: Math.round(sum('Layout')), layouts: traceEvents.filter((e) => e.name === 'Layout').length, layoutObjects: traceEvents.filter((e) => e.name === 'Layout').reduce((a, e) => a + (e.args?.beginData?.dirtyObjects || 0), 0), styles: traceEvents.filter((e) => e.name === 'UpdateLayoutTree').length,
           top: Object.entries(byLayer).sort((a, b) => b[1].px - a[1].px).slice(0, 8).map(([k, v]) => `${k}: ${v.n}× ${Math.round(v.px / 1000)}k px ${Math.round(v.ms)} ms`) };
+        // (round 151, redux151) { trace: 'stop', window: true }: the same sums for the window's own renderer only (the main
+        // frame's process, from TracingStartedInBrowser), so a preview page's paints / an app's GPU work don't blur them
+        if (req.window) {
+          const tsb = traceEvents.find((e) => e.name === 'TracingStartedInBrowser');
+          const main = (tsb?.args?.data?.frames || []).find((f) => !f.parent);
+          const pid = main?.processId;
+          const mine = traceEvents.filter((e) => e.pid === pid);
+          const s2 = (name) => mine.filter((e) => e.name === name).reduce((a, e) => a + (e.dur || 0) / 1000, 0);
+          const r1 = (v) => Math.round(v * 10) / 10;
+          result.window = { pid, paints: mine.filter((e) => e.name === 'Paint').length, paintMs: r1(s2('Paint')), rasterMs: r1(s2('RasterTask')), layerizeMs: r1(s2('Layerize') + s2('UpdateLayer') + s2('UpdateLayerTree')), compositeMs: r1(s2('CompositeLayers') + s2('Commit') + s2('PrePaint')), styleMs: r1(s2('UpdateLayoutTree')), layoutMs: r1(s2('Layout')), styles: mine.filter((e) => e.name === 'UpdateLayoutTree').length, frames: mine.filter((e) => e.name === 'BeginFrame' || e.name === 'DrawFrame').length };
+        }
         if (req.detail) result.detail = require('./trace-stats.js').stats(traceEvents, req.detail);
         if (req.dump) fs.writeFileSync(req.dump, JSON.stringify(traceEvents));
+      } else if (req.layers) {
+        // (round 151, redux151) { layers: true }: the window's composited layers now (LayerTree's next snapshot):
+        // how many, how many draw content, their area, and how many are hidden by opacity 0 / outside the screen
+        const got = new Promise((r) => { layerWait = r; setTimeout(() => r(null), 3000); });
+        await send('LayerTree.enable', {});
+        const L = await got; layerWait = null;
+        const ls = L?.layers || [];
+        // { layers: true, detail: true }: each layer's element (tag.class) and why it is composited, biggest first
+        let list;
+        if (req.detail) {
+          await send('DOM.enable', {});
+          list = [];
+          for (const l of ls) {
+            let who = l.backendNodeId ? '?' : '(no node)';
+            if (l.backendNodeId) { const d = (await send('DOM.describeNode', { backendNodeId: l.backendNodeId })).result?.node; if (d) { const a = d.attributes || []; const ci = a.indexOf('class'); who = `${d.nodeName.toLowerCase()}${d.pseudoType ? `::${d.pseudoType}` : ''}${ci >= 0 ? `.${String(a[ci + 1]).trim().split(/\s+/).slice(0, 3).join('.')}` : ''}`; } }
+            const why = (await send('LayerTree.compositingReasons', { layerId: l.layerId })).result?.compositingReasonIds || [];
+            list.push({ who, w: Math.round(l.width), h: Math.round(l.height), draws: Boolean(l.drawsContent), why: why.slice(0, 3).join(',') });
+          }
+          list.sort((a, b) => b.w * b.h - a.w * a.h);
+        }
+        await send('LayerTree.disable', {});
+        result = { count: ls.length, drawing: ls.filter((l) => l.drawsContent).length, px: Math.round(ls.filter((l) => l.drawsContent).reduce((a, l) => a + Math.min(4096, l.width) * Math.min(4096, l.height), 0)), invisible: ls.filter((l) => l.invisible).length, timedOut: !L, ...(list ? { list } : {}) };
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }

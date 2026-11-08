@@ -7,7 +7,8 @@
 @property --st-k { syntax: '<number>'; inherits: true; initial-value: 0.2; }
 
 /* ---------- 1. quiet chrome ---------- */
-.three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones) { transition: opacity .32s ease, transform .32s cubic-bezier(.2,.7,.3,1); }
+.three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones) { transition: opacity .14s ease-in, transform .14s ease-in; } /* (round 151) out: quick */
+.three-preview.st-on:is(.st-pin, .st-z-tr) > .stage-pill, .three-preview.st-on:is(.st-pin, .st-z-b) > :is(.three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud), .three-preview.st-on:not(.st-idle) > .safe-zones { transition: opacity .2s cubic-bezier(.2,.8,.2,1), transform .22s cubic-bezier(.2,.8,.2,1); } /* in */
 /* the view controls: the top-right corner (or I, or keyboard focus inside them) */
 .three-preview.st-on:not(.st-pin):not(.st-z-tr) > .stage-pill:not(:has(:focus-visible)) { opacity: 0; pointer-events: none; transform: translate(6px, -4px); }
 /* the stats / quality line and its notes: the bottom edge */
@@ -19,7 +20,7 @@
 .three-preview.st-on.st-pin:not(:hover) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)):not([hidden]) { display: inline-block; }
 /* the 01 PREVIEW header: its readouts on hover of the header (or pinned) */
 html .ih.ih-pv.st-head { pointer-events: auto; }
-.ih-pv.st-head > .ih-meta { transition: opacity .3s ease; }
+.ih-pv.st-head > .ih-meta { transition: opacity .18s ease; }
 .ih-pv.st-head.st-quiet > .ih-meta { opacity: 0; }
 /* warnings: by themselves when new (st-fresh), then a small glyph while the stage is idle */
 .three-preview.st-on.st-idle:not(.st-pin) > .st-warn:not(.st-fresh):not(:hover) { padding: 0; width: 20px; height: 20px; min-width: 0; gap: 0; justify-content: center; border-radius: 50%; overflow: hidden; }
@@ -29,9 +30,10 @@ html .ih.ih-pv.st-head { pointer-events: auto; }
   color: var(--fh-ember, #ff7a1a); text-shadow: 0 0 6px var(--fh-ember, #ff7a1a);
 }
 .three-preview.st-on.st-idle:not(.st-pin) > .lab-safe.st-warn:not(.st-fresh):not(:hover)::before { content: "🛟"; font-size: 11px; text-shadow: none; }
-.three-preview.st-on > .st-warn { transition: width .3s ease, height .3s ease, border-radius .3s ease; }
-.three-preview.st-on > .st-warn.st-fresh { animation: st-warn-in .5s cubic-bezier(.2,.7,.3,1); }
-@keyframes st-warn-in { from { opacity: 0; transform: translateY(6px); } }
+.three-preview.st-on > .st-warn { transition: width .2s ease, height .2s ease, border-radius .2s ease; }
+/* (round 151) a notice comes in: wiped in from its left edge, a gold → ember edge drawn first */
+.three-preview.st-on > .st-warn.st-fresh { animation: st-warn-in .22s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes st-warn-in { from { opacity: 0; transform: translateY(4px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(-4px); } }
 
 /* ---------- 2. the stage frame ---------- */
 .st-hud { display: none; }
@@ -54,8 +56,8 @@ html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-fx-none) > .st-hud
 .st-frame, .st-flash, .st-rflash { inset: 0; }
 .st-flash, .st-rflash { opacity: 0; will-change: opacity, transform; }
 /* corner brackets: an L with a registration notch, a hair inside the picture's corner */
-.st-br { position: absolute; width: 30px; height: 30px; border: 0 solid var(--st-ink); filter: drop-shadow(0 0 4px var(--st-glow)) drop-shadow(0 0 2px #000); }
-.st-br::after { content: ""; position: absolute; width: 3px; height: 3px; background: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
+.st-br { position: absolute; width: 22px; height: 22px; border: 0 solid var(--st-ink); } /* (round 151) no drop-shadow filters: four small flat Ls */
+.st-br::after { content: ""; position: absolute; width: 2px; height: 2px; background: var(--st-ink); }
 .st-br.st-tl { left: 10px; top: 10px; border-top-width: 1px; border-left-width: 1px; }
 .st-br.st-tr { right: 10px; top: 10px; border-top-width: 1px; border-right-width: 1px; }
 .st-br.st-bl { left: 10px; bottom: 10px; border-bottom-width: 1px; border-left-width: 1px; }
@@ -173,5 +175,29 @@ html:not([data-lablook="plain"]) .three-preview.st-on > .lab-adapt-note { left: 
 .three-preview.st-on:is(.st-fx-off, .st-fx-calm) :is(.st-flash, .st-rflash, .st-hat) { display: none; }
 .three-preview.st-on.st-rm .st-glow { opacity: .14 !important; }
 
-/* ---------- Plate: the same stage, indigo by default (the picture stays a dark well) ---------- */
-html[data-lablook="plate"] .three-preview.st-on .st-hud { letter-spacing: .14em; }
+
+/* ---------- (round 151, redux151) Hearth Redux: the stage, cheaper and quieter (docs/upgrades/redux151.md) ----------
+   The frame is four flat gold corner marks; the labels and the two hints come in while you point at the picture. Gone:
+   the rulers, the reticle, the song hairline (the timeline has it), and — unless the stage is reactive — the edge glow
+   and the pulse layers (a full-picture inset shadow and two full-picture flash layers that were composited for nothing
+   while the stage is off, the default). */
+html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud :is(.st-rule, .st-x, .st-prog) { display: none; }
+.three-preview.st-on:not(.st-fx-reactive) > .st-hud :is(.st-glow, .st-flash, .st-rflash, .st-hat) { display: none; }
+.three-preview.st-on.st-fx-reactive > .st-hud .st-glow { will-change: auto; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud .st-lb { text-shadow: 0 1px 2px #000, 0 0 1px #000; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud .st-frame { transition: opacity .2s ease; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud :is(.st-lb, .st-hint) { transition: opacity .14s ease-in, transform .14s ease-in; }
+html:not([data-lablook="plain"]) .three-preview.st-on.st-idle > .st-hud :is(.st-lb-tl, .st-lb-bl) { transform: translateX(-4px); }
+html:not([data-lablook="plain"]) .three-preview.st-on.st-idle > .st-hud .st-lb-br { transform: translateX(4px); }
+html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-idle) > .st-hud :is(.st-lb, .st-hint) { transition: opacity .2s cubic-bezier(.2,.8,.2,1), transform .22s cubic-bezier(.2,.8,.2,1); }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill { box-shadow: 0 0 0 1px #0008 !important; background: hsl(var(--st-hd) 12% 6% / .86) !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill :is(.stage-btn, .stage-more) { text-shadow: none; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-btn.on { color: #1a1206 !important; background: var(--st-ink) !important; text-shadow: none; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-more option { background: #141416; color: #ebe5d9; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats { background: linear-gradient(90deg, hsl(var(--st-hd) 12% 5% / .86), hsl(var(--st-hd) 12% 5% / .5) 75%, transparent) !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats > b:not(.warn):not(.bad) { text-shadow: none; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .st-warn { border-left: 2px solid var(--fh-ember, #ff7a1a) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones), .ih-pv.st-head > .ih-meta { transition: none !important; }
+}
+:root:is([data-motion=calm], [data-motion=off]) :is(.three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones), .ih-pv.st-head > .ih-meta) { transition: none !important; }
