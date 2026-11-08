@@ -1,4 +1,4 @@
-# Round 148: the Lab looks like your moodboard
+# Round 148: your moodboard look, moving sliders in renders, one phone
 *November 2026*
 
 ## 🎛 Instrument panels
@@ -27,3 +27,15 @@
   **Forgeheart → Plate → Plain → Forgeheart**. **Plain** is the flat look without headers or motion.
 
 Nothing moved: every button, menu and key is where it was.
+
+## ∿ Sliders that move by themselves now move in renders
+- A slider set to "∿ Move by itself" (Wave, Steps on beats, Pulse on beats, Song sections, Random walk) now moves in your rendered videos, stills and GIFs exactly as it does in the preview, instead of holding still.
+- Wave, Steps and Pulse land on the same value at the same moment of the song as the preview; Song sections follow the song's loud and quiet parts the same way.
+- Random walk wanders on a fixed path in renders, so the same render always comes out identical (it drifts the same way as the preview, just not along the exact same path).
+- Works for every render range (Full song, Loop, Sequence, Custom). In a perfect-loop MP4 a wave whose length fits the loop (for example a 1-bar wave in a 2-bar loop) repeats seamlessly.
+- The scene in a Lab sequence now shows these motions in the sequence's preview too, so what you see there is what renders.
+
+## 📱 Phone viewer: one phone at a time
+- 📱 The phone viewer now shows on one phone at a time. Open the link on another phone and the view moves there; the computer stops sending pictures to the old one right away.
+- The old phone says "Viewing moved to another phone · Tap to take it back", and a tap brings it back.
+- The Lab's phone card says "1 phone connected". It still only works on your own Wi-Fi, with the code in the QR.
