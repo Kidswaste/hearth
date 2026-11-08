@@ -10,3 +10,10 @@
    (spinners, shimmers and pulses included: what they show stays), so the GPU stops drawing the window on every frame of
    the screen. The first input in the window, or Hearth in front again, plays them on. */
 :root[data-blurhush] *, :root[data-blurhush] *::before, :root[data-blurhush] *::after { animation-play-state: paused !important; }
+
+/* (round 151, perf151) the Lab look's ambient loops (round 148's instrument headers: the live dot, the sweep, the glint
+   along the panels, the playhead's breathing halo) pause with the rest of the look when nobody has used the window for
+   a minute: each endless one kept the GPU process composing the whole window on every screen frame (240 a second on
+   the owner's screen) while he only watched. Only paused (their look stays); the first input plays them on. */
+:root[data-hush] :is(.ih-live, .ih-sweep, .mb-handle, .tw-head, .mb-playhead),
+:root[data-hush] :is(.ih-sweep, .mb-handle, .tw-head, .mb-playhead)::after { animation-play-state: paused !important; }
