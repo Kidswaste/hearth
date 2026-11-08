@@ -30,9 +30,9 @@ const shot = (name) => smoke({ shot: `${SHOTS}/${name}.png` }).catch(() => {});
 const move = (x, y) => cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(x), y: Math.round(y), button: 'none' });
 const away = () => move(20, 520); // the left rail, away from the Lab
 // round 150's numbers (this check's cost probe on the round-150 build, same box; see the doc)
-// (three runs each: layers 38 / 45 every time; draw ms idle 6.7 · 9.0 · 7.6, playing 4.8 · 6.2 · 3.1: the medians; window task ms
-// idle 31.5 · 27.8 · 25.4, playing 18.4 · 16.4 · 14.5)
-const BEFORE = window.REDUX151_BEFORE || { idle: { layers: 38, drawMs: 7.6, taskMs: 27.8 }, play: { layers: 45, drawMs: 4.8, taskMs: 16.4 } };
+// (three runs on the round-150 build, the clock timeline up: layers 45 / 45 every time; draw ms idle 6.2 · 8.3 · 4.7,
+// playing 5.5 · 8.0 · 10.8: the medians; window task ms idle 30.8 · 33.8 · 26.7, playing 25.1 · 30.3 · 27.7)
+const BEFORE = window.REDUX151_BEFORE || { idle: { layers: 45, drawMs: 6.2, taskMs: 30.8 }, play: { layers: 45, drawMs: 8.0, taskMs: 27.7 } };
 
 // an element's opacity as seen: its own and its ancestors' multiplied
 const seen = (n) => { let o = 1; for (let x = n; x && x.nodeType === 1; x = x.parentElement) o *= Number(getComputedStyle(x).opacity); return Math.round(o * 100) / 100; };
