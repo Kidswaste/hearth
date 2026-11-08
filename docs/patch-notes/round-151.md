@@ -8,6 +8,7 @@
 - The Lab's small glowing touches (the header dots and sweeps, the timeline glint) now rest with the rest of the look
   when nobody is using Hearth.
 - With Hearth hidden in the tray, the scene frame's labels stop updating (they kept ticking for nobody).
+- **Fixed:** the timeline could stay frozen for a whole song if you pressed play while it was still appearing.
 - While a scene plays, Hearth no longer re-scans its buttons every second because of the Lab's live numbers.
 - We measured everything: with a chat open and nothing happening, Hearth uses about 3–5 thousandths of a second of
   work per second. Almost all the cost while the Lab plays is the scene itself being drawn on your graphics card.
