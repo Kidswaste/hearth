@@ -362,7 +362,7 @@ const ThreeSeq = (() => {
     }
     return out.length ? out : null;
   }
-  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1, links = null, locked = null } = {}) {
+  function prepLayer(L, slot, { look = null, palette = null, t0 = 0, vary = null, cues = null, rate = 1, links = null, locked = null, motions = null, lid = 'main' } = {}) {
     const keys = Object.fromEntries(ANIM.filter((p) => L.keys?.[p]?.length).map((p) => [p, shiftKeys(L.keys[p], t0, rate)]));
     const sc = scanOf(L.code || '');
     if (!sc?.items?.length) return { code: L.code || '', values: undefined, keys, sliderKeys: {} };
@@ -395,9 +395,19 @@ const ThreeSeq = (() => {
     // sequence and its renders move like the Lab (only links with a "how"; the older curves follow the live analyser)
     let lk = null;
     if (links) ids.forEach((id, i) => { const m = links[id]; if (m?.how && sc.items[i].kind === 'number') (lk ||= {})[b + i] = { ...m, int: sc.items[i].int, call: sc.items[i].call, key: sc.items[i].key }; });
+    // (round 148, motionrender148) its sliders' ∿ Move by itself motions (LFO, walk, beat, pulse, section): the page
+    // computes them from the song's time (tools/three-beatlink-core.js motionValue), on top of the slider's value (its
+    // keyframes / cue looks first), so a render moves as the preview did; 🔒 locked sliders stay still, as in the Lab
+    let mo = null;
+    if (motions) ids.forEach((id, i) => {
+      const m = motions[id]; const it = sc.items[i];
+      if (!m?.kind || it.kind !== 'number' || locked?.includes(id) || !it.range) return;
+      const BL = typeof BeatLinkCore !== 'undefined' ? BeatLinkCore : null;
+      (mo ||= {})[b + i] = { kind: m.kind, shape: m.shape || 'sine', rate: m.rate || 1, depth: m.depth ?? 0.25, n: i, seed: BL ? BL.motionSeed(`${lid}|${id}`) : i + 1, min: it.range.min, max: it.range.max, int: Boolean(it.int), base: runtime(it, vals[i]), call: it.call, key: it.key };
+    });
     let code = sc.code;
     try { code = ThreeTweaks.instrument(sc.code, sc.items, b); } catch { return { code: L.code, values: undefined, keys, sliderKeys: {} }; }
-    return { code, values: Object.fromEntries(vals.map((v, i) => [b + i, runtime(sc.items[i], v)])), keys, sliderKeys, ...(lk ? { links: lk } : {}) };
+    return { code, values: Object.fromEntries(vals.map((v, i) => [b + i, runtime(sc.items[i], v)])), keys, sliderKeys, ...(lk ? { links: lk } : {}), ...(mo ? { motions: mo } : {}) };
   }
   function looksOf(sk) {
     const ex = lab()?.scenes.extrasOf?.(sk.id) || {};
@@ -422,9 +432,9 @@ const ThreeSeq = (() => {
       const look = c.look ? mine.find((l) => l.name === c.look)?.values : null;
       const cues = !c.look && cueList?.length ? cueLooksOf(cueList, ly, mine) : null; // (round 139, cuelooks139)
       const lex = L.scenes.extrasOf?.(sk.id) || {}; const links = (ly.id === 'main' ? lex.bindings : lex.layers?.[ly.id]?.bindings) || null; // (round 38, beatlink)
-      const locked = (ly.id === 'main' ? lex.locks : lex.layers?.[ly.id]?.locks) || null; // (round 139, cuelooks139) 🔒 sliders: a cue's look leaves them, as in the preview
-      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate, links, locked });
-      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, mask: ly.mask || null, in: ly.in != null ? r4(ly.in / rate + t0) : null, out: ly.out != null ? r4(ly.out / rate + t0) : null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, keys: p.keys, sliderKeys: p.sliderKeys, ...(p.links ? { links: p.links } : {}), ...(ly.camMoves?.length && typeof CamCore !== 'undefined' ? { camMoves: CamCore.shift(CamCore.cleanAll(ly.camMoves), t0, rate) } : {}), ...(ly.overrides ? { overrides: ly.overrides } : {}), /* (round 50, labmaterials: the 3D editor's placements and ◉ looks, as in the preview) */ ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
+      const locked = (ly.id === 'main' ? lex.locks : lex.layers?.[ly.id]?.locks) || null; const motions = (ly.id === 'main' ? lex.motions : lex.layers?.[ly.id]?.motions) || null; /* (round 148, motionrender148) */ // (round 139, cuelooks139) 🔒 sliders: a cue's look leaves them, as in the preview
+      const p = prepLayer(ly, slot0 + j, { look, palette: c.vibe?.palette, t0, vary: c.vary ? { seed: (c.vary.seed || 1) + j * 101, amount: c.vary.amount ?? 0.4 } : null, cues, rate, links, locked, motions, lid: ly.id });
+      return { id: `${c.id}~${ly.id}`, code: p.code, values: p.values, props: { name: `${c.name} · ${ly.name}`, share: shareKey(ly), opacity: ly.opacity ?? 1, blend: ly.blend || 'normal', x: ly.x || 0, y: ly.y || 0, scale: ly.scale ?? 1, rotate: ly.rotate || 0, mask: ly.mask || null, in: ly.in != null ? r4(ly.in / rate + t0) : null, out: ly.out != null ? r4(ly.out / rate + t0) : null, fadeIn: ly.fadeIn || 0, fadeOut: ly.fadeOut || 0, keys: p.keys, sliderKeys: p.sliderKeys, ...(p.links ? { links: p.links } : {}), ...(p.motions ? { motions: p.motions } : {}), ...(ly.camMoves?.length && typeof CamCore !== 'undefined' ? { camMoves: CamCore.shift(CamCore.cleanAll(ly.camMoves), t0, rate) } : {}), ...(ly.overrides ? { overrides: ly.overrides } : {}), /* (round 50, labmaterials: the 3D editor's placements and ◉ looks, as in the preview) */ ...(marks ? { seqMarks: marks } : {}), ...(ly.precomp && typeof ThreeComp !== 'undefined' ? { precomp: ThreeComp.specOf(ly, sk.id, { slotBase: 3000 + (slot0 + j) * 50 }) } : {}) } };
     });
   }
   // what makes two scenes' layers "the same layer" for a morph: its name, or its code when the name says nothing

@@ -5279,7 +5279,7 @@ function blReady() {
   return false;
 }
 // an export frame waits for the math when its layers have links (never a first frame without them)
-async function blWait() { if (!globalThis.beatlink && [...layers.values()].some((L) => L.props.links)) { blReady(); await BL.want; } }
+async function blWait() { if (!globalThis.beatlink && [...layers.values()].some((L) => L.props.links || L.props.motions)) { blReady(); await BL.want; } }
 const blTime = () => (liveKind ? realNow() / 1000 : mediaEl ? songNow() : SQ.on ? SQ.T : realNow() / 1000);
 function blStemFn(k) { const T = STEMS.track; return fxSong() && T && STEMS.el === mediaEl ? (t) => T.data[Math.max(0, Math.min(T.n - 1, Math.floor(t * T.fps))) * T.F + k] / 255 : null; }
 // live drum hits: a rising edge of the heard hit pulse (kickOn / snareOn / hatOn), counted
@@ -5362,6 +5362,29 @@ function applyLinks(L) {
   for (const idx of Object.keys(lk)) {
     const m = lk[idx]; const v = blValue(idx, m);
     if (v == null || TV[idx] === v) continue;
+    TV[idx] = v;
+    const set = L.tweakSets[m.call];
+    if (set && m.key in set.vals) { set.vals[m.key] = v; try { set.handlers[m.key]?.(v); } catch (err) { post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message} (in onChange for "${m.key}")` }); } }
+  }
+}
+// (round 148, motionrender148) a sequence / export layer's ∿ Move by itself motions (LFO, random walk, steps / pulses
+// on the beat, song sections): each frame its slider gets its value at the song's time (tools/three-beatlink-core.js
+// motionValue: the preview's own math on the song's BPM and sections; the walk seeded per slider), on top of its keyframes
+// / cue looks (applySliderKeys ran first) and under its ♪ link (applyLinks runs after). The main Lab's preview doesn't
+// come here: its motions run in the Lab (tools/three-tweaks.js motionTick).
+function applyMotions(L) {
+  const mo = L.props.motions;
+  if (!mo || !blReady()) return;
+  const t = blTime();
+  const ctx = { t, bpm: beatMap?.bpm || analysis?.bpm || 120, sections: analysis?.sections || null, n: 0, seed: 1 };
+  const sk = L.props.sliderKeys; const kt = sk ? keyTime(L) : null;
+  for (const idx of Object.keys(mo)) {
+    const m = mo[idx];
+    let base = m.base;
+    if (sk?.[idx] && kt != null) { const kv = evalKeys(sk[idx].keys, kt, undefined); if (typeof kv === 'number') base = kv; }
+    ctx.n = m.n; ctx.seed = m.seed;
+    const v = globalThis.beatlink.motionValue(m, typeof base === 'number' ? base : m.min, ctx);
+    if (!Number.isFinite(v) || TV[idx] === v) continue;
     TV[idx] = v;
     const set = L.tweakSets[m.call];
     if (set && m.key in set.vals) { set.vals[m.key] = v; try { set.handlers[m.key]?.(v); } catch (err) { post({ type: 'error', layer: L.id, message: `${err.name}: ${err.message} (in onChange for "${m.key}")` }); } }
@@ -7872,7 +7895,7 @@ function cvDraw(g, cv, W, H) {
 }
 let compRec = null; // the merged canvas being recorded
 // Runs first in every frame (it was registered before any layer), so animated sliders are set before layers draw.
-function compKeys(L) { applySliderKeys(L); applyLinks(L); }
+function compKeys(L) { applySliderKeys(L); applyMotions(L); applyLinks(L); }
 function compositorTick() {
   paceNext(compositorTick, parked && !compRec && !SQ.off); // (labpace: parked, it sleeps instead of waking every frame)
   fxPlanGen += 1; // (a new frame: which filters draw inside which is worked out again, see "merged filter passes")
@@ -15941,7 +15964,7 @@ async function sqFrame({ n, T, w, h, q = 0.92, kind = 'image/jpeg', ret = true }
   await blWait(); // (round 38, beatlink) links on its sliders: the math is here before the first frame
   await cmWait(); // (round 40, labcamera) camera moves on its layers: the same
   await lkWait(); // (round 50, labmaterials) ◉ looks on its layers: the same
-  for (const L of layers.values()) { applySliderKeys(L); applyLinks(L); }
+  for (const L of layers.values()) { applySliderKeys(L); applyMotions(L); applyLinks(L); }
   // the layers draw this frame (a group that just started gets a second pass: its first callback may only set up)
   const fresh = [...SQ.mounted.values()].some((st) => st.fresh) || PC.fresh;
   PC.fresh = false;

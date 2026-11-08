@@ -322,8 +322,65 @@ function hearthBeatLinkCore() {
     for (const h of HOWS) if (w.some((x) => x === h.id || h.words.split(' ').includes(x))) return h.id;
     return null;
   }
+  // ---------- (round 148, motionrender148) ∿ Move by itself, for renders ----------
+  // A slider's motion (tools/three-tweaks.js motions[id] = { kind: lfo | walk | beat | pulse | section, shape, rate
+  // (beats per cycle), depth (0..1 of its range) }) runs in the Lab on its timer for the live preview; a render (and the
+  // Lab sequence) gets it on the layer (props.motions, tools/three-seq.js prepLayer) and the page computes it here from
+  // the song's time alone. lfo / beat / pulse are exactly the preview's math (its phase t × BPM / 60, its per-slider
+  // index n); the random walk is seeded noise on the song's time (the same every render; the preview's own walk is
+  // live randomness, so it drifts the same way but not along the same path); section eases toward the song's loud /
+  // quiet parts like the preview (0.05 per 33 ms tick).
+  const mHash = (x) => { const y = Math.sin(x * 127.1 + 311.7) * 43758.5453; return y - Math.floor(y); }; // = three-tweaks.js hash01
+  const SECTION_TAU = 0.033 / -Math.log(0.95); // the preview's ease, as a time constant (s)
+  function motionWave(mo, ph) {
+    const sh = mo.shape;
+    return sh === 'tri' ? 1 - 4 * Math.abs(ph - 0.5) : sh === 'saw' ? ph * 2 - 1 : sh === 'square' ? (ph < 0.5 ? 1 : -1) : sh === 'ramp' ? 1 - ph * 2
+      : sh === 'steps' ? Math.floor(ph * 4) / 1.5 - 1 : sh === 'bounce' ? Math.abs(Math.sin(ph * Math.PI)) * 2 - 1 : Math.sin(ph * Math.PI * 2);
+  }
+  // smooth seeded noise in -1..1: two octaves of value noise, knots every 0.6 × rate seconds
+  function walkAt(t, rate, seed) {
+    const noise = (x, s) => { const k = Math.floor(x); const f = x - k; const e = f * f * (3 - 2 * f); const a = mHash(k * 7.13 + s) * 2 - 1; const b = mHash((k + 1) * 7.13 + s) * 2 - 1; return a + (b - a) * e; };
+    const step = 0.6 * Math.max(0.05, rate);
+    const x = Math.max(0, t) / step;
+    const v = noise(x, seed * 0.917 + 3.1) * 0.75 + noise(x * 2.3, seed * 1.37 + 17.9) * 0.35;
+    return Math.max(-1, Math.min(1, v * 1.15));
+  }
+  // section: x starts at 0 at the song's start and eases toward +1 (loud) / -1 (quiet) / 0 through the parts up to t
+  function sectionAt(t, sections) {
+    let x = 0; let at = 0;
+    const list = (sections || []).filter((s) => s && s.end > s.start).slice().sort((a, b) => a.start - b.start);
+    const go = (to, target) => { const d = Math.min(to, t) - at; if (d > 0) { x = target + (x - target) * Math.exp(-d / SECTION_TAU); at += d; } };
+    for (const s of list) {
+      if (at >= t) break;
+      go(s.start, 0);
+      go(s.end, s.energy === 'loud' ? 1 : s.energy === 'quiet' ? -1 : 0);
+    }
+    go(t, 0);
+    return x;
+  }
+  // u in -1..1 at song time t (bpm: the song's), n: the slider's index in its layer, seed: its walk's seed
+  function motionU(mo, { t = 0, bpm = 120, n = 0, seed = 1, sections = null } = {}) {
+    const rate = mo.rate || 1;
+    const beatPos = t / (60 / (bpm || 120));
+    const ph = ((beatPos / rate) % 1 + 1) % 1;
+    if (mo.kind === 'lfo') return motionWave(mo, ph);
+    if (mo.kind === 'walk') return walkAt(t, rate, seed);
+    if (mo.kind === 'beat') return mHash(Math.floor(beatPos / rate) * 13 + n) * 2 - 1;
+    if (mo.kind === 'pulse') return Math.exp(-ph * 6);
+    if (mo.kind === 'section') return sectionAt(t, sections);
+    return 0;
+  }
+  // the slider's value: its base plus u × depth × its range, clamped (and rounded for whole numbers), as the preview does
+  function motionValue(mo, base, ctx) {
+    const span = mo.max - mo.min;
+    let v = Math.max(mo.min, Math.min(mo.max, base + motionU(mo, ctx) * (mo.depth ?? 0.25) * span));
+    if (mo.int) v = Math.round(v);
+    return v;
+  }
+  // a seed from a slider's name (its layer and id): the same slider walks the same way in every render
+  const motionSeed = (str) => { let h = 2166136261; for (const ch of String(str)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) % 100000; };
   return { DRIVERS, DRIVER, HOWS, HOW, defaults, shape, value, hitEnv, follower, hash01, stepAt, hitsOf, clockHits, envOf, lastIdx, make, isLink, name, short, parseDriver, parseHow,
-    HZ, hzOf, hzText, weights, LIVE_BANDS, specLevel, specAt, liveLevel, RESPS, respond, respOf, WIZ, movement, suggest, wizLink }; // (round 134, audiomap134)
+    HZ, hzOf, hzText, weights, LIVE_BANDS, specLevel, specAt, liveLevel, RESPS, respond, respOf, WIZ, movement, suggest, wizLink, motionU, motionValue, motionSeed, walkAt, sectionAt }; // (round 148, motionrender148) // (round 134, audiomap134)
 }
 const BeatLinkCore = hearthBeatLinkCore();
 // the preview page gets the factory as source (tools/three.js sandboxLib: it runs `(code)()` as a module there)
