@@ -9,8 +9,8 @@ frame time still goes while it plays, in the preview and in the Lab window aroun
   UnrealBloomPass: the Bloom template, the node editor's post effects, and most scenes the AIs write). When Smooth
   lowered the resolution, that glow kept drawing at full size, so Smooth (auto) at its lightest step was **no faster
   than Force high quality** on these scenes.
-- Now the glow follows Smooth's resolution. On our heavy test scene at the same Smooth step the graphics work per frame
-  dropped by about a third and the frame rate went up by about half. Your RTX 4080 has more headroom than our test box,
+- Now the glow follows Smooth's resolution. Together with the shadow change below, on our heavy test scene at the same
+  Smooth step the graphics work per frame dropped by a quarter to a third and the frame rate went up by about half. Your RTX 4080 has more headroom than our test box,
   so expect it to keep the scene at a higher step instead (sharper picture, same smoothness).
 - It also works the other way: a glow scene opened while Smooth was already low used to stay soft after Smooth climbed
   back to full quality. Now it sharpens again with the rest.
