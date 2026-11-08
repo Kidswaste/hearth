@@ -3577,6 +3577,7 @@ const ThreeLab = (() => {
       put(P.ms, `${msg.ms.toFixed(1)} ms render`); put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
       P.points.hidden = !msg.points; if (msg.points) put(P.points, `${msg.points.toLocaleString()} points`);
       put(P.geo, `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders`);
+      window.LabRegroup?.stats?.(msg, qChip.textContent); // (round 148, look148) the preview's instrument header: fps · quality (only when the line changed)
     }
     let statsParts = null;
     previewHost.addEventListener('mouseenter', () => { if (lastStatsMsg) requestAnimationFrame(() => paintStats(lastStatsMsg)); });
@@ -4769,7 +4770,7 @@ ${code}
         el('span', { class: 'spacer' }),
         group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
-      window.LabRegroup?.apply({ toolbar, bar: player.el }); // (round 143, lab143) ⚙ Inspect ▾ · ♩ Beat ▾ · ⚡ Sync ▾: folds holding the real controls (tools/three-regroup.js)
+      window.LabRegroup?.apply({ toolbar, bar: player.el, preview: previewHost, media: player }); // (round 148, look148: + the instrument headers) (round 143, lab143) ⚙ Inspect ▾ · ♩ Beat ▾ · ⚡ Sync ▾: folds holding the real controls (tools/three-regroup.js)
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);

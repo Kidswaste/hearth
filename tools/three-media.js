@@ -3404,6 +3404,14 @@ const ThreeMedia = (() => {
       quantize: () => quantize(region ? [region.a, region.b] : [0, D()]), dedupe: () => dedupe(region ? [region.a, region.b] : [0, D()]),
       get playing() { return st.playing; },
       get size() { return size; },
+      // (round 148, look148) the timeline's instrument header reads these (tools/three-regroup.js): tempo, meter, where
+      // the playhead is in bars. Values the timeline already holds; read when it is stopped / moved, never per frame
+      get meta() {
+        const bpm = bpmNow(); const bpb = bpbNow(); const t = now(); const g = G();
+        const len = bpm ? (60 / bpm) * bpb : 0; const a = g?.anchor ?? 0;
+        const beatN = len ? Math.floor((t - a) / (60 / bpm)) : 0;
+        return { bpm, bpb, t, dur: D() || 0, bar: len ? Math.floor((t - a) / len) + 1 : 0, beat: len ? (((beatN % bpb) + bpb) % bpb) + 1 : 0, song: Boolean(D()) };
+      },
       // ---------- for the Three Director: the timeline ----------
       setGrid({ bpm, downbeat, beatsPerBar } = {}) {
         if (!D()) return false;

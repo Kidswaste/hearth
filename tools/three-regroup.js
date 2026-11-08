@@ -15,9 +15,14 @@ const LabRegroup = (() => {
   const LOOK_KEY = 'three.labLook';
   const folds = [];
   let wired = false;
-  const look = () => (store.get(LOOK_KEY, 'forge') === 'plain' ? 'plain' : 'forge');
+  // (round 148, look148) three looks: Forgeheart (the blue instrument HUD with the ember), Plate (the same panels as
+  // light lavender plates), Plain (flat, no motion, no headers)
+  const LOOKS = ['forge', 'plate', 'plain'];
+  const NAMES = { forge: 'Forgeheart', plate: 'Plate', plain: 'Plain' };
+  const HINTS = { forge: 'Blue instrument panels, the ember playhead, faint scanlines (still while it plays)', plate: 'Light lavender plates, indigo accents', plain: 'Flat panels, no motion' };
+  const look = () => { const v = store.get(LOOK_KEY, 'forge'); return LOOKS.includes(v) ? v : 'forge'; };
   function setLook(v) {
-    v = v === 'plain' ? 'plain' : 'forge';
+    v = LOOKS.includes(v) ? v : 'forge';
     store.set(LOOK_KEY, v);
     document.documentElement.dataset.lablook = v;
     return v;
@@ -97,10 +102,11 @@ const LabRegroup = (() => {
 
   // ---------- the Lab's folds ----------
   // apply({ toolbar, bar }): the toolbar (.three-toolbar) and the timeline (.media-bar) once built
-  function apply({ toolbar, bar } = {}) {
+  function apply({ toolbar, bar, preview, media } = {}) {
     if (!toolbar || !bar || bar.dataset.rg) return null;
     bar.dataset.rg = '1';
     wire();
+    hudApply({ preview, bar, media }); // (round 148, look148)
     const made = {};
     // Lab bar: </> Code, ›_ Console and ✥ Edit behind ⚙ Inspect ▾ (Sliders, Present and Play stay one click away);
     // (round 144, calm144) Code and Credits joined it, so the bar keeps one row with the director docked
@@ -151,11 +157,85 @@ const LabRegroup = (() => {
     return made;
   }
 
-  // the Lab's ⋯ › View & help row (tools/three.js labMoreItems)
-  function lookRow() {
-    const on = look() === 'forge';
-    return [`Lab look: ${on ? 'Forgeheart' : 'Plain'}`, on ? 'Scanlines, a slow glint, the ember playhead (still while it plays) · click: Plain' : 'Flat panels, no motion · click: Forgeheart', () => { const v = setLook(on ? 'plain' : 'forge'); toast(`Lab look: ${v === 'forge' ? 'Forgeheart' : 'Plain'}`, { timeout: 1400 }); }, on, 'Lab look'];
+  // ---------- (round 148, look148) instrument headers (docs/upgrades/look148.md) ----------
+  // Each Lab panel reads like an instrument on the owner's moodboard: a tiny numbered mono header with live meta on
+  // the right. 01 PREVIEW (fps, a sparkline of the last readings, quality) sits above the picture, never on it;
+  // 02 TIMELINE (tempo, meter, a beat meter, bar, time) in the timeline's handle row; 03 LAYERS & KNOBS is CSS only.
+  // Cost: the preview's meta is written from paintStats (only when the stats line itself changed, ≤ 2 a second); the
+  // timeline's when it is stopped and something moved (a seek, a new tempo), coalesced to ≤ 10 a second, never while
+  // it plays (its observer is off then). Text nodes are changed in place.
+  const hud = { pv: null, tl: null, media: null, fpsN: [], obs: null, tlT: 0 };
+  const tx = (cls) => { const n = el('span', { class: cls }); n.append(document.createTextNode('')); return n; };
+  const put = (n, v) => { if (n && n.firstChild.data !== v) n.firstChild.data = v; };
+  function header(no, name, cls) {
+    return el('div', { class: `ih ${cls}`, attrs: { 'aria-hidden': 'true' }, dataset: { no } },
+      el('i', { class: 'ih-no', text: no }), el('b', { class: 'ih-name', text: name }), el('i', { class: 'ih-live' }), el('span', { class: 'ih-sweep' }));
   }
-  return { apply, fold, setOpen, closeAll, trayItems, lookRow, look, setLook, get folds() { return folds.slice(); } };
+  function hudPreview(preview) {
+    if (!preview?.parentElement || hud.pv) return;
+    const h = header('01', 'Preview', 'ih-pv');
+    const spark = el('span', { class: 'ih-spark' }, Array.from({ length: 16 }, () => el('i')));
+    const fps = tx('ih-v'); const q = tx('ih-q');
+    h.append(el('span', { class: 'ih-meta' }, el('span', { class: 'ih-k', text: 'fps' }), spark, fps, el('span', { class: 'ih-sep', text: '·' }), el('span', { class: 'ih-k', text: 'quality' }), q));
+    preview.before(h);
+    hud.pv = { h, spark: [...spark.children], fps, q };
+    put(fps, '—'); put(q, 'auto');
+  }
+  function stats(msg, quality) {
+    const P = hud.pv;
+    if (!P || !msg) return;
+    const f = Math.round(msg.fps || 0);
+    put(P.fps, String(f));
+    const c = `ih-v ${f < 30 ? 'bad' : f < 55 ? 'warn' : 'ok'}`;
+    if (P.fps.className !== c) P.fps.className = c;
+    put(P.q, String(quality || '').replace(/^Quality:\s*/i, '').trim() || 'auto');
+    hud.fpsN.push(f); if (hud.fpsN.length > P.spark.length) hud.fpsN.shift();
+    const top = Math.max(60, ...hud.fpsN);
+    const off = P.spark.length - hud.fpsN.length;
+    P.spark.forEach((b, i) => { const v = hud.fpsN[i - off]; const k = (v == null ? 0.08 : Math.max(0.08, v / top)).toFixed(2); if (b.dataset.s !== k) { b.dataset.s = k; b.style.transform = `scaleY(${k})`; } });
+  }
+  function hudTimeline(bar, media) {
+    const handle = bar?.querySelector(':scope > .mb-handle');
+    if (!handle || hud.tl) return;
+    const h = header('02', 'Timeline', 'ih-tl');
+    const bpm = tx('ih-v'); const sig = tx('ih-q'); const barN = tx('ih-v ih-bar'); const time = tx('ih-q ih-time');
+    const beats = el('span', { class: 'ih-beats' }, Array.from({ length: 4 }, () => el('i')));
+    h.append(el('span', { class: 'ih-meta' }, bpm, el('span', { class: 'ih-k', text: 'bpm' }), el('span', { class: 'ih-sep', text: '·' }), sig, beats, el('span', { class: 'ih-k', text: 'bar' }), barN, el('span', { class: 'ih-sep', text: '·' }), time));
+    handle.prepend(h);
+    hud.tl = { h, bpm, sig, barN, time, beats: [...beats.children] };
+    hud.media = media;
+    paintTimeline();
+    // stopped: a seek / scrub / new tempo changes the time or tempo texts → the header follows (coalesced)
+    const soon = () => { if (window.LabPlay?.playing || hud.tlT) return; hud.tlT = setTimeout(() => { hud.tlT = 0; paintTimeline(); }, 100); };
+    hud.obs = new MutationObserver(soon);
+    const watch = () => { for (const n of bar.querySelectorAll('.mb-time, .mb-bpmread')) hud.obs.observe(n, { childList: true, characterData: true, subtree: true }); };
+    watch();
+    addEventListener('hearth:lab-playing', (e) => { if (e.detail?.playing) hud.obs.disconnect(); else { watch(); paintTimeline(); } });
+  }
+  function paintTimeline() {
+    const T = hud.tl; let m = null;
+    try { m = hud.media?.meta; } catch { /* the timeline is not ready */ }
+    if (!T || !m) return;
+    const fmt = (s) => { s = Math.max(0, s || 0); return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
+    T.h.classList.toggle('ih-empty', !m.song);
+    put(T.bpm, m.bpm ? String(Math.round(m.bpm * 10) / 10) : '—');
+    put(T.sig, `${m.bpb}/4`);
+    put(T.barN, m.bpm ? String(Math.max(1, m.bar)).padStart(3, '0') : '—');
+    put(T.time, m.song ? `${fmt(m.t)} / ${fmt(m.dur)}` : '0:00');
+    const bpb = Math.min(8, Math.max(2, m.bpb || 4));
+    while (T.beats.length < bpb) { const i = el('i'); T.beats[0].parentElement.append(i); T.beats.push(i); }
+    T.beats.forEach((b, i) => { b.hidden = i >= bpb; b.classList.toggle('on', i < (m.beat || 0)); b.classList.toggle('one', i === 0); });
+  }
+  function hudApply({ preview, bar, media }) {
+    try { hudPreview(preview); hudTimeline(bar, media); } catch (err) { console.error(err); }
+  }
+
+  // the Lab's ⋯ › View & help row (tools/three.js labMoreItems): Forgeheart → Plate → Plain → Forgeheart
+  function lookRow() {
+    const v = look();
+    const next = LOOKS[(LOOKS.indexOf(v) + 1) % LOOKS.length];
+    return [`Lab look: ${NAMES[v]}`, `${HINTS[v]} · click: ${NAMES[next]}`, () => { const w = setLook(next); toast(`Lab look: ${NAMES[w]}`, { timeout: 1400 }); }, v !== 'plain', 'Lab look'];
+  }
+  return { apply, fold, setOpen, closeAll, trayItems, lookRow, look, setLook, stats, paintTimeline, get hud() { return hud; }, get folds() { return folds.slice(); } };
 })();
 window.LabRegroup = LabRegroup;
