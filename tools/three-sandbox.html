@@ -521,8 +521,48 @@ const loadLib = (k) => (globalThis[k] ? Promise.resolve() : (libLoads[k] ||= new
 function libGot(m) { libWait[m.name]?.(m); }
 function sandboxLibs(code) {
   const want = LIBS.filter((k) => !globalThis[k] && new RegExp(`\\b${k}\\s*[.?[]`).test(code || ''));
-  return want.length ? Promise.all(want.map(loadLib)).catch(() => {}) : null;
+  const cp = !CPX.hooked && /\bEffectComposer\b/.test(code || '') ? cpxHook() : null; // (round 149, play149: see below)
+  const p = want.length ? Promise.all(want.map(loadLib)).catch(() => {}) : null;
+  return cp && p ? Promise.all([cp, p]) : cp || p;
 }
+// ======== (round 149, play149) a layer's own EffectComposer follows the preview's resolution ========
+// Smooth (and Balanced, Light mode, ⚡ 1× pixels, ½ res on a layer) lighten a layer by lowering its renderer's pixel
+// ratio (prQ). A layer that draws through three's EffectComposer (the Bloom template, the nodes' post effects, most
+// AI-written glow scenes: RenderPass + UnrealBloomPass + OutputPass) kept its composer's targets at the ratio it had
+// when it was made: the scene pass and every bloom mip went on at full size, and only the last copy to the smaller
+// canvas got cheaper (measured: dev/checks/play149.js). Now, before each composer.render(), its ratio is set to its
+// own share of the renderer's ratio now (the share it had at its first render, or the one its code set with
+// setPixelRatio, against the scene's own ratio): at full quality that is exactly the ratio it had (Force high quality
+// and full-quality frames draw as before), lighter steps resize its targets once per step. Never on the export page
+// (renders stay exactly as they were), in ▶ Play, or for a composer made on a render target of its own (it sizes itself:
+// lab3d's). Loaded only when a layer's code names EffectComposer. window.__labPlay149: the checks' view and A/B switch.
+const CPX = { on: true, hooked: false, inner: false, made: 0, resized: 0, skipped: 0 };
+function cpxHook() {
+  if (CPX.hooked || XP_PAGE_EARLY) return null;
+  CPX.hooked = true;
+  return import('three/addons/postprocessing/EffectComposer.js').then(({ EffectComposer: EC }) => {
+    const P = EC?.prototype;
+    if (!P || P.__cpx || typeof P.render !== 'function' || typeof P.setPixelRatio !== 'function') return;
+    P.__cpx = true;
+    const spr = P.setPixelRatio; const rnd = P.render;
+    // the code's own ratio: kept as its share of the scene's own ratio (the renderer's before any lightening)
+    P.setPixelRatio = function (v) { if (!CPX.inner) { const r = this.renderer; const base = r ? r.__basePR ?? r.getPixelRatio?.() : 0; if (base > 0 && Number(v) > 0) this.__cpxK = Number(v) / base; } return spr.call(this, v); };
+    P.render = function (dt) { if (CPX.on) cpxFollow(this, spr); return rnd.call(this, dt); };
+  }).catch(() => { CPX.hooked = false; });
+}
+function cpxFollow(c, spr) {
+  const r = c.renderer;
+  if (!r || r.__helper || GAME || typeof r.getPixelRatio !== 'function') return;
+  if (c.__cpxRT === undefined) { c.__cpxRT = c.renderTarget1?.texture?.name !== 'EffectComposer.rt1'; if (!c.__cpxRT) CPX.made += 1; }
+  if (c.__cpxRT) { CPX.skipped += 1; return; }
+  const pr = r.getPixelRatio();
+  if (c.__cpxK === undefined) c.__cpxK = c._pixelRatio > 0 && pr > 0 ? c._pixelRatio / pr : 1; // (its share at its first render: 1 when made after the renderer's setPixelRatio)
+  const want = c.__cpxK * pr;
+  if (!(want > 0) || Math.abs(want - c._pixelRatio) < 1e-3) return;
+  CPX.inner = true; try { spr.call(c, want); } finally { CPX.inner = false; }
+  CPX.resized += 1;
+}
+const XP_PAGE_EARLY = new URLSearchParams(location.search).get('xp') === '1'; // (XP_PAGE is defined further down)
 if (new URLSearchParams(location.search).get('xp') !== '1') setTimeout(() => (window.requestIdleCallback || setTimeout)(() => { for (const k of LIBS) loadLib(k).catch(() => {}); }, { timeout: 4000 }), 2500);
 const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []));
 // (round 20, offmain) pictures for the Lab / the director (three_screenshot) are encoded by the browser off this thread
@@ -3652,7 +3692,9 @@ function occlClear() { if (!OC.n) return; OC.by = null; OC.n = 0; for (const L o
 // kept (a fresh one every second anyway). A scene that keeps moving draws its maps every frame with no signature,
 // looking every 32 frames whether it stopped. The sketch's own choice is left alone: shadowMap.autoUpdate = false
 // (it updates them itself) turns this off for that renderer. Never in exports, stills, renders or the scene editor.
-const SHG = { on: true, skipped: 0, drawn: 0, casters: true };
+const SHG = { on: true, skipped: 0, drawn: 0, casters: true, half: true, halfSkips: 0 }; // (round 149, play149: half, halfSkips: see shHalf)
+// (round 149, play149) moving shadows at half rate: only in Smooth, adapting, at a step that already shrank the maps
+const shHalf = () => SHG.half && AD.on && AD.mode === 'smooth' && AD.core.smooth && !adFull() && !GM.held && adStep().shadow < 1;
 const shExtra = [0];
 // (round 60, gcchurn60) the scene the gate looks at, and one kept function for its signature (a closure per renderer per
 // frame before)
@@ -3680,11 +3722,15 @@ function shGate(r, scene) {
   shExtra[0] = sm.type; shScene = scene;
   const sig = shSig;
   if (g.moving >= 30) { // moving all the time: maps every frame (three.js as is), a look every 32 frames whether it stopped
-    g.on = false;
+    // (round 149, play149) …or, while Smooth has already had to shrink the shadow maps (its deepest steps), every other
+    // drawn frame: the shadows of moving things trail by one frame on alternate frames, and the scene's casters are
+    // drawn once more per shadow light half as often. Never in Force high quality / Balanced, nor at full quality
+    const half = shHalf();
+    g.on = half; if (half) g.need = (frameTick & 1) === 0;
     const k = frameTick & 31;
     if (k === 0) { const s = sig(); g.a = s.a; g.b = s.b; g.chk = s.live ? -9 : frameTick; }
     else if (k === 1 && g.chk === frameTick - 1) { const s = sig(); if (!s.live && s.a === g.a && s.b === g.b) { g.moving = 0; g.have = true; g.on = true; g.need = false; g.at = realNow(); g.atTick = frameTick; } }
-    if (!g.on) SHG.drawn += 1;
+    if (!g.on || g.need) SHG.drawn += 1; else { SHG.skipped += 1; SHG.halfSkips += 1; }
     return;
   }
   const s = sig(); const now = realNow();
@@ -3699,6 +3745,11 @@ function shGate(r, scene) {
 window.__lab240 = {
   set: ({ off = false } = {}) => { OC.on = !off; SHG.on = !off; ADR.on = !off; TY.tight = !off; if (off) occlClear(); return { on: OC.on }; }, // (round 51: and type layers drawn tight)
   info: () => ({ on: OC.on, by: OC.by?.id || null, hidden: [...layers.values()].filter((L) => L.occl).map((L) => L.id), shadows: { skipped: SHG.skipped, drawn: SHG.drawn }, coverReads: { async: ADR.reads, got: ADR.got } }),
+};
+// (round 149, play149) the checks' view of this round's savings, and their A/B switch (off: as before the round)
+window.__labPlay149 = {
+  set: ({ off = false } = {}) => { CPX.on = !off; SHG.half = !off; return { composer: CPX.on, halfShadows: SHG.half }; },
+  info: () => ({ composer: { on: CPX.on, hooked: CPX.hooked, made: CPX.made, resized: CPX.resized, skipped: CPX.skipped }, shadows: { half: SHG.half, halfNow: shHalf(), drawn: SHG.drawn, skipped: SHG.skipped, halfSkips: SHG.halfSkips }, frameTick }),
 };
 // ---------- big instanced crowds: only the copies a camera can see (round 74, labdraw74) ----------
 // three.js culls an InstancedMesh as one thing (one sphere around every copy): a crowd spread around the camera is

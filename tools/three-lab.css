@@ -178,8 +178,10 @@ html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge
 /* timeline: the beat light on the BPM readout */
 .media-bar .mb-bpmread.beat { animation: mb-beat .16s ease-out; }
 .media-bar .mb-bpmread.beat.down { animation-name: mb-down; }
-@keyframes mb-beat { from { color: #fff; text-shadow: 0 0 8px var(--ui-gold); } }
-@keyframes mb-down { from { color: var(--ui-red); text-shadow: 0 0 10px var(--ui-red); } }
+/* (round 149, play149) a filter, not color + text-shadow: the flash runs on the compositor. color / text-shadow
+   restyled, laid out and repainted the Lab window on every frame of every flash (2 a second at 124 BPM) */
+@keyframes mb-beat { from { filter: brightness(1.9) drop-shadow(0 0 4px var(--ui-gold)); } }
+@keyframes mb-down { from { filter: brightness(1.4) drop-shadow(0 0 5px var(--ui-red)) drop-shadow(0 0 2px var(--ui-red)); } }
 @media (prefers-reduced-motion: reduce) { .media-bar .mb-bpmread.beat { animation: none; } }
 
 /* sliders: the "Changed" chip */
