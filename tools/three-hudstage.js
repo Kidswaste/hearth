@@ -13,7 +13,7 @@
 //    second, right after a frame: three-sandbox.html "stage150"), eased here; the brackets / rulers pulse on the song's
 //    kicks / snares (the timeline's own analysis and your K / S / H markers), an edge glow follows its level curve, beat
 //    pips follow the grid (three-media.js hands over what it already holds on each worked tick while it plays).
-//    Lab ⋯ › View & help › "Stage: reactive → calm → off" (calm: the colour only; off: still mono blue). Off under
+//    Lab ⋯ › View & help › "Stage: reactive → calm → off" (calm: the colour only; off: still mono gold, round 151). Off under
 //    reduced motion / Hearth's Motion calm or off (the colour is still read while stopped, applied without easing).
 // Cost (measured by dev/checks/stage150.js): see the doc. Nothing per frame in the window unless the reactive stage is on
 // and the song plays (a few comparisons per worked tick, Web Animations on transform / opacity for the pulses).
@@ -21,8 +21,8 @@ const LabHudStage = (() => {
   const KEY = 'three.stageFx';
   const MODES = ['reactive', 'calm', 'off'];
   const NAMES = { reactive: 'reactive', calm: 'calm', off: 'off' };
-  const HINTS = { reactive: 'The frame takes the scene\'s colour and pulses with the kicks', calm: 'The frame takes the scene\'s colour, no pulse', off: 'A still blue frame' };
-  const BASE = { forge: 222, plate: 236, plain: 220 };
+  const HINTS = { reactive: 'The frame takes the scene\'s colour and pulses with the kicks', calm: 'The frame takes the scene\'s colour, no pulse', off: 'A still gold frame' };
+  const BASE = { forge: 40, plain: 40 }; // (round 151, redux151) Forgeheart gold (was round 148's blue, 222)
   const IDLE_MS = 2000;
   const FRESH_MS = 6000;
   const VIEW = ['.stage-pill'];
@@ -45,7 +45,7 @@ const LabHudStage = (() => {
   const fx = () => (look() === 'plain' ? 'none' : pref());
   const tintOn = () => S.vis && (fx() === 'reactive' || fx() === 'calm') && !(reduced() && S.playing);
   const pulseOn = () => S.vis && fx() === 'reactive' && !reduced();
-  const base = () => BASE[look()] ?? 222;
+  const base = () => BASE[look()] ?? 40;
 
   // ---------- building ----------
   const mk = (tag, cls, kids = []) => { const n = document.createElement(tag); if (cls) n.className = cls; for (const k of kids) n.append(k); return n; };
@@ -110,6 +110,7 @@ const LabHudStage = (() => {
     cls(pv, 'st-z-b', !S.pinned && S.zone === 'b');
     cls(pv, 'st-play', S.playing);
     if (S.head) cls(S.head, 'st-quiet', !S.pinned && !S.headIn);
+    cls(de, 'lab-pinned', S.pinned); // (round 151, redux151) I shows every contextual control of the Lab, not only the stage's
     labels(!S.idle || S.pinned);
   }
   function wake(zone) {
@@ -335,7 +336,9 @@ const LabHudStage = (() => {
       hd.addEventListener('pointerenter', () => { S.headIn = true; paint(); });
       hd.addEventListener('pointerleave', () => { S.headIn = false; paint(); });
     }
-    S.ro = new ResizeObserver(() => measure());
+    // (round 151) and once more a moment later: an exact frame (9:16, 16:9…) is scaled to fit by the Lab after this
+    // callback, so the first reading can be the frame's old box (the corner marks were drawn off the picture)
+    S.ro = new ResizeObserver(() => { measure(); clearTimeout(S.mt); S.mt = setTimeout(measure, 160); });
     S.ro.observe(preview);
     S.io = new IntersectionObserver((es) => { const v = es[es.length - 1]?.isIntersecting; if (v !== S.vis) { S.vis = Boolean(v); if (!S.vis) sleep(); config(); paint(); } });
     document.addEventListener('visibilitychange', () => paint()); // (round 151, perf151) the label writer stops while Hearth is hidden

@@ -123,15 +123,17 @@ await state('song');
 {
   const want = { 'Layers & sliders': ['⚡', 'Sliders'], Console: ['›_', 'Console'], Present: ['▣', 'Present'] };
   const bad = [];
+  window.LabHudStage?.pin(true); await wait(300); // (round 151, redux151) the Lab bar's secondary buttons come in where you point / with I
   for (const [f, [ic, name]] of Object.entries(want)) {
     // (round 143, lab143) ›_ Console and ✥ Edit sit in ⚙ Inspect ▾'s tray: the same buttons, checked with the tray out
     const folded = [...lab().querySelectorAll(`.three-toolbar .rg-tray [data-feature="${f}"]`)][0];
     const F = folded && window.LabRegroup?.folds.find((x) => x.tray.contains(folded));
-    if (F) LabRegroup.setOpen(F, true);
+    if (F) { LabRegroup.setOpen(F, true); await wait(300); } // (round 151: the tray animates in)
     const b = [...lab().querySelectorAll(`.three-toolbar [data-feature="${f}"]`)].find(vis);
     if (F) LabRegroup.setOpen(F, false);
     if (!b || b.querySelector('.tb-ic')?.textContent !== ic || !(b.getAttribute('aria-label') || '').startsWith(name)) bad.push(f);
   }
+  window.LabHudStage?.pin(false); await wait(200);
   step('the View buttons each have an icon and one name (⚡ Sliders, ›_ Console, ▣ Present…)', !bad.length, bad);
 }
 

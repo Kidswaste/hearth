@@ -8,18 +8,19 @@
 //                           ⋯ on the grid tools); the BPM readout stays beside it, flashing on the beat
 //             ⚡ Sync ▾      🎧 Live ▾ · ⚡ Triggers · the trigger preset · Auto bars (lit while live sound is on)
 //             View ▾ and Sections ▾ move from the grid row up into the transport row, as they were
-// "Lab look": Forgeheart (scanlines on the panel chrome, a slow glint, the ember playhead; tools/three-regroup.css) or
-// Plain, in the Lab's ⋯ › View & help. The look is CSS only and stops while the scene plays (html.lab-playing).
+// "Lab look": Forgeheart (round 151's Hearth Redux: tools/three-regroup.css) or Plain, in the Lab's ⋯ › View & help.
+// The look is CSS only and nothing in it loops.
 // Everything here is presentation: nothing in a scene or its files changes.
 const LabRegroup = (() => {
   const LOOK_KEY = 'three.labLook';
   const folds = [];
   let wired = false;
-  // (round 148, look148) three looks: Forgeheart (the blue instrument HUD with the ember), Plate (the same panels as
-  // light lavender plates), Plain (flat, no motion, no headers)
-  const LOOKS = ['forge', 'plate', 'plain'];
-  const NAMES = { forge: 'Forgeheart', plate: 'Plate', plain: 'Plain' };
-  const HINTS = { forge: 'Blue instrument panels, the ember playhead, faint scanlines (still while it plays)', plate: 'Light lavender plates, indigo accents', plain: 'Flat panels, no motion' };
+  // (round 151, redux151) two looks: Forgeheart ("Hearth Redux": gold / ember on graphite, mono, few controls in sight,
+  // the rest where you point) and Plain (flat, every control in sight, no motion, no headers). Round 148's Plate (light
+  // lavender plates) is gone: a "plate" kept in the store opens as Forgeheart.
+  const LOOKS = ['forge', 'plain'];
+  const NAMES = { forge: 'Forgeheart', plain: 'Plain' };
+  const HINTS = { forge: 'Gold and ember on graphite, few controls in sight: the rest comes in where you point (I shows them all)', plain: 'Flat panels, every control in sight, no motion' };
   const look = () => { const v = store.get(LOOK_KEY, 'forge'); return LOOKS.includes(v) ? v : 'forge'; };
   function setLook(v) {
     v = LOOKS.includes(v) ? v : 'forge';
@@ -230,7 +231,7 @@ const LabRegroup = (() => {
     try { hudPreview(preview); hudTimeline(bar, media); } catch (err) { console.error(err); }
   }
 
-  // the Lab's ⋯ › View & help row (tools/three.js labMoreItems): Forgeheart → Plate → Plain → Forgeheart
+  // the Lab's ⋯ › View & help row (tools/three.js labMoreItems): Forgeheart → Plain → Forgeheart
   function lookRow() {
     const v = look();
     const next = LOOKS[(LOOKS.indexOf(v) + 1) % LOOKS.length];

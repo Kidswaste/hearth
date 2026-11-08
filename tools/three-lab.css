@@ -180,8 +180,9 @@ html[data-skin~="forge"] .lab-tabs .lab-tools-btn::after, html[data-skin~="forge
 .media-bar .mb-bpmread.beat.down { animation-name: mb-down; }
 /* (round 149, play149) a filter, not color + text-shadow: the flash runs on the compositor. color / text-shadow
    restyled, laid out and repainted the Lab window on every frame of every flash (2 a second at 124 BPM) */
-@keyframes mb-beat { from { filter: brightness(1.9) drop-shadow(0 0 4px var(--ui-gold)); } }
-@keyframes mb-down { from { filter: brightness(1.4) drop-shadow(0 0 5px var(--ui-red)) drop-shadow(0 0 2px var(--ui-red)); } }
+/* (round 152, redux151) on the compositor: a small lift and fade (it was a brightness + drop-shadow filter, a repaint each beat) */
+@keyframes mb-beat { from { opacity: .45; transform: translateY(-1px) scale(1.06); } }
+@keyframes mb-down { from { opacity: .3; transform: translateY(-1px) scale(1.12); } }
 @media (prefers-reduced-motion: reduce) { .media-bar .mb-bpmread.beat { animation: none; } }
 
 /* sliders: the "Changed" chip */

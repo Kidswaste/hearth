@@ -255,7 +255,7 @@ try {
     c.play(false); await wait(300);
     const ms = Math.round(((m1.TaskDuration - m0.TaskDuration) * 1000 / secs) * 10) / 10;
     out.measure.window = { mainThreadAnims: Object.fromEntries(seen), beat, before, after, windowMainMsPerSec: ms, scriptMsPerSec: Math.round(((m1.ScriptDuration - m0.ScriptDuration) * 1000 / secs) * 10) / 10, styleMsPerSec: Math.round(((m1.RecalcStyleDuration - m0.RecalcStyleDuration) * 1000 / secs) * 10) / 10, layoutMsPerSec: Math.round(((m1.LayoutDuration - m0.LayoutDuration) * 1000 / secs) * 10) / 10, playing: playingNow, load: lw && { judge: lw.judge, loadavg: lw.loadavg } };
-    step('window: while it plays no animation in the Lab window needs its main thread (transform / opacity / filter only); the beat light flashes with a filter', seen.size === 0 && beat.length === 2 && beat.every((b) => /filter/.test(b.text) && !/text-shadow|color:/.test(b.text)), out.measure.window);
+    step('window: while it plays no animation in the Lab window needs its main thread (transform / opacity / filter only); the beat light flashes on the compositor (round 152: transform / opacity, was a filter)', seen.size === 0 && beat.length === 2 && beat.every((b) => /filter|transform|opacity/.test(b.text) && !/text-shadow|color:/.test(b.text)), out.measure.window);
     if (ms <= 150) step('window: the Lab window does ≤ 150 ms of main-thread work a second while it plays', true, out.measure.window);
     else if (busyOf(lw)) { out.cantTell.push({ window: ms }); step('window: ≤ 150 ms a second (or can\'t tell on a busy box)', true, out.measure.window); } else step('window: the Lab window does ≤ 150 ms of main-thread work a second while it plays', false, out.measure.window);
   });

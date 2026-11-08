@@ -1,26 +1,25 @@
-/* (round 143, lab143) The Lab regrouped (tools/three-regroup.js) and its Forgeheart look. docs/upgrades/lab143.md
-   Cheap by design: CSS only, static scanlines, animations on transform / opacity only, all of them still while the
-   scene plays (html.lab-playing, round 142's smooth-first) and none under reduced motion (the system's or Hearth's
-   own Appearance › Motion: calm / off). Lab ⋯ › View & help › Lab look: Plain turns the look off (html[data-lablook]). */
+/* (round 143, lab143) The Lab regrouped (tools/three-regroup.js) and its look. docs/upgrades/lab143.md
+   (round 151, redux151) the look is "Hearth Redux": Forgeheart gold / ember on graphite, mono, flat, very few controls
+   in sight; everything else comes in where you are (the area under the pointer, the selected row, keyboard focus, I).
+   docs/upgrades/redux151.md. Cheap by design: flat fills and 1 px lines, no textures, no backdrop filters, no big
+   blurred shadows, NO looping animation at all; the enter / exit motion is transitions on opacity / transform /
+   clip-path (120–220 ms), none under reduced motion (the system's or Hearth's own Appearance › Motion: calm / off).
+   Lab ⋯ › View & help › Lab look: Plain = flat, every control in sight, no motion (html[data-lablook]). */
 
 /* ---------- folds: a labelled button and its tray of real controls ---------- */
 .rg-fold { white-space: nowrap; position: relative; }
 .rg-fold .rg-fold-tx { pointer-events: none; }
 .rg-fold.rg-open { border-color: color-mix(in srgb, var(--fh-ember) 55%, var(--line)); color: var(--text); background: color-mix(in srgb, var(--fh-ember) 10%, transparent); }
-.rg-fold.on::after { content: ""; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--fh-ok); box-shadow: 0 0 6px var(--fh-ok); pointer-events: none; }
+.rg-fold.on::after { content: ""; position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--fh-ok); pointer-events: none; }
 .rg-tray {
   position: fixed; z-index: 70; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
-  max-width: min(780px, calc(100vw - 12px)); border-radius: 10px;
+  max-width: min(780px, calc(100vw - 12px)); border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--fh-ember) 28%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, #000 30%, var(--bg)), color-mix(in srgb, #000 45%, var(--bg)));
-  box-shadow: 0 14px 34px #000a, 0 0 0 1px #ffffff08 inset;
-  animation: rg-tray-in .14s ease-out;
+  background: color-mix(in srgb, #000 38%, var(--bg));
+  box-shadow: 0 10px 24px -10px #000c;
 }
 .rg-tray[hidden] { display: none; }
 :is(.three-toolbar, .media-bar).rg-raised { position: relative; z-index: 80 !important; }
-.rg-tray.rg-up { animation-name: rg-tray-up; }
-@keyframes rg-tray-in { from { transform: translateY(-4px); } }
-@keyframes rg-tray-up { from { transform: translateY(4px); } }
 .rg-tray .rg-row, .media-bar .rg-tray .mb-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .media-bar .rg-tray .mb-grid { padding: 6px 0 0; margin: 0; border-top: 1px solid #ffffff0f; }
 .media-bar[data-size="compact"] .rg-tray .mb-grid { display: flex; }
@@ -31,188 +30,278 @@
 .media-bar.mb-clock:not(.mb-all) .mb-g-tl { display: none; }
 .media-bar .mb-main .mb-g-tl { padding: 2px 4px; }
 
-/* ---------- the Forgeheart look (round 143) → the instrument HUD (round 148, look148: docs/upgrades/look148.md) ----------
-   The owner's moodboard: a dense audio-visualiser HUD (near-black navy, electric-blue monochrome, numbered panels with
-   tiny mono small-caps headers and right-aligned meta, hairlines, faint dot grids, glowing readouts), a CRT node graph
-   (scanline softness, a little bloom). Forgeheart keeps its ember as the one "hot" accent: the playhead, what is
-   selected / open, the heaviest layer. Tokens: --fh-hud-* (the Lab only; nothing else in the app reads them). */
+/* ============================================================================================================
+   Hearth Redux (round 151): the palette. Tokens --rx-* (the Lab only); round 148's --fh-hud-* names are kept (other
+   Lab files read them: the stage, the stats line) and now carry the gold / graphite values.
+   ============================================================================================================ */
 html:not([data-lablook="plain"]) {
-  --fh-hud: #3d7bff;                       /* electric blue: the HUD's one colour */
-  --fh-hud-hi: #a9c6ff;                    /* lit readouts */
-  --fh-hud-lo: #1a3570;
-  --fh-hud-ink: #03050b;                   /* the deepest navy-black */
-  --fh-hud-panel: #060a15;
-  --fh-hud-line: #3d7bff2b;                /* hairlines */
-  --fh-hud-line-hi: #3d7bff66;
-  --fh-hud-text: #d5e2ff;
-  --fh-hud-mute: #6b7fae;
-  --fh-hud-glow: 0 0 6px #3d7bff8c, 0 0 1px #a9c6ff;
-  --fh-hud-mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
-  --lk-scan: repeating-linear-gradient(180deg, #a9c6ff08 0 1px, transparent 1px 3px);
-  --lk-dots: radial-gradient(circle at 1px 1px, #3d7bff26 1px, transparent 1.2px) 0 0 / 14px 14px;
-  --lk-rim: linear-gradient(90deg, var(--fh-ember) 0, color-mix(in srgb, var(--fh-ember) 60%, var(--fh-hud)) 6%, color-mix(in srgb, var(--fh-hud) 70%, transparent) 22%, color-mix(in srgb, var(--fh-hud) 30%, transparent) 70%, transparent 100%) top / 100% 1px no-repeat;
-  --lk-tick: var(--fh-hud-line-hi);
-  --lk-ticks:
-    linear-gradient(var(--lk-tick), var(--lk-tick)) left top / 9px 1px no-repeat, linear-gradient(var(--lk-tick), var(--lk-tick)) left top / 1px 9px no-repeat,
-    linear-gradient(var(--lk-tick), var(--lk-tick)) right top / 9px 1px no-repeat, linear-gradient(var(--lk-tick), var(--lk-tick)) right top / 1px 9px no-repeat,
-    linear-gradient(var(--lk-tick), var(--lk-tick)) left bottom / 9px 1px no-repeat, linear-gradient(var(--lk-tick), var(--lk-tick)) left bottom / 1px 9px no-repeat,
-    linear-gradient(var(--lk-tick), var(--lk-tick)) right bottom / 9px 1px no-repeat, linear-gradient(var(--lk-tick), var(--lk-tick)) right bottom / 1px 9px no-repeat;
-  --lk-edge: var(--fh-hud-line);
+  --rx-ink: #0b0b0c;                       /* the room between panels */
+  --rx-panel: #111113;                     /* panels: graphite, no blue */
+  --rx-raise: #19191c;                     /* a hovered / pressed control */
+  --rx-well: #0d0d0e;                      /* inputs, trays' insides */
+  --rx-line: #ffffff10;                    /* hairlines */
+  --rx-line-hi: #ffffff21;
+  --rx-gold: #f4b63f;                      /* Forgeheart gold: the primary accent */
+  --rx-gold-hi: #ffd98c;
+  --rx-gold-lo: #8a6418;
+  --rx-ember: #ff7a1a;                     /* the hot accent: playhead, live, selected, warnings */
+  --rx-text: #ebe5d9;                      /* warm off-white */
+  --rx-mute: #8c867b;                      /* warm grey */
+  --rx-soft: #b4ad9f;                      /* a control's label at rest */
+  --rx-dim: #57534c;
+  --rx-grad: linear-gradient(90deg, var(--rx-gold), var(--rx-ember));
+  --rx-ease: cubic-bezier(.2, .8, .2, 1);
+  --rx-mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", ui-monospace, monospace;
+  --fh-hud: var(--rx-gold); --fh-hud-hi: var(--rx-gold-hi); --fh-hud-lo: var(--rx-gold-lo);
+  --fh-hud-ink: var(--rx-ink); --fh-hud-panel: var(--rx-panel);
+  --fh-hud-line: var(--rx-line); --fh-hud-line-hi: color-mix(in srgb, var(--rx-gold) 34%, transparent);
+  --fh-hud-text: var(--rx-text); --fh-hud-mute: var(--rx-mute); --fh-hud-glow: none;
+  --fh-hud-mono: var(--rx-mono);
 }
-/* the room behind the panels: navy-black with a faint dot grid (the preview's picture sits on its own black) */
-html:not([data-lablook="plain"]) .three-split { background: var(--lk-dots), radial-gradient(90% 70% at 30% 0%, #0b1530, transparent 70%), var(--fh-hud-ink); border-radius: 4px; }
-/* panels: hairline borders, square-ish corners, scanlines + dot grid behind their content, corner ticks */
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) { position: relative; isolation: isolate; z-index: 1; background: var(--fh-hud-panel); border: 1px solid var(--fh-hud-line); border-radius: 3px; box-shadow: 0 0 0 1px #000 , 0 10px 30px -18px #3d7bff40; }
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers)::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: var(--lk-rim), var(--lk-scan), var(--lk-dots), radial-gradient(110% 120% at 0% 0%, #3d7bff12, transparent 55%), radial-gradient(80% 140% at 100% 100%, color-mix(in srgb, var(--fh-ember) 5%, transparent), transparent 60%);
-}
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers)::after { content: ""; position: absolute; inset: -1px; z-index: 0; pointer-events: none; background: var(--lk-ticks); }
-/* the preview: a hairline frame drawn OUTSIDE its box (outline), nothing on the picture */
-html:not([data-lablook="plain"]) .three-preview:not(.presenting) { outline: 1px solid var(--fh-hud-line); outline-offset: 0; border-radius: 3px; }
+html[data-lablook="plain"] { --fh-hud-mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", ui-monospace, monospace; }
 
-/* ---------- the instrument headers (tools/three-regroup.js: .ih) ---------- */
+/* the room and the panels: flat graphite, one hairline each, no textures, no shadows */
+html:not([data-lablook="plain"]) .three-split { background: var(--rx-ink); border-radius: 2px; }
+html:not([data-lablook="plain"]) :is(.media-bar, .lk-merged .layers) { isolation: isolate; background: var(--rx-panel); border: 1px solid var(--rx-line); border-radius: 2px; box-shadow: none; color: var(--rx-text); }
+html:not([data-lablook="plain"]) .three-toolbar { position: relative; isolation: isolate; background: transparent; border: 0; border-bottom: 1px solid var(--rx-line); border-radius: 0; box-shadow: none; color: var(--rx-text); }
+html:not([data-lablook="plain"]) .three-preview:not(.presenting) { outline: 1px solid var(--rx-line); outline-offset: 0; border-radius: 2px; }
+/* the panels' own accents: gold sliders and favourites */
+html:not([data-lablook="plain"]) :is(.lk-merged .layers, .media-bar, .rg-tray, .three-toolbar) { --ui-gold: var(--rx-gold); --accent: var(--rx-gold); --line: var(--rx-line-hi); --line-hi: #ffffff2e; --muted: var(--rx-mute); --text: var(--rx-text); --hover: #ffffff0a; }
+
+/* ---------- the instrument headers (tools/three-regroup.js: .ih): mono micro-labels ---------- */
 .ih { display: none; }
 html:not([data-lablook="plain"]) .ih {
-  display: flex; align-items: center; gap: 7px; min-width: 0; height: 14px; flex: none;
-  font: 500 9.5px/1 var(--fh-hud-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--fh-hud-mute);
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: 14px; flex: none;
+  font: 500 9px/1 var(--rx-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--rx-mute);
   font-variant-numeric: tabular-nums slashed-zero; white-space: nowrap; user-select: none; pointer-events: none;
 }
-html:not([data-lablook="plain"]) .ih-no { font-style: normal; color: var(--fh-hud); letter-spacing: .06em; text-shadow: -.6px 0 #ff3d7f55, .6px 0 #56c6ff66, 0 0 6px #3d7bff66; }
-html:not([data-lablook="plain"]) .ih-name { font-weight: 600; color: var(--fh-hud-text); letter-spacing: .2em; }
-html:not([data-lablook="plain"]) .ih-live { width: 5px; height: 5px; border-radius: 50%; background: var(--fh-hud); box-shadow: 0 0 6px var(--fh-hud), 0 0 2px var(--fh-hud-hi); animation: ih-pulse 2.4s ease-in-out infinite; flex: none; }
-html:not([data-lablook="plain"]) .ih-sweep { position: relative; flex: 1 1 auto; min-width: 12px; height: 1px; overflow: hidden; background: repeating-linear-gradient(90deg, var(--fh-hud-line) 0 2px, transparent 2px 5px); }
-html:not([data-lablook="plain"]) .ih-sweep::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 22%; background: linear-gradient(90deg, transparent, var(--fh-hud-hi), transparent); opacity: .7; transform: translateX(-100%); animation: ih-sweep 7s cubic-bezier(.5, 0, .5, 1) infinite; will-change: transform; }
-html:not([data-lablook="plain"]) .ih-meta { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; letter-spacing: .12em; }
-html:not([data-lablook="plain"]) .ih-k { color: var(--fh-hud-mute); font-size: 8.5px; letter-spacing: .18em; }
-html:not([data-lablook="plain"]) .ih-v { color: var(--fh-hud-hi); font-weight: 600; font-size: 10.5px; letter-spacing: .04em; text-shadow: var(--fh-hud-glow); }
-html:not([data-lablook="plain"]) .ih-v.warn { color: #ffd27a; text-shadow: 0 0 6px #ffb03a88; }
-html:not([data-lablook="plain"]) .ih-v.bad { color: var(--fh-ember); text-shadow: 0 0 6px color-mix(in srgb, var(--fh-ember) 70%, transparent); }
-html:not([data-lablook="plain"]) .ih-q { color: var(--fh-hud-text); letter-spacing: .1em; }
-html:not([data-lablook="plain"]) .ih-sep { color: var(--fh-hud-lo); }
-html:not([data-lablook="plain"]) .ih-spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 10px; padding: 0 1px; border-bottom: 1px solid var(--fh-hud-line); }
-html:not([data-lablook="plain"]) .ih-spark > i { width: 2px; height: 10px; background: linear-gradient(0deg, var(--fh-hud-lo), var(--fh-hud)); transform-origin: 50% 100%; transform: scaleY(.08); }
-html:not([data-lablook="plain"]) .ih-spark > i:last-child { background: var(--fh-hud-hi); box-shadow: 0 0 4px var(--fh-hud); }
+html:not([data-lablook="plain"]) .ih-no { font-style: normal; color: var(--rx-gold); letter-spacing: .08em; }
+html:not([data-lablook="plain"]) .ih-name { font-weight: 600; color: var(--rx-text); letter-spacing: .24em; }
+/* the live dot: still; ember while the scene plays (no pulse: nothing loops) */
+html:not([data-lablook="plain"]) .ih-live { width: 4px; height: 4px; border-radius: 50%; background: var(--rx-dim); flex: none; }
+html.lab-playing:not([data-lablook="plain"]) .ih-live { background: var(--rx-ember); }
+html:not([data-lablook="plain"]) .ih-sweep { position: relative; flex: 1 1 auto; min-width: 12px; height: 1px; background: var(--rx-line); }
+html:not([data-lablook="plain"]) .ih-meta { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; letter-spacing: .14em; }
+html:not([data-lablook="plain"]) .ih-k { color: var(--rx-dim); font-size: 8.5px; letter-spacing: .2em; }
+html:not([data-lablook="plain"]) .ih-v { color: var(--rx-gold-hi); font-weight: 600; font-size: 10px; letter-spacing: .04em; }
+html:not([data-lablook="plain"]) .ih-v.warn { color: var(--rx-gold); }
+html:not([data-lablook="plain"]) .ih-v.bad { color: var(--rx-ember); }
+html:not([data-lablook="plain"]) .ih-q { color: var(--rx-text); letter-spacing: .1em; }
+html:not([data-lablook="plain"]) .ih-sep { color: var(--rx-dim); }
+html:not([data-lablook="plain"]) .ih-spark { display: inline-flex; align-items: flex-end; gap: 1px; height: 9px; padding: 0 1px; }
+html:not([data-lablook="plain"]) .ih-spark > i { width: 2px; height: 9px; background: var(--rx-gold-lo); transform-origin: 50% 100%; transform: scaleY(.08); }
+html:not([data-lablook="plain"]) .ih-spark > i:last-child { background: var(--rx-gold); }
 html:not([data-lablook="plain"]) .ih-beats { display: inline-flex; gap: 2px; margin: 0 2px; }
-html:not([data-lablook="plain"]) .ih-beats > i { width: 6px; height: 6px; border: 1px solid var(--fh-hud-lo); background: transparent; }
-html:not([data-lablook="plain"]) .ih-beats > i.on { background: var(--fh-hud); border-color: var(--fh-hud); box-shadow: 0 0 5px #3d7bff99; }
-html:not([data-lablook="plain"]) .ih-beats > i.one.on { background: var(--fh-ember); border-color: var(--fh-ember); box-shadow: 0 0 5px color-mix(in srgb, var(--fh-ember) 70%, transparent); }
+html:not([data-lablook="plain"]) .ih-beats > i { width: 5px; height: 5px; border: 1px solid var(--rx-dim); background: transparent; }
+html:not([data-lablook="plain"]) .ih-beats > i.on { background: var(--rx-gold); border-color: var(--rx-gold); }
+html:not([data-lablook="plain"]) .ih-beats > i.one.on { background: var(--rx-ember); border-color: var(--rx-ember); }
 html:not([data-lablook="plain"]) .ih-beats > i[hidden] { display: none; }
 /* 01 PREVIEW: its own thin line above the picture (in .three-right; the gap below it is taken back) */
 html:not([data-lablook="plain"]) .ih-pv { margin: 0 2px -3px; padding: 0 2px; }
 body.lab-focus .ih-pv { display: none !important; }
 /* 02 TIMELINE: in the handle row; its parts join that row (number · name · dot | the grip | the meta | the buttons) */
-html:not([data-lablook="plain"]) .media-bar > .mb-handle { margin: 0 0 -1px; min-height: 18px; }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle { position: relative; margin: 0 0 -1px; min-height: 18px; }
 html:not([data-lablook="plain"]) .ih-tl { display: contents; }
 html:not([data-lablook="plain"]) .ih-tl > .ih-sweep { display: none; }
 html:not([data-lablook="plain"]) .ih-tl > :is(.ih-no, .ih-name, .ih-live) { font: inherit; }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-no { font: 500 9.5px/1 var(--fh-hud-mono); color: var(--fh-hud); letter-spacing: .06em; }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-name { font: 600 9.5px/1 var(--fh-hud-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--fh-hud-text); }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle > .mb-grip { order: 1; background: repeating-linear-gradient(90deg, var(--fh-hud-line) 0 2px, transparent 2px 5px) center / 100% 1px no-repeat; }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-meta { order: 2; font: 500 9.5px/1 var(--fh-hud-mono); text-transform: uppercase; color: var(--fh-hud-mute); font-variant-numeric: tabular-nums slashed-zero; white-space: nowrap; pointer-events: none; margin-left: 0; }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-no { font: 500 9px/1 var(--rx-mono); color: var(--rx-gold); letter-spacing: .08em; }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-name { font: 600 9px/1 var(--rx-mono); letter-spacing: .24em; text-transform: uppercase; color: var(--rx-text); }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle > .mb-grip { order: 1; background: linear-gradient(var(--rx-line), var(--rx-line)) center / 100% 1px no-repeat; }
+html:not([data-lablook="plain"]) .media-bar > .mb-handle > .ih-tl > .ih-meta { order: 2; font: 500 9px/1 var(--rx-mono); text-transform: uppercase; color: var(--rx-mute); font-variant-numeric: tabular-nums slashed-zero; white-space: nowrap; pointer-events: none; margin-left: 0; }
 html:not([data-lablook="plain"]) .media-bar > .mb-handle > :is(button, .mb-size) { order: 3; }
 html:not([data-lablook="plain"]) .media-bar[data-size="strip"] .ih-tl .ih-time,
 html:not([data-lablook="plain"]) .ih-tl.ih-empty > .ih-meta { display: none; }
 /* 03 LAYERS & KNOBS: its own head, numbered (CSS only: the head is the panel's) */
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head { border-bottom: 1px solid var(--fh-hud-line); }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b { font: 600 9.5px/1 var(--fh-hud-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--fh-hud-text); }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b::before { content: "03"; margin-right: 8px; color: var(--fh-hud); letter-spacing: .06em; text-shadow: -.6px 0 #ff3d7f55, .6px 0 #56c6ff66, 0 0 6px #3d7bff66; }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > .tw-count { font: 600 10.5px/1 var(--fh-hud-mono); font-variant-numeric: tabular-nums; color: var(--fh-hud-hi); text-shadow: var(--fh-hud-glow); padding: 2px 5px; border: 1px solid var(--fh-hud-line); border-radius: 2px; }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > .tw-count::after { content: " LYR"; font-size: 8.5px; letter-spacing: .16em; color: var(--fh-hud-mute); text-shadow: none; }
-html:not([data-lablook="plain"]) .lk-merged .tw-sec-head .tw-sec-name { font-family: var(--fh-hud-mono); letter-spacing: .2em; font-size: 10px; color: var(--fh-hud-text); }
-html:not([data-lablook="plain"]) .lk-merged .tw-sec-head .tw-sec-count { font-family: var(--fh-hud-mono); color: var(--fh-hud); font-variant-numeric: tabular-nums; }
-html:not([data-lablook="plain"]) .lk-merged .tw-sec { border-color: var(--fh-hud-line) !important; border-radius: 3px !important; background-color: #070c1a !important; }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head { position: relative; border-bottom: 1px solid var(--rx-line); }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b { font: 600 9px/1 var(--rx-mono); letter-spacing: .24em; text-transform: uppercase; color: var(--rx-text); min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b::before { content: "03"; margin-right: 8px; color: var(--rx-gold); letter-spacing: .08em; }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > .tw-count { font: 600 9.5px/1 var(--rx-mono); font-variant-numeric: tabular-nums; color: var(--rx-gold-hi); padding: 0 2px; border: 0; }
+html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > .tw-count::after { content: " LYR"; font-size: 8px; letter-spacing: .2em; color: var(--rx-dim); }
+html:not([data-lablook="plain"]) .lk-merged :is(.tw-sec-head .tw-sec-name, .lk-sec > summary) { font-family: var(--rx-mono); letter-spacing: .18em; font-size: 9.5px; text-transform: uppercase; color: var(--rx-mute); }
+html:not([data-lablook="plain"]) .lk-merged .lk-sec.lk-favs > summary { color: var(--rx-gold); }
+html:not([data-lablook="plain"]) .lk-merged .tw-sec-head .tw-sec-count { font-family: var(--rx-mono); color: var(--rx-gold); font-variant-numeric: tabular-nums; }
+html:not([data-lablook="plain"]) .lk-merged .tw-sec { border-color: var(--rx-line) !important; border-radius: 2px !important; background-color: transparent !important; }
+html:not([data-lablook="plain"]) .lk-merged .ly-knobs { border-left: 1px solid var(--rx-line-hi); }
+html:not([data-lablook="plain"]) .lk-merged .ly-settings > summary, html:not([data-lablook="plain"]) .ly-knobs .tweaks .tw-head b { font-family: var(--rx-mono); letter-spacing: .12em; text-transform: uppercase; font-size: 9.5px; color: var(--rx-mute); }
 
-/* readouts: mono, tabular numbers, a little phosphor glow */
-html:not([data-lablook="plain"]) :is(.media-bar .mb-time, .media-bar .mb-bpmread, .media-bar .mb-minitime) { font-family: var(--fh-hud-mono); font-variant-numeric: tabular-nums slashed-zero; color: var(--fh-hud-hi); text-shadow: 0 0 6px #3d7bff70; letter-spacing: .03em; }
-html:not([data-lablook="plain"]) .three-preview .three-stats { font-family: var(--fh-hud-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: .02em; }
-/* buttons on the HUD panels: hairlines, square corners; blue when lit, ember when open */
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar .mb-main) :is(button.ghost, select, .tb-group) { border-radius: 3px; }
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar .mb-main) .tb-group { border-color: var(--fh-hud-line); background: #0a1124b0; }
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar .mb-main) button.ghost:hover { border-color: var(--fh-hud-line-hi); box-shadow: 0 0 10px -4px var(--fh-hud); }
-html:not([data-lablook="plain"]) .three-toolbar .tb-iconic.on { color: var(--fh-hud-hi); border-color: color-mix(in srgb, var(--fh-hud) 60%, transparent); background: #3d7bff1c; box-shadow: 0 0 0 1px #3d7bff40, 0 0 12px -3px var(--fh-hud); text-shadow: 0 0 6px #3d7bff99; }
-html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) button.primary { border-radius: 3px; background: linear-gradient(180deg, #4f8bff, #2f62de); box-shadow: 0 0 0 1px #a9c6ff40 inset, 0 0 14px -4px var(--fh-hud); }
+/* readouts: mono, tabular numbers, no glow */
+html:not([data-lablook="plain"]) :is(.media-bar .mb-time, .media-bar .mb-bpmread, .media-bar .mb-minitime) { font-family: var(--rx-mono); font-variant-numeric: tabular-nums slashed-zero; color: var(--rx-gold-hi); text-shadow: none; letter-spacing: .03em; }
+/* the readouts that change while the scene plays (the time a few times a second, the 01 header's fps) get a tiny layer
+   of their own, so a new number repaints a few dozen pixels instead of the window's whole page layer */
+.media-bar :is(.mb-time, .mb-minitime), .ih-pv > .ih-meta { will-change: transform; contain: layout paint; } /* (every look) */
+:is(.three-toolbar, .media-bar, .lk-merged .layers) { isolation: isolate; } /* (every look: a cached paint boundary each) */
+html:not([data-lablook="plain"]) .media-bar .mb-name { font-family: var(--rx-mono); font-size: 11px; color: var(--rx-mute); }
+html:not([data-lablook="plain"]) .three-preview .three-stats { font-family: var(--rx-mono); font-variant-numeric: tabular-nums slashed-zero; letter-spacing: .02em; }
 
-/* a slow glint drifting along the top edge of the timeline and the Layers & knobs head (round 143), blue with an ember tip */
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head { position: relative; overflow: hidden; }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head::after,
-html:not([data-lablook="plain"]) .media-bar > .mb-handle::after {
-  content: ""; position: absolute; left: 0; top: 0; width: 34%; height: 1px; pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--fh-hud) 50%, var(--fh-hud-hi) 85%, var(--fh-ember) 97%, transparent);
-  opacity: .6; transform: translateX(-100%); animation: lk-glint 9s ease-in-out infinite; will-change: transform;
+/* ---------- controls: flat, mono, hairlines; gold when lit, ember when open ---------- */
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) .tb-group { border: 0; background: none; box-shadow: none; clip-path: none; padding: 0; gap: 2px; }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers > .tw-head, .rg-tray) :is(button.ghost, .fl-chip, .dir-chip) {
+  border: 1px solid transparent; border-radius: 2px; background: none; box-shadow: none; clip-path: none; color: var(--rx-soft);
+  font-family: var(--rx-mono); font-size: 10.5px; letter-spacing: .06em;
 }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle { position: relative; overflow: hidden; }
-html:not([data-lablook="plain"]) .media-bar > .mb-handle::after { top: -6px; animation-delay: -4.5s; }
-@keyframes lk-glint { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(300%); } }
-@keyframes ih-sweep { 0% { transform: translateX(-100%); } 70%, 100% { transform: translateX(460%); } }
-@keyframes ih-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-/* the ember playhead (the HUD's one hot line): a warm core and a soft halo that breathes while the song is stopped */
-html:not([data-lablook="plain"]) .media-bar .mb-playhead:not(.mini) { background: linear-gradient(180deg, #fff, var(--fh-gold-hi, #ffe7a8) 30%, var(--fh-ember)); box-shadow: 0 0 6px color-mix(in srgb, var(--fh-ember) 70%, transparent); }
-html:not([data-lablook="plain"]) .media-bar .mb-playhead:not(.mini)::after {
-  content: ""; position: absolute; top: 0; bottom: 0; left: -3px; width: 8px; pointer-events: none; border-radius: 4px;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--fh-ember) 45%, transparent), transparent);
-  animation: lk-breathe 2.8s ease-in-out infinite;
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers > .tw-head, .rg-tray) :is(button.ghost, .fl-chip, .dir-chip):is(:hover, :focus-visible) { color: var(--rx-text); background: var(--rx-raise); border-color: var(--rx-line-hi); box-shadow: none; outline: none; }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .rg-tray, .lk-merged .layers > .tw-head) button.ghost.on { color: var(--rx-gold); background: color-mix(in srgb, var(--rx-gold) 9%, transparent); border-color: transparent; box-shadow: inset 0 -1px 0 var(--rx-gold); text-shadow: none; }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) select { border-radius: 2px; border-color: var(--rx-line-hi); background-color: var(--rx-well); color: var(--rx-text); box-shadow: none; clip-path: none; }
+html:not([data-lablook="plain"]) .three-toolbar .three-sketch-select { font: 600 13px/1.2 var(--font-head, system-ui); letter-spacing: .02em; border-color: transparent; background-color: transparent; }
+html:not([data-lablook="plain"]) .three-toolbar .three-sketch-select:is(:hover, :focus-visible) { border-color: var(--rx-line-hi); background-color: var(--rx-well); }
+/* primary: solid Forgeheart gold, dark ink, square */
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) button.primary {
+  border-radius: 2px; border: 0; clip-path: none; background: var(--rx-gold); color: #1a1206; box-shadow: none; text-shadow: none;
+  font-family: var(--rx-mono); font-weight: 700; letter-spacing: .08em;
 }
-@keyframes lk-breathe { 0%, 100% { opacity: .25; } 50% { opacity: .9; } }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) button.primary:hover { background: var(--rx-gold-hi); filter: none; }
+html:not([data-lablook="plain"]) :is(.three-toolbar, .media-bar, .lk-merged .layers) button.primary::after { display: none; }
+html:not([data-lablook="plain"]) .three-toolbar .tb-iconic.on { color: var(--rx-gold); }
+html:not([data-lablook="plain"]):not(#rx-none) .three-toolbar :is([data-feature="Play"], [data-feature="Lab more"]):not(:hover) { color: var(--rx-text); }
+html:not([data-lablook="plain"]) .media-bar .mb-play { margin-right: 8px; }
+/* a layer's knobs: Shuffle / Save and the slider search stay in sight, flat and quiet */
+html:not([data-lablook="plain"]) .ly-knobs .tweaks :is(.tw-shuffle, .tw-save, .tw-act > button) { border: 1px solid var(--rx-line-hi) !important; border-radius: 2px !important; background: none !important; box-shadow: none !important; clip-path: none !important; color: var(--rx-soft) !important; font: 500 10.5px/1.2 var(--rx-mono) !important; letter-spacing: .08em; text-shadow: none !important; filter: none !important; }
+html:not([data-lablook="plain"]) .ly-knobs .tweaks .tw-shuffle { color: var(--rx-gold) !important; border-color: color-mix(in srgb, var(--rx-gold) 35%, transparent) !important; }
+html:not([data-lablook="plain"]) .ly-knobs .tweaks :is(.tw-shuffle, .tw-save, .tw-act > button):hover { background: var(--rx-raise) !important; color: var(--rx-text) !important; }
+html:not([data-lablook="plain"]) .ly-knobs .tweaks .tw-tools { border-bottom: 0; }
+html:not([data-lablook="plain"]) .ly-knobs .tweaks .tw-search { background: transparent !important; border: 0 !important; border-bottom: 1px solid var(--rx-line-hi) !important; border-radius: 0 !important; font: 11px var(--rx-mono); box-shadow: none !important; padding-left: 2px; }
+html:not([data-lablook="plain"]) .ly-knobs .tweaks .tw-search:focus { border-bottom-color: var(--rx-gold) !important; outline: none; }
+html:not([data-lablook="plain"]) :is(.lk-merged .layers) :is(input:not([type]), input[type=text], input[type=search], input[type=number]) { background: var(--rx-well); border-color: var(--rx-line); border-radius: 2px; font-variant-numeric: tabular-nums; box-shadow: none; }
+/* the ember playhead: one still line (no breathing halo) */
+html:not([data-lablook="plain"]) .media-bar .mb-playhead:not(.mini) { background: var(--rx-ember); box-shadow: none; }
+html:not([data-lablook="plain"]) .media-bar .mb-playhead.mini { background: var(--rx-ember); }
 /* hot accents: the selected layer, the open fold */
-html:not([data-lablook="plain"]) .lk-merged .ly-row.on { box-shadow: inset 2px 0 0 var(--fh-ember); background: linear-gradient(90deg, color-mix(in srgb, var(--fh-ember) 13%, transparent), transparent 70%); }
-html:not([data-lablook="plain"]) .rg-fold.rg-open { border-color: color-mix(in srgb, var(--fh-ember) 60%, transparent); box-shadow: 0 0 10px -3px var(--fh-ember); }
-html:not([data-lablook="plain"]) .rg-tray { border-radius: 3px; border-color: var(--fh-hud-line-hi); background-image: var(--lk-scan), var(--lk-dots), linear-gradient(180deg, #08102a, #050913); }
-html:not([data-lablook="plain"]) .rg-tray::before { content: ""; position: absolute; left: 0; right: 0; top: -1px; height: 1px; background: var(--lk-rim); pointer-events: none; }
-html:not([data-lablook="plain"]) .rg-tray .rg-k { font-family: var(--fh-hud-mono); color: var(--fh-hud); }
-html:not([data-lablook="plain"]) .media-bar .mb-g-tl, html:not([data-lablook="plain"]) .media-bar .tb-group[data-cat="Beat"] { position: relative; }
+html:not([data-lablook="plain"]) .lk-merged .ly-row { border-radius: 0; }
+html:not([data-lablook="plain"]) .lk-merged .ly-row:hover { background: #ffffff06; }
+html:not([data-lablook="plain"]) .lk-merged .ly-row.on { box-shadow: inset 2px 0 0 var(--rx-ember); background: linear-gradient(90deg, color-mix(in srgb, var(--rx-ember) 12%, transparent), transparent 75%); }
+html:not([data-lablook="plain"]) .lk-merged .ly-row .ly-name { font-size: 12px; }
+html:not([data-lablook="plain"]) .lk-merged .ly-row .ly-tags { font-family: var(--rx-mono); letter-spacing: .14em; color: var(--rx-dim); }
+html:not([data-lablook="plain"]) .rg-fold.rg-open { color: var(--rx-ember) !important; border-color: color-mix(in srgb, var(--rx-ember) 45%, transparent) !important; background: color-mix(in srgb, var(--rx-ember) 8%, transparent) !important; }
+html:not([data-lablook="plain"]) .rg-fold.on::after { background: var(--rx-ember); }
+/* trays: a graphite card, a gold → ember edge on top */
+html:not([data-lablook="plain"]) .rg-tray { border-radius: 2px; border-color: var(--rx-line-hi); background: #141416; box-shadow: 0 12px 24px -12px #000; }
+html:not([data-lablook="plain"]) .rg-tray::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 1px; background: var(--rx-grad); transform-origin: 0 50%; pointer-events: none; }
+html:not([data-lablook="plain"]) .rg-tray .rg-k { font-family: var(--rx-mono); color: var(--rx-gold); }
 
-/* while the scene plays: every loop of the look holds still (smooth playback first, round 142) */
-html.lab-playing :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead, .ih-sweep)::after,
-html.lab-playing .ih-live { animation-play-state: paused; }
-html.lab-playing .media-bar .mb-playhead:not(.mini)::after { opacity: .5; }
-/* reduced motion: the system's, and Hearth's own Motion setting (calm / off) */
+/* ============================================================================================================
+   Contextual controls (Forgeheart): what is in sight at rest, and where the rest comes in.
+   At rest: the scene picker, ▶ Run, ▶ Play, ⋯ (the Lab bar); ▶ and the time (the timeline); the panels' titles,
+   the layers' names and their knobs. The rest stays in place (same element, same spot: a click there always lands)
+   but transparent until its area is under the pointer, it has keyboard focus, its tray / menu is open, or I pins the
+   Lab (html.lab-pinned, tools/three-hudstage.js) Plain shows everything.
+   ============================================================================================================ */
+/* the Lab bar's order: picker · ▶ Run · ▶ Play first, the rest after them (the groups' boxes are gone, so their
+   buttons line up as one row; a static order: nothing moves when they come in) */
+html[data-lablook="forge"] .three-toolbar > .tb-group:is([data-cat="Sketch"], [data-cat="View"]) { display: contents; }
+html[data-lablook="forge"] .three-toolbar .three-sketch-select { order: 1; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Sketch"] > button.primary { order: 2; }
+html[data-lablook="forge"] .three-toolbar [data-feature="Play"] { order: 3; margin-right: 6px; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Sketch"] > :not(.three-sketch-select):not(.primary),
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="View"] > :not([data-feature="Play"]) { order: 4; }
+html[data-lablook="forge"] .three-toolbar > :is(.tb-group[data-cat="Code"], .spacer) { order: 5; }
+html[data-lablook="forge"] .three-toolbar > .tb-group[data-cat="Assets"] { order: 6; }
+
+/* the secondary controls, per area */
+html[data-lablook="forge"] :is(
+  .three-toolbar .tb-group[data-cat="Sketch"] > :not(.three-sketch-select):not(.primary),
+  .three-toolbar .tb-group[data-cat="View"] > :not([data-feature="Play"]):not(.rg-tray):not(.rg-open):not(.rg-fold.on),
+  .three-toolbar .tb-group[data-cat="Assets"] > :not([data-feature="Lab more"]),
+  .media-bar:not(.mb-empty) .mb-main > :not(.tb-group[data-cat="Play"]),
+  .media-bar:not(.mb-empty) .mb-main > .tb-group[data-cat="Play"] > :not(.mb-play):not(.mb-time),
+  .media-bar.mb-empty .mb-main > :not(.tb-group[data-cat="Song"]),
+  .media-bar > .mb-handle > :is(button, .mb-size):not(.mb-miniplay),
+  .media-bar > .mb-handle > .ih-tl > .ih-meta,
+  .lk-merged .layers > .tw-head > :is(button, .spacer ~ *),
+  .lk-merged .ly-row:not(.on):not(:focus-within) .ly-eye:not(.off):not(.some):not(.by-group),
+  .ly-knobs .tweaks .tw-head > button
+) {
+  opacity: 0; transform: translateY(3px);
+  transition: opacity .12s ease-in, transform .12s ease-in; /* the exit: quick, no stagger */
+}
+/* in: the area is under the pointer or has focus, its tray is open, or the Lab is pinned (I)
+   (:not(#rx-none) only lifts these above the resting rule, whatever its list holds) */
+html[data-lablook="forge"]:not(#rx-none) :is(
+  .three-toolbar:is(:hover, :focus-within, .rg-raised) .tb-group[data-cat="Sketch"] > :not(.three-sketch-select):not(.primary),
+  .three-toolbar:is(:hover, :focus-within, .rg-raised) .tb-group[data-cat="View"] > :not([data-feature="Play"]):not(.rg-tray):not(.rg-open):not(.rg-fold.on),
+  .three-toolbar:is(:hover, :focus-within, .rg-raised) .tb-group[data-cat="Assets"] > :not([data-feature="Lab more"]),
+  .media-bar:is(:hover, :focus-within, .rg-raised):not(.mb-empty) .mb-main > :not(.tb-group[data-cat="Play"]),
+  .media-bar:is(:hover, :focus-within, .rg-raised):not(.mb-empty) .mb-main > .tb-group[data-cat="Play"] > :not(.mb-play):not(.mb-time),
+  .media-bar.mb-empty:is(:hover, :focus-within, .rg-raised) .mb-main > :not(.tb-group[data-cat="Song"]),
+  .media-bar:is(:hover, :focus-within, .rg-raised) > .mb-handle > :is(button, .mb-size):not(.mb-miniplay),
+  .media-bar:is(:hover, :focus-within, .rg-raised) > .mb-handle > .ih-tl > .ih-meta,
+  .lk-merged .layers:is(:hover, :focus-within) > .tw-head > :is(button, .spacer ~ *),
+  .lk-merged .ly-row:hover .ly-eye:not(.some):not(.by-group),
+  .ly-knobs:is(:hover, :focus-within) .tweaks .tw-head > button
+),
+html.lab-pinned[data-lablook="forge"]:not(#rx-none) :is(
+  .three-toolbar .tb-group > *, .media-bar .mb-main > *, .media-bar .mb-main > .tb-group > *, .media-bar > .mb-handle > *, .media-bar > .mb-handle > .ih-tl > .ih-meta,
+  .lk-merged .layers > .tw-head > *, .lk-merged .ly-row .ly-eye, .ly-knobs .tweaks .tw-head > *
+) {
+  opacity: 1; transform: none;
+  transition: opacity .18s var(--rx-ease) calc(var(--rx-i, 0) * 22ms), transform .22s var(--rx-ease) calc(var(--rx-i, 0) * 22ms);
+}
+/* the timeline's groups hold the fold trays (position: fixed): a transform on them would move a tray's box, so they
+   only fade */
+html[data-lablook="forge"]:not(#rx-none) .media-bar .mb-main > .tb-group { transform: none; }
+/* the stagger: left to right, a step each */
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Sketch"] > :nth-child(2) { --rx-i: 1; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Sketch"] > :nth-child(3) { --rx-i: 2; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Sketch"] > :nth-child(4) { --rx-i: 3; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="View"] > :nth-child(1) { --rx-i: 4; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="View"] > :nth-child(2) { --rx-i: 5; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="View"] > :nth-child(3) { --rx-i: 6; }
+html[data-lablook="forge"] .three-toolbar .tb-group[data-cat="Assets"] > * { --rx-i: 3; }
+html[data-lablook="forge"] .media-bar .mb-main > :nth-child(2) { --rx-i: 1; }
+html[data-lablook="forge"] .media-bar .mb-main > :nth-child(3) { --rx-i: 2; }
+html[data-lablook="forge"] .media-bar .mb-main > :nth-child(4) { --rx-i: 3; }
+html[data-lablook="forge"] .media-bar .mb-main > :nth-child(5) { --rx-i: 4; }
+html[data-lablook="forge"] .media-bar .mb-main > :nth-child(n+6) { --rx-i: 5; }
+html[data-lablook="forge"] .media-bar > .mb-handle > :is(button, .mb-size) { --rx-i: 2; }
+html[data-lablook="forge"] .lk-merged .layers > .tw-head > button { --rx-i: 1; }
+html[data-lablook="forge"] .lk-merged .layers > .tw-head > button:last-child { --rx-i: 2; }
+/* the area's edge: a gold → ember line drawn in under the Lab bar / along the top of the timeline and the layers' head
+   when the area wakes (transform only; out quicker than in) */
+html[data-lablook="forge"] .three-toolbar::after,
+html[data-lablook="forge"] .media-bar > .mb-handle::after,
+html[data-lablook="forge"] .lk-merged .layers > .tw-head::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 1px; pointer-events: none;
+  background: var(--rx-grad); transform: scaleX(0); transform-origin: 0 50%; opacity: .9;
+  transition: transform .14s ease-in, opacity .14s ease-in;
+}
+html[data-lablook="forge"] .three-toolbar::after { bottom: -1px; }
+html[data-lablook="forge"] .media-bar > .mb-handle::after { top: -6px; left: -8px; right: -8px; }
+html[data-lablook="forge"] .lk-merged .layers > .tw-head::after { bottom: -1px; }
+html[data-lablook="forge"] :is(.three-toolbar:is(:hover, :focus-within, .rg-raised), .media-bar:is(:hover, :focus-within, .rg-raised) > .mb-handle, .lk-merged .layers:is(:hover, :focus-within) > .tw-head)::after {
+  transform: scaleX(1); transition: transform .22s var(--rx-ease), opacity .22s var(--rx-ease);
+}
+html[data-lablook="forge"] .lk-merged .layers > .tw-head { overflow: visible; }
+
+/* the BPM readout's beat flash only while you can see it (the timeline under the pointer): nothing animates out of sight */
+html[data-lablook="forge"]:not(.lab-pinned) .media-bar:not(:hover):not(:focus-within):not(.rg-raised) .mb-bpmread.beat { animation: none; }
+
+/* ---------- things that appear: trays, a layer's knobs, the Lab's pop-overs ---------- */
+/* a tray opens: a clip from its top edge, its gold line drawing across, its rows one after another (it folds away at
+   once: a fold that is closed is never drawn, which the folds' own logic and checks rely on) */
+html[data-lablook="forge"] .rg-tray:not([hidden]) { animation: rx-tray-in .2s var(--rx-ease) backwards; }
+html[data-lablook="forge"] .rg-tray.rg-up:not([hidden]) { animation-name: rx-tray-up; }
+html[data-lablook="forge"] .rg-tray:not([hidden])::before { animation: rx-line-in .22s var(--rx-ease) backwards; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) > * { animation: rx-rise .2s var(--rx-ease) backwards; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(2) { animation-delay: 30ms; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(3) { animation-delay: 60ms; }
+html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(n+4) { animation-delay: 90ms; }
+@keyframes rx-tray-in { from { opacity: 0; transform: translateY(-4px); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: none; clip-path: inset(-2px -2px -30px -2px); } }
+@keyframes rx-tray-up { from { opacity: 0; transform: translateY(4px); clip-path: inset(100% 0 0 0); } to { opacity: 1; transform: none; clip-path: inset(-2px -2px -30px -2px); } }
+@keyframes rx-line-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes rx-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* a layer's knobs open under its row: an ember → gold line drawn down their edge */
+html[data-lablook="forge"] .lk-merged .ly-knobs { position: relative; } /* (no rise of the whole block: a tall layer for 200 ms on every select) */
+html[data-lablook="forge"] .lk-merged .ly-knobs::before { content: ""; position: absolute; left: -1px; top: 0; width: 1px; height: 120px; background: linear-gradient(180deg, var(--rx-ember), var(--rx-gold) 60%, transparent); transform-origin: 50% 0; animation: rx-drop .26s var(--rx-ease) backwards; pointer-events: none; }
+@keyframes rx-drop { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* the Lab's own pop-overs (a timeline menu, the music-link / audio-map cards) */
+html[data-lablook="forge"] :is(.mb-menu, .lab-pop) { animation: rx-rise .18s var(--rx-ease) backwards; }
+
+/* ---------- motion off: reduced motion (the system's), Hearth's Motion: calm / off ---------- */
 @media (prefers-reduced-motion: reduce) {
-  :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead, .ih-sweep)::after, .rg-tray, .ih-live { animation: none !important; }
+  html[data-lablook="forge"] :is(.three-toolbar, .media-bar, .lk-merged .layers, .rg-tray) *,
+  html[data-lablook="forge"] :is(.three-toolbar, .media-bar > .mb-handle, .lk-merged .layers > .tw-head, .rg-tray, .ly-knobs)::after,
+  html[data-lablook="forge"] :is(.rg-tray, .ly-knobs, .mb-menu, .lab-pop), html[data-lablook="forge"] :is(.rg-tray, .ly-knobs)::before { transition: none !important; animation: none !important; }
 }
-:root:is([data-motion=calm], [data-motion=off]) :is(.lk-merged .layers > .tw-head, .media-bar > .mb-handle, .media-bar .mb-playhead, .ih-sweep)::after,
-:root:is([data-motion=calm], [data-motion=off]) :is(.rg-tray, .ih-live) { animation: none !important; }
-:root:is([data-motion=calm], [data-motion=off]) .media-bar .mb-playhead:not(.mini)::after { opacity: .5; }
-:root:is([data-motion=calm], [data-motion=off]) .ih-sweep::after { opacity: 0; }
-
-/* the panels' own accents follow the HUD: sliders and favourites in electric blue, the AI rows a blue-violet */
-html:not([data-lablook="plain"]) :is(.lk-merged .layers, .media-bar, .rg-tray) { --ui-gold: var(--fh-hud); --accent: var(--fh-hud); --fh-ai: #7f8cff; --ui-ai: #7f8cff; }
-html:not([data-lablook="plain"]) .lk-merged .layers :is(input:not([type]), input[type=text], input[type=search], input[type=number]) { background: #050912; border-color: var(--fh-hud-line); border-radius: 3px; font-variant-numeric: tabular-nums; }
-
-/* ---------- Plate (round 148): the same instruments as pale lavender plates (moodboard image 4) ----------
-   The panels turn light; the picture and the song's lanes stay dark wells (as in Hearth's light looks, polish.css). */
-html[data-lablook="plate"] {
-  --fh-hud: #4a4fd0; --fh-hud-hi: #2a2d9a; --fh-hud-lo: #b8bce9; --fh-hud-ink: #e4e6f3; --fh-hud-panel: #f4f5fc;
-  --fh-hud-line: #4a4fd02e; --fh-hud-line-hi: #4a4fd070; --fh-hud-text: #1d1f4d; --fh-hud-mute: #7b7fab; --fh-hud-glow: none;
-  --lk-scan: linear-gradient(transparent, transparent);
-  --lk-dots: linear-gradient(#4a4fd00d 1px, transparent 1px) 0 0 / 16px 16px, linear-gradient(90deg, #4a4fd00d 1px, transparent 1px) 0 0 / 16px 16px;
-  --lk-rim: linear-gradient(90deg, var(--fh-ember) 0 18px, #4a4fd055 18px) top / 100% 1px no-repeat;
-}
-html[data-lablook="plate"] :is(.three-split, .three-toolbar, .rg-tray) {
-  --bg: #eef0f9; --sidebar: #e6e8f5; --text: #20224f; --muted: #6c709c; --line: #2a2d7a22; --line-hi: #2a2d7a3a; --hover: #4a4fd014; --surface: #f7f8fd;
-  --fh-iron-1: #f6f7fc; --fh-iron-2: #eceef8; --fh-iron-3: #e2e5f3; --fh-pop: #f7f8fd; --fh-ink: #dfe2f1; --fh-strong: #0e1036;
-  --fh-shine: #ffffffd0; --fh-shade: #2a2d7a1f; --m-glass-edge: inset 0 1px 0 #ffffffb0, inset 0 0 0 1px #2a2d7a0d;
-  --fh-gold-text: #3a3eb8; --ui-cyan: #3a6fd8; --ui-ink: #fff; color: var(--text);
-}
-html[data-lablook="plate"] :is(.three-preview, .media-bar .mb-tl-wrap, .media-bar .mb-mm-wrap) {
-  --bg: #0f1115; --text: #ece6dc; --muted: #a49d92; --line: #2c2e33; --line-hi: #3d4047; --hover: #ffffff14; --surface: #16181d;
-  --fh-iron-1: #23262d; --fh-iron-2: #191b20; --fh-iron-3: #111317; --fh-pop: #15171c; --fh-ink: #050608; --fh-strong: #fff;
-  --fh-shine: #ffffff1c; --fh-shade: #00000066; --m-glass-edge: inset 0 1px 0 #ffffff24, inset 0 0 0 1px #ffffff0f; --fh-gold-text: var(--fh-gold-hi); --ui-cyan: #56c6ff;
-}
-html[data-lablook="plate"] .three-split { background: var(--lk-dots), #e4e6f3; }
-html[data-lablook="plate"] :is(.three-toolbar, .media-bar, .lk-merged .layers) { background: #f4f5fc; box-shadow: 0 1px 0 #ffffff inset, 0 8px 22px -16px #2a2d7a55; color: var(--text); }
-html[data-lablook="plate"] :is(.three-toolbar, .media-bar .mb-main) .tb-group { background: #ffffffb0; }
-html[data-lablook="plate"] .media-bar .mb-tl-wrap { border-radius: 2px; box-shadow: 0 0 0 1px #2a2d7a40; }
-html[data-lablook="plate"] .ih-no::before { content: "PL."; }
-html[data-lablook="plate"] .lk-merged .layers > .tw-head > b::before { content: "PL.03"; margin-right: 6px; }
-html[data-lablook="plate"] :is(.ih-no, .lk-merged .layers > .tw-head > b::before) { text-shadow: none; }
-html[data-lablook="plate"] .ih-live { box-shadow: none; }
-html[data-lablook="plate"] :is(.media-bar .mb-time, .media-bar .mb-bpmread, .media-bar .mb-minitime) { color: var(--fh-hud-hi); text-shadow: none; }
-html[data-lablook="plate"] .lk-merged .tw-sec { background-color: #ffffffa8 !important; }
-html[data-lablook="plate"] .lk-merged .layers :is(input:not([type]), input[type=text], input[type=search], input[type=number]) { background: #fff; color: var(--text); }
-html[data-lablook="plate"] :is(.three-toolbar, .media-bar, .lk-merged .layers) button.primary { background: linear-gradient(180deg, #5a5fe0, #3f43c0); box-shadow: none; color: #fff; }
-html[data-lablook="plate"] .three-toolbar .tb-iconic.on { color: var(--fh-hud-hi); background: #4a4fd01a; text-shadow: none; box-shadow: 0 0 0 1px #4a4fd055; }
-html[data-lablook="plate"] .rg-tray { background-image: var(--lk-dots), linear-gradient(180deg, #f7f8fd, #eceef8); }
-html[data-lablook="plate"] :is(.media-bar .mb-timeline, .media-bar .mb-minimap) { background: #15171c; }
-html:not([data-lablook="plain"]) .lk-merged .layers > .tw-head > b { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-html[data-lablook="plate"] .lk-merged .layers > .tw-head > b { letter-spacing: .12em; }
+:root:is([data-motion=calm], [data-motion=off])[data-lablook="forge"] :is(.three-toolbar, .media-bar, .lk-merged .layers, .rg-tray) *,
+:root:is([data-motion=calm], [data-motion=off])[data-lablook="forge"] :is(.three-toolbar, .media-bar > .mb-handle, .lk-merged .layers > .tw-head)::after,
+:root:is([data-motion=calm], [data-motion=off])[data-lablook="forge"] :is(.rg-tray, .ly-knobs, .mb-menu, .lab-pop),
+:root:is([data-motion=calm], [data-motion=off])[data-lablook="forge"] :is(.rg-tray, .ly-knobs)::before { transition: none !important; animation: none !important; }
