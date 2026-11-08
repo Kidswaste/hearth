@@ -97,6 +97,16 @@ Run 3 (`c3`, load average 3.9–4.4 on 4 CPUs):
 | Smooth step 7 · composer only | 2.1 | 450 | 850 | 850 | 57.9 | 484 | 9.5 | 12.1 | 106 (54) |
 | Smooth step 7 · **after** | **3.1** | **250** | **567** | **567** | 56.9 | **319** | 9.0 | 13.7 | 106 (38) |
 
+Final batch run (`node dev/run-checks.js --exact play149 …`, load average 4.1–4.4), the same rows plus a shadows-only row:
+
+| Row | fps | p50 ms | p95 ms | GPU ms / frame |
+|---|---|---|---|---|
+| Force high | 2.0 | 500 | 550 | 490 |
+| Smooth step 7 · before (2 runs) | 2.3 / 2.2 | 467 / 467 | 817 / 550 | 441 / 418 |
+| Smooth step 7 · composer only | 2.2 | 450 | 817 | 413 |
+| Smooth step 7 · half-rate shadows only | 2.9 | 433 | 633 | 319 |
+| Smooth step 7 · after (2 runs) | **3.1 / 3.2** | **200 / 267** | 850 / 550 | **325 / 303** (0.72×) |
+
 Run 2 (`c2`, before the crowd cast shadows, so the composer was the main GPU cost): before 2.1 fps, p50 467 ms,
 466 GPU ms / frame → after **3.2 fps, p50 217 ms, 302 GPU ms / frame (0.65×)**.
 
