@@ -1,4 +1,4 @@
-# Round 151 · The Lab gets a cleaner look: "Hearth Redux"
+# Round 152 · The Lab gets a cleaner look: "Hearth Redux"
 
 You asked for Forgeheart's gold / orange / dark grey, a cleaner and more futuristic Lab with far fewer buttons on screen,
 pretty animations when things come and go, and good performance again. Here is what changed.

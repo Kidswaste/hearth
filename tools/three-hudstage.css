@@ -183,7 +183,8 @@ html:not([data-lablook="plain"]) .three-preview.st-on > .lab-adapt-note { left: 
    while the stage is off, the default). */
 html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud :is(.st-rule, .st-x, .st-prog) { display: none; }
 .three-preview.st-on:not(.st-fx-reactive) > .st-hud :is(.st-glow, .st-flash, .st-rflash, .st-hat) { display: none; }
-.three-preview.st-on.st-fx-reactive > .st-hud .st-glow { will-change: auto; }
+.three-preview.st-on > .st-hud :is(.st-glow, .st-flash, .st-rflash, .st-prog-fill) { will-change: auto; } /* (no permanent layers: the pulses are short Web Animations) */
+.st-x { filter: none; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud .st-lb { text-shadow: 0 1px 2px #000, 0 0 1px #000; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud .st-frame { transition: opacity .2s ease; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .st-hud :is(.st-lb, .st-hint) { transition: opacity .14s ease-in, transform .14s ease-in; }
