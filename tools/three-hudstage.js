@@ -38,7 +38,7 @@ const LabHudStage = (() => {
     counts: { kick: 0, snare: 0, hats: 0, beat: 0, feed: 0, tintMsgs: 0, ptrMsgs: 0, labels: 0 }, feedMs: 0, applyMs: 0, labelMs: 0,
     labT: 0, fps: null, sent: '', warn: new Map(), obs: null, ro: null, io: null,
   };
-  const pref = () => { const v = store.get(KEY, 'reactive'); return MODES.includes(v) ? v : 'reactive'; };
+  const pref = () => { const v = store.get(KEY, 'off'); return MODES.includes(v) ? v : 'off'; };
   const look = () => (window.LabRegroup?.look?.() || de.dataset.lablook || 'forge');
   const reduced = () => rmq.matches || de.dataset.motion === 'calm' || de.dataset.motion === 'off';
   // what the stage does now: 'off' (Plain or the setting), 'calm' (colour), 'reactive' (colour + pulse); still: no easing
