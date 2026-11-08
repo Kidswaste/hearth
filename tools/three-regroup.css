@@ -293,8 +293,8 @@ html[data-lablook="forge"] .rg-tray:not([hidden]) > :nth-child(n+4) { animation-
 @keyframes rx-tray-up { from { opacity: 0; transform: translateY(4px); clip-path: inset(100% 0 0 0); } to { opacity: 1; transform: none; clip-path: inset(-2px -2px -30px -2px); } }
 @keyframes rx-line-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes rx-rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-/* a layer's knobs open under its row: a short rise, the edge line in ember → gold */
-html[data-lablook="forge"] .lk-merged .ly-knobs { position: relative; animation: rx-rise .2s var(--rx-ease) backwards; }
+/* a layer's knobs open under its row: an ember → gold line drawn down their edge */
+html[data-lablook="forge"] .lk-merged .ly-knobs { position: relative; } /* (no rise of the whole block: a tall layer for 200 ms on every select) */
 html[data-lablook="forge"] .lk-merged .ly-knobs::before { content: ""; position: absolute; left: -1px; top: 0; width: 1px; height: 120px; background: linear-gradient(180deg, var(--rx-ember), var(--rx-gold) 60%, transparent); transform-origin: 50% 0; animation: rx-drop .26s var(--rx-ease) backwards; pointer-events: none; }
 @keyframes rx-drop { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 /* the Lab's own pop-overs (a timeline menu, the music-link / audio-map cards) */
