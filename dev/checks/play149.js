@@ -206,13 +206,14 @@ try {
     runs.push(await measureOnce('high', { off: false, mode: 'high' }));
     await settle('smooth', 7);
     for (const off of [true, false, true, false]) runs.push(await measureOnce(off ? 'smooth-off' : 'smooth-on', { off, mode: 'smooth', level: 7 }));
-    runs.push(await measureOnce('smooth-composer-only', { mode: 'smooth', level: 7, only: 'composer' })); // (informational: how much of the saving is the composer's)
+    runs.push(await measureOnce('smooth-composer-only', { mode: 'smooth', level: 7, only: 'composer' })); // (informational: how much of the saving is each one's)
+    runs.push(await measureOnce('smooth-shadows-only', { mode: 'smooth', level: 7, only: 'shadows' }));
     await P149('window.__labPlay149.set({ off: false })');
     const med = (a, k) => { const v = a.map((r) => r[k]).filter((x) => x != null).sort((x, y) => x - y); return v.length ? v[Math.floor((v.length - 1) / 2)] : null; };
     const sum = (a) => Object.fromEntries(['fps', 'p50', 'p95', 'p99', 'droppedPerSec', 'gpuMsPerFrame', 'gpuMsPerSec', 'pageMainMsPerSec', 'pageScriptMsPerSec', 'windowMainMsPerSec', 'windowScriptMsPerSec', 'pageAllocKBPerSec', 'pageAllocKBPerFrame'].map((k) => [k, med(a, k)]));
     const off = runs.filter((r) => r.label === 'smooth-off'); const on = runs.filter((r) => r.label === 'smooth-on');
     out.measure.runs = runs;
-    out.measure.table = { high: sum(runs.filter((r) => r.mode === 'high')), smoothBefore: sum(off), smoothAfter: sum(on), composerOnly: sum(runs.filter((r) => r.label === 'smooth-composer-only')) };
+    out.measure.table = { high: sum(runs.filter((r) => r.mode === 'high')), smoothBefore: sum(off), smoothAfter: sum(on), composerOnly: sum(runs.filter((r) => r.label === 'smooth-composer-only')), shadowsOnly: sum(runs.filter((r) => r.label === 'smooth-shadows-only')) };
     const A = out.measure.table.smoothBefore; const B = out.measure.table.smoothAfter;
     const ratio = { gpuMsPerFrame: A.gpuMsPerFrame ? Math.round((B.gpuMsPerFrame / A.gpuMsPerFrame) * 100) / 100 : null, fps: A.fps ? Math.round((B.fps / A.fps) * 100) / 100 : null, p95: A.p95 ? Math.round((B.p95 / A.p95) * 100) / 100 : null };
     const busy = runs.some((r) => busyOf(r.load));
