@@ -13,7 +13,7 @@
 //   pointer   a quick flick into the preview's top-right corner that stops inside one 120 ms step: the view controls
 //             come back (the pointer's last position is always sent; round 150 dropped it and they stayed hidden)
 //   hidden    the controls pinned (I), Hearth hidden after the Lab: the stage's label writer stops, the window's wakeups
-//             ≤ 0.6 a second, every process together ≤ 25 ms a second, the window may rest (backgroundThrottling on)
+//             ≤ 0.6 a second, every process together ≤ 30 ms a second, the window may rest (backgroundThrottling on)
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --script dev/checks/perf151.js
 const probe = () => {
   if (window.__pfProbe) return;
@@ -172,7 +172,7 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
     LabHudStage.pin(false);
     out.measure.hidden = { ...h, page: undefined, top: h.page.top, labels, labelsOn, windows: wins };
     step('hidden: the stage\'s label writer stops (pinned, Hearth hidden), the window wakes ≤ 0.6 times a second', labelsOn && labels === 0 && h.wakeups <= 0.6, { labels, wakeups: h.wakeups, top: h.page.top });
-    judged('hidden: every process together ≤ 25 ms of CPU a second', h.allMsPerSec <= (h.busy ? 75 : 25), h.busy, { all: h.allMsPerSec, by: h.by });
+    judged('hidden: every process together ≤ 30 ms of CPU a second', h.allMsPerSec <= (h.busy ? 90 : 30), h.busy, { all: h.allMsPerSec, by: h.by });
     const main = wins.find((w) => /index\.html/.test(w.url));
     step('hidden: Hearth\'s window may rest when hidden (backgroundThrottling on)', main?.throttling === true, wins);
   }

@@ -1069,7 +1069,8 @@ const ThreeLab = (() => {
     // playing: Auto eases the preview to its background rate (30), as when another window is in front. A moving scene
     // left on screen paused drew 60 frames a second for nobody, the graphics card shared with every other app. Never
     // while the song plays, with live sound, recording, rendering or on the Stage window; the first input: full rate.
-    const idleRest = () => document.documentElement.hasAttribute('data-hush') && !player.playing && !player.recording && !liveKind && !xpOn;
+    // (a still picture is left alone: it already dozes at 4 frames a second, and a cap would keep it from dozing)
+    const idleRest = () => document.documentElement.hasAttribute('data-hush') && !player.playing && !player.recording && !liveKind && !xpOn && !paceLast?.still;
     const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording) && !idleRest()), modal: modalUp && !box.onStage && !player.recording }; };
     // (round 72, labfps72) a modal over the Lab (a <dialog> opened with showModal(), the ⌘K Find anything palette): the
     // preview behind it draws 30 frames a second at most, whatever the fps setting (it still moves under the dim; at
@@ -1100,7 +1101,8 @@ const ThreeLab = (() => {
     let focusT = 0;
     const onFocusChange = () => { clearTimeout(focusT); focusT = setTimeout(() => { const f = document.hasFocus(); if (f === winFocused) return; winFocused = f; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }, 250); };
     addEventListener('blur', onFocusChange); addEventListener('focus', onFocusChange);
-    { let rest = false; const restCheck = () => { const r = idleRest(); if (r === rest) return; rest = r; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }; // (round 151, perf151) see idleRest
+    let restCheck = () => {}; // (round 151, perf151) see idleRest
+    { let rest = false; restCheck = () => { const r = idleRest(); if (r === rest) return; rest = r; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }; // (round 151, perf151) see idleRest
       try { new MutationObserver(restCheck).observe(document.documentElement, { attributes: true, attributeFilter: ['data-hush'] }); } catch { /* no rest */ }
       addEventListener('hearth:lab-playing', () => setTimeout(restCheck, 0)); window.__labRest = () => ({ rest, cap: capMsg() }); }
     // Parked: the preview draws nothing while the Lab isn't on screen (another tool or chat in front, the window
@@ -3777,7 +3779,7 @@ const ThreeLab = (() => {
         if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.stats(msg); // (round 133, speed133) ⚡ "Slow: 21 fps · Why?" after 5 s under 50 fps / half the screen's rate
         paintPerfHud(msg);
         if (msg.adapt) paintAdapt(msg.adapt);
-        if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); } // (round 33 "labpace")
+        if (msg.pace) { paceLast = msg.pace; if (paceOn) paintPace(); restCheck(); } // (round 33 "labpace") (round 151: a picture gone still / moving again)
         if (stats.hidden) stats.hidden = false;
         // (round 16: the line shows on hover; while it can't be seen it isn't rewritten, and never with the same text)
         // (round 38, inputlatency) asked right after the coming frame, when the page's style is fresh: asked here (a
