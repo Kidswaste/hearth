@@ -1411,12 +1411,19 @@ const ThreeMedia = (() => {
     function setGridView(patch) { gridView = { ...gridView, ...patch }; store.set('three.gridView', gridView); waveCache.key = ''; gridCache.key = ''; sizeCanvas(); draw(); return gridView; }
     // Beat light + click track: follow the grid while it plays (checked every frame in tick)
     let lastBeat = -1; let clickCtx = null;
+    // (round 150, stage150) the stage around the preview pulses with the song (tools/three-hudstage.js): the hits the
+    // song's analysis found and your K / S / H markers, its level curve, the beat; values the timeline already holds,
+    // handed over on each worked tick while it plays and only while the reactive stage is on (no new analysis)
+    const stageFeed = { get onsets() { return st.analysis?.onsets || null; }, get marks() { return map.marks || null; }, get level() { return st.analysis?.level || null; }, get fps() { return st.analysis?.fps || 0; } };
     function beatTick() {
       if (!st.playing || !D()) { lastBeat = -1; return; }
+      const S150 = window.LabHudStage?.live ? window.LabHudStage : null;
       const bs = beats(); const i = beatIndex(bs, now());
+      if (S150) S150.feed(now(), stageFeed);
       if (i === lastBeat || i < 0) return;
       lastBeat = i;
       const down = mod(bno(bs, i), bpbNow()) === 0;
+      if (S150) S150.beat(down, mod(bno(bs, i), bpbNow()), bpbNow());
       // restart the beat light's flash without forcing a layout of the whole page (a reflow per beat, before)
       // (round 32: no getAnimations() either, it styled the page on every beat; the class is off for one frame's style,
       // which ends the old flash, and back on the next frame, which starts a new one)

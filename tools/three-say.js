@@ -74,6 +74,7 @@ const LabSay = (() => {
 
   async function apply(p) {
     const h = hk(); if (!h) throw new Error('Open the Lab first.');
+    if (p.kind === 'stage') { window.LabHudStage?.pin(p.op === 'show'); return; } // (round 150, stage150)
     if (p.kind === 'jump') { h.player.seek(p.t); return; }
     if (p.kind === 'render') { await LabExport.panel(p.preset ? { preset: p.preset.id } : {}); return; }
     const sid = h.sketchId();

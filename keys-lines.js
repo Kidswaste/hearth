@@ -68,6 +68,7 @@ const KeysLines = (() => {
       { area: 'Lab', keys: 'Shift+B', what: 'Recall slider slot B', when: inLab, run: act('slotB') },
       { area: 'Lab', keys: 'Shift+C', what: 'Recall slider slot C', when: inLab, run: act('slotC') },
       { area: 'Lab', keys: 'P', what: 'Present: just the picture, fullscreen', when: inLab, run: act('present') },
+      { area: 'Lab', keys: 'I', what: 'Show / hide the preview\'s controls (a clean stage: they show where you point, top right · bottom)', when: inLab, run: act('stageUi') }, // (round 150, stage150)
       { area: 'Lab', keys: 'X', what: 'Effects & layers picker (Shift+X: everything)', when: inLab, run: () => ThreeFX.openPicker('add') },
       { area: 'Lab', keys: 'O', what: 'Your sketches, as pictures', when: inLab },
       { area: 'Lab', keys: '`', what: 'Show / hide the console', when: inLab },
