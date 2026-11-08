@@ -55,12 +55,12 @@ and exports are unchanged (look148's "nothing on the picture" check still passes
 
 | | reactive |
 | --- | --- |
-| colour readings | 4.0 / s |
-| preview page main thread for them | **≈ 2.4 ms / s** (≈ 0.6 ms a reading: the 32 × 18 merge + handing the bitmap over) |
+| colour readings | 3.8–4.0 / s |
+| preview page main thread for them | **≈ 2.4–3.1 ms / s** (≈ 0.6–0.8 ms a reading: the 32 × 18 merge + handing the bitmap over) |
 | window: feed + tint + labels (own counters) | **≈ 1.0 ms / s** |
 | per frame at 60 fps | page ≈ 0.04 ms, window ≈ 0.02 ms (budget 1 ms) |
 | CDP TaskDuration, page on / off | 20.1 / 21.7 ms / s (noise) |
-| CDP TaskDuration, window on / off | 55 / 35 ms / s (load-noisy; includes compositor-driven pulse animations' style ticks) |
+| CDP TaskDuration, window on / off | 55 / 35–40 ms / s in two runs: **≈ +15 ms / s (≈ 0.25 ms a frame at 60 fps)**, the style / paint around the pulses and the glow (own JS ≈ 1 ms / s); under the 1 ms a frame budget |
 
 ## Files
 
