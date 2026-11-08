@@ -136,3 +136,14 @@ Nothing: no Codex-owned file was touched.
   them from your own usage numbers); (3) move **the Lab into its own lighter window**, so the chat side and the 3D side
   don't share one busy window. The biggest single lever is still the scene itself: fewer particles / lights / glow, or
   the Smooth quality setting, frees your graphics card more than anything in Hearth's own code.
+
+## Checks
+- **`dev/checks/perf151.js`** (`node dev/run-checks.js --exact perf151`; group `perf151`): idle chat ≤ 30 ms/s for
+  all processes and ≤ 1.5 window wakeups/s · no endless animation while hushed · the idle rest (30, 60 back on input,
+  never while playing) · the timeline ticks while the song plays · no usage pass from the Lab's readouts · the quick
+  corner flick reveals the controls (3 of 3; before: 0 of 3) · hidden: no stage label writer, ≤ 0.6 wakeups/s, ≤ 30
+  ms/s, backgroundThrottling on. CPU budgets are load-aware ("can't tell" when the box is busy).
+- Final run (`--exact perf151 idlecpu play149 smooth142 stage150 unit:lazymanifest-test unit:boot-test`): **7 / 7
+  passed**. (idlecpu missed two window-CPU budgets on the round-150 baseline here; it passes after.) A first version of
+  the idle rest broke idlecpu's dozing of a stopped looping scene (39 page frames/s instead of ~5); the rest now needs
+  three "moving" reports in a row and stays off for the hush once the picture went still.
