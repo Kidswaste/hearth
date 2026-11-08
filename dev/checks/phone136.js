@@ -3,10 +3,13 @@
 //   1. the entry points: the render queue's done note has 📱 Phone; ▣ Present's right-click has 📱 Live on my phone
 //      (here, with no local network, it says so instead of binding anywhere else)
 //   2. a render served with its token: the page plays it (looping, 540×960 vertical), byte ranges, refused without
-//      the token / with a wrong one / naming another host; the card: QR, address, "connected: 1 phone", Stop
+//      the token / with a wrong one / naming another host; the card: QR, address, "1 phone connected", Stop
 //   3. live: the preview arrives as JPEG frames, the phone shows "live from Hearth · W×H"; the old share's link is dead
 //   4. Stop ends the server: the phone is told, a new connection is refused
 //   5. the idle timeout (1.5 s here, 30 min for the owner)
+//   3b. (round 148b) one phone at a time: a second phone opening the link takes over (only it streams, the server has
+//      exactly one live stream, the old one's is closed), the old page says "Viewing moved to another phone · Tap to
+//      take it back", and a tap takes it back (same rule)
 //   6. bound to one local address only: not 0.0.0.0, not reachable through this box's other (non-LAN) address, a
 //      public or any-address host refused
 // Only the check's own temp data (smoke.js) and the fixture video /tmp/hearth-test-videos/neon_tunnel_v1.mp4.
@@ -82,8 +85,8 @@ renderer.setAnimationLoop((t) => { mesh.rotation.y = t / 900; renderer.render(sc
   const played = await until(() => ph('window.__phone?.playing && document.querySelector("video").currentTime > 0.4 && document.querySelector("video")'), 15000)
     && await ph('(() => { const v = document.querySelector("video"); return { w: v.videoWidth, h: v.videoHeight, loop: v.loop, t: v.currentTime, title: document.getElementById("what").textContent }; })()');
   step('the phone plays it: full screen, vertical (540×960), looping', played && played.w === 540 && played.h === 960 && played.loop && /neon_tunnel_v1/.test(played.title), played);
-  const conn = await until(() => /connected: 1 phone$/.test(PhoneView.card?.querySelector('.pv-conn')?.textContent || '') && PhoneView.card.querySelector('.pv-conn').textContent, 8000);
-  step('the card says "connected: 1 phone"', Boolean(conn), conn || PhoneView.card?.querySelector('.pv-conn')?.textContent);
+  const conn = await until(() => /1 phone connected$/.test(PhoneView.card?.querySelector('.pv-conn')?.textContent || '') && PhoneView.card.querySelector('.pv-conn').textContent, 8000);
+  step('the card says "1 phone connected"', Boolean(conn), conn || PhoneView.card?.querySelector('.pv-conn')?.textContent);
   await T({ open: `http://127.0.0.1:${port1}/v/${'0'.repeat(32)}/`, win: 'b' });
   const refusedPage = await ph('document.body.innerText', 'b');
   step('a phone without the token gets nothing', /link has ended/i.test(refusedPage || '') && !(await ph('Boolean(document.querySelector("video"))', 'b')), String(refusedPage).slice(0, 80));
@@ -104,10 +107,38 @@ renderer.setAnimationLoop((t) => { mesh.rotation.y = t / 900; renderer.render(sc
   const label = size?.width ? `${size.width}×${size.height}` : PhoneView.sizeLabel();
   step('live: the preview reaches the phone as frames, "live from Hearth · W×H" (the song plays here)', got && got.h > got.w && sent >= 6 && st2.streams === 1 && got.what.includes(`live from Hearth · ${label}`),
     { phone: got, framesSent: sent, perSecond: Math.round((sent / 2) * 10) / 10, streams: st2.streams, label });
-  const raw = await T({ get: `/v/${tokL}/live`, bytes: 20000 });
+  const rawNo = await T({ get: `/v/${tokL}/live?c=raw`, bytes: 2000 }); // (not the phone that has the view: 409)
+  await T({ get: `/v/${tokL}/claim?c=raw` });
+  const raw = await T({ get: `/v/${tokL}/live?c=raw`, bytes: 20000 });
+  step('one phone: a client that has not claimed the view gets 409, not a stream', rawNo.status === 409, rawNo);
   step('live: the stream is JPEG parts (multipart/x-mixed-replace)', /multipart\/x-mixed-replace/.test(raw.type) && raw.jpeg, { type: raw.type, got: raw.got });
-  const conn2 = await until(() => /connected: 1 phone$/.test(PhoneView.card?.querySelector('.pv-conn')?.textContent || ''), 8000);
-  step('live: the card shows the size and "connected: 1 phone"', Boolean(conn2) && PhoneView.card.textContent.includes(label), PhoneView.card?.querySelector('.pv-line')?.textContent);
+  const conn2 = await until(() => /1 phone connected$/.test(PhoneView.card?.querySelector('.pv-conn')?.textContent || ''), 8000);
+  step('live: the card shows the size and "1 phone connected"', Boolean(conn2) && PhoneView.card.textContent.includes(label), PhoneView.card?.querySelector('.pv-line')?.textContent);
+
+  // ---------- 3b. one phone at a time (round 148b) ----------
+  const live1 = (win) => ph('(() => { const i = document.querySelector("img"); return !window.__phone.moved && Boolean(i && i.getAttribute("src")) && i.naturalWidth > 0; })()', win);
+  const isMoved = (win) => ph('window.__phone.moved && /Viewing moved to another phone · Tap to take it back/.test(document.getElementById("note").textContent)', win);
+  const movedA0 = await until(() => isMoved('a'), 12000); // (the raw client above claimed it from phone a)
+  await ph('document.body.click()', 'a');
+  const backA0 = await until(async () => (await live1('a')) && (await T({ streams: true }))?.live.length === 1, 12000);
+  const ownerA = (await T({ streams: true }))?.owner;
+  step('one phone: the raw client took it over (phone a says "moved"), a tap on phone a takes it back', Boolean(movedA0) && Boolean(backA0), { movedA0, backA0, ownerA });
+  await T({ open: l1.url, win: 'b' });
+  const bLive = await until(() => live1('b'), 15000);
+  const aMoved = await until(() => isMoved('a'), 12000);
+  const sv1 = await T({ streams: true });
+  const fA = await ph('window.__phone.frames', 'a'); await wait(1200); const fA2 = await ph('window.__phone.frames', 'a');
+  step('one phone: a second phone opens the link → only it streams; the old one shows "Viewing moved to another phone · Tap to take it back"; the server has exactly one live stream',
+    Boolean(bLive) && Boolean(aMoved) && sv1?.live.length === 1 && sv1.live[0].open && sv1.owner !== ownerA && sv1.live[0].cid === sv1.owner && fA2 === fA && (await window.hub.phone.status()).streams === 1,
+    { bLive, aMoved, server: sv1, aFrames: [fA, fA2], noteA: await ph('document.getElementById("note").textContent', 'a') });
+  await ph('document.body.click()', 'a');
+  const aBack = await until(() => live1('a'), 15000);
+  const bMoved = await until(() => isMoved('b'), 12000);
+  const sv2 = await T({ streams: true });
+  const conn3 = PhoneView.card?.querySelector('.pv-conn')?.textContent || '';
+  step('one phone: a tap on the old phone takes it back (same rule): it streams again, the other says "moved", still one live stream, the card "1 phone connected"',
+    Boolean(aBack) && Boolean(bMoved) && sv2?.live.length === 1 && sv2.live[0].open && sv2.owner === ownerA && /1 phone connected$/.test(conn3) && (await window.hub.phone.status()).phones === 1,
+    { aBack, bMoved, server: sv2, card: conn3 });
 
   // ---------- 4. Stop ----------
   [...PhoneView.card.querySelectorAll('button')].find((b) => /Stop/.test(b.textContent)).click();
