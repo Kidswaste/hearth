@@ -58,6 +58,7 @@ const LabHudStage = (() => {
     const flash = mk('div', 'st-flash', [br('st-tl'), br('st-tr'), br('st-bl'), br('st-brr')]);
     const rflash = mk('div', 'st-rflash', [mk('i', 'st-rule st-rt'), mk('i', 'st-rule st-rb')]);
     const glow = mk('i', 'st-glow');
+    const fill = mk('i', 'st-prog-fill'); const prog = mk('div', 'st-prog', [fill]);
     const reticle = mk('i', 'st-x');
     const state = txt('st-state', 'STOP'); const size = txt('st-size', '');
     const pips = mk('span', 'st-pips', Array.from({ length: 4 }, () => mk('i')));
@@ -70,8 +71,8 @@ const LabHudStage = (() => {
     const brl = mk('div', 'st-lb st-lb-br', [fps, mk('b', 'st-k', ['FPS']), qual]);
     const hintTR = mk('div', 'st-hint st-hint-tr', [mk('i', 'st-hint-ic'), txt('', 'VIEW')]);
     const hintB = mk('div', 'st-hint st-hint-b', [txt('', 'STATS'), mk('i', 'st-hint-ic')]);
-    hud.append(glow, frame, rflash, flash, reticle, tl, tc0, bl, brl, hintTR, hintB);
-    S.h = { hud, frame, flash, rflash, glow, state, size, pips: [...pips.children], bpm, hat, tc, dur, fps, qual, tl };
+    hud.append(glow, frame, prog, rflash, flash, reticle, tl, tc0, bl, brl, hintTR, hintB);
+    S.h = { hud, frame, flash, rflash, glow, prog, fill, state, size, pips: [...pips.children], bpm, hat, tc, dur, fps, qual, tl };
     return hud;
   }
   const put = (n, v) => { if (n && n.firstChild && n.firstChild.data !== v) { n.firstChild.data = v; return true; } return false; };
@@ -184,10 +185,30 @@ const LabHudStage = (() => {
     put(H.bpm, m?.bpm ? `${Math.round(m.bpm)} BPM` : '— BPM');
     if (m?.bpb && m.bpb !== S.bpb) setPips(m.bpb);
     if (!S.playing && m?.beat) beatPips((m.beat || 1) - 1);
+    if (!S.playing || reduced()) progress();
     if (S.fps != null) put(H.fps, String(Math.round(S.fps)).padStart(3, '0'));
     const q = pv.querySelector('.three-stats .lab-q')?.textContent?.replace(/^Quality:\s*/i, '').trim() || '';
     put(H.qual, q ? ` · ${q}`.toUpperCase() : '');
     S.counts.labels += 1; S.labelMs += performance.now() - t0;
+  }
+  // the song's position as a hairline along the bottom edge: glides on the compositor while it plays (one animation from
+  // here to the end, made again on a seek / loop / play), set in place while stopped
+  let glide = null;
+  function progress(restart) {
+    const F = S.h.fill; if (!F) return;
+    let m = null; try { m = S.media?.meta; } catch { /* no timeline */ }
+    const on = Boolean(m?.song && m.dur > 0);
+    cls(S.h.prog, 'st-none', !on);
+    if (!on) return;
+    const k = Math.max(0, Math.min(1, m.t / m.dur));
+    if (S.playing && !reduced() && look() !== 'plain') {
+      if (glide && !restart) return;
+      glide?.cancel();
+      try { glide = F.animate([{ transform: `scaleX(${k})` }, { transform: 'scaleX(1)' }], { duration: Math.max(1, (m.dur - m.t) * 1000), easing: 'linear', fill: 'forwards' }); } catch { glide = null; }
+      return;
+    }
+    if (glide) { glide.cancel(); glide = null; }
+    const v = `scaleX(${k.toFixed(4)})`; if (F.style.transform !== v) F.style.transform = v;
   }
   function setPips(n) {
     n = Math.min(8, Math.max(2, n || 4)); S.bpb = n;
@@ -257,6 +278,7 @@ const LabHudStage = (() => {
     const t0 = performance.now();
     S.counts.feed += 1;
     const jump = S.lastT < 0 || t < S.lastT - 0.02 || t - S.lastT > 0.4;
+    if (jump) progress(true);
     for (const [id, a, as] of lanes(F)) {
       if (!a?.length) { S.ix[id] = 0; continue; }
       if (jump || S.ix[id] == null || S.ix[id] > a.length) { S.ix[id] = lower(a, t, tOf); continue; }
@@ -315,7 +337,7 @@ const LabHudStage = (() => {
     preview.addEventListener('pointerleave', () => wake('out'));
     preview.addEventListener('focusin', (e) => { if (e.target.closest?.('.stage-pill, .three-stats')) wake(); });
     watchWarnings();
-    addEventListener('hearth:lab-playing', (e) => { S.playing = Boolean(e.detail?.playing); S.lastT = -1; if (!S.playing) { S.lvlShown = -1; S.h.glow.style.opacity = ''; } config(); paint(); });
+    addEventListener('hearth:lab-playing', (e) => { S.playing = Boolean(e.detail?.playing); S.lastT = -1; if (!S.playing) { S.lvlShown = -1; S.h.glow.style.opacity = ''; } progress(true); config(); paint(); });
     const re = () => { S.sent = ''; config(); };
     rmq.addEventListener?.('change', re);
     new MutationObserver(re).observe(de, { attributes: true, attributeFilter: ['data-motion', 'data-lablook'] });

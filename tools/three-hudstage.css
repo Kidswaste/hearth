@@ -54,14 +54,14 @@ html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-fx-none) > .st-hud
 .st-frame, .st-flash, .st-rflash { inset: 0; }
 .st-flash, .st-rflash { opacity: 0; will-change: opacity, transform; }
 /* corner brackets: an L with a registration notch, a hair inside the picture's corner */
-.st-br { width: 26px; height: 26px; border: 0 solid var(--st-ink-a); filter: drop-shadow(0 0 3px #000c); }
+.st-br { position: absolute; width: 30px; height: 30px; border: 0 solid var(--st-ink); filter: drop-shadow(0 0 4px var(--st-glow)) drop-shadow(0 0 2px #000); }
 .st-br::after { content: ""; position: absolute; width: 3px; height: 3px; background: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
 .st-br.st-tl { left: 10px; top: 10px; border-top-width: 1px; border-left-width: 1px; }
 .st-br.st-tr { right: 10px; top: 10px; border-top-width: 1px; border-right-width: 1px; }
 .st-br.st-bl { left: 10px; bottom: 10px; border-bottom-width: 1px; border-left-width: 1px; }
 .st-br.st-brr { right: 10px; bottom: 10px; border-bottom-width: 1px; border-right-width: 1px; }
 .st-br.st-tl::after { left: 4px; top: 4px; } .st-br.st-tr::after { right: 4px; top: 4px; } .st-br.st-bl::after { left: 4px; bottom: 4px; } .st-br.st-brr::after { right: 4px; bottom: 4px; }
-.st-flash .st-br { border-color: var(--st-ink); filter: drop-shadow(0 0 5px var(--st-glow)) drop-shadow(0 0 1px var(--st-ink)); width: 34px; height: 34px; }
+.st-flash .st-br { border-color: #fff; filter: drop-shadow(0 0 6px var(--st-glow)) drop-shadow(0 0 2px var(--st-ink)); width: 40px; height: 40px; }
 .st-flash .st-br.st-tl { left: 6px; top: 6px; } .st-flash .st-br.st-tr { right: 6px; top: 6px; } .st-flash .st-br.st-bl { left: 6px; bottom: 6px; } .st-flash .st-br.st-brr { right: 6px; bottom: 6px; }
 .st-flash .st-br { border-width: 0; } .st-flash .st-br.st-tl { border-top-width: 2px; border-left-width: 2px; } .st-flash .st-br.st-tr { border-top-width: 2px; border-right-width: 2px; } .st-flash .st-br.st-bl { border-bottom-width: 2px; border-left-width: 2px; } .st-flash .st-br.st-brr { border-bottom-width: 2px; border-right-width: 2px; }
 /* calibration rulers: minor ticks every 8 px, a major one every 64 px, fading to the corners */
@@ -76,6 +76,10 @@ html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-fx-none) > .st-hud
 .st-rule.st-rt, .st-rule.st-rb { -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
 .st-rule.st-rl, .st-rule.st-rr { -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); }
 .st-rflash .st-rule.st-rt, .st-rflash .st-rule.st-rb { background: linear-gradient(90deg, transparent, var(--st-ink) 50%, transparent) center / 100% 1px no-repeat; filter: drop-shadow(0 0 4px var(--st-glow)); }
+/* the song's position: a hairline along the bottom ruler with a bright head */
+.st-prog { left: 48px; right: 48px; bottom: 6px; height: 1px; background: var(--st-faint); }
+.st-prog.st-none { display: none; }
+.st-prog-fill { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); background: linear-gradient(90deg, transparent, var(--st-ink-a) 70%, #fff); box-shadow: 0 0 6px var(--st-glow); will-change: transform; }
 /* the edge glow: the scene's hue, breathing with the song's level while it plays */
 .st-glow { inset: 0; opacity: .14; box-shadow: inset 0 0 0 1px var(--st-faint), inset 0 0 60px -18px var(--st-glow); will-change: opacity; transition: opacity .6s ease; }
 .three-preview.st-play .st-glow { transition: none; }
@@ -132,8 +136,9 @@ html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill {
   background: linear-gradient(200deg, var(--st-well), hsl(var(--st-hd) 30% 4% / .5)) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
   border: 1px solid var(--st-dim) !important; border-radius: 1px !important; box-shadow: 0 0 0 1px #0008, 0 10px 30px -12px #000, 0 0 26px -14px var(--st-glow) !important;
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px)) !important;
-  padding: 5px !important; gap: 4px !important; top: 26px; right: 26px; color: var(--st-ink);
+  padding: 5px !important; gap: 4px !important; top: 22px; right: 22px; color: var(--st-ink); align-items: center;
 }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill > * { flex: none; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill :is(.stage-btn, .stage-more) {
   background: transparent !important; border: 1px solid transparent !important; border-radius: 1px !important; box-shadow: none !important; color: var(--st-ink) !important;
   font: 500 10px/1 var(--st-mono) !important; letter-spacing: .14em !important; text-transform: uppercase; text-shadow: 0 0 6px hsl(var(--st-hd) 80% 60% / .35);
@@ -143,7 +148,7 @@ html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-btn.o
 html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .freeze-btn.on { color: var(--fh-ember, #ff7a1a) !important; border-color: var(--fh-ember, #ff7a1a) !important; background: color-mix(in srgb, var(--fh-ember, #ff7a1a) 14%, transparent) !important; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-seg { border: 1px solid var(--st-dim) !important; border-radius: 1px !important; background: none !important; box-shadow: none !important; }
 html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid var(--st-faint) !important; }
-html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-size { color: var(--st-ink-a); font: 500 8.5px/1 var(--st-mono); letter-spacing: .2em; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-size { display: none; } /* (the size is in the stage's top-left label) */
 html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-more option { background: #070b16; color: #dfe8ff; }
 /* the stats line: a mono readout strip on a soft well, an edge mark on the left */
 html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats {

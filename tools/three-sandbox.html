@@ -3140,10 +3140,10 @@ function setGuides(kind) {
 // things for the Lab window, only in the Lab's own preview (never the export page, ▶ Play, a Stage window or a render):
 //   · where the pointer is over the picture (0..1 of the page), ≤ 8 a second while it moves, so the Lab can reveal the
 //     controls of the corner you point at (the window gets no pointer events over this page)
-//   · the picture's colour, ≤ 4 a second when asked (reactive stage): the merge of the layers at 32 × 18 px, read
-//     right after a frame was drawn (no redraw), its saturation-weighted hue, brightness and edge colour; sent only when
-//     it changed (or every 2 s). Its cost is counted (__stage150.info()).
-const STG = { ptr: false, tint: false, every: 250, timer: 0, at: 0, c: null, seen: -1, last: null, sentAt: 0, n: 0, ms: 0, max: 0, sent: 0, pAt: 0, out: true };
+//   · the picture's colour, ≤ 4 a second when asked (reactive stage): the merge of the layers at 32 × 18 px, taken
+//     right after a frame was drawn (no redraw) and read by a worker, its chroma-weighted hue, brightness and edge
+//     colour; sent only when it changed (or every 2 s). Its main-thread cost is counted (__stage150.info()).
+const STG = { ptr: false, tint: false, every: 250, timer: 0, at: 0, c: null, w: undefined, force: false, lost: 0, msMerge: 0, msRead: 0, busy: false, seen: -1, last: null, sentAt: 0, n: 0, ms: 0, max: 0, sent: 0, pAt: 0, out: true };
 const stgOk = () => mode === 'sketch' && !XP_PAGE && !GAME && !window.__stageHost;
 function stgSet(msg) {
   if (!stgOk()) return;
@@ -3154,13 +3154,35 @@ function stgSet(msg) {
   if (tint && !STG.timer) STG.timer = realSetInterval(() => { if (STG.tint && frameTick !== STG.seen && !parked) frameSoon(stgSample); }, STG.every);
   if (tint && msg.now) frameSoon(() => stgSample(true));
 }
+// (the read happens off the main thread: a synchronous read of the picture (getImageData / toBlob on the merge) waits
+// for the graphics card to finish everything queued, a whole frame on a busy one (measured 50–110 ms on software GL). The
+// merge is drawn on the card at 32 × 18 (no wait), taken as an ImageBitmap (no wait) and handed to a small worker that
+// reads its 2,304 bytes; the colour is worked out here when they arrive)
+const STG_WORKER = 'onmessage=(e)=>{const b=e.data;let d=null;try{const c=new OffscreenCanvas(32,18);const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(b,0,0);d=g.getImageData(0,0,32,18).data;}catch(err){}try{b.close();}catch(err){}if(d)postMessage(d.buffer,[d.buffer]);else postMessage(null);};';
+function stgWorker() {
+  if (STG.w !== undefined) return STG.w;
+  try {
+    const url = URL.createObjectURL(new Blob([STG_WORKER], { type: 'text/javascript' }));
+    STG.w = new Worker(url);
+    STG.w.onmessage = (e) => { STG.busy = false; const t = realNow(); if (e.data && STG.tint) { stgRead(new Uint8Array(e.data), STG.force); STG.n += 1; STG.msRead += realNow() - t; STG.ms += realNow() - t; } STG.force = false; };
+    STG.w.onerror = () => { STG.busy = false; STG.w = null; };
+  } catch { STG.w = null; }
+  return STG.w;
+}
 function stgSample(force) {
-  if (!STG.tint) return;
+  if (!STG.tint || STG.busy) return;
+  const w = stgWorker(); if (!w) return;
   STG.seen = frameTick;
   const t0 = realNow();
-  let d = null;
-  try { const c = (STG.c = composite(STG.c, 1, { w: 32, h: 18 })); d = c.getContext('2d').getImageData(0, 0, 32, 18).data; } catch { return; }
-  let x = 0; let y = 0; let w = 0; let R = 0; let G = 0; let B = 0; let L = 0; let eR = 0; let eG = 0; let eB = 0; let en = 0;
+  let c = null;
+  try { c = (STG.c = composite(STG.c, 1, { w: 32, h: 18 })); } catch { return; }
+  STG.busy = true; STG.force = STG.force || Boolean(force);
+  createImageBitmap(c).then((bm) => { try { w.postMessage(bm, [bm]); } catch { STG.busy = false; } }, () => { STG.busy = false; });
+  const ms = realNow() - t0; STG.ms += ms; STG.msMerge += ms; STG.max = Math.max(STG.max, ms);
+  clearTimeout(STG.lost); STG.lost = realSetTimeout(() => { STG.busy = false; }, 3000); // (a lost answer never stops the readings)
+}
+function stgRead(d, force) {
+  let x = 0; let y = 0; let R = 0; let G = 0; let B = 0; let L = 0; let eR = 0; let eG = 0; let eB = 0; let en = 0;
   for (let i = 0, p = 0; i < d.length; i += 4, p += 1) {
     const r = d[i] / 255; const g = d[i + 1] / 255; const b = d[i + 2] / 255;
     const mx = Math.max(r, g, b); const mn = Math.min(r, g, b); const c = mx - mn;
@@ -3169,13 +3191,11 @@ function stgSample(force) {
     if (px === 0 || px === 31 || py === 0 || py === 17) { eR += r; eG += g; eB += b; en += 1; }
     if (c < 0.04) continue;
     let h = mx === r ? ((g - b) / c) % 6 : mx === g ? (b - r) / c + 2 : (r - g) / c + 4; h *= Math.PI / 3;
-    const k = c; // chroma (saturation × value): bright, colourful pixels lead
-    x += Math.cos(h) * k; y += Math.sin(h) * k; w += k;
+    x += Math.cos(h) * c; y += Math.sin(h) * c; // chroma-weighted: bright, colourful pixels lead
   }
   const n = d.length / 4;
-  const hue = w > 0 ? ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360 : null;
+  const hue = x || y ? ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360 : null;
   const out = { type: 'stage-tint', h: hue == null ? null : Math.round(hue), s: Math.round(Math.min(1, (Math.hypot(x, y) / n) * 3) * 100) / 100, l: Math.round((L / n) * 100) / 100, rgb: [R, G, B].map((v) => Math.round((v / n) * 255)), edge: [eR, eG, eB].map((v) => Math.round((v / Math.max(1, en)) * 255)) };
-  const ms = realNow() - t0; STG.n += 1; STG.ms += ms; STG.max = Math.max(STG.max, ms);
   const p = STG.last; const now = realNow();
   const moved = !p || (out.h == null) !== (p.h == null) || Math.abs(((out.h ?? 0) - (p.h ?? 0) + 540) % 360 - 180) > 3 || Math.abs(out.s - p.s) > 0.04 || Math.abs(out.l - p.l) > 0.03;
   if (!force && !moved && now - STG.sentAt < 2000) return;
@@ -3191,7 +3211,7 @@ addEventListener('pointermove', (e) => {
   post({ type: 'stage-ptr', x: Math.round((e.clientX / Math.max(1, innerWidth)) * 1000) / 1000, y: Math.round((e.clientY / Math.max(1, innerHeight)) * 1000) / 1000 });
 }, { passive: true, capture: true });
 document.documentElement.addEventListener('pointerleave', () => { if (!STG.ptr || STG.out) return; STG.out = true; post({ type: 'stage-ptr', out: true }); });
-window.__stage150 = { info: () => ({ tint: STG.tint, ptr: STG.ptr, every: STG.every, samples: STG.n, ms: Math.round(STG.ms * 100) / 100, avgMs: STG.n ? Math.round((STG.ms / STG.n) * 1000) / 1000 : 0, maxMs: Math.round(STG.max * 100) / 100, sent: STG.sent, last: STG.last }), reset: () => { STG.n = 0; STG.ms = 0; STG.max = 0; STG.sent = 0; return 1; } };
+window.__stage150 = { info: () => ({ tint: STG.tint, ptr: STG.ptr, every: STG.every, samples: STG.n, ms: Math.round(STG.ms * 100) / 100, avgMs: STG.n ? Math.round((STG.ms / STG.n) * 1000) / 1000 : 0, maxMs: Math.round(STG.max * 100) / 100, merge: Math.round(STG.msMerge * 10) / 10, read: Math.round(STG.msRead * 10) / 10, worker: Boolean(STG.w), sent: STG.sent, last: STG.last }), reset: () => { STG.n = 0; STG.ms = 0; STG.max = 0; STG.sent = 0; STG.msMerge = 0; STG.msRead = 0; return 1; } };
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
 addEventListener('mousemove', () => { if (!presentCursor) return; document.documentElement.style.cursor = ''; clearTimeout(cursorTimer); cursorTimer = realSetTimeout(() => { document.documentElement.style.cursor = 'none'; }, 2000); });
