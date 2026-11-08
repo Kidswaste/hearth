@@ -547,7 +547,7 @@ function cpxHook() {
     const spr = P.setPixelRatio; const rnd = P.render;
     // the code's own ratio: kept as its share of the scene's own ratio (the renderer's before any lightening)
     P.setPixelRatio = function (v) { if (!CPX.inner) { const r = this.renderer; const base = r ? r.__basePR ?? r.getPixelRatio?.() : 0; if (base > 0 && Number(v) > 0) this.__cpxK = Number(v) / base; } return spr.call(this, v); };
-    P.render = function (dt) { if (CPX.on) cpxFollow(this, spr); return rnd.call(this, dt); };
+    P.render = function (dt) { if (CPX.on) cpxFollow(this, spr); else if (this.__cpxFull > 0 && Math.abs(this._pixelRatio - this.__cpxFull) > 1e-3) { CPX.inner = true; try { spr.call(this, this.__cpxFull); } finally { CPX.inner = false; } } return rnd.call(this, dt); }; // (checks' A/B off: back at its full-quality ratio, as it stayed before this round)
   }).catch(() => { CPX.hooked = false; });
 }
 function cpxFollow(c, spr) {
@@ -558,6 +558,7 @@ function cpxFollow(c, spr) {
   const pr = r.getPixelRatio();
   if (c.__cpxK === undefined) c.__cpxK = c._pixelRatio > 0 && pr > 0 ? c._pixelRatio / pr : 1; // (its share at its first render: 1 when made after the renderer's setPixelRatio)
   const want = c.__cpxK * pr;
+  c.__cpxFull = c.__cpxK * (r.__basePR ?? pr);
   if (!(want > 0) || Math.abs(want - c._pixelRatio) < 1e-3) return;
   CPX.inner = true; try { spr.call(c, want); } finally { CPX.inner = false; }
   CPX.resized += 1;
@@ -3748,7 +3749,7 @@ window.__lab240 = {
 };
 // (round 149, play149) the checks' view of this round's savings, and their A/B switch (off: as before the round)
 window.__labPlay149 = {
-  set: ({ off = false } = {}) => { CPX.on = !off; SHG.half = !off; return { composer: CPX.on, halfShadows: SHG.half }; },
+  set: ({ off = false, composer = !off, shadows = !off } = {}) => { CPX.on = Boolean(composer); SHG.half = Boolean(shadows); return { composer: CPX.on, halfShadows: SHG.half }; },
   info: () => ({ composer: { on: CPX.on, hooked: CPX.hooked, made: CPX.made, resized: CPX.resized, skipped: CPX.skipped }, shadows: { half: SHG.half, halfNow: shHalf(), drawn: SHG.drawn, skipped: SHG.skipped, halfSkips: SHG.halfSkips }, frameTick }),
 };
 // ---------- big instanced crowds: only the copies a camera can see (round 74, labdraw74) ----------
