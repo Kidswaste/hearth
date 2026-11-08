@@ -82,10 +82,22 @@ view or Hearth is hidden; leaving the view puts the stage to sleep.
 2. The pointer's last position always reaches the Lab (`tools/three-sandbox.html`).
 3. **Idle rest**: nobody has used Hearth for a minute (idlecpu's hush) and nothing plays: Auto fps eases the preview to
    30, as when another window is in front. Never while the song plays, with live sound, recording, rendering or on the
-   Stage window; the first input brings full rate (`tools/three.js`, `idleRest`).
+   Stage window; a still picture is left alone (it already dozes at 4 frames a second); the first input brings full
+   rate (`tools/three.js`, `idleRest`).
 4. The Lab look's ambient loops pause with the hush (`idlecpu.css`: rules only, the look files untouched).
 5. The usage pass ignores the Lab's live readouts (`usage.js` NOISY).
 6. The timeline tick can't stay parked (`tools/three-media.js`).
+
+## Seen, not changed (next round)
+- **A 30 fps cap keeps a still picture from dozing.** With the cap on, a still scene's preview page woke ~57 times a
+  second ("layer main unchecked": the frame gate's held frames skip the still check) instead of dozing at 4. The idle
+  rest avoids it (still pictures aren't rested); Auto's unfocused 30 cap goes through the same code, so a still Lab
+  scene behind another app likely wakes its page every frame (it draws nothing: ~1–2 renders a second). Worth fixing
+  in the sandbox's frame gate / doze (`tools/three-sandbox.html`, `dozeWhy`).
+- The sound output stays open while the song is stopped (the audio service 4–7 ms a second, also while hidden).
+  Suspending it when stopped would change what a scene reads from a paused song's analyser, so it was left alone.
+- Three page-wide MutationObservers (a11y.js, usage.js, cmdbar.js) each wake ~2 times a second while a scene plays
+  (cheap filters, they return at once); the instrument header's sparkline rewrites 16 bars per stats update.
 
 ## For the Lab look redesign (costly things in the look files — reported, not changed)
 - `tools/three-hudstage.css` `.st-glow`: `will-change: opacity` on a layer the size of the whole picture (≈ 580 k px
