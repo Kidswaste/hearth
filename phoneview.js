@@ -3,7 +3,8 @@
 //   PhoneView.render(file)  a finished render (the render queue's done note and its row menu: 📱 Open on my phone)
 //   PhoneView.live()        the Lab's preview, streamed (▣ Present's right-click menu: 📱 Live on my phone); the song
 //                           plays on the computer; frames are taken only while a phone is watching
-// The card (bottom right): the QR code (it carries a one-time token), the local address, "connected: 1 phone", Stop.
+// The card (bottom right): the QR code (it carries a one-time token), the local address, "1 phone connected", Stop.
+// One phone at a time (round 148b): another phone opening the link takes the view over (phoneviewmain.js).
 // Closing the card stops the server. Nothing is uploaded and nothing leaves the local network. The AI is not involved.
 const PhoneView = (() => {
   const A = window.hub.phone;
@@ -89,7 +90,7 @@ const PhoneView = (() => {
         el('div', { class: 'remote-how' },
           el('div', { class: 'pv-line', text: line }),
           el('div', { class: 'remote-url', text: st.address, title: 'This computer on your Wi-Fi. The QR code also carries a one-time code, so scan it rather than typing this.' }),
-          el('div', { class: `pv-conn${n ? ' on' : ''}`, text: n ? `● connected: ${n} phone${n === 1 ? '' : 's'}` : 'waiting for your phone…' }),
+          el('div', { class: `pv-conn${n ? ' on' : ''}`, text: n ? '● 1 phone connected' : 'waiting for your phone…', title: 'One phone at a time: opening the link on another phone moves the view there' }),
           el('div', { class: 'remote-sub', text: `Stops when you close this, or after ${st.idleMin} min with nobody watching` }))),
       el('div', { class: 'remote-foot' }, el('button', { class: 'small', type: 'button', text: '■ Stop', on: { click: () => stop('off') } })),
     );

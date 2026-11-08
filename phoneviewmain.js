@@ -8,7 +8,10 @@
 //                         naming another host (DNS rebinding), are refused
 //   a one-time token      128 random bits, made for this share and in the QR code's address; every request needs it;
 //                         it dies with the share (Stop, the card closed, 30 min with nobody watching, the window gone)
-//   nothing else          GET / HEAD only, five paths under the token, no listing, no upload, nothing cached
+//   nothing else          GET / HEAD only, six paths under the token, no listing, no upload, nothing cached
+//   one phone at a time   (round 148b) the page claims the view when it opens; the newest phone wins and the old one's
+//                         stream / video is closed on the spot (its socket destroyed: nothing keeps encoding for it);
+//                         the old page then gets 409 and says "Viewing moved to another phone · Tap to take it back"
 // Not the deploy / publish path (deploymain.js): nothing here leaves the local network and nothing is uploaded.
 const fs = require('fs');
 const path = require('path');
@@ -19,18 +22,31 @@ const { isPrivate, lanAddress } = require('./remotemain.js'); // (the phone remo
 const PORTS = [47840, 47841, 47842, 47843, 47844]; // (the phone remote uses 47830…; a steady port for the firewall)
 const IDLE_MS = 30 * 60000;
 const SEEN_MS = 15000; // a phone counts as connected for 15 s after its last request (the page pings every 5 s)
-const MAX_PHONES = 8;
 const VIDEO = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm' };
 const BOUNDARY = 'hearthframe';
 const isTest = () => Boolean(process.env.HEARTH_TEST_SAVE_DIR);
 
 function register(ipcMain, getWin) {
   const send = (ch, data) => { const w = getWin(); if (w && !w.isDestroyed()) w.webContents.send(ch, data); };
-  let S = null; // the share: { server, host, port, token, mode, file, type, size, title, label, startedAt, last, idleMs, timer, phones: Map, streams: Set, frame, served, refused }
+  let S = null; // the share: { server, host, port, token, mode, file, type, size, title, label, startedAt, last, idleMs, timer, owner, ownerAt, streams: Set, videos: Set, frame, served, refused }
   let lastFrame = null;
 
   const base = () => (S ? `http://${S.host}:${S.port}` : null);
-  const phonesNow = () => { if (!S) return 0; const t = Date.now(); for (const st of S.streams) if (st.cid) S.phones.set(st.cid, t); for (const [id, at] of S.phones) if (t - at > SEEN_MS) S.phones.delete(id); return Math.max(S.phones.size, S.streams.size ? 1 : 0); };
+  // one phone: the owner (the phone that claimed last) counts as connected while it streams or pinged in the last 15 s
+  const phonesNow = () => { if (!S) return 0; return S.streams.size || S.videos.size || (S.owner !== null && Date.now() - S.ownerAt <= SEEN_MS) ? 1 : 0; };
+  const isOwner = (cid) => S.owner === null || S.owner === cid;
+  // the newest phone wins: everything still open for any other phone is closed now (the socket too, not just the response)
+  function claim(cid) {
+    S.owner = cid; S.ownerAt = Date.now();
+    for (const set of [S.streams, S.videos]) {
+      for (const st of [...set]) {
+        if (st.cid === cid) continue;
+        set.delete(st);
+        try { st.res.end(); st.res.socket?.destroy(); } catch { /* gone */ }
+      }
+    }
+    changed(); wantFrames();
+  }
   function status() {
     if (!S) return { on: false };
     return { on: true, mode: S.mode, url: `${base()}/v/${S.token}/`, address: base(), host: S.host, port: S.port, title: S.title, label: S.label, phones: phonesNow(), startedAt: S.startedAt, idleMin: Math.round(S.idleMs / 60000), idleMs: S.idleMs, served: S.served, refused: S.refused, streams: S.streams.size, frames: S.frames, platform: process.platform };
@@ -58,13 +74,15 @@ function register(ipcMain, getWin) {
     if (!m || !tokenOk(m[1])) { refuse(res, 403, 'This link has ended. Scan the new code on the computer.'); return; }
     const what = m[2];
     const cid = String(u.searchParams.get('c') || '').replace(/[^\w-]/g, '').slice(0, 24);
-    if (cid && (S.phones.has(cid) || S.phones.size < MAX_PHONES)) S.phones.set(cid, Date.now());
     S.last = Date.now();
     if (what === '') return file(res, req, path.join(__dirname, 'phoneview-page.html'), 'text/html; charset=utf-8');
     if (what === 'page.js') return file(res, req, path.join(__dirname, 'phoneview-page.js'), 'text/javascript; charset=utf-8');
+    if (what === 'claim' && req.method === 'GET') { claim(cid); res.writeHead(200, headers('application/json')); res.end(JSON.stringify({ mode: S.mode, title: S.title, label: S.label })); return; }
+    if (!isOwner(cid)) { res.writeHead(409, headers('application/json')); res.end(JSON.stringify({ moved: true })); return; } // (another phone has the view)
+    if (S.owner === cid) S.ownerAt = Date.now();
     if (what === 'info') { res.writeHead(200, headers('application/json')); res.end(JSON.stringify({ mode: S.mode, title: S.title, label: S.label })); changed(); return; }
     if (what === 'ping') { res.writeHead(204, headers('text/plain')); res.end(); changed(); return; }
-    if (what === 'video' && S.mode === 'render') return video(req, res);
+    if (what === 'video' && S.mode === 'render') return video(req, res, cid);
     if (what === 'live' && S.mode === 'live') return live(req, res, cid);
     refuse(res, 404, 'Not found');
   }
@@ -75,7 +93,7 @@ function register(ipcMain, getWin) {
     });
   }
   // the render: byte ranges (a phone's player asks for pieces, and iPhones need them)
-  function video(req, res) {
+  function video(req, res, cid) {
     fs.stat(S.file, (err, st) => {
       if (err || !st.isFile()) { refuse(res, 404, 'The video is gone'); return; }
       const size = st.size; const r = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
@@ -89,13 +107,15 @@ function register(ipcMain, getWin) {
       if (req.method === 'HEAD') { res.end(); return; }
       S.served += 1;
       const s = fs.createReadStream(S.file, { start: a, end: b });
-      s.on('error', () => res.destroy()); res.on('close', () => s.destroy());
+      const vr = { res, cid }; S.videos.add(vr); const share = S;
+      s.on('error', () => res.destroy()); res.on('close', () => { s.destroy(); share.videos.delete(vr); });
       s.pipe(res);
     });
   }
   // live: one long response, a JPEG per part, as fast as the Lab sends them (a slow phone skips frames)
   function live(req, res, cid) {
-    if (S.streams.size >= MAX_PHONES) { refuse(res, 503, 'Too many phones'); return; }
+    if (S.owner === null) S.owner = cid; // (no claim yet: the first to watch has it)
+    for (const old of [...S.streams]) { S.streams.delete(old); try { old.res.end(); old.res.socket?.destroy(); } catch { /* gone */ } } // (one stream, ever: a reload replaces it)
     res.writeHead(200, headers(`multipart/x-mixed-replace; boundary=${BOUNDARY}`, { Connection: 'close', Pragma: 'no-cache' }));
     if (req.method === 'HEAD') { res.end(); return; }
     req.socket.setNoDelay(true);
@@ -156,7 +176,7 @@ function register(ipcMain, getWin) {
     }
     if (!srv.listening) throw new Error('Could not open a port on this computer for the phone');
     const idleMs = isTest() && o.idleMs > 0 ? Number(o.idleMs) : IDLE_MS; // (shorter only in a test copy)
-    S = { server: srv, host, port: srv.address().port, token: crypto.randomBytes(16).toString('hex'), mode, file, type, title: String(o.title || (file ? path.basename(file) : 'Live')).slice(0, 120), label: String(o.label || '').slice(0, 80), startedAt: Date.now(), last: Date.now(), idleMs, phones: new Map(), streams: new Set(), served: 0, refused: 0, frames: 0, timer: 0 };
+    S = { server: srv, host, port: srv.address().port, token: crypto.randomBytes(16).toString('hex'), mode, file, type, title: String(o.title || (file ? path.basename(file) : 'Live')).slice(0, 120), label: String(o.label || '').slice(0, 80), startedAt: Date.now(), last: Date.now(), idleMs, owner: null, ownerAt: 0, streams: new Set(), videos: new Set(), served: 0, refused: 0, frames: 0, timer: 0 };
     S.timer = setInterval(checkIdle, Math.min(30000, Math.max(100, idleMs / 4)));
     lastFrame = null;
     watchWindow();
@@ -167,8 +187,8 @@ function register(ipcMain, getWin) {
     if (!S) return status();
     const s = S; S = null;
     clearInterval(s.timer);
-    for (const st of s.streams) { try { st.res.end(); st.res.socket?.destroy(); } catch { /* gone */ } }
-    s.streams.clear();
+    for (const st of [...s.streams, ...s.videos]) { try { st.res.end(); st.res.socket?.destroy(); } catch { /* gone */ } }
+    s.streams.clear(); s.videos.clear();
     try { s.server.close(); s.server.closeAllConnections?.(); } catch { /* closed */ }
     lastFrame = null;
     if (why !== 'replaced') { send('phone:stopped', { why }); wantFrames(); }
@@ -212,6 +232,7 @@ function register(ipcMain, getWin) {
     }
     if (o.addresses) return Object.entries(require('os').networkInterfaces()).flatMap(([name, l]) => (l || []).filter((i) => i.family === 'IPv4' || i.family === 4).map((i) => ({ name, address: i.address, internal: i.internal, private: isPrivate(i.address) })));
     if (o.bound) return S ? S.server.address() : null;
+    if (o.streams) return S ? { owner: S.owner, live: [...S.streams].map((st) => ({ cid: st.cid, open: !st.res.destroyed && !st.res.writableEnded })), videos: S.videos.size } : null;
     return null;
   });
   return { start, stop, status };
