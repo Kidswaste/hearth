@@ -1,9 +1,10 @@
-# Round 152 · The Lab gets a cleaner look: "Hearth Redux"
+# Round 152: the Lab's new look, "Hearth Redux"
+*November 2026*
 
 You asked for Forgeheart's gold / orange / dark grey, a cleaner and more futuristic Lab with far fewer buttons on screen,
 pretty animations when things come and go, and good performance again. Here is what changed.
 
-## The colours
+## 🎨 The colours
 
 - Dark graphite grey everywhere in the Lab (no more navy blue).
 - **Gold** is the main colour: ▶ Run, ▶ Play on the timeline, the panel numbers (01 · 02 · 03), sliders, the stage's
@@ -12,14 +13,14 @@ pretty animations when things come and go, and good performance again. Here is w
   little dot next to 01 PREVIEW when the scene is playing.
 - Labels are small, mono, warm off-white / grey. No scanlines, dot grids or glows any more.
 
-## What you see when you're not touching anything
+## 👀 What you see when you're not touching anything
 
 - **Lab bar:** the scene name, **▶ Run**, **▶ Play**, and **⋯** on the far right. That's it.
 - **Timeline:** the big **▶** and the time, the song's tracks.
 - **Layers & knobs:** the title, your layers, and the open layer's knobs (Shuffle, Save and "Find a slider" stay).
 - **The picture:** only the picture and four small gold corner marks.
 
-## Where everything else is
+## 🧭 Where everything else is
 
 Nothing was removed and nothing moved; it just waits until you're in that area:
 
@@ -39,20 +40,22 @@ Nothing was removed and nothing moved; it just waits until you're in that area:
 - Want the old "everything visible" Lab? **Lab ⋯ › View & help › Lab look: Plain** (flat, every button in sight, no
   animation). Click it again for Forgeheart. (Round 148's "Plate" look is gone; if you had it, you get Forgeheart.)
 
-## The animations
+## ✨ The animations
 
 - When an area wakes up, a thin **gold → orange line** draws across it and its buttons fade and slide in one after
   another, left to right (about a fifth of a second). They leave faster, all together.
 - Menus that fold out (♩ Beat ▾, ⚡ Sync ▾, ⚙ Inspect ▾) unroll from their edge with the same gold → orange line, their
-  rows coming in one by one; they fade when they close.
-- Opening a layer's knobs: they rise in with an orange → gold line running down their edge.
+  rows coming in one by one; they close at once.
+- Opening a layer's knobs: an orange → gold line runs down their edge.
+- The BPM readout's little flash on each beat is now a light lift (it used to make the whole timeline redraw).
 - The "Slow" and "Safe open" notices wipe in from the left with an orange edge.
 - Nothing ever loops: no pulsing, no sweeping, nothing moving while you're not doing anything or while the scene plays.
 - Reduced motion (Windows' setting) or Hearth's **Appearance › Motion: calm / off** turns all of it off (things just
   appear).
 
-## Performance
+## ⚡ Lighter to draw
 
-The Lab window now draws a lot less: in our test (a heavy scene, the same box) it went from **38 to about 13–15
-"layers" the graphics card has to put together at rest, and from 45 to about 20 while playing**, with no more painting
-than before. The looping glints, pulses, scanlines and glows that cost something every frame are gone.
+The Lab window now draws a lot less: in our test (a heavy scene with its timeline, the same computer) the number of
+"layers" your graphics card puts together for the Lab window went from **45 to about 25 at rest and 45 to about 24
+while playing**, and the drawing work per second went down too (about 6 → 4 thousandths of a second at rest, 8 → 7
+while playing). The looping glints, pulses, scanlines and glows that cost something on every frame are gone for good.

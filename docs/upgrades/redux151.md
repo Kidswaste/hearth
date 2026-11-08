@@ -91,12 +91,12 @@ header's sparkline) and the same paint (3.0 ms / s each).
 
 | Lab window | Round 150 (3 runs) | Round 151 |
 | --- | --- | --- |
-| composited layers, idle | 45 · 45 · 45 | RESULT_IDLE_LAYERS |
-| composited layers, playing | 45 · 45 · 45 | RESULT_PLAY_LAYERS |
-| draw ms / s, idle | 6.2 · 8.3 · 4.7 | RESULT_IDLE_DRAW |
-| draw ms / s, playing | 5.5 · 8.0 · 10.8 | RESULT_PLAY_DRAW |
-| window main thread (TaskDuration) ms / s, idle | 30.8 · 33.8 · 26.7 | RESULT_IDLE_TASK |
-| window main thread ms / s, playing | 25.1 · 30.3 · 27.7 | RESULT_PLAY_TASK |
+| composited layers, idle | 45 · 45 · 45 | **25** (13–15 before the clock timeline is up) |
+| composited layers, playing | 45 · 45 · 45 | **24** |
+| draw ms / s, idle | 6.2 · 8.3 · 4.7 | **3.9** (paint 0.6 · layerize 1.5 · composite 1.8) |
+| draw ms / s, playing | 5.5 · 8.0 · 10.8 | **6.8** (paint 2.6 · layerize 1.0 · composite 3.2) |
+| window main thread (TaskDuration) ms / s, idle | 30.8 · 33.8 · 26.7 | **17.5** |
+| window main thread ms / s, playing | 25.1 · 30.3 · 27.7 | 29.1 (the scene's playback; unchanged within noise) |
 | running / held animations in the Lab, idle | 6 (dot, sweep, glints, breath) | 0 |
 
 What made the layers: the loops (each animated pseudo-element a layer), `will-change` on the stage's glow, flash and
@@ -105,6 +105,14 @@ panels' tick overlays, the timeline canvases…). What is left at rest: the docu
 entry animation, held — not the Lab's), the preview and its iframe, scrollbars, and three tiny readout layers
 (`.mb-time`, `.mb-minitime`, the 01 header's meta: `will-change` + `contain: paint`, so a new number repaints a few
 dozen pixels and not the page layer). The panels are `isolation: isolate` (a cached paint boundary each).
+
+Release: round 152 (owner notes `docs/patch-notes/round-152.md`); merged on top of round 151's perf pass (its idle
+rules in idlecpu.css and hudstage fixes kept). Its findings in these files are gone here: `.st-glow`'s permanent
+will-change + 60 / 160 px inset blur (display only when reactive, no will-change), `.st-flash` / `.st-rflash` will-change
+(removed), bracket / reticle drop-shadow filters (removed), `mb-beat`'s filter (transform / opacity), the endless loops.
+
+Known, not from this round: labcalm's "pointing at the picture shows More…, 📷 and ⋯" fails on round 150's build too
+(round 150's hide-on-idle: the pill is hidden when the check points at Freeze).
 
 ## Files
 
@@ -117,6 +125,7 @@ dozen pixels and not the page layer). The panels are `isolation: isolate` (a cac
   `{ trace: 'stop', window: true }` (the window renderer's own paint / layerize / composite and painted nodes)
 - `dev/checks/redux151.js` (new), `dev/run-checks.js` group `redux151`
 
-Checks touched (the look changed on purpose): `lab143` part 3 (flat panels and "nothing loops" instead of scanlines /
+Checks touched (the look changed on purpose): `play149` (the beat flash's keyframes may be transform / opacity, not only
+a filter), `labcalm` (the View-buttons step pins the Lab first and waits for the Inspect tray's entry), `lab143` part 3 (flat panels and "nothing loops" instead of scanlines /
 glint / breathing playhead), `look148` parts 3–4 (nothing loops, the dot turns ember while playing; the look cycle is
 Forgeheart → Plain, a stored "plate" opens as Forgeheart).
