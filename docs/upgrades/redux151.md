@@ -1,4 +1,4 @@
-# Round 151b · redux151: "Hearth Redux" — the Lab in Forgeheart gold / ember on graphite, contextual controls
+# Round 152 (redux151): "Hearth Redux" — the Lab in Forgeheart gold / ember on graphite, contextual controls
 
 The owner: "get the colors closer to forgeheart's gold/orange/dark grey theme, and make the whole interface more
 mono/futuristic and cleaner with a lot less appearing buttons at a glance. Add animations for things appearing and
@@ -60,9 +60,14 @@ Lab search (🔎 / `/`), the right-click menus and Ctrl/⌘+; reach every action
 - **The area's line:** a 1 px `linear-gradient(90deg, gold, ember)` (`::after`) under the Lab bar, along the top of the
   timeline, under the layers' head, `scaleX(0 → 1)` from the left in 220 ms when the area wakes, 140 ms back.
 - **Trays** (♩ Beat ▾, ⚡ Sync ▾, ⚙ Inspect ▾): in — `clip-path` from the edge they open from + a 4 px rise + fade
-  (200 ms), their gold → ember top line drawn across (220 ms), rows rising one after another (30 ms apart); out — 120 ms
-  fade while `display` holds (`transition-behavior: allow-discrete`).
-- **A layer's knobs:** a 200 ms rise, an ember → gold line drawn down their edge (260 ms).
+  (200 ms), their gold → ember top line drawn across (220 ms), rows rising one after another (30 ms apart); out — at
+  once (a fade-out with `display` held by `allow-discrete` was tried: a folded tray then still counts as drawn for
+  120 ms, which the folds' logic and lab143 rely on not happening).
+- **A layer's knobs:** an ember → gold line drawn down their edge (260 ms). (A rise of the whole block was tried and
+  dropped: a 300 × 2,700 px layer for 200 ms on every select.)
+- **The BPM readout's beat flash** (`tools/three-lab.css` `mb-beat` / `mb-down`): a lift + fade on the compositor
+  (it was a `brightness()` + `drop-shadow()` filter, a repaint per beat), and only while the timeline is under the
+  pointer (or pinned).
 - **Notices** (Slow, Safe open): wiped in from the left (`clip-path`) with an ember edge, 220 ms.
 - **The Lab's pop-overs** (`.mb-menu`, `.lab-pop`): a 180 ms rise.
 - Entry animations fill `backwards`, never `forwards` / `both`: an animation holding its last frame keeps a composited
@@ -79,14 +84,19 @@ Measured by `dev/checks/redux151.js` (its cost step) on smooth142's heavy layers
 the Lab window at 1600×1000, software GL, 4 CPUs. Round 150 measured with the same probe on a copy of the round-150
 build (`node dev/smoke.js --app <copy> …`, the check runs only its cost step there). Draw = Paint + Layerize /
 UpdateLayer(Tree) + CompositeLayers / Commit / PrePaint, the window's renderer only (`{ trace: 'stop', window: true }`).
+Both builds play the fixture once before measuring (its clock timeline comes up on the first play; a first, cold
+measurement gave round 150 38 layers idle and lower paint, because the timeline wasn't drawn yet). A back-to-back
+mutation probe (same procedure, both builds) showed the same DOM writes while playing (the time ≈ 5 / s, the 01
+header's sparkline) and the same paint (3.0 ms / s each).
 
 | Lab window | Round 150 (3 runs) | Round 151 |
 | --- | --- | --- |
-| composited layers, idle | 38 · 38 · 38 | RESULT_IDLE_LAYERS |
+| composited layers, idle | 45 · 45 · 45 | RESULT_IDLE_LAYERS |
 | composited layers, playing | 45 · 45 · 45 | RESULT_PLAY_LAYERS |
-| draw ms / s, idle | 6.7 · 9.0 · 7.6 | RESULT_IDLE_DRAW |
-| draw ms / s, playing | 4.8 · 6.2 · 3.1 | RESULT_PLAY_DRAW |
-| window main thread (TaskDuration) ms / s, idle | 31.5 · 27.8 · 25.4 | RESULT_IDLE_TASK |
+| draw ms / s, idle | 6.2 · 8.3 · 4.7 | RESULT_IDLE_DRAW |
+| draw ms / s, playing | 5.5 · 8.0 · 10.8 | RESULT_PLAY_DRAW |
+| window main thread (TaskDuration) ms / s, idle | 30.8 · 33.8 · 26.7 | RESULT_IDLE_TASK |
+| window main thread ms / s, playing | 25.1 · 30.3 · 27.7 | RESULT_PLAY_TASK |
 | running / held animations in the Lab, idle | 6 (dot, sweep, glints, breath) | 0 |
 
 What made the layers: the loops (each animated pseudo-element a layer), `will-change` on the stage's glow, flash and
