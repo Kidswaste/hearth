@@ -14,7 +14,8 @@
 //      stage corners
 //   5. cost (smooth142's heavy layers, 480×270 … the Lab at 1600×1000): the window's composited layers and its paint /
 //      layerize / composite ms a second, idle and while it plays, against round 150's numbers (BEFORE, measured with
-//      this check's own probe on the round-150 build: node dev/smoke.js --app <round-150 copy> … REDUX151_BASE=1)
+//      this check's own probe on the round-150 build: smoke's --app with a copy of round 150; the check sees no Redux tokens
+//      there and runs only this step)
 //   pictures: <out>/redux151-rest.png, redux151-context.png (the timeline woken), redux151-anim.png (the Lab bar
 //   coming in, frozen mid-way)
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --lib dev/checks/realscene-lib.js --script dev/checks/redux151.js

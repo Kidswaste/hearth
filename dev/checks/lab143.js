@@ -69,7 +69,7 @@ try {
     const r = { sel, real: Boolean(n && F?.tray.contains(n)), hiddenFolded: !drawn(n) };
     LabRegroup.setOpen(F, true); await wait(60);
     r.shownOpen = drawn(n);
-    LabRegroup.setOpen(F, false);
+    LabRegroup.setOpen(F, false); await wait(180); // (round 151, redux151) a folding tray fades out for 120 ms
     r.inMenu = !re || LabRegroup.trayItems(F).some((it) => typeof it === 'object' && re.test(it.label));
     inv.push(r);
   }
