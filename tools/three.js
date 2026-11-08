@@ -670,6 +670,7 @@ const ThreeLab = (() => {
           ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
           ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
           ...(window.LabRegroup ? [LabRegroup.lookRow()] : []), // (round 143, lab143) Lab look: Forgeheart · Plain
+          ...(window.LabHudStage ? [LabHudStage.row()] : []), // (round 150, stage150) Stage: reactive → calm → off
           ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
           ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
           ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : [])]], // (round 31) ✦ What can I do here? (quickstart-hooks.js)
@@ -3281,6 +3282,7 @@ const ThreeLab = (() => {
       live: () => setLive(liveKind ? null : store.get('three.lastLive', 'system')), autoBars: () => autoBars(), sections: () => player.autoSections(), clickTrack: () => player.setGridView({ click: !player.gridView.click }),
       quantizeTaps: () => player.setQuantize(!player.quantize), size916: () => stage.setMode('9:16'), size169: () => stage.setMode('16:9'), size45: () => stage.setMode('4:5'), size11: () => stage.setMode('1:1'), sizeFit: () => stage.setMode('fit'),
       nextSketch: () => stepSketch(1), prevSketch: () => stepSketch(-1), tools: () => toolsDrawer(document.querySelector('.lab-tools-btn')),
+      stageUi: () => window.LabHudStage?.togglePin(), stageShow: () => window.LabHudStage?.pin(true), stageClean: () => window.LabHudStage?.pin(false), // (round 150, stage150) the preview's controls pinned / a clean stage (I)
       stageTop: async () => { const on = await window.hub.stageOnTop?.(); toast(on == null ? 'Open the Stage window first' : on ? 'Stage window stays on top' : 'Stage window: normal', { timeout: 1500 }); },
     };
     api.onScreen = () => Boolean(box.onStage || previewHost.offsetParent); // (the Lab's picture is on screen)
@@ -3327,7 +3329,7 @@ const ThreeLab = (() => {
       get player() { return player; }, // the song / video timeline (tools/three-cmds.js: /song-trim, /cut-loop)
       // (round 21: frame and song are read when asked for: frame measures the preview in "fit" (a layout right after a
       // switch) and song walks the whole analysis, for readers that only want the name, e.g. speed-resume.js on a switch)
-      get state() { return { view: typeof ThreeGestures !== 'undefined' ? ThreeGestures.seq() : 0, sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, get song() { return player.loaded ? player.info().file : null; }, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost }; },
+      get state() { return { view: typeof ThreeGestures !== 'undefined' ? ThreeGestures.seq() : 0, sketch: current?.name, layer: sel()?.name, get frame() { return stage.size; }, frozen: frozenNow, live: liveKind, get song() { return player.loaded ? player.info().file : null; }, bpm: player.loaded ? player.bpm : liveBpm?.bpm ?? null, playing: player.playing, presenting: document.fullscreenElement === previewHost, stage: window.LabHudStage?.pinned ? 'pinned' : 'auto' }; },
       run: () => run(), restart: () => restartSim(),
       // a sketch that has a song is still loading it (just opened): wait for it a moment
       waitSong: async () => { for (let i = 0; i < 40 && current && extras[current.id]?.media?.path && !player.loaded; i += 1) await sleep(100); },
@@ -3465,6 +3467,8 @@ const ThreeLab = (() => {
       if (plain && /^[nfpwrob`|/]$/i.test(e.key) && !e.repeat) Usage.key(`${e.shiftKey && /[a-z]/i.test(e.key) ? 'Shift+' : ''}${e.key.toUpperCase()}`, 'Lab');
       if (plain && presentKeys(e)) { e.preventDefault(); return; }
       if (plain && e.key.toLowerCase() === 'n') { e.preventDefault(); takeNote(); return; }
+      // (round 150, stage150) I: the preview's controls and readouts stay out (I again: a clean stage); in Present, I is its info line (above)
+      if (plain && !e.shiftKey && e.key.toLowerCase() === 'i' && !e.repeat && window.LabHudStage) { e.preventDefault(); LabHudStage.togglePin({ say: true }); return; }
       // F freezes the picture (you freeze a lot, Focus was never used: it moved to Shift+F)
       if (plain && e.key.toLowerCase() === 'f') { e.preventDefault(); if (e.shiftKey) setFocus(!focusOn); else setFreeze(!frozenNow); return; }
       // R shuffles the selected layer's sliders, Shift+R steps back through the shuffles
@@ -3754,12 +3758,14 @@ const ThreeLab = (() => {
         return;
       }
       if (msg.type === 'trig-viz') { trigPanel?.feed(msg); return; }
+      if (msg.type === 'stage-ptr' || msg.type === 'stage-tint') { window.LabHudStage?.msg(msg); return; } // (round 150, stage150) the pointer over the picture, the picture's colour
       if (msg.type === 'stats') {
         lastStatsAt = Date.now();
         if (stall.querySelector('.three-stall-text').textContent.includes('responding')) hideStall();
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         lastStatsMsg = msg;
         window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
+        window.LabHudStage?.stats?.(msg); // (round 150, stage150) the stage's fps label (written only while it shows)
         if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.stats(msg); // (round 133, speed133) ⚡ "Slow: 21 fps · Why?" after 5 s under 50 fps / half the screen's rate
         paintPerfHud(msg);
         if (msg.adapt) paintAdapt(msg.adapt);
@@ -3778,7 +3784,8 @@ const ThreeLab = (() => {
       if (msg.type === 'live-state') { if (msg.error) toast(`Live sound: ${msg.error}`, { type: 'error', timeout: 5000 }); if (!msg.on && msg.error) { liveKind = null; paintLive(); } return; }
       if (msg.type === 'ready' && msg.again && ranOnce) { console.warn(msg.gl ? 'Lab preview made again after the GPU went away: running the scene again' : 'Lab preview restarted by itself: running the sketch again'); run({ again: true, quiet: Boolean(msg.gl) }); }
       if (msg.type === 'ready' && typeof ThreeAudio !== 'undefined') ThreeAudio.onReady();
-      if (msg.type === 'ready') window.LabMotionIn?.onReady?.(); // (round 25) 📷 a fresh page gets the tracker again
+      if (msg.type === 'ready') window.LabMotionIn?.onReady?.();
+      if (msg.type === 'ready') window.LabHudStage?.onReady?.(); // (round 150, stage150) a fresh page: the pointer and the colour reading again // (round 25) 📷 a fresh page gets the tracker again
       if (msg.type === 'ready') fbOn = false; // (round 64, framebar64) a fresh page measures nothing until the stats line shows again
       if (msg.type === 'ready') { refsSig = null; pageN = msg.n ?? null; pageHeld = { n: null, sigs: new Set() }; } // (round 39, labmemory) a fresh page has no references yet · (round 75) nor any kept file
       if (msg.type === 'refs-held') { if (msg.n === pageN) { pageHeld = { n: msg.n, sigs: new Set(msg.sigs || []) }; for (const r of refsOf()) if (pageHeld.sigs.has(refSigs.get(r.id))) refBytes.delete(r.id); for (const k of [...fileBytes.keys()]) if (pageHeld.sigs.has(k)) fileBytes.delete(k); /* (round 99, labmodels99) */ } return; } // (round 75, labload75: the window keeps no copy of what the page holds)
@@ -4771,6 +4778,7 @@ ${code}
         group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       window.LabRegroup?.apply({ toolbar, bar: player.el, preview: previewHost, media: player }); // (round 148, look148: + the instrument headers) (round 143, lab143) ⚙ Inspect ▾ · ♩ Beat ▾ · ⚡ Sync ▾: folds holding the real controls (tools/three-regroup.js)
+      window.LabHudStage?.apply({ preview: previewHost, frame: () => box.frame, send: (m) => box.send(m), ready: () => box.ready, media: player, frozen: () => frozenNow }); // (round 150, stage150) the stage around the preview: controls out of the way until wanted, the mono HUD frame that follows the scene and the song (tools/three-hudstage.js)
       // First run with per-sketch songs: the song that was loaded goes to the sketch that was open.
       const firstId = sketches.some((s) => s.id === store.get('three.current')) ? store.get('three.current') : sketches[0]?.id;
       const lastMedia = store.get('three.media', null);
@@ -6232,5 +6240,6 @@ for (const [label, name] of [
   ['Lab: Freeze on the next beat', 'freezeBeat'], ['Lab: Pin this frame to compare (|)', 'pin'], ['Lab: Compare off', 'compareOff'], ['Lab: Still at the exact frame size', 'still'], ['Lab: Safe zones on / off', 'safe'],
   ['Lab: Live sound on / off (Shift+L)', 'live'], ['Lab: Auto bars', 'autoBars'], ['Lab: Mark the song\'s sections', 'sections'], ['Lab: Click track on / off', 'clickTrack'], ['Lab: Quantize taps on / off (Q)', 'quantizeTaps'],
   ['Lab: Frame 9:16 (1080×1920)', 'size916'], ['Lab: Frame 16:9 (1920×1080)', 'size169'], ['Lab: Frame 4:5 (1080×1350)', 'size45'], ['Lab: Frame 1:1 (1080×1080)', 'size11'], ['Lab: Fit the frame', 'sizeFit'],
+  ['Lab: Show scene controls (I)', 'stageShow'], ['Lab: Clean stage (hide the preview\'s controls until you point at them)', 'stageClean'], // (round 150, stage150)
   ['Lab: Next sketch (Ctrl+PgDn)', 'nextSketch'], ['Lab: Previous sketch (Ctrl+PgUp)', 'prevSketch'], ['Lab: Tools drawer', 'tools'],
 ]) AppUI.addAction(label, () => ThreeLab.act(name));

@@ -153,6 +153,9 @@ const SayCore = (() => {
     const done = (p) => ({ text: raw, ...p, words: words(p, ctx) });
     const need = (say) => ({ kind: 'need', text: raw, words: say });
     let m;
+    // (round 150, stage150) the preview's controls: "show scene controls" pins them, "clean stage" tucks them away
+    if (/^(?:clean|clear|quiet|tidy)(?: the)? (?:stage|preview|scene(?: view)?)$|^(?:hide|tuck(?: away)?)(?: the)? (?:scene |preview |stage )?(?:controls|buttons|interface|ui|overlays?)$/.test(s)) return done({ kind: 'stage', op: 'clean' });
+    if (/^(?:show|pin|reveal|keep)(?: the)? (?:scene |preview |stage )?(?:controls|buttons|interface|ui|overlays?)(?: on)?$/.test(s)) return done({ kind: 'stage', op: 'show' });
     // jump to the drop / go to 1:20 / play from the chorus
     if ((m = /^(?:jump|go|skip|seek|move(?: the playhead)?|playhead)\s+(?:back\s+)?to\s+(.+)$|^(?:play\s+)?from\s+(.+)$/.exec(s))) {
       const c = cueOf(m[1] || m[2], ctx);
@@ -228,6 +231,7 @@ const SayCore = (() => {
       case 'vis': return p.op === 'unsolo' ? 'Show every layer again (solo off)' : p.op === 'solo' ? `Solo “${p.layerName}” (only it shows)` : `${p.op === 'hide' ? 'Hide' : 'Show'} “${p.layerName}”`;
       case 'dial': return `🎛 ${p.name} ${pct(p.from)} → ${pct(p.to)}`;
       case 'follow': return `${p.layerName} · ${p.label} follows ${BAND_NAME[p.band] || p.band} ♪`;
+      case 'stage': return p.op === 'show' ? 'Pin the preview\'s controls and readouts (I)' : 'Clean stage: the preview\'s controls show where you point (I pins them)';
       case 'jump': return `Playhead → ${p.name}${/^\d/.test(p.name) ? '' : ` (${mmss(p.t)})`}`;
       case 'render': return `Open ⇪ Render${p.preset ? ` on ${p.preset.icon || ''} ${p.preset.name}` : ''} (nothing renders until ⇪ Export)`;
       default: return '';
@@ -245,6 +249,7 @@ const SayCore = (() => {
     ['A dial', '“energy up” · “darkness down” · “energy 80%”', '🎛 the scene\'s mood dials'],
     ['The music', '“follow bass” · “glow follows the kick”', 'the slider you touched last, or the one named'],
     ['The playhead', '“jump to drop” · “go to the chorus” · “jump to 1:20”', ''],
+    ['The stage', '“show scene controls” · “clean stage”', 'the preview\'s buttons pinned, or out of the way (I)'],
     ['A render', '“render reel” · “render square” · “render 4k”', 'opens ⇪ Render on that preset'],
   ];
   return { parse, words, changes, cueOf, cueList, score, valueOf, timeOf, fmt, mmss, EXAMPLES, HELP, PRESETS, NUDGE };

@@ -1,0 +1,172 @@
+/* (round 150, stage150) the scene view as a clean, mono, futuristic stage (tools/three-hudstage.js, docs/upgrades/stage150.md)
+   1. quiet chrome (every look): the preview's overlays are transparent and not hit by the pointer until wanted
+   2. the stage frame (Forgeheart / Plate): brackets, rulers, micro-labels, a reticle; one hue (--st-h) with a chroma
+      (--st-k) the scene sets; ember only for warnings
+   Animations: opacity / transform only (compositor); the pulses are Web Animations started by the timeline's tick. */
+@property --st-h { syntax: '<number>'; inherits: true; initial-value: 222; }
+@property --st-k { syntax: '<number>'; inherits: true; initial-value: 0.2; }
+
+/* ---------- 1. quiet chrome ---------- */
+.three-preview.st-on > :is(.stage-pill, .three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud, .safe-zones) { transition: opacity .32s ease, transform .32s cubic-bezier(.2,.7,.3,1); }
+/* the view controls: the top-right corner (or I, or keyboard focus inside them) */
+.three-preview.st-on:not(.st-pin):not(.st-z-tr) > .stage-pill:not(:focus-within):not(:hover) { opacity: 0; pointer-events: none; transform: translate(6px, -4px); }
+/* the stats / quality line and its notes: the bottom edge */
+.three-preview.st-on:not(.st-pin):not(.st-z-b) > :is(.three-stats, .lab-adapt-note, .lab-pace-note, .lab-perf-hud):not(:focus-within):not(:hover) { opacity: 0; pointer-events: none; transform: translateY(5px); }
+/* the safe zones: with the pointer anywhere over the picture */
+.three-preview.st-on.st-idle > .safe-zones { opacity: 0; }
+/* pinned: the whole stats line (not only the fps) and the pill's second row, as on hover */
+.three-preview.st-on.st-pin:not(:hover) > .three-stats.fb-keep:not(.compact) > :not([hidden]):not(:first-child):not(.fb) { display: block; }
+.three-preview.st-on.st-pin:not(:hover) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)):not([hidden]) { display: inline-block; }
+/* the 01 PREVIEW header: its readouts on hover of the header (or pinned) */
+.ih-pv.st-head { pointer-events: auto; }
+.ih-pv.st-head > .ih-meta { transition: opacity .3s ease; }
+.ih-pv.st-head.st-quiet > .ih-meta { opacity: 0; }
+/* warnings: by themselves when new (st-fresh), then a small glyph while the stage is idle */
+.three-preview.st-on.st-idle:not(.st-pin) > .st-warn:not(.st-fresh):not(:hover) { padding: 0; width: 20px; height: 20px; min-width: 0; gap: 0; justify-content: center; border-radius: 50%; overflow: hidden; }
+.three-preview.st-on.st-idle:not(.st-pin) > .st-warn:not(.st-fresh):not(:hover) > * { display: none; }
+.three-preview.st-on.st-idle:not(.st-pin) > .st-warn:not(.st-fresh):not(:hover)::before {
+  content: "!"; display: grid; place-items: center; width: 100%; height: 100%; font: 700 11px/1 var(--fh-hud-mono, ui-monospace, monospace);
+  color: var(--fh-ember, #ff7a1a); text-shadow: 0 0 6px var(--fh-ember, #ff7a1a);
+}
+.three-preview.st-on.st-idle:not(.st-pin) > .lab-safe.st-warn:not(.st-fresh):not(:hover)::before { content: "🛟"; font-size: 11px; text-shadow: none; }
+.three-preview.st-on > .st-warn { transition: width .3s ease, height .3s ease, border-radius .3s ease; }
+.three-preview.st-on > .st-warn.st-fresh { animation: st-warn-in .5s cubic-bezier(.2,.7,.3,1); }
+@keyframes st-warn-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* ---------- 2. the stage frame ---------- */
+.st-hud { display: none; }
+.three-preview.st-on.presenting .st-hud, body.lab-show .st-hud { display: none !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-fx-none) {
+  --st-hd: calc(var(--st-h) * 1deg);
+  --st-ink: hsl(var(--st-hd) calc(14% + var(--st-k) * 70%) 80%);
+  --st-ink-a: hsl(var(--st-hd) calc(14% + var(--st-k) * 70%) 76% / .62);
+  --st-dim: hsl(var(--st-hd) calc(14% + var(--st-k) * 60%) 70% / .3);
+  --st-faint: hsl(var(--st-hd) calc(10% + var(--st-k) * 50%) 70% / .16);
+  --st-glow: hsl(var(--st-hd) calc(40% + var(--st-k) * 55%) 60% / .65);
+  --st-well: hsl(var(--st-hd) calc(20% + var(--st-k) * 25%) 5% / .8);
+  --st-mono: var(--fh-hud-mono, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", ui-monospace, monospace);
+}
+html:not([data-lablook="plain"]) .three-preview.st-on:not(.st-fx-none) > .st-hud {
+  display: block; position: absolute; z-index: 1; pointer-events: none; contain: layout style size; overflow: visible;
+  font: 500 9px/1 var(--st-mono); letter-spacing: .18em; text-transform: uppercase; font-variant-numeric: tabular-nums slashed-zero; color: var(--st-ink);
+}
+.st-hud > * { position: absolute; }
+.st-frame, .st-flash, .st-rflash { inset: 0; }
+.st-flash, .st-rflash { opacity: 0; will-change: opacity, transform; }
+/* corner brackets: an L with a registration notch, a hair inside the picture's corner */
+.st-br { width: 26px; height: 26px; border: 0 solid var(--st-ink-a); filter: drop-shadow(0 0 3px #000c); }
+.st-br::after { content: ""; position: absolute; width: 3px; height: 3px; background: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
+.st-br.st-tl { left: 10px; top: 10px; border-top-width: 1px; border-left-width: 1px; }
+.st-br.st-tr { right: 10px; top: 10px; border-top-width: 1px; border-right-width: 1px; }
+.st-br.st-bl { left: 10px; bottom: 10px; border-bottom-width: 1px; border-left-width: 1px; }
+.st-br.st-brr { right: 10px; bottom: 10px; border-bottom-width: 1px; border-right-width: 1px; }
+.st-br.st-tl::after { left: 4px; top: 4px; } .st-br.st-tr::after { right: 4px; top: 4px; } .st-br.st-bl::after { left: 4px; bottom: 4px; } .st-br.st-brr::after { right: 4px; bottom: 4px; }
+.st-flash .st-br { border-color: var(--st-ink); filter: drop-shadow(0 0 5px var(--st-glow)) drop-shadow(0 0 1px var(--st-ink)); width: 34px; height: 34px; }
+.st-flash .st-br.st-tl { left: 6px; top: 6px; } .st-flash .st-br.st-tr { right: 6px; top: 6px; } .st-flash .st-br.st-bl { left: 6px; bottom: 6px; } .st-flash .st-br.st-brr { right: 6px; bottom: 6px; }
+.st-flash .st-br { border-width: 0; } .st-flash .st-br.st-tl { border-top-width: 2px; border-left-width: 2px; } .st-flash .st-br.st-tr { border-top-width: 2px; border-right-width: 2px; } .st-flash .st-br.st-bl { border-bottom-width: 2px; border-left-width: 2px; } .st-flash .st-br.st-brr { border-bottom-width: 2px; border-right-width: 2px; }
+/* calibration rulers: minor ticks every 8 px, a major one every 64 px, fading to the corners */
+.st-rule { position: absolute; pointer-events: none; }
+.st-rule.st-rt, .st-rule.st-rb { left: 48px; right: 48px; height: 7px; }
+.st-rule.st-rt { top: 10px; } .st-rule.st-rb { bottom: 10px; }
+.st-rule.st-rt { background: repeating-linear-gradient(90deg, var(--st-dim) 0 1px, transparent 1px 8px) top / 100% 3px no-repeat, repeating-linear-gradient(90deg, var(--st-ink-a) 0 1px, transparent 1px 64px) top / 100% 7px no-repeat; }
+.st-rule.st-rb { background: repeating-linear-gradient(90deg, var(--st-dim) 0 1px, transparent 1px 8px) bottom / 100% 3px no-repeat, repeating-linear-gradient(90deg, var(--st-ink-a) 0 1px, transparent 1px 64px) bottom / 100% 7px no-repeat; }
+.st-rule.st-rl, .st-rule.st-rr { top: 30%; bottom: 30%; width: 7px; }
+.st-rule.st-rl { left: 10px; background: repeating-linear-gradient(180deg, var(--st-dim) 0 1px, transparent 1px 8px) left / 3px 100% no-repeat, repeating-linear-gradient(180deg, var(--st-ink-a) 0 1px, transparent 1px 64px) left / 7px 100% no-repeat; }
+.st-rule.st-rr { right: 10px; background: repeating-linear-gradient(180deg, var(--st-dim) 0 1px, transparent 1px 8px) right / 3px 100% no-repeat, repeating-linear-gradient(180deg, var(--st-ink-a) 0 1px, transparent 1px 64px) right / 7px 100% no-repeat; }
+.st-rule.st-rt, .st-rule.st-rb { -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent); }
+.st-rule.st-rl, .st-rule.st-rr { -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); mask-image: linear-gradient(180deg, transparent, #000 30%, #000 70%, transparent); }
+.st-rflash .st-rule.st-rt, .st-rflash .st-rule.st-rb { background: linear-gradient(90deg, transparent, var(--st-ink) 50%, transparent) center / 100% 1px no-repeat; filter: drop-shadow(0 0 4px var(--st-glow)); }
+/* the edge glow: the scene's hue, breathing with the song's level while it plays */
+.st-glow { inset: 0; opacity: .14; box-shadow: inset 0 0 0 1px var(--st-faint), inset 0 0 60px -18px var(--st-glow); will-change: opacity; transition: opacity .6s ease; }
+.three-preview.st-play .st-glow { transition: none; }
+/* the centre reticle (awake / pinned only) */
+.st-x { left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; opacity: 0; transition: opacity .3s ease;
+  background:
+    linear-gradient(var(--st-ink-a), var(--st-ink-a)) center top / 1px 10px no-repeat, linear-gradient(var(--st-ink-a), var(--st-ink-a)) center bottom / 1px 10px no-repeat,
+    linear-gradient(var(--st-ink-a), var(--st-ink-a)) left center / 10px 1px no-repeat, linear-gradient(var(--st-ink-a), var(--st-ink-a)) right center / 10px 1px no-repeat,
+    radial-gradient(circle, var(--st-ink) 0 1.2px, transparent 1.6px) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 0 2px #000);
+}
+/* micro-labels */
+.st-lb { display: flex; align-items: center; gap: 6px; white-space: nowrap; opacity: 0; transition: opacity .3s ease; text-shadow: 0 0 6px var(--st-glow), 0 1px 2px #000, 0 0 1px #000; }
+.st-lb-tl { left: 44px; top: 18px; }
+.st-lb-tc { left: 50%; top: 18px; transform: translateX(-50%); }
+.st-lb-bl { left: 44px; bottom: 18px; }
+.st-lb-br { right: 44px; bottom: 18px; }
+.st-k { font-weight: 500; color: var(--st-ink-a); letter-spacing: .2em; }
+.st-tc, .st-fps { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--st-ink); }
+.st-dur, .st-qual, .st-size, .st-bpm { color: var(--st-ink-a); }
+.st-sep { width: 14px; height: 1px; background: var(--st-dim); }
+.st-dot { width: 6px; height: 6px; border: 1px solid var(--st-ink-a); }
+.st-lb-tl.st-on-play .st-dot { background: var(--st-ink); border-color: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
+.st-lb-tl.st-on-hold .st-dot { background: var(--fh-ember, #ff7a1a); border-color: var(--fh-ember, #ff7a1a); box-shadow: 0 0 6px var(--fh-ember, #ff7a1a); }
+.st-lb-tl.st-on-hold .st-state { color: var(--fh-ember, #ff7a1a); }
+.st-pips { display: inline-flex; gap: 3px; }
+.st-pips > i { width: 10px; height: 3px; background: var(--st-faint); }
+.st-pips > i.on { background: var(--st-ink-a); }
+.st-pips > i.one { background: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
+.st-pips > i[hidden] { display: none; }
+.st-hat { width: 3px; height: 3px; border-radius: 50%; background: var(--st-ink); opacity: .15; }
+/* where the controls are: two ghost hints while awake (gone once you point there) */
+.st-hint { display: flex; align-items: center; gap: 6px; opacity: 0; transition: opacity .3s ease; color: var(--st-ink-a); font-size: 8.5px; letter-spacing: .24em; text-shadow: 0 1px 2px #000; }
+.st-hint-tr { right: 44px; top: 18px; }
+.st-hint-b { left: 50%; bottom: 18px; transform: translateX(-50%); }
+.st-hint-ic { width: 9px; height: 9px; border: 1px solid var(--st-ink-a); border-left-color: transparent; border-bottom-color: transparent; }
+.st-hint-b .st-hint-ic { border: 1px solid var(--st-ink-a); border-top-color: transparent; border-left-color: transparent; border-right-color: transparent; width: 14px; height: 4px; }
+
+/* states: idle = only the frame (brackets, rulers, glow), quiet; awake = labels, reticle, hints; pinned = labels + controls */
+.three-preview.st-on > .st-hud .st-frame { opacity: .5; transition: opacity .4s ease; }
+.three-preview.st-on:not(.st-idle) > .st-hud .st-frame { opacity: .9; }
+.three-preview.st-on:not(.st-idle) > .st-hud :is(.st-lb, .st-x) { opacity: 1; }
+.three-preview.st-on:not(.st-idle):not(.st-pin):not(.st-z-tr) > .st-hud .st-hint-tr,
+.three-preview.st-on:not(.st-idle):not(.st-pin):not(.st-z-b) > .st-hud .st-hint-b { opacity: 1; }
+.three-preview.st-on.st-idle > .st-hud .st-lb-tl.st-on-hold { opacity: 1; } /* a frozen picture says so, even on a clean stage */
+.three-preview.st-on.st-pin > .st-hud .st-x { opacity: .55; }
+/* labels make room for what they'd sit under */
+.three-preview.st-on:is(.st-z-tr, .st-pin) > .st-hud .st-lb-tc { opacity: 0; }
+.three-preview.st-on:is(.st-z-b, .st-pin) > .st-hud :is(.st-lb-bl, .st-lb-br) { opacity: 0; }
+.three-preview.st-on:has(> .lab-safe) > .st-hud .st-lb-tl { top: auto; bottom: 36px; opacity: 0; }
+
+/* ---------- 2b. the controls as ghost instruments (Forgeheart / Plate) ---------- */
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill {
+  background: linear-gradient(200deg, var(--st-well), hsl(var(--st-hd) 30% 4% / .5)) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  border: 1px solid var(--st-dim) !important; border-radius: 1px !important; box-shadow: 0 0 0 1px #0008, 0 10px 30px -12px #000, 0 0 26px -14px var(--st-glow) !important;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px)) !important;
+  padding: 5px !important; gap: 4px !important; top: 26px; right: 26px; color: var(--st-ink);
+}
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill :is(.stage-btn, .stage-more) {
+  background: transparent !important; border: 1px solid transparent !important; border-radius: 1px !important; box-shadow: none !important; color: var(--st-ink) !important;
+  font: 500 10px/1 var(--st-mono) !important; letter-spacing: .14em !important; text-transform: uppercase; text-shadow: 0 0 6px hsl(var(--st-hd) 80% 60% / .35);
+}
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill :is(.stage-btn, .stage-more):is(:hover, :focus-visible) { border-color: var(--st-ink-a) !important; box-shadow: 0 0 12px -4px var(--st-glow) !important; outline: none; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-btn.on { color: #fff !important; border-color: var(--st-ink) !important; background: hsl(var(--st-hd) 80% 60% / .14) !important; text-shadow: 0 0 8px var(--st-glow); }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .freeze-btn.on { color: var(--fh-ember, #ff7a1a) !important; border-color: var(--fh-ember, #ff7a1a) !important; background: color-mix(in srgb, var(--fh-ember, #ff7a1a) 14%, transparent) !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-seg { border: 1px solid var(--st-dim) !important; border-radius: 1px !important; background: none !important; box-shadow: none !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid var(--st-faint) !important; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-size { color: var(--st-ink-a); font: 500 8.5px/1 var(--st-mono); letter-spacing: .2em; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .stage-pill .stage-more option { background: #070b16; color: #dfe8ff; }
+/* the stats line: a mono readout strip on a soft well, an edge mark on the left */
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats {
+  left: 26px; bottom: 26px; background: linear-gradient(90deg, var(--st-well), hsl(var(--st-hd) 30% 5% / .45) 75%, transparent) !important; backdrop-filter: none !important;
+  border: 0 !important; border-left: 2px solid var(--st-ink) !important; border-radius: 0 !important; box-shadow: none !important; clip-path: none !important;
+  color: var(--st-ink) !important; font: 500 10.5px/1.3 var(--st-mono) !important; letter-spacing: .06em; text-transform: uppercase; padding: 5px 14px 5px 10px !important; max-width: calc(100% - 52px);
+}
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats > b:not(.warn):not(.bad) { color: #fff; text-shadow: 0 0 8px var(--st-glow); }
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats .lab-q:not(.warn) { color: var(--st-ink); }
+html:not([data-lablook="plain"]) .three-preview.st-on > .three-stats .fb-fill { background: var(--st-ink); box-shadow: 0 0 6px var(--st-glow); }
+html:not([data-lablook="plain"]) .three-preview.st-on > .lab-speedchip { left: 26px; bottom: 58px; border-radius: 1px; border-color: color-mix(in srgb, var(--fh-ember, #ff7a1a) 45%, transparent); background: var(--st-well); font-family: var(--st-mono); letter-spacing: .04em; }
+html:not([data-lablook="plain"]) .three-preview.st-on > .lab-adapt-note { left: 26px; bottom: 26px; }
+
+/* ---------- motion: none under reduced motion, Hearth's Motion calm / off, or Stage: off ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .three-preview.st-on :is(.st-flash, .st-rflash, .st-hat) { display: none; }
+  .three-preview.st-on > .st-hud *, .three-preview.st-on > .st-warn { transition: none !important; animation: none !important; }
+}
+:root:is([data-motion=calm], [data-motion=off]) .three-preview.st-on :is(.st-flash, .st-rflash, .st-hat) { display: none; }
+:root:is([data-motion=calm], [data-motion=off]) .three-preview.st-on > .st-hud * { transition: none !important; }
+:root:is([data-motion=calm], [data-motion=off]) .three-preview.st-on > .st-warn { animation: none !important; }
+.three-preview.st-on:is(.st-fx-off, .st-fx-calm) :is(.st-flash, .st-rflash, .st-hat) { display: none; }
+.three-preview.st-on.st-rm .st-glow { opacity: .14 !important; }
+
+/* ---------- Plate: the same stage, indigo by default (the picture stays a dark well) ---------- */
+html[data-lablook="plate"] .three-preview.st-on .st-hud { letter-spacing: .14em; }
