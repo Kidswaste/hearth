@@ -3203,14 +3203,22 @@ function stgRead(d, force) {
   post(out);
 }
 // the pointer over the picture (passive; nothing at all while the Lab didn't ask)
+// (round 151, perf151) the last position of a quick move is always sent (a trailing send at the end of the 120 ms step):
+// a flick into the top-right corner that stopped inside one step left the Lab on the old zone, the controls hidden
+const stgPtrPost = (x, y) => post({ type: 'stage-ptr', x: Math.round((x / Math.max(1, innerWidth)) * 1000) / 1000, y: Math.round((y / Math.max(1, innerHeight)) * 1000) / 1000 });
 addEventListener('pointermove', (e) => {
   if (!STG.ptr) return;
   const now = realNow();
-  if (now - STG.pAt < 120 && !STG.out) return;
+  if (now - STG.pAt < 120 && !STG.out) {
+    STG.px = e.clientX; STG.py = e.clientY;
+    if (!STG.pT) STG.pT = realSetTimeout(() => { STG.pT = 0; if (!STG.out && STG.ptr) { STG.pAt = realNow(); stgPtrPost(STG.px, STG.py); } }, Math.max(1, 120 - (now - STG.pAt)));
+    return;
+  }
+  clearTimeout(STG.pT); STG.pT = 0;
   STG.pAt = now; STG.out = false;
-  post({ type: 'stage-ptr', x: Math.round((e.clientX / Math.max(1, innerWidth)) * 1000) / 1000, y: Math.round((e.clientY / Math.max(1, innerHeight)) * 1000) / 1000 });
+  stgPtrPost(e.clientX, e.clientY);
 }, { passive: true, capture: true });
-document.documentElement.addEventListener('pointerleave', () => { if (!STG.ptr || STG.out) return; STG.out = true; post({ type: 'stage-ptr', out: true }); });
+document.documentElement.addEventListener('pointerleave', () => { if (!STG.ptr || STG.out) return; clearTimeout(STG.pT); STG.pT = 0; STG.out = true; post({ type: 'stage-ptr', out: true }); });
 window.__stage150 = { info: () => ({ tint: STG.tint, ptr: STG.ptr, every: STG.every, samples: STG.n, ms: Math.round(STG.ms * 100) / 100, avgMs: STG.n ? Math.round((STG.ms / STG.n) * 1000) / 1000 : 0, maxMs: Math.round(STG.max * 100) / 100, merge: Math.round(STG.msMerge * 10) / 10, read: Math.round(STG.msRead * 10) / 10, worker: Boolean(STG.w), sent: STG.sent, last: STG.last }), reset: () => { STG.n = 0; STG.ms = 0; STG.max = 0; STG.sent = 0; STG.msMerge = 0; STG.msRead = 0; return 1; } };
 // Present: the mouse hides after 2 s still
 let presentCursor = false; let cursorTimer = 0;
