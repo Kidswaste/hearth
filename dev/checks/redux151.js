@@ -86,6 +86,8 @@ async function costs() {
   try { await D.addLayer({ name: 'Particles', code: PARTICLES }, 1); } catch (err) { step('fixture: particles', false, err.message); }
   c.code?.(false);
   await wait(5000);
+  // one play / stop first: the scene's clock timeline comes up on the first play (both builds measured the same way)
+  c.play(true); await wait(2000); c.play(false); await wait(800);
   await away(); await wait(3000);
   const idle = await cost('idle');
   c.play(true); await wait(2500);
