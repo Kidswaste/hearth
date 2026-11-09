@@ -97,7 +97,10 @@ Calm box (`--burn 0`), Lite off → on (ms of CPU a second; 1000 = one core):
 | Hearth hidden | 17 → 15 | 0 → 0 | 3 → 3 | 6 → 5 | 0 | – | 15 → 0 (unseen) |
 
 Busy box (`--burn 3`), Lite off: playing 1,758 all / 1,653 GPU, 7.7 fps; stopped 1,761 / 1,706, 8.6 fps; light scene
-1,664 / 1,558, 14.5 fps; hidden 10. (Lite on under `--burn 3`: BUSY_ON)
+1,664 / 1,558, 14.5 fps; hidden 10. Lite on: playing **1,593 / 1,513, 11.1 fps** (cap 30); stopped **1,694 / 1,625, 29.3 fps**; light scene **1,622 / 1,512,
+23.7 fps**; layers 20 → 15; Lab window playing 56 → 37 ms/s, stopped 18 → 11 ms/s. Hidden: 10 → 31 all (the window
+18 ms/s of style work in that one 10 s window, a one-off in a single run: hidden with Lite on the calm box was 15, and
+Lite adds nothing that runs while hidden: no timers of its own besides one 60 s check that skips while hidden).
 
 What it says:
 - **The cap holds**: with Lite the preview never draws more than 30 a second, even in front (Auto allows 60).
