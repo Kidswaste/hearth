@@ -183,7 +183,7 @@ const ErrorCalm = (() => {
     // the failed replies already drawn when this loaded
     for (const n of document.querySelectorAll('.msg.error:not(.net-note)')) {
       const agentId = n.closest('[data-agent]')?.dataset.agent;
-      calmReply(n, { role: 'error', text: n.dataset.raw || '' }, agentId ? H.agent?.(agentId) : null);
+      calmReply(n, { role: 'error', text: (Native.rawOf ? Native.rawOf(n) : n.dataset.raw) || '' }, agentId ? H.agent?.(agentId) : null);
     }
   }
 

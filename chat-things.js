@@ -122,7 +122,7 @@ const ChatThings = (() => {
       if (t.k === 'scene') url = (typeof ChatScenes !== 'undefined' && ChatScenes.thumbOf?.(H.chats?.find((c) => ChatScenes.linkOf?.(c.id) === t.id)?.id)) || ThreeLab.scenes?.thumbOf?.(t.id) || null;
       if (t.k === 'board' && typeof Board !== 'undefined') { const it = Board.item?.(t.id); const p = it && (it.tiny || it.thumb || it.poster || (it.type === 'image' ? it.src : null)); url = p ? Board.fileUrl(p) : null; }
     } catch { /* a glyph instead */ }
-    return url ? el('img', { src: url, alt: '', loading: 'lazy', draggable: false }) : el('span', { class: 'thing-glyph', text: GLYPH[t.k] || '◇' });
+    return url ? el('img', { src: url, alt: '', loading: 'lazy', decoding: 'async', draggable: false }) : el('span', { class: 'thing-glyph', text: GLYPH[t.k] || '◇' });
   }
   function cardEl(t, ctx = {}) {
     const isVid = t.k === 'video' && t.path;
