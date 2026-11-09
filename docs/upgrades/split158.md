@@ -82,7 +82,7 @@ What the numbers mean:
 
 - The file and its compile shrink by about a quarter, on every open, in both windows; on the owner's machine (a fast
   desktop CPU) these are a few milliseconds of main-thread work, here ~6 ms per open (the sketch tab's compile on its first run).
-- The first frame on this box (~1.4 s in Hearth's window, ~2.2–2.7 s in the Lab window from its page start) is mostly
+- The first frame on this box (~1.4 s in Hearth's window, ~2.1 s in the Lab window from its page start) is mostly
   software GL compiling the scene's shaders and the other 120 files of the `lab` group; the saving is inside the run-to-run
   noise there (±150 ms in Hearth's window, ±600 ms in the Lab window).
 - Memory: the JS heap after a GC is the same within noise (the code's bytes are a small part of it); what isn't loaded is
@@ -106,7 +106,27 @@ right-click, ▦ All your sketches, Present's right-click in the same task once 
 prevented), the toolbar's ⋯ (and `ThreeLab.search.menus()` answering at once after), ✥ Edit in and out, the timeline's
 lanes menu, the Tools drawer's model viewer; the Lab window opens with no part loaded and knows all eleven.
 
-%CHECKS%
+Final runs (after merging round 157, Lite mode; `tools/three.js` re-split from Lite's version with the same steps):
+
+- `--exact split158 labwin153 mem154 trim153 smooth142 panel142 lab143 redux151 renderrange142 motionrender148 tour137
+  qa-keys cmdbar141 labchat92 unit:lazymanifest-test unit:boot-test`: 14 / 16 at first — the two manifest checks failed
+  because the part groups' `at` (updater.js) wasn't in index.html yet when the manifest replays the old order; anchored on
+  `tools/three.js`, manifest regenerated, then `--exact unit:lazymanifest-test unit:boot-test trim153 split158`: 4 / 4.
+  So **16 / 16** on the final code.
+- Checks of the moved features: `abcompare menucalm versions132 lab3d-models labtools73 labstage labhub director-tools
+  labframes-more labbridge72 laberrors80 labaudio77 labmaterials shape-moodboard-mask refmatch131 matchscore141
+  layer-masks-controls interop starters134 labdrop61` before the Lite merge: 19 / 20; after it `lite153 abcompare
+  versions132 labtools73 director-tools labstage shape-moodboard-mask` pass (shape-moodboard-mask missed its 1.8 s video
+  decode once, passed on its rerun).
+- **Not this round's:** `labdrop61` fails the same way on the base (the project chat's .glb drop; `ThreeLab.addReference`
+  is stubbed in that check). `menucalm` fails on the base since Lite mode: Lab toolbar ⋯ has 12 rows at the top, its
+  budget is 11 (the new "⚡ Lite mode" row); the rows are the same with and without this split.
+- `node dev/whatsnew-test.js`: 49 passed.
+
+How it was done (repeatable on a new version of `tools/three.js`, as for the Lite merge): the right-click menus and
+`labCallMore` were made into whole functions first, then a script (acorn + eslint-scope) moved the listed declarations
+into the part files, rewrote their outer names to `K.name` (shorthand properties and assignments included), left the
+stand-ins and wrote `K` from what the parts actually read.
 
 ## For Codex
 
