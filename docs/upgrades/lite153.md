@@ -22,7 +22,7 @@ Lite mode switch … one click for busy days").
 
 | Place | What |
 | --- | --- |
-| Lab bar ⋯ | first row **⚡ Lite mode** (ticked while on; the menu stays at 11 rows, no folding) |
+| Lab bar ⋯ | **View & help › ⚡ Lite mode** (ticked while on; round 161 moved it from the menu's top row, which made 12 rows, back to menucalm's 11; the LITE tag beside ⋯ turns it off in one click) |
 | Rail ⋯ (simplify.js) | first row **Lite mode** (ticked) |
 | Settings › Look & size | **⚡ Lite mode** tick box |
 | Ctrl/⌘+; command bar | "lite mode on / off", "turn on lite", "enable lite mode", "lite" (toggle) — also inside the Lab (read before the Lab's plain words) |

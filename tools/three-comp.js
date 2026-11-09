@@ -29,6 +29,7 @@ const ThreeComp = (() => {
   const S = () => (typeof ThreeLab !== 'undefined' ? ThreeLab.scenes : null);
   const CS = () => (typeof ChatScenes !== 'undefined' ? ChatScenes : null);
   let host = null; // the Lab's hooks (tools/three.js attach): send, sketchId, persist, select, player
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { host = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const sent = new Map(); // precomp layer id → the signature of what the preview runs (the scene on screen)
   const seqs = new Map(); // sequence key → { edit } (sequence sources), loaded on demand
 

@@ -98,10 +98,12 @@ const AppUIDialogs = (() => {
     // (round 153a, lite153) ⚡ Lite mode: one switch for busy days (powerwise.js HearthLite; nothing else changes or is saved)
     const liteBox = el('input', { type: 'checkbox', checked: Boolean(window.HearthLite?.on), on: { change: (e) => window.HearthLite?.set(e.target.checked) } });
     const liteRow = window.HearthLite ? el('label', { class: 'check-row lite-row', dataset: { feature: 'Lite mode' }, title: 'The Lab preview at 30 fps and half resolution, no glow, shadows or effects in it; no animations anywhere; slower background checks. Renders and exports stay full quality. Off gives back exactly what was there.' }, liteBox, el('span', { text: '⚡ Lite mode: lighter for a busy PC (30 fps preview at half resolution, no glow, no animations; renders stay full quality)' })) : null;
-    const lookSec = section('Look & size', look, sizeRow, liteRow,
-      fold('look', 'More looks and tweaks', 'Every other look, following your computer\'s light / dark mode, your saved looks, glow, motion, spacing, sparkles',
-        () => [lookName(), window.NativeFeel?.following?.() ? 'follows your computer' : '', swOn('sparkles') === false ? 'no sparkles' : ''].filter(Boolean).join(' · '),
-        home(section('More looks and tweaks', look.rest, el('span', { class: 'sf-slot' })), 'look')));
+    // (round 161, fix161) the Lite row sits at the top of "More looks and tweaks", beside motion and glow (Settings' first
+    // sight back to its 20 controls); the fold's line says when it is on, and the LITE tags turn it off in one click
+    const lookSec = section('Look & size', look, sizeRow,
+      fold('look', 'More looks and tweaks', 'Lite mode, every other look, following your computer\'s light / dark mode, your saved looks, glow, motion, spacing, sparkles',
+        () => [window.HearthLite?.on ? '⚡ Lite mode on' : '', lookName(), window.NativeFeel?.following?.() ? 'follows your computer' : '', swOn('sparkles') === false ? 'no sparkles' : ''].filter(Boolean).join(' · '),
+        home(section('More looks and tweaks', liteRow, look.rest, el('span', { class: 'sf-slot' })), 'look')));
 
     // ---- Your AIs ----
     const aiSec = section('Your AIs',

@@ -136,6 +136,7 @@ const ThreeFrames = (() => {
     display: null, refRead: new Map(),
   };
   const P = () => F.player;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { clearTimeout(F.shuttle.timer); clearInterval(F.shuttle.timer); F.shuttle.timer = 0; F.shuttle.dir = 0; F.player = null; F.send = null; F.ctx = null; F.display = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const store_ = (k, d) => store.get(k, d);
   const modeOf = () => store_('three.frameModes', {});
   // Frame mode: on for a loaded video unless you turned it off for that file (/footage off)
@@ -601,6 +602,7 @@ const ThreeFrames = (() => {
   }
   // footage mode on the bar: music-only controls tuck away (⋯ shows everything), the frames chip shows
   let chip = null;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) chip = null; }); // (round 161, fix161) a new Lab's timeline gets a new chip
   function paintChrome() {
     const bar = P()?.el; if (!bar) return;
     const f = on();

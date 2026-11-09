@@ -10,6 +10,7 @@
 // Nothing new in any prompt (0 tokens); nothing runs until the picture is clicked.
 const LabDirect = (() => {
   let h = null; // { send, pane, player, layerById, sel, select, edit, snapshot, restore, openSliders, setEdit, sketchId }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { h = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const U = []; let tokN = 0; // undo steps: { n, sid, lid, before, label, timeline }
   const open = new Map(); // drag token → { lid, before } (the values before the drag's first change)
   const stats = { picks: 0, drags: 0, undos: 0, opens: 0 };

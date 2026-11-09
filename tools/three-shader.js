@@ -53,6 +53,7 @@ const LabShader = (() => {
 
   // ---------- inline errors in the code editor: a wavy line under the line, the message at its end ----------
   const lens = { ed: null, box: null, inner: null, sig: '' };
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) Object.assign(lens, { ed: null, box: null, inner: null, sig: '' }); }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop)
   function attachLens() {
     const h = host();
     if (!h?.editor || lens.ed === h.editor) return;

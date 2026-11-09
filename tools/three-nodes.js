@@ -1698,6 +1698,9 @@ let ${id}Travel = 0;`);
       }, 300);
     }
     function stopProbe() { clearInterval(probeTimer); probeTimer = 0; }
+    // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): this attach's window key, probe and hook go too
+    const gone = new AbortController();
+    addEventListener('hearth:lab-drop', (e) => { if (!e.detail?.dropped) return; stopProbe(); gone.abort(); if (lab?.hook === hook) { lab = null; window.ShaderNodes?.setLabHook?.(null); } }, { signal: gone.signal });
     addEventListener('keydown', (e) => {
       if (!e.altKey || e.ctrlKey || e.code !== 'KeyN' || !host.isConnected || !host.closest('.tabpane')?.offsetParent) return;
       // not while typing in the docked chat, a dialog or another box (⌥N types ñ / ˜ on a Mac)
@@ -1705,7 +1708,7 @@ let ${id}Travel = 0;`);
       e.preventDefault();
       setMode(mode === 'nodes' ? 'code' : 'nodes');
       Usage.key('Alt+N', 'Lab nodes');
-    }, true);
+    }, { capture: true, signal: gone.signal });
     setMode(mode, { quiet: true, init: true });
     lab = {
       view, hook, setMode, usePreset, presetPicker, showOutline, rebuild, sync: () => sync(hook.editor.value, { force: true }),

@@ -17,6 +17,7 @@ const LabCamera = (() => {
   const clone = (o) => JSON.parse(JSON.stringify(o ?? null));
   const stats = { added: 0, drags: 0, undos: 0, commits: 0 };
   let h = null; // { send, player, layers, layerById, sel, edit, sketchId, host, ensureClock }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { h = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const P = () => h?.player;
 
   // ---------- the preview's answers (cam-info) ----------
@@ -206,6 +207,7 @@ const LabCamera = (() => {
   // Moves that overlap in time stack in rows (up to 3) above the waveform's bottom edge; the rows stay put while a bar
   // is dragged (they are worked out again after)
   const BAND_H = 12; const ROWS = 3; let geo = null; // { LT, w, X, canvas } from the last draw
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) geo = null; }); // (round 161, fix161) the dropped Lab's waveform
   let drag = null; // { id, lid, edge, from (the list before), m0, grab }
   let rowMap = null;
   function rows() {

@@ -375,6 +375,7 @@ lab3d.model(refs.${refKey}, P, { ${o} });
 
   // ---------- drops on the preview, the right-click menu, the gizmo ----------
   let dragging = null; let host = null; let labApi = null;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { dragging = null; host = null; labApi = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   function attach(o) {
     labApi = o;
     host = o.previewHost;

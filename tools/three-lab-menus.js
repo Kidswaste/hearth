@@ -56,7 +56,6 @@
     const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
     const speed = easy.filter((r) => /Speed check/.test(r[0])); // (round 133, speed133)
     return ['Make',
-      K.liteRow(), // (round 153a, lite153) ⚡ Lite mode, the menu's top row
       ...easy.filter((r) => !fix.includes(r) && !speed.includes(r)),
       'This Lab',
       ...fix,
@@ -72,7 +71,8 @@
         ['Live code', 'Apply code changes a moment after you stop typing', () => { K.autoBox.checked = !K.autoBox.checked; K.autoBox.dispatchEvent(new Event('change')); }, K.autoRun],
         'The console shows',
         ...K.CONSOLE_MODES.map(([m, l]) => [l, '', () => K.setConsoleMode(m), K.consoleMode === m])]],
-      ['View & help', 'Focus, frame pace, keys', [
+      ['View & help', 'Lite mode, focus, frame pace, keys', [ // (round 161, fix161) ⚡ Lite mode moved here from the menu's top (menucalm's 11 rows); it is also in the rail ⋯, Settings, Ctrl/⌘+Alt+L and Ctrl/⌘+K
+        K.liteRow(), // (round 153a, lite153) ⚡ Lite mode
         ...(window.LabWinHost ? LabWinHost.rows() : []), // (round 153c, labwin153) ⧉ Open in its own window · Hide Hearth meanwhile (tools/three-labwin.js)
         ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => K.setFocus(!K.focusOn), K.focusOn, 'Focus'],
         ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture

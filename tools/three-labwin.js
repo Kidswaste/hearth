@@ -22,7 +22,7 @@ const LabWinHost = (() => {
   function paintCover() {
     const surface = H.surfaces?.get('tool:three')?.el;
     const host = surface?.querySelector('.tool-main') || surface;
-    const show = Boolean(away && host && lab()?.scenes?.currentId?.() === away);
+    const show = Boolean(away && host && (lab()?.dropped?.() || lab()?.scenes?.currentId?.() === away)); // (round 161, fix161: a dropped Lab shows only this card)
     if (!show) { cover?.remove(); cover = null; document.documentElement.classList.remove('labwin-away-on'); return; }
     if (!cover || cover.dataset.scene !== away || !host.contains(cover)) {
       cover?.remove();
@@ -66,6 +66,9 @@ const LabWinHost = (() => {
     const r = await HUB.open({ scene: id, hideMain });
     if (!r?.ok) { away = null; paintCover(); L.workspace?.resume?.(); throw new Error(r?.error || 'The Lab window could not open.'); }
     st.opens += 1;
+    // (round 161, fix161) Hearth's window lets its Lab go entirely while the Lab window holds the scene (ThreeLab.drop:
+    // the tab's DOM, state, hooks and caches; ≈ docs/upgrades/fix161.md); it comes back when the Lab window closes
+    if (L.drop) { const d = await L.drop().catch((err) => ({ ok: false, why: err.message })); st.dropped = d?.ok ? (st.dropped || 0) + 1 : st.dropped; if (!d?.ok) st.dropFail = d?.why || null; }
     paintCover();
     if (!hideMain) toast(`“${sceneName(id)}” is open in its own window. Hearth goes quiet meanwhile.`, { timeout: 7000, action: { label: 'Hide Hearth too', fn: () => { store2.set('labwin.hideMain', true); HUB.hideMain(); } } });
     dispatchEvent(new CustomEvent('hearth:labwin', { detail: { open: true, scene: id } }));
@@ -78,6 +81,12 @@ const LabWinHost = (() => {
     away = null; st.closed += 1;
     cover?.remove(); cover = null; document.documentElement.classList.remove('labwin-away-on');
     const L = lab();
+    // (round 161, fix161) a dropped Lab mounts again, on that scene, read from disk with everything changed there
+    if (L?.dropped?.()) {
+      try { await L.cmd({ show: true, sketch: id }); if (id && L.scenes?.currentId?.() !== id) L.scenes?.open(id); st.restored = (st.restored || 0) + 1; } catch (err) { console.warn('labwin: mount again', err); }
+      dispatchEvent(new CustomEvent('hearth:labwin', { detail: { open: false, scene: id } }));
+      return;
+    }
     try { await L?.scenes?.refreshOne?.(id); } catch (err) { console.warn('labwin: refresh', err); }
     if (L && id) {
       if (H.surfaceIdFor?.(H.activeId) !== 'tool:three') activate('tool:three', { focus: false });
@@ -90,6 +99,16 @@ const LabWinHost = (() => {
   async function route(tool, args, ctx = {}) {
     if (!away || inLabWindow) return null;
     let target = null;
+    // (round 161, fix161) Hearth's Lab dropped: routed by the chat's link alone (no Lab here to ask). A chat linked to
+    // the away scene, or a call without a chat (the Lab's scene on screen is the away one), goes to the Lab window;
+    // anything else runs here as before (the Lab mounts again for it: handleTool)
+    if (lab()?.dropped?.()) {
+      const sk = ctx.chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf?.(ctx.chatId) : null;
+      if (ctx.chatId && sk !== away) { st.local += 1; return null; }
+      const r = await HUB.call(tool, args, ctx);
+      if (r) st.forwarded += 1;
+      return r;
+    }
     if (ctx.chatId && typeof ChatScenes !== 'undefined') {
       try { await Promise.race([ChatScenes.ready?.(), new Promise((r) => setTimeout(r, 5000))]); } catch { /* as it is */ }
       const r = ChatScenes.routeThree(tool, ctx.chatId);
@@ -183,7 +202,7 @@ const LabWinHost = (() => {
   }
 
   return {
-    open, route, holds, release, rows, lite,
+    open, route, holds, release, rows, lite, paintCover,
     away: () => away, active: () => Boolean(away) && !inLabWindow,
     hideMain: (on) => { if (on !== undefined) store2.set('labwin.hideMain', Boolean(on)); return hideMainPref(); },
     state: () => ({ away, cover: Boolean(cover?.isConnected), inLabWindow, ...st }),

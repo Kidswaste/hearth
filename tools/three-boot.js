@@ -163,6 +163,8 @@ const LabBoot = (() => {
   let lastRan = '';
   const ran = (id, query) => { const k = `${id}${query}`; if (!id || !query || k === lastRan) return; lastRan = k; store.set('labboot.last', { id, query }); };
   addEventListener('hearth:lab-ready', () => used(document.querySelector('.surface[data-id="tool:three"] .three-preview .three-frame')));
+  // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): its preview isn't watched any more (a new Lab's is)
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped && used.ro) { try { used.ro.disconnect(); } catch { /* gone */ } used.ro = null; } });
 
   // after the start: once every 'soon' group is in (or 6 s), in an idle moment
   // (round 83, idleburst83) and after the calm start (lazy.js Lazy.calm(): 10 s after the first screen and 3 s with no

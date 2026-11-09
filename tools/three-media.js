@@ -1667,7 +1667,9 @@ const ThreeMedia = (() => {
       return false;
     }
     const nudgeKey = { pushed: false };
-    addEventListener('keyup', () => { nudgeKey.pushed = false; });
+    // (round 161, fix161) the player's window listeners end with it (dispose: Hearth's Lab let go entirely, ThreeLab.drop)
+    const gone = new AbortController(); const til = { signal: gone.signal };
+    addEventListener('keyup', () => { nudgeKey.pushed = false; }, til);
 
     // ---------- zoom ----------
     const span = () => (view ? view.end - view.start : D() || 1);
@@ -1854,9 +1856,9 @@ const ThreeMedia = (() => {
       lookT = setTimeout(go, 200);
       if (document.visibilityState === 'visible') requestAnimationFrame(() => setTimeout(go, 0)); else setTimeout(go, 0);
     };
-    addEventListener('hearth:view', lookSoon);
-    document.addEventListener('hearth:activate', lookSoon);
-    document.addEventListener('visibilitychange', () => checkOnScreen());
+    addEventListener('hearth:view', lookSoon, til);
+    document.addEventListener('hearth:activate', lookSoon, til);
+    document.addEventListener('visibilitychange', () => checkOnScreen(), til);
     // (round 149, play149) on a fast screen (120 / 144 / 240 Hz) while the song plays, the tick's work runs at most 60
     // times a second: the playheads glide on the compositor between placements, the timeline's picture is drawn 5× a
     // second anyway, and the preview draws at 60 at most in Auto fps; 240 ticks a second did the same work 4× over on the
@@ -1865,6 +1867,7 @@ const ThreeMedia = (() => {
     const TK = { scr: 16.7, prev: -1, work: -1e9, off: false, skips: 0 };
     LabPlay.tickInfo = () => ({ scr: Math.round(TK.scr * 100) / 100, skips: TK.skips, off: TK.off });
     LabPlay.tickOff = (v) => { TK.off = Boolean(v); return TK.off; };
+    const tickHooks = [LabPlay.tickInfo, LabPlay.tickOff]; // (round 161, fix161) dispose lets go of them (they'd keep this player alive)
     function tick(ts) {
       // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the
       // playheads aren't placed, 10 times a second for nothing; the beat still ticks for the click track. Back on
@@ -3388,7 +3391,7 @@ const ThreeMedia = (() => {
     sizeRo.observe(minimap); sizeRo.observe(canvas);
     // (round 36, nativefeel) a new screen scale (another monitor, Windows' scaling) redraws the wave crisp (the sizes didn't change)
     const onDpr = () => { if (!canvas.isConnected) removeEventListener('hearth:dpr', onDpr); else draw(); };
-    addEventListener('hearth:dpr', onDpr);
+    addEventListener('hearth:dpr', onDpr, til);
     // (round 140, dropmedia140) files, moodboard tiles and Lab references dropped on the timeline become layers at that
     // time (tools/three-dropmedia.js, lazy group "dropmedia", loaded on the first drag over it)
     const dmApi = { timeAt: (cx) => v0() + ((cx - canvas.getBoundingClientRect().left) / tw()) * span(), redraw: () => draw(), addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); } };
@@ -3402,6 +3405,8 @@ const ThreeMedia = (() => {
     return {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
+      // (round 161, fix161) for good: its window listeners, timers and sound contexts let go (call unload first)
+      dispose() { if (LabPlay.tickInfo === tickHooks[0]) { delete LabPlay.tickInfo; delete LabPlay.tickOff; } mapsHold?.off?.(); mapsHold = null; gone.abort(); clearInterval(parkT); parkT = 0; cancelAnimationFrame(raf); raf = 0; clearTimeout(lookT); lookT = 0; for (const c of [scrub.ctx, clickCtx]) { try { c?.close(); } catch { /* closed */ } } scrub.ctx = null; clickCtx = null; },
       // ---------- for the footage side (tools/three-frames.js) ----------
       hooks,
       addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); drawNext(); }, // (round 40, labcamera) · (round 52) drawn in the next frame: drawn at once, it laid the Lab out while it was being built (≈ 40 ms of its opening)

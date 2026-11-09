@@ -9,6 +9,7 @@
 // scene's camera through the scene editor's camera override, which is saved and undoable as before.
 const ThreeGestures = (() => {
   let hooks = null; // { send, pane, layer }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { hooks = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   let seq = 0; let last = null;
   const HINT = 'three.viewHint';
   const typing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.isContentEditable;

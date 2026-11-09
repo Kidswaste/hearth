@@ -8,8 +8,12 @@ const ThreeLab = (() => {
   };
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
+  let dropped = false; // (round 161, fix161) ThreeLab.drop(): Hearth's Lab let go entirely while the Lab window holds its scene
+  let mountAC = null; // (round 161) the mount's listener on the surface's body
   let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
+  let npStarted = false; let nowPlayingTo = null; // (round 161, fix161) the now-playing subscription, once per window
+  const nowPlayingRelay = (info) => nowPlayingTo?.(info); // (made here: a closure made inside the tab would keep the tab alive)
   // (round 158, split158) The Lab's cold parts: what opening the Lab, playing a scene, selecting a layer, moving its
   // knobs and the director's everyday calls never run (dialogs, menus, references, notes, MIDI, the other tools…) lives
   // in tools/three-lab-*.js, lazy groups loaded on first use (docs/upgrades/split158.md). A stand-in left here
@@ -66,7 +70,7 @@ const ThreeLab = (() => {
     const have = () => window.__sbxLibFn?.[name];
     libFiles[name] ||= have() ? Promise.resolve() : new Promise((res, rej) => {
       const s = document.createElement('script'); s.src = LIB_FILES[name];
-      s.onload = res; s.onerror = () => { delete libFiles[name]; s.remove(); rej(new Error(`${LIB_FILES[name]} didn't load`)); };
+      s.onload = () => { s.onload = s.onerror = null; res(); }; s.onerror = () => { s.onload = s.onerror = null; delete libFiles[name]; s.remove(); rej(new Error(`${LIB_FILES[name]} didn't load`)); }; // (round 161: the handlers let go once done, they kept the page that asked)
       document.head.append(s);
     });
     libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
@@ -323,6 +327,8 @@ const ThreeLab = (() => {
         if (target === 'stage') { target = 'frame'; window.hub.stageClose(); }
         frame.src = 'about:blank'; uncover();
       },
+      // (round 161, fix161) for good (ThreeLab.drop): released, and its window listener gone (a new Lab makes a new one)
+      dispose() { this.release(); window.__labFrames?.delete(crashCheck); window.LabGrade?.offPage?.(deliver); removeEventListener('message', listener); target = 'gone'; onMessage = () => {}; onStageClosed = null; },
       // (round 37, labboot) once: the page just taken over drew a warm run (of this sketch id): run() swaps over it
       takeWarmRun: () => { const r = warmRun; warmRun = false; return r; },
       // (round 37, labboot) the page was loaded for another ?dpr= only (fit ⇄ an exact frame size): it switches in place
@@ -545,6 +551,19 @@ const ThreeLab = (() => {
   // code is sketch.code. The editor, sliders and history always show the selected layer.
   const SLOT = 10000; // each layer's slider values live from slot × SLOT in the sandbox
   function sketchTab(pane) {
+    // (round 161, fix161) ThreeLab.drop(): while the Lab window holds the scene, Hearth's window lets its Lab go entirely
+    // (its DOM, state, preview page): what this tab hooks outside its own DOM is let go with it. The bare names below are
+    // this tab's own: window listeners with one AbortSignal, the observers and intervals it starts, its chat hooks.
+    const life = { ac: new AbortController(), obs: [], iv: new Set(), to: new Set(), undo: [] };
+    life.hook = (list, fn) => { list.push(fn); life.undo.push(() => { const i = list.indexOf(fn); if (i >= 0) list.splice(i, 1); }); };
+    const scoped = (o) => (o === true ? { capture: true, signal: life.ac.signal } : { ...(o && typeof o === 'object' ? o : {}), signal: life.ac.signal });
+    const addEventListener = (t, fn, o) => window.addEventListener(t, fn, scoped(o));
+    const docOn = (t, fn, o) => document.addEventListener(t, fn, scoped(o));
+    const tracked = (C) => (C ? class extends C { constructor(cb) { super(cb); life.obs.push(this); } } : C);
+    const MutationObserver = tracked(window.MutationObserver); const IntersectionObserver = tracked(window.IntersectionObserver); const ResizeObserver = tracked(window.ResizeObserver);
+    const setInterval = (fn, ms, ...a) => { const t = window.setInterval(fn, ms, ...a); life.iv.add(t); return t; };
+    // (its timeouts too: one still waiting when the tab is let go would keep it until it fires; the saves are flushed first)
+    const setTimeout = (fn, ms, ...a) => { const t = window.setTimeout(() => { life.to.delete(t); fn(...a); }, ms); life.to.add(t); return t; };
     // (round 158, split158) what the Lab's cold parts (tools/three-lab-*.js, loaded on first use: labPart) reach in here
     const K = {
       get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
@@ -693,7 +712,7 @@ const ThreeLab = (() => {
     const keyHint = el('div', { class: 'lab-keyhint', hidden: true });
     document.body.append(keyHint);
     let hintT = 0;
-    document.addEventListener('pointerover', (e) => {
+    docOn('pointerover', (e) => {
       const b = e.target.closest?.('[data-key]');
       clearTimeout(hintT);
       if (!b || document.body.classList.contains('lab-nohints') || !pane.contains(b)) { if (!keyHint.hidden) keyHint.hidden = true; return; } // (round 32) written only when shown: this runs on every pointerover in the app
@@ -924,9 +943,11 @@ const ThreeLab = (() => {
     }
     function stopNowPlaying() { np = null; window.hub.npStop(); npBox.hidden = true; }
     const fmtClock = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
-    let npStarted = false;
     function onNowPlaying(...a) { return labPart(K, 'live', 'onNowPlaying', a); } // tools/three-lab-live.js
-    if (!npStarted) { npStarted = true; window.hub.onNowPlaying((info) => onNowPlaying(info)); }
+    // (round 161, fix161) one subscription for the window's life (hub.onNowPlaying can't be undone): it reaches the Lab
+    // mounted now (a dropped Lab's comes back as a new mount)
+    nowPlayingTo = onNowPlaying;
+    if (!npStarted) { npStarted = true; window.hub.onNowPlaying(nowPlayingRelay); }
 
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
     // Preview frame rate: Max follows the screen (240 Hz screens render 240 frames a second); 60 or 30 is lighter.
@@ -1036,7 +1057,7 @@ const ThreeLab = (() => {
       if (document.visibilityState === 'visible') requestAnimationFrame(() => setTimeout(go, 0)); else setTimeout(go, 0);
     };
     for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, parkAfterPaint);
-    document.addEventListener('visibilitychange', () => syncPark());
+    docOn('visibilitychange', () => syncPark());
     // (the preview showing or going away without one of those events, e.g. another Lab tab, a panel, the first layout:
     // the observer sees it; the stall timer below checks too, so a park can never stick)
     try { new IntersectionObserver(() => syncPark()).observe(previewHost); } catch { /* old engine: events + timer */ }
@@ -1098,7 +1119,7 @@ const ThreeLab = (() => {
     try {
       navigator.getBattery?.().then((b) => {
         const upd = () => { batApi = !b.charging; updPower(); };
-        upd(); b.addEventListener('chargingchange', upd);
+        upd(); b.addEventListener('chargingchange', upd, { signal: life.ac.signal }); // (round 161, fix161)
       }).catch(() => { /* no battery API: plugged in */ });
     } catch { /* none */ }
     // (round 142, smooth142) the preview's quality, three ways: Smooth (auto, the default: lighter before frames drop,
@@ -1197,7 +1218,7 @@ const ThreeLab = (() => {
       if (e.key.toLowerCase() === 'f' || e.key === '\\') { setFreeze(!frozenNow); return true; }
       return false;
     }
-    document.addEventListener('fullscreenchange', () => {
+    docOn('fullscreenchange', () => {
       const on = document.fullscreenElement === previewHost;
       if (on && store.get('three.presentHud', false)) setHud(true); else if (!on) { clearInterval(hudTimer); presentHud.hidden = true; setBlackout(false); }
       presentBtn.classList.toggle('on', on);
@@ -1206,7 +1227,7 @@ const ThreeLab = (() => {
       if (on) { presentHint.classList.remove('gone'); setTimeout(() => presentHint.classList.add('gone'), 2500); }
     });
     // While presenting, keys can land outside the Lab pane: pass them to the player.
-    document.addEventListener('keydown', (e) => {
+    docOn('keydown', (e) => {
       if (document.fullscreenElement !== previewHost || pane.contains(e.target)) return;
       if (!e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') { e.preventDefault(); togglePresent(); return; }
       if (presentKeys(e)) { e.preventDefault(); return; }
@@ -1949,8 +1970,8 @@ const ThreeLab = (() => {
     }
     api.directorWork = (d) => { works = Math.max(0, works + d); paintBuilding(); };
     if (typeof Native !== 'undefined' && Native.hooks) {
-      Native.hooks.send.push((agentId, chat) => { const a = H.agent?.(agentId); if (chat?.id && (a?.threeTools || a?.dock === 'three')) { turns.add(chat.id); paintBuilding(); } });
-      Native.hooks.event.push((ev, chat) => { if (chat?.id && ev?.type !== 'delta' && turns.delete(chat.id)) paintBuilding(); });
+      life.hook(Native.hooks.send, (agentId, chat) => { const a = H.agent?.(agentId); if (chat?.id && (a?.threeTools || a?.dock === 'three')) { turns.add(chat.id); paintBuilding(); } }); // (round 161, fix161: let go on ThreeLab.drop)
+      life.hook(Native.hooks.event, (ev, chat) => { if (chat?.id && ev?.type !== 'delta' && turns.delete(chat.id)) paintBuilding(); });
     }
     addEventListener('hearth:sketch', () => paintBuilding());
     const tweaksSlot = el('div', { class: 'tw-slot' });
@@ -2925,10 +2946,10 @@ const ThreeLab = (() => {
     const sandboxCalls = new Map();
     // (round 72, labbridge72) the preview reloading (Run, a fresh page, a lost GPU…) while an eval / play-test waits on it: the
     // old page will never answer, so the call ends now, in words, instead of "did not answer" seconds later
-    live.onReload((name) => {
+    life.undo.push(live.onReload((name) => { // (round 161, fix161: let go on ThreeLab.drop)
       if (name !== 'preview' || !sandboxCalls.size) return;
       for (const [id, resolve] of [...sandboxCalls]) { sandboxCalls.delete(id); resolve({ ok: false, error: 'The Lab preview reloaded while this ran (the page it ran in is gone): nothing was changed by it. Call it again.' }); }
-    });
+    }));
     function sandboxCall(msg, timeout) {
       return new Promise((resolve) => {
         const id = `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
@@ -3800,7 +3821,7 @@ const ThreeLab = (() => {
     // scroll: it's only opened again when it changed. While an edit is being tried (Keep / Undo), or when the scene on
     // screen was deleted there, the Lab keeps what it has and sync keeps merging (nothing lost; acked next time).
     // (three-history / three-thumbs: megabytes of versions and pictures, left to sync's guard: never lost, not re-read)
-    const SA = window.StoreAck;
+    const SA = window.StoreAck && { ...window.StoreAck, hold: (...a) => { const r = window.StoreAck.hold(...a); if (r?.off) life.undo.push(() => r.off()); return r; } }; // (round 161, fix161: its holders let go on ThreeLab.drop)
     SA?.hold('three-sketches', {
       name: 'Lab scenes',
       pending: () => save.pending() || dirtyHere(), flush: () => { if (dirtyHere()) persist(); return save.flush(); },
@@ -4242,6 +4263,25 @@ const ThreeLab = (() => {
         if (REST.by && !restUnseen()) { REST.by = false; api.workspace.resume(); } // shown while it was being let go
       }, (err) => { REST.last = `close: ${err?.message || err}`; }).finally(() => { REST.closing = false; });
     }
+    // (round 161, fix161) ThreeLab.drop(): the rest path first (the code and slider edits saved, the song's place
+    // remembered, the preview page let go: WebGL, sound, timers), then everything this tab hooked outside its own DOM, so
+    // nothing outside keeps the tab (its scenes, DOM, state) alive once ThreeLab lets go of it
+    api.teardown = async () => {
+      await api.workspace.close();
+      clearTimeout(REST.t); REST.t = 0;
+      life.ac.abort();
+      for (const o of life.obs.splice(0)) { try { o.disconnect(); } catch { /* gone */ } }
+      for (const t of life.iv) clearInterval(t);
+      life.iv.clear();
+      for (const t of life.to) clearTimeout(t);
+      life.to.clear();
+      for (const u of life.undo.splice(0)) { try { u(); } catch { /* gone */ } }
+      for (const id of ['lab-media', 'lab-stall']) window.Power?.stop?.(id);
+      clearInterval(K.hudTimer); clearInterval(K.lookTimer); clearInterval(K.hubLive?.timer); // (the parts' timers: Present's HUD, cycle looks, live sound)
+      keyHint.remove(); exitFocus.remove(); // (made on document.body)
+      box.dispose(); player.dispose?.(); if (nowPlayingTo === onNowPlaying) nowPlayingTo = null;
+      for (const k of ['__labRest', '__labLiveStart', 'LabPresets']) { try { delete window[k]; } catch { window[k] = undefined; } }
+    };
     api.rest = {
       state: () => ({ rested: REST.rested, woke: REST.woke, by: REST.by && workspaceReleased, armed: Boolean(REST.t), since: REST.since, last: REST.last, block: restBlock(), ms: restMs() }),
       // an AI call on the scene (or anything that needs its page): the rested page comes back first (≤ 15 s for its 'ready')
@@ -4606,7 +4646,7 @@ const ThreeLab = (() => {
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',
     description: 'Live sketches, model viewer, shaders, textures and docs',
-    onShow() { if(window.ProjectWorkspace?.state().phase!=='opening')api.workspace?.resume(); },
+    onShow() { if (dropped) { if (window.LabWinHost?.away?.()) window.LabWinHost.paintCover?.(); else ensureMounted(); return; } if(window.ProjectWorkspace?.state().phase!=='opening')api.workspace?.resume(); }, // (round 161, fix161) dropped: the Lab window's card, no Lab
     mount(body, head) {
       tabs = Tabs(body, [
         { id: 'sketch', label: 'Sketch', render: sketchTab },
@@ -4626,7 +4666,8 @@ const ThreeLab = (() => {
       for (const b of tabs.bar.querySelectorAll('button[data-id]')) b.addEventListener('click', paintTabs);
       paintTabs();
       if (head) { head.classList.add('lab-head'); head.querySelector('.tool-desc')?.after(tabs.bar); }
-      body.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tabs.current !== 'sketch' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) tabs.show('sketch'); });
+      mountAC = new AbortController(); // (round 161, fix161: let go with a dropped Lab, the surface's body stays)
+      body.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tabs && tabs.current !== 'sketch' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) tabs.show('sketch'); }, { signal: mountAC.signal });
     },
     get commands() { return [
       { label: 'New three.js sketch', run: () => { tabs?.show('sketch'); } },
@@ -4650,8 +4691,44 @@ const ThreeLab = (() => {
     ]; },
   });
 
+  // (round 161, fix161) Hearth's Lab let go entirely while the Lab window holds its scene (tools/three-labwin.js asks):
+  // the rest path (workspace.close: edits saved, the preview page released), then the tab's outside hooks
+  // (api.teardown), its DOM, every api.* it set and the module's caches. Nothing of the tab is reachable after it: the
+  // GC takes its scenes, layers, editors and DOM. The surface stays "mounted" (showing the Lab window's card, not a new
+  // Lab); anything that needs the Lab here (ThreeLab.cmd, a director call for another scene, a code block…) mounts a new
+  // one first (ensureMounted), as on the Lab's first open, which reads the scenes from disk.
+  async function drop() {
+    if (dropped) return { ok: true, already: true };
+    if (!tabs || !api.teardown) return { ok: false, why: 'not mounted' };
+    if (inflight) await new Promise((r) => idleWaiters.push(r));
+    try { await api.teardown(); } catch (err) { return { ok: false, why: err?.message || String(err) }; }
+    const s = H.surfaces?.get('tool:three');
+    // what other modules keep of the Lab's DOM (their own chips and buttons, put back when a new Lab is made) leaves it
+    // first, so it doesn't keep the rest of the tab alive through its parent: LabDirection's and Finish's chips, Lab
+    // search's button, the frame budget, the project look, the footage chip, the live dot, the sequence view
+    for (const n of s?.el.querySelectorAll('.dir-chip, .fl-chip, .ls-btn, .three-stats > .fb, .lab-projlook, .mb-framechip, .live-lock, .sq-view') || []) n.remove();
+    tabs.bar?.remove(); mountAC?.abort(); mountAC = null;
+    s?.body.replaceChildren(); s?.head?.classList.remove('lab-head');
+    tabs = null;
+    for (const k of Object.keys(api)) delete api[k];
+    hlEditors.clear(); for (const k of Object.keys(libFiles)) delete libFiles[k];
+    dropped = true;
+    dispatchEvent(new CustomEvent('hearth:lab-drop', { detail: { dropped: true } }));
+    return { ok: true };
+  }
+  function ensureMounted() {
+    if (dropped) {
+      dropped = false;
+      const s = H.surfaces?.get('tool:three');
+      if (s) s.mounted = false;
+      dispatchEvent(new CustomEvent('hearth:lab-drop', { detail: { dropped: false } }));
+    }
+    if (!tabs) Tools.shown(Tools.get('three'));
+  }
+
   // Entry points used by chat code blocks.
   function ensureOpen(tab) {
+    ensureMounted(); // (round 161, fix161)
     activate('tool:three');
     tabs?.show(tab);
   }
@@ -4664,7 +4741,7 @@ const ThreeLab = (() => {
   // (round 116, layerdelete116) who made a call, for the owner's toast ("Astra deleted …")
   const aiName = (chatId) => { const c = chatId && (H.chats || []).find((x) => x.id === chatId); const a = c && H.agent?.(c.agentId); return a ? (a.engine === 'codex' ? 'Astra' : a.name || 'Claude') : 'The AI'; };
   async function handleTool(tool, args, ctx = {}) {
-    if (!tabs) Tools.shown(Tools.get('three')); // load the Lab in the background if needed
+    if (!tabs) ensureMounted(); // load the Lab in the background if needed (round 161: a dropped Lab too)
     if (!tabs) return { ok: false, error: 'Three.js Lab could not be loaded.' };
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
     if (!api.director) return { ok: false, error: 'The Three.js Lab is still starting (it took over 10 s): nothing was changed. Call it again in a moment.' }; // (round 72) not a silent fall-through
@@ -4798,6 +4875,7 @@ const ThreeLab = (() => {
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     get workspace() { return api.workspace; },
     get rest() { return api.rest; }, // (round 154, mem154) the Lab's rest when unseen: state(), wake()
+    drop, dropped: () => dropped, mountAgain: () => { ensureMounted(); return Boolean(tabs); }, // (round 161, fix161) the Lab let go entirely while the Lab window holds its scene
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js
@@ -4840,7 +4918,7 @@ const ThreeLab = (() => {
     async cmd({ show = true, sketch = null } = {}) {
       if (show && H.surfaceIdFor?.(H.activeId) !== 'tool:three') activate('tool:three', { focus: false });
       if (!tabs && sketch) startHint = sketch; // (round 73) only the first mount: later ones keep the Lab's own scene
-      if (!tabs) Tools.shown(Tools.get('three'));
+      if (!tabs) ensureMounted(); // (round 161, fix161: a dropped Lab mounts again)
       if (show && tabs?.current !== 'sketch') tabs.show('sketch');
       for (let i = 0; i < 80 && !(api.cmd && api.director); i += 1) await new Promise((r) => setTimeout(r, 100));
       if (!api.cmd) throw new Error('The Three.js Lab did not load');

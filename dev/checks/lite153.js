@@ -1,6 +1,6 @@
 // (round 153a, lite153) ⚡ Lite mode (docs/upgrades/lite153.md), ONE focused check on its own fixture scene and temp data
 // (smoke.js; never an owner's scene). Steps:
-//   switch    the Lab ⋯ menu's top row turns it on (a real click): <html data-lite>, Motion: off, the store's hub.lite;
+//   switch    the Lab ⋯ › View & help row turns it on (a real click): <html data-lite>, Motion: off, the store's hub.lite;
 //             nothing the owner chose is changed or saved (theme fx, Lab look, stage, quality mode, stored motion)
 //   preview   the fixture (an EffectComposer bloom layer at 2× pixels, antialias, a shadow-casting spot light): 30 fps
 //             with the window in front, half resolution (pixel ratio ≤ 0.5), the composer's bloom stepped aside, no
@@ -96,14 +96,14 @@ try {
   const layersOff = await smoke({ layers: true });
   const offR = await safe('renders (off)', async () => { out._offR = await renders('off'); }, 400000).then(() => out._offR);
 
-  // ---------- switch: the Lab ⋯ menu's top row ----------
+  // ---------- switch: the Lab ⋯ › View & help row ----------
   await safe('switch', async () => {
     document.querySelector('.three-toolbar [data-feature="Lab more"]').click();
-    const clicked = await clickRow(/^⚡ Lite mode/);
+    const clicked = await clickRow(/^View & help/) && await clickRow(/^⚡ Lite mode/); // (round 161, fix161) ⋯ › View & help › ⚡ Lite mode (menucalm's 11 top rows)
     await wait(600);
     const a = { clicked, attr: de.hasAttribute('data-lite'), stored: localStorage.getItem('hub.lite'), on: HearthLite.on, shown: shown(), chosen: chosen() };
     out.measure.switch = a;
-    step('switch: the Lab ⋯ menu\'s top row turns Lite on (data-lite, Motion: off, no textures / glow, stored as hub.lite)', clicked && a.attr && a.on && a.stored === 'true' && a.shown.motion === 'off' && a.shown.tex === 'off' && a.shown.glow === '0', a);
+    step('switch: the Lab ⋯ › View & help row turns Lite on (data-lite, Motion: off, no textures / glow, stored as hub.lite)', clicked && a.attr && a.on && a.stored === 'true' && a.shown.motion === 'off' && a.shown.tex === 'off' && a.shown.glow === '0', a);
     step('switch: nothing the owner chose is changed or saved (theme fx, Lab look, stage, quality mode)', JSON.stringify(a.chosen) === JSON.stringify(before.chosen) && a.shown.lablook === before.shown.lablook, { before: before.chosen, now: a.chosen });
   });
 
@@ -136,7 +136,8 @@ try {
     step('ui: the LITE tag shows in the Lab bar and in the rail', tags.some((t) => !t.rail && t.seen) && tags.some((t) => t.rail && t.seen), tags);
     await AppUI.openSettings(); await wait(600);
     const box = document.querySelector('dialog.settings-dialog .lite-row input[type=checkbox]');
-    step('ui: Settings › Look & size has the Lite mode switch, ticked', Boolean(box?.checked), { found: Boolean(box) });
+    const foldLine = box?.closest('details')?.querySelector('summary')?.textContent || '';
+    step('ui: Settings › Look & size › More looks and tweaks has the Lite mode switch, ticked, and the fold\'s line says so (round 161)', Boolean(box?.checked) && /Lite mode on/.test(foldLine), { found: Boolean(box), foldLine });
     document.querySelector('dialog.settings-dialog')?.close();
   });
 
@@ -227,7 +228,7 @@ try {
     const s = await until(async () => { const x = await smoothState(); const r = glowR(x); return r && r.aa === false && r.pr <= 0.51 ? x : null; }, 40000, 600);
     const l = await liteState();
     out.measure.persist = { boot, on: HearthLite.on, lite: l, r: glowR(s) };
-    step('persist: after a reload Lite is on before the first frame (set by DOMContentLoaded), Motion: off', HearthLite.on && boot.dcl === true && boot.frame === true && de.dataset.motion === 'off', out.measure.persist);
+    step('persist: after a reload Lite is on before the first frame (lite-early.js, at the top of <head>; round 161: powerwise.js alone is deferred and a first frame could come before it), Motion: off', HearthLite.on && boot.dcl === true && boot.frame === true && de.dataset.motion === 'off', out.measure.persist);
     step('persist: the preview is at 30 fps and half resolution again, antialias off', l?.on && l.cap === 30 && glowR(s)?.pr <= 0.51 && glowR(s)?.aa === false, out.measure.persist);
   });
 
