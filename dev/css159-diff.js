@@ -50,7 +50,11 @@ function encode(file, w, h, px) {
 if (args[0] === 'shoot') {
   const dir = path.resolve(args[1]); fs.mkdirSync(dir, { recursive: true });
   const extra = [...(opt('--app') ? ['--app', opt('--app')] : []), ...(opt('--coverage') ? ['--coverage', opt('--coverage')] : [])]; // --coverage <file>: the tour's CSS rule usage too
-  const r = spawnSync(process.execPath, [path.join(__dirname, 'smoke.js'), '--fake-engines', '--check-timeout', '600000', ...extra, '--eval', `window.CSS159_SHOTS = ${JSON.stringify(dir)}`, '--script', path.join(__dirname, 'css159-tour.js'), '--shot', path.join(dir, '99-final.png')], { stdio: 'inherit' });
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'smoke.js'), '--fake-engines', '--check-timeout', '600000', ...extra, '--eval', `window.CSS159_SHOTS = ${JSON.stringify(dir)}`, '--script', path.join(__dirname, 'css159-tour.js'), '--shot', path.join(dir, '99-final.png')], { encoding: 'utf8', maxBuffer: 1 << 30 });
+  const log = `${r.stdout || ''}${r.stderr || ''}`;
+  fs.writeFileSync(path.join(dir, 'tour.log'), log);
+  const res = log.split('\n').find((l) => l.startsWith('{"shots"'));
+  if (res) { fs.writeFileSync(path.join(dir, 'styles.json'), res); const o = JSON.parse(res); console.log(`tour: ${o.shots.length} views, errors: ${o.errors.join(' · ') || 'none'}`); } else console.log(log.slice(-3000));
   console.log(`${fs.readdirSync(dir).filter((f) => f.endsWith('.png')).length} pictures in ${dir}`);
   process.exit(r.status || 0);
 } else if (args[0] === 'compare') {
@@ -73,6 +77,22 @@ if (args[0] === 'shoot') {
     console.log(`  ${String(diff).padStart(8)} px${box ? ` in ${box[0]},${box[1]}–${box[2]},${box[3]}` : ''}   ${n}`);
   }
   console.log(bad ? `${bad} of ${names.length} views differ` : `all ${names.length} views identical`);
+  // computed styles (every element, its ::before / ::after) per view
+  const rd = (d) => { try { return JSON.parse(fs.readFileSync(path.join(d, 'styles.json'), 'utf8')).styles || {}; } catch { return null; } };
+  const SA = rd(a); const SB = rd(b);
+  if (SA && SB) {
+    let sbad = 0;
+    for (const n of [...new Set([...Object.keys(SA), ...Object.keys(SB)])].sort()) {
+      const x = SA[n]; const y = SB[n];
+      if (!x || !y) { console.log(`  styles: missing in one run   ${n}`); sbad++; continue; }
+      if (x.tags.join('|') !== y.tags.join('|')) { console.log(`  styles: the page differs (${x.tags.length} / ${y.tags.length} elements)   ${n}`); sbad++; continue; }
+      const off = x.hs.map((h, i) => (h !== y.hs[i] ? x.tags[i] : null)).filter(Boolean);
+      if (off.length) sbad++;
+      console.log(`  styles: ${String(off.length).padStart(5)} of ${x.hs.length} elements differ   ${n}${off.length ? `  (${[...new Set(off)].slice(0, 6).join(', ')})` : ''}`);
+    }
+    console.log(sbad ? `styles: ${sbad} views differ` : 'styles: every element identical in every view');
+    if (sbad) bad += sbad;
+  }
   process.exit(bad ? 1 : 0);
 } else {
   console.log('usage: node dev/css159-diff.js shoot <dir> [--app <checkout>] | compare <dirA> <dirB> [--out <dir>] [--max <px>]');

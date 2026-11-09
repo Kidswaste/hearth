@@ -8,7 +8,13 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(100); } return false; };
 const out = { shots: [], errors: [] };
 const frozen = () => { if (!SHOTS || document.getElementById('css159-freeze')) return; const s = document.createElement('style'); s.id = 'css159-freeze'; s.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }'; document.head.append(s); };
-const shot = async (name) => { if (!SHOTS) return; frozen(); document.activeElement?.blur?.(); await wait(350); await smoke({ shot: `${SHOTS}/${name}.png` }); out.shots.push(name); };
+// with each picture, every element's computed style (and its ::before / ::after) as a 32-bit hash, in document order:
+// dev/css159-diff.js compares them too (a moved rule that loses or wins differently shows even off screen)
+out.styles = {};
+const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const styleOf = (cs) => { let s = ''; for (let i = 0; i < cs.length; i++) s += `${cs[i]}:${cs.getPropertyValue(cs[i])};`; return s; };
+const styles = () => { const hs = []; const tags = []; for (const e of document.querySelectorAll('body *')) { if (e.id === 'css159-freeze') continue; hs.push(fnv(styleOf(getComputedStyle(e)) + styleOf(getComputedStyle(e, '::before')) + styleOf(getComputedStyle(e, '::after')))); tags.push(`${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${typeof e.className === 'string' && e.className ? `.${e.className.trim().split(/\s+/).join('.')}` : ''}`.slice(0, 80)); } return { hs, tags }; };
+const shot = async (name) => { if (!SHOTS) return; frozen(); document.activeElement?.blur?.(); await wait(350); await smoke({ shot: `${SHOTS}/${name}.png` }); out.shots.push(name); try { out.styles[name] = styles(); } catch (err) { out.errors.push(`styles ${name}: ${err.message}`); } };
 const step = async (name, fn) => { try { await fn(); } catch (err) { out.errors.push(`${name}: ${String(err?.message || err).slice(0, 120)}`); } };
 const closeAll = async () => {
   document.querySelectorAll('dialog[open]').forEach((x) => { try { x.close(); } catch { /* */ } });
