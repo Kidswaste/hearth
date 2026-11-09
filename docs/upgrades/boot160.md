@@ -149,5 +149,9 @@ No new check: boot-test's lowered budget is the guard (50 scripts, 1,072 KB of c
 - What else moved (`crew declutter menucalm panel142 chatcore polish8 winmac49 speed nativefeel hz240 apps-windows
   apps-discover`): 8 / 12; **menucalm** ("Lab toolbar ⋯: 12 > 11"), **polish8** ("board item: look before send") and **speed**
   (the pick-up card after a restart) fail the same way on the untouched round-157 copy (its own `dev/run-checks.js`);
-  **nativefeel**'s Lab preview scale step (1 → 1.4, wants ≥ 1.8) passed on the copy and is timing on this box: see the final run.
+  **nativefeel**: its Lab preview scale step (1 → 1.4, wants ≥ 1.8: the preview's adaptive resolution stepped down on the
+  busy box) failed here; run back to back with the untouched copy (both through their own `dev/run-checks.js`) it
+  failed 2 / 2 on each.
+- **Final run, split158 + css159 merged** (the asked-for 16 + `nativefeel scenes projects`): **16 / 19 passed**; the three
+  that fail (settingscalm, appcalm, nativefeel) fail the same way on the untouched round-157 copy.
 - `node dev/whatsnew-test.js`: 49 passed. firstscreen96 now loads `lookpicker` before calling `Look.picker()` in its held round.
