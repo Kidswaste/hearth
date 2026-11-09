@@ -647,7 +647,11 @@ const ThreeLab = (() => {
     const autoBox = el('input', { type: 'checkbox', checked: autoRun });
     const snippetSel = el('select', { title: 'Insert a snippet at the cursor' }, el('option', { value: '', text: 'Insert snippet…' }), ThreeData.SNIPPETS.map((s, i) => el('option', { value: i, text: s.name })));
     const editorHost = el('div', { class: 'three-editor' });
-    const previewHost = el('div', { class: 'three-preview' }, stats);
+    // (Nov 9) the Lab dock: a solid strip under the picture with the live stats and big Quality / FPS controls. Out of
+    // the picture, so the scene never takes its clicks and nothing waits for a hover (the stats used to sit over the
+    // picture, click-through until pointed at). Its controls are added with the presets (see PREVIEW_LEVELS).
+    const labDock = el('div', { class: 'lab-dock', attrs: { role: 'toolbar', 'aria-label': 'Preview' } }, stats);
+    const previewHost = el('div', { class: 'three-preview' });
     stats.title = 'Click: just fps (or everything again)';
     stats.classList.toggle('compact', store.get('three.statsCompact', false));
     stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
@@ -978,7 +982,7 @@ const ThreeLab = (() => {
       } else if (!on && xpNote) { xpNote.remove(); xpNote = null; }
     }
     addEventListener('hearth:lab-export', (e) => { const on = Boolean(e.detail?.on); if (on === xpOn) return; xpOn = on; if (!on) xpWatch = false; if (fpsPref() < 0 && box.ready) box.send(capMsg()); paintXpRest(); syncPark(); });
-    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); });
+    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); paintLevel(); }); // (Nov 9: the dock's FPS buttons follow)
     // the window in front or not (an iframe taking the focus is still this window: document.hasFocus() says so)
     let focusT = 0;
     const onFocusChange = () => { clearTimeout(focusT); focusT = setTimeout(() => { const f = document.hasFocus(); if (f === winFocused) return; winFocused = f; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }, 250); };
@@ -2454,7 +2458,7 @@ const ThreeLab = (() => {
       sceneMedia(id, { playing: false });
     }
     addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); });
-    split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
+    split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, labDock, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
@@ -2816,18 +2820,25 @@ const ThreeLab = (() => {
       statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
       return PREVIEW_LEVELS[n].id;
     }
-    const qSlider = el('input', { type: 'range', class: 'lab-q-slider', attrs: { min: '0', max: String(PREVIEW_LEVELS.length - 1), step: '1', 'aria-label': 'Preview quality' }, dataset: { feature: 'Preview quality slider' } });
-    const qLevel = el('span', { class: 'lab-q-level' });
-    const qWrap = el('label', { class: 'lab-q-wrap' }, qSlider, qLevel);
+    // (Nov 9) the dock's two segmented controls: QUALITY (the presets) and FPS (the Preview fps setting, as the menu)
+    const SHORT = { low: 'LOW', medium: 'MED', high: 'HIGH', full: 'FULL' };
+    const segBtn = (text, title, fn) => el('button', { type: 'button', class: 'dock-seg-btn', text, title, on: { click: fn } });
+    const qBtns = PREVIEW_LEVELS.map((L, i) => segBtn(SHORT[L.id], `${L.name}: ${L.hint}`, () => setPreviewLevel(i)));
+    const qWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview quality' } }, el('span', { class: 'dock-label', text: 'QUALITY' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview quality' } }, qBtns));
+    const FPS_SHORT = { '30': '30', '60': '60', '0': 'MAX', '-1': 'AUTO' };
+    const fpsOrder = ['30', '60', '0', '-1'];
+    const fBtns = fpsOrder.map((v) => segBtn(FPS_SHORT[v], (FPS_OPTS.find(([k]) => k === v) || [, v])[1], () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); paintLevel(); }));
+    const fWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview fps' } }, el('span', { class: 'dock-label', text: 'FPS' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview frame rate' } }, fBtns));
+    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap);
     function paintLevel() {
-      const i = previewLevel(); const L = PREVIEW_LEVELS[i];
-      if (qSlider.value !== String(i)) qSlider.value = String(i);
-      const t = `Preview: ${L.name}`; if (qLevel.textContent !== t) qLevel.textContent = t;
-      const title = `Preview quality, every scene: ${L.name} (${L.hint}). Renders and ▶ Play stay full quality.${qMode() === 'high' ? ' Force high quality is on: the preview draws full quality now.' : ''}`;
-      if (qWrap.title !== title) qWrap.title = title;
+      const i = previewLevel(); const forced = qMode() === 'high';
+      qBtns.forEach((b, k) => { const on = k === i; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
+      qWrap.classList.toggle('overridden', forced);
+      const t = forced ? 'Force high quality is on (Quality chip): the preview draws full quality for now' : `Preview quality, every scene · renders and ▶ Play stay full quality`;
+      if (qWrap.title !== t) qWrap.title = t;
+      const f = String(fpsPref());
+      fBtns.forEach((b, k) => { const on = fpsOrder[k] === f; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
     }
-    qSlider.addEventListener('input', () => setPreviewLevel(qSlider.value));
-    for (const ev of ['pointerdown', 'click', 'contextmenu']) qWrap.addEventListener(ev, (e) => e.stopPropagation());
     paintLevel();
     function qualityMenu(...a) { return labPart(K, 'dialogs', 'qualityMenu', a); } // tools/three-lab-dialogs.js
     // what Smooth lowered right now, in plain words (the chip's tooltip, the ⚡ Speed check card)
@@ -2867,7 +2878,7 @@ const ThreeLab = (() => {
         const t = (tag, o) => { const n = el(tag, o || {}); n.append(document.createTextNode('')); return n; };
         statsParts = { fb, fps: t('b'), worst: t('span', { title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }), ms: t('span'), calls: t('span'), tris: t('span'), points: t('span'), geo: t('span') };
         const P = statsParts;
-        stats.replaceChildren(P.fps, ...(fb ? [fb] : []), qualityChip(msg), qWrap, P.worst, P.ms, P.calls, P.tris, P.points, P.geo); // (round 72, labfps72) Quality: auto · 70 %, a click away from Full
+        stats.replaceChildren(P.fps, ...(fb ? [fb] : []), qualityChip(msg), P.worst, P.ms, P.calls, P.tris, P.points, P.geo); // (round 72, labfps72) Quality: auto · 70 %, a click away from Full
       }
       const P = statsParts;
       const put = (n, text, cls) => { if (n.firstChild.data !== text) n.firstChild.data = text; if (cls !== undefined && n.className !== cls) n.className = cls; };
