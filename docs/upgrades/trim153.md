@@ -183,7 +183,7 @@ reached only by Codex's unit test `dev/creative-test.js` now: left (see For Code
 
 (The smoke harness opens the calm-start gate at once, so "right after the first frame" and "after the start" read the
 same here; the Lab group, 4.3 MB, is in both columns.) Before this round the first screen was 1,539 KB: the registry
-and lazy.js' switch handling add 7 KB (budget 1,547).
+and lazy.js' switch handling add 7 KB; with labwin153 merged the first screen is **1,547 KB = the budget** (no headroom left: the next eager byte needs a cut or a budget raise with a reason).
 
 ## Checks
 - **`dev/checks/trim153.js`** (group `trim153`): the registry covers every lazy group once; 63 switchable with words;
@@ -193,7 +193,13 @@ and lazy.js' switch handling add 7 KB (budget 1,547).
   of their files in the page, no commands / Ctrl/⌘+K lines / Board keys lines, `Lazy.load` refused calmly, the board's
   saved palette and the usage counts still there; **re-enabling is live**: /variations back, the board loads by itself,
   its commands and tabs back.
-- Run: see the final report lines in the round's notes / commit.
+- `dev/checks/settingscalm.js`: first-sight budget 19 → 20 for the visible Trim Hearth… row (the owner asked for it).
+- Final run after merging labwin153 (`--exact trim153 labwin153 perf151 idlecpu redux151 unit:lazymanifest-test
+  unit:boot-test lazy settingscalm creative habits appcalm errorcalm`): **13 / 13 passed**; `node dev/whatsnew-test.js`
+  49 passed. (perf151's "readouts" step failed twice in earlier runs: the song's "♪ 124 BPM" toast landing in its
+  measuring window wakes the usage pass — timing, it passed on the rerun and in the final run.)
+- The Lab window (labwin153) asks `HearthFeatures.isOff(group)` (added for it) and lazy.js' own switch handling runs there
+  too, so a switched-off Lab extra stays out of the Lab window.
 
 ## For Codex
 - No Codex-owned file was edited.
