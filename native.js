@@ -2081,6 +2081,9 @@ const Native = (() => {
   async function send(agentId, text, { fromHistory = false, compact = false, chatId: only = null, images: providedImages = [] } = {}) {
     let chatId = only || H.activeChat[agentId];
     if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`);
+    // (round 157, boot157) what decorates a send (Astra's options, file access, Smart, offline, the chat's context) loads
+    // right after the first frame: a message sent before it's in waits for it, so it goes out exactly as before
+    if (window.Lazy?.sendReady) { await Lazy.sendReady(); chatId = only || H.activeChat[agentId]; if (chatId && pending.has(chatId)) throw new Error(`${H.agent(agentId).name} is still answering`); }
     let chat = chatId ? await loadChat(chatId) : null;
     if (only && !chat) throw new Error('That chat is gone.');
     // (round 55, chatsafe55) a chat waiting for its AI is read-only: nothing is sent into it by another one
