@@ -104,7 +104,6 @@ function open({ scene: id, hideMain = false, bounds = null } = {}, ctx) {
     },
   });
   const w = labWin;
-  w.__prefs = { contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false, backgroundThrottling: false };
   w.loadFile(path.join(__dirname, 'lab-window.html'), { query: { scene: id } });
   w.once('ready-to-show', () => { if (!w.isDestroyed()) { w.show(); w.focus(); } });
   setTimeout(() => { if (!w.isDestroyed() && !w.isVisible()) w.show(); }, 1500);
@@ -154,13 +153,21 @@ function call(tool, args, ctx) {
   });
 }
 
+// the security-relevant preferences as Electron holds them for the page (not as asked for)
+function prefsOf(w) {
+  let p = null;
+  try { p = w.webContents.getLastWebPreferences?.() || null; } catch { p = null; }
+  const pick = (k, d) => (p && k in p ? Boolean(p[k]) : d);
+  let bt = null; try { bt = w.webContents.getBackgroundThrottling?.() ?? null; } catch { bt = null; }
+  return { contextIsolation: pick('contextIsolation', true), nodeIntegration: pick('nodeIntegration', false), nodeIntegrationInSubFrames: pick('nodeIntegrationInSubFrames', false), sandbox: pick('sandbox', null), webviewTag: pick('webviewTag', false), webSecurity: pick('webSecurity', true), backgroundThrottling: bt ?? pick('backgroundThrottling', true) };
+}
 function state() {
   const m = main();
   return {
     open: alive(labWin), scene, hidMain, stats: { ...stats },
     visible: alive(labWin) ? labWin.isVisible() : false, focused: alive(labWin) ? labWin.isFocused() : false,
     mainVisible: m ? m.isVisible() : false, mainThrottled: m ? m.webContents.getBackgroundThrottling?.() ?? null : null,
-    prefs: alive(labWin) ? labWin.__prefs : null, pid: alive(labWin) ? labWin.webContents.getOSProcessId() : null,
+    prefs: alive(labWin) ? prefsOf(labWin) : null, mainPrefs: m ? prefsOf(m) : null, pid: alive(labWin) ? labWin.webContents.getOSProcessId() : null,
     mainPid: m ? m.webContents.getOSProcessId() : null,
   };
 }
@@ -170,6 +177,7 @@ function register(ipcMain, ctx) {
   ipcMain.handle('labwin:open', (_e, o) => open(o || {}, ctx));
   ipcMain.handle('labwin:state', () => state());
   ipcMain.handle('labwin:close', () => { if (alive(labWin)) labWin.close(); return true; });
+  ipcMain.handle('labwin:hideMain', () => { const m = main(); if (!alive(labWin) || !m) return false; hidMain = true; m.hide(); return true; });
   ipcMain.handle('labwin:focus', () => { if (!alive(labWin)) return false; if (labWin.isMinimized()) labWin.restore(); labWin.show(); labWin.focus(); return true; });
   ipcMain.handle('labwin:call', (_e, tool, args, c) => call(tool, args, c));
   ipcMain.handle('labwin:result', (e, id, result) => { if (!isLab(e.sender)) return false; pending.get(id)?.(result); pending.delete(id); return true; });

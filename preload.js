@@ -146,7 +146,7 @@ contextBridge.exposeInMainWorld('hub', {
   labwin: {
     scene: (process.argv.find((a) => a.startsWith('--hearth-labwin=')) || '').slice(16) || null,
     open: call('labwin:open'), close: call('labwin:close'), focus: call('labwin:focus'), state: call('labwin:state'),
-    call: call('labwin:call'), result: call('labwin:result'), ask: call('labwin:ask'), showMain: call('labwin:showMain'),
+    call: call('labwin:call'), result: call('labwin:result'), ask: call('labwin:ask'), showMain: call('labwin:showMain'), hideMain: call('labwin:hideMain'),
     note: (o) => ipcRenderer.send('labwin:note', o),
     onCall: on('labwin:call'), onClosed: on('labwin:closed'), onAsk: on('labwin:ask'), onNote: on('labwin:note'), onShowChat: on('labwin:showChat'),
   },

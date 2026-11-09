@@ -55,7 +55,13 @@ const LabWin = (() => {
   // the scene's first run here, and its first frame drawn (the preview page says 'stack-drawn')
   const first = (e) => { if (e?.detail?.id && e.detail.id !== scene) return; t.ran ??= Math.round(performance.now()); removeEventListener('hearth:lab-ran', first); };
   addEventListener('hearth:lab-ran', first);
-  addEventListener('message', (e) => { if (t.frame == null && e.data?.type === 'stack-drawn') t.frame = Math.round(performance.now()); });
+  // the preview's own stats (fps over the last second, its frame cap): what dev/checks/labwin153.js reads while unfocused
+  let stats = null;
+  addEventListener('message', (e) => {
+    const d = e.data; if (!d || typeof d !== 'object') return;
+    if (t.frame == null && d.type === 'stack-drawn') t.frame = Math.round(performance.now());
+    if (d.type === 'stats' && d.source === 'three-sandbox') stats = { fps: Math.round(d.fps * 10) / 10, cap: d.cap, at: Date.now(), focused: document.hasFocus() };
+  });
   // the director's calls from Hearth's window (its chat), for this scene: run here exactly as an agent's call
   window.hub.labwin.onCall(async ({ id, tool, args, ctx }) => {
     let r;
@@ -79,7 +85,6 @@ const LabWin = (() => {
     $('surfaces').append(s.el);
     dispatchEvent(new Event('hearth:ready'));
     window.Lazy?.calmNow?.();
-    H.activeId = 'tool:three';
     await window.Lazy?.load('lab');
     t.lab = Math.round(performance.now());
     await ThreeLab.cmd({ show: true, sketch: scene });
@@ -91,7 +96,7 @@ const LabWin = (() => {
   window.hub.onShortcut?.((sc) => { if (sc?.key === ';' && typeof CmdBar !== 'undefined') CmdBar.open?.(); });
   addEventListener('DOMContentLoaded', () => { boot().catch((err) => { console.error(err); showError(`The Lab window could not start: ${err.message}`); }); });
   return {
-    scene, times: () => ({ ...t }),
+    scene, times: () => ({ ...t }), stats: () => stats && { ...stats, ago: Date.now() - stats.at },
     // the lazy groups in this window and which are in (dev/checks/labwin153.js)
     groups: () => (window.Lazy ? Lazy.state() : []),
   };

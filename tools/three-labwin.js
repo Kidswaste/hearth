@@ -44,7 +44,7 @@ const LabWinHost = (() => {
   function release() {
     const L = lab();
     if (!L?.workspace || releasing) return releasing;
-    releasing = (async () => { try { if (!L.workspace.state?.().released) await L.workspace.close(); } catch (err) { console.warn('labwin: release', err); } finally { releasing = null; } })();
+    releasing = (async () => { try { if (!L.workspace.state?.().released) await L.workspace.close(); window.LabSafe?.handOff?.(away); } catch (err) { console.warn('labwin: release', err); } finally { releasing = null; } })();
     return releasing;
   }
 
@@ -57,15 +57,17 @@ const LabWinHost = (() => {
     const now = await HUB.state().catch(() => null);
     if (now?.open && now.scene !== id) { toast(`The Lab window has “${sceneName(now.scene)}” open. Close it first (or bring it back here).`, { type: 'error', timeout: 6000 }); return { ok: false, error: 'busy' }; }
     if (now?.open) { HUB.focus(); return { ok: true, again: true }; }
-    // the scene on disk as it is here (a scene never saved yet too), then this Lab lets go of it
-    if (L.scenes.currentId?.() !== id) L.scenes.open(id);
-    await L.scenes.saveNow?.(id);
+    // the scene on disk as it is here (a scene never saved yet too), then this Lab lets go of it (away first: opening it
+    // here on the way, for a project's menu, runs nothing in this window's preview)
     away = id;
+    if (L.scenes.currentId?.() !== id && !L.scenes.open(id)) { away = null; throw new Error('That scene is not on this computer.'); }
+    await L.scenes.saveNow?.(id);
     await release();
     const r = await HUB.open({ scene: id, hideMain });
     if (!r?.ok) { away = null; paintCover(); L.workspace?.resume?.(); throw new Error(r?.error || 'The Lab window could not open.'); }
     st.opens += 1;
     paintCover();
+    if (!hideMain) toast(`“${sceneName(id)}” is open in its own window. Hearth goes quiet meanwhile.`, { timeout: 7000, action: { label: 'Hide Hearth too', fn: () => { store2.set('labwin.hideMain', true); HUB.hideMain(); } } });
     dispatchEvent(new CustomEvent('hearth:labwin', { detail: { open: true, scene: id } }));
     return { ok: true, scene: id };
   }
@@ -163,8 +165,19 @@ const LabWinHost = (() => {
     });
   }
 
+  // Lite mode (another round's switch: window.HearthLite, or the 'lite' setting): its 30 fps cap wins over the Lab
+  // window's full rate behind other apps. Read defensively: absent means off.
+  function lite() {
+    try {
+      const L = window.HearthLite;
+      if (L) { const v = typeof L.on === 'function' ? L.on() : typeof L.isOn === 'function' ? L.isOn() : L.on ?? L.enabled ?? L.active; if (v != null) return Boolean(v); }
+      const s = store2.get('lite', null);
+      return Boolean(s && (s === true || s.on === true));
+    } catch { return false; }
+  }
+
   return {
-    open, route, holds, release, rows,
+    open, route, holds, release, rows, lite,
     away: () => away, active: () => Boolean(away) && !inLabWindow,
     hideMain: (on) => { if (on !== undefined) store2.set('labwin.hideMain', Boolean(on)); return hideMainPref(); },
     state: () => ({ away, cover: Boolean(cover?.isConnected), inLabWindow, ...st }),
