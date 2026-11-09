@@ -716,6 +716,13 @@ function ipcChannels(src) {
 // size + modified time): ≈ 35 sources read and searched at every start became 35 stats; a changed file is read again
 const ipcCache = { file: null, old: {}, now: {}, dirty: false };
 try { ipcCache.file = path.join(app.getPath('userData'), 'hearth-ipc-channels.json'); ipcCache.old = JSON.parse(fs.readFileSync(ipcCache.file, 'utf8')) || {}; } catch { ipcCache.old = {}; }
+// (round 167, paint167) Disk calm's Free up on the graphics cache (Chromium's GPUPersistentCache, held open by the graphics
+// process while Hearth runs) leaves a note in the profile; it is emptied here, before the graphics process starts. Only
+// after the owner asked (diskcalmmain free('gpucache')); a cache Chromium fills again by itself. One stat otherwise.
+try {
+  const ud = app.getPath('userData'); const mark = path.join(ud, '.hearth-empty-gpu-cache');
+  if (fs.existsSync(mark)) require('./diskcalm-core').emptyGpuCacheAtStart(fs, path, ud);
+} catch (err) { console.warn('diskcalm: the graphics cache', err.message); }
 function channelsOf(file) {
   const abs = path.join(__dirname, file);
   let key = ''; try { const st = fs.statSync(abs); key = `${st.size}:${st.mtimeMs}`; } catch { /* read below says */ }

@@ -22,7 +22,9 @@ const DiskCalm = (() => {
 
   // ---------- the fold in Settings ----------
   function rowOf(P, bytes, paint) {
-    const btn = P.free ? el('button', { type: 'button', class: 'ghost small dc-free', text: 'Free up', title: `Moves it to the ${binWord()}. ${P.back}`, on: { click: () => freeUp(P.id, btn).then(paint) } })
+    // (round 167, paint167) the graphics cache: emptied at the next start (in use while Hearth runs); once asked, the row says so
+    const later = P.nextStart && m?.gpuLater;
+    const btn = P.free ? el('button', { type: 'button', class: 'ghost small dc-free', text: later ? 'At next start' : 'Free up', disabled: Boolean(later), title: P.nextStart ? `Emptied the next time Hearth starts (in use while Hearth runs). ${P.back}` : `Moves it to the ${binWord()}. ${P.back}`, on: { click: () => freeUp(P.id, btn).then(paint) } })
       : P.id === 'backups' ? el('button', { type: 'button', class: 'ghost small', text: 'Backups…', title: 'Every backup with what\'s inside; old ones go by themselves', on: { click: (e) => { e.currentTarget.closest('dialog')?.close(); window.Lazy?.load?.('backupauto').then(() => BackupAuto.dialog()).catch(() => {}); } } })
         : null;
     return el('div', { class: `dc-row${P.free ? ' dc-can' : ''}`, dataset: { part: P.id }, title: P.free ? P.back : P.keep },
@@ -58,7 +60,8 @@ const DiskCalm = (() => {
     let r;
     try { r = await A().free(id); } catch (err) { r = { ok: false, why: String(err.message || err) }; }
     if (btn) { btn.disabled = false; btn.textContent = 'Free up'; }
-    if (r.ok) toast(`Freed ${DC.fmt(r.freed)} (${P.label.replace(/^▶ /, '')}). ${P.back}.`, { timeout: 6000 });
+    if (r.ok && r.later != null) toast(`${P.label}: ${DC.fmt(r.later)} emptied the next time Hearth starts (it's in use while Hearth runs). It fills again by itself.`, { timeout: 7000 }); // (round 167, paint167)
+    else if (r.ok) toast(`Freed ${DC.fmt(r.freed)} (${P.label.replace(/^▶ /, '')}). ${P.back}.`, { timeout: 6000 });
     else toast(r.why || 'Nothing could be moved.', { type: 'error', timeout: 9000 });
     return r;
   }
@@ -81,6 +84,7 @@ const DiskCalm = (() => {
       const P = DC.PARTS.find((x) => x.id === want || x.label.toLowerCase().replace(/^▶ /, '').startsWith(want) || x.group === want);
       if (!P) return `Which part? ${DC.FREEABLE.join(', ')}`;
       const r = await freeUp(P.id);
+      if (r.ok && r.later != null) return `🧹 ${P.label}: ${DC.fmt(r.later)} emptied the next time Hearth starts (in use while Hearth runs). It fills again by itself.`; // (round 167)
       return r.ok ? `🧹 Freed ${DC.fmt(r.freed)} (${P.label}). ${P.back}.` : r.why;
     }
     if (v === 'tidy') { const r = await A().tidy(); return r.skipped ? `Not now: ${r.skipped}.` : r.line ? `🧹 ${r.line}` : 'Nothing to tidy: every leftover is already gone.'; }

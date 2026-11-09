@@ -68,6 +68,7 @@ function heavyWeek() {
   add('userData', 'Cache/Cache_Data/data_3', 140 * MB, 'appcache');
   add('userData', 'Code Cache/js/x', 46 * MB, 'appcache');
   add('userData', 'GPUCache/data_0', 8 * MB, 'appcache');
+  add('userData', 'GPUPersistentCache/GPUCache/ZBVFTVEKBSX7/cache.db', 5.5 * MB, 'gpucache'); // (round 167) Chromium's graphics cache
   add('userData', 'Partitions/miro/Cache/Cache_Data/d', 60 * MB, 'appcache');
   add('userData', 'Partitions/miro/Cookies', 1 * MB, 'profile');
   add('userData', 'Local Storage/leveldb/000.ldb', 6 * MB, 'profile');
@@ -170,7 +171,7 @@ const expected = (list, roots) => {
   const wrong = Object.entries(cls).filter(([r, want]) => C.classify(r) !== want).map(([r, want]) => `${r}: ${C.classify(r)} ≠ ${want}`);
   check(!wrong.length, `classify: ${Object.keys(cls).length} paths, the owner's work unless proven otherwise`, wrong);
   check(C.classify('Bakes/x.mp4', { bakesRel: 'Bakes' }) === 'bakes' && C.classify('captures/Present bakes/b.mp4', { bakesRel: null }) === 'work', 'classify: bakes follow where captures go');
-  const prof = { 'Cache/Cache_Data/x': 'appcache', 'GPUCache/a': 'appcache', 'Partitions/hearth-game/GPUCache/a': 'gameshaders', 'Partitions/Hearth-Game/Code Cache/js/a': 'gameshaders', 'Partitions/miro/Cache/a': 'appcache', 'Partitions/miro/Cookies': 'profile', 'Local Storage/leveldb/1.ldb': 'profile', 'Preferences': 'profile' };
+  const prof = { 'GPUPersistentCache/GPUCache/X/cache.db': 'gpucache', 'GPUPersistentCache/GPUCache/X/cache.db-wal': 'gpucache', 'Cookies': 'profile', 'Cache/Cache_Data/x': 'appcache', 'GPUCache/a': 'appcache', 'Partitions/hearth-game/GPUCache/a': 'gameshaders', 'Partitions/Hearth-Game/Code Cache/js/a': 'gameshaders', 'Partitions/miro/Cache/a': 'appcache', 'Partitions/miro/Cookies': 'profile', 'Local Storage/leveldb/1.ldb': 'profile', 'Preferences': 'profile' };
   const wrongP = Object.entries(prof).filter(([r, want]) => C.classifyProfile(r) !== want);
   check(!wrongP.length, 'classifyProfile: caches vs sign-ins', wrongP);
   check(['hub-zip-1', 'hearth-backup-x', 'hearth-report-1-a.md', 'hearth-frames', 'agent-hub-import-z'].every(C.isHearthTemp) && !['hearth', 'motion', 'voice', 'Hearth drag', 'someone-hearth-backup-'].some(C.isHearthTemp), 'Hearth\'s temp folders by name, nothing else');
@@ -230,13 +231,19 @@ const expected = (list, roots) => {
   for (const id of C.FREEABLE) {
     const r = await M.free(id);
     const after = await M.measure({ fresh: true });
-    freedAll += r.freed;
+    freedAll += r.freed + (id === 'gpucache' ? r.later : 0); // (round 167: the graphics cache goes at the "next start" below, before the end's measure)
     const left = after.parts[id];
     // leftovers: a render still writing its frames and a fresh temp folder stay
-    const leftOk = id === 'leftovers' ? left === 20 * MB + 10 * MB : left === 0;
+    // (round 167) the graphics cache: in use while Hearth runs, a note for the next start; its size stays until then
+    const leftOk = id === 'leftovers' ? left === 20 * MB + 10 * MB : id === 'gpucache' ? r.later === Math.round(5.5 * MB) && left >= r.later && left - r.later < 1024 && exists(path.join(B.roots.userData, C.GPU_EMPTY_MARK)) : left === 0;
     check(r.ok && leftOk, `Free up ${C.BY[id].label}: ${C.fmt(r.freed)} freed${id === 'leftovers' ? ' (what is still being written stays)' : ''} · ${r.back}`, { r, left });
   }
   check(B.calls.includes('cache:Partitions/hearth-game') && B.calls.includes('cache:default') && B.calls.includes('cache:Partitions/miro') && !B.calls.some((c) => /miro/.test(c) && /hearth-game/.test(c)), 'live caches emptied through Electron (the game\'s, the default one, each partition)', B.calls);
+  // (round 167) the next start empties the graphics cache (main.js, before the graphics process starts) and nothing else
+  const profBefore = B.list.filter((f) => f.part === 'profile').map((f) => [B.pathOf(f), sha(B.pathOf(f))]);
+  const emptied = C.emptyGpuCacheAtStart(fs, path, B.roots.userData);
+  check(emptied && !exists(path.join(B.roots.userData, 'GPUPersistentCache')) && !exists(path.join(B.roots.userData, C.GPU_EMPTY_MARK)) && profBefore.every(([p, h]) => sha(p) === h) && !C.emptyGpuCacheAtStart(fs, path, B.roots.userData),
+    'the graphics cache: emptied at the next start (its note gone too), the sign-ins untouched; without a note nothing happens');
   const touched = kept.filter(([p, h]) => sha(p) !== h).map(([p]) => path.relative(B.dir, p));
   check(!touched.length, `the owner's work, backups, safety copies, sign-ins and others' temp files: all ${kept.length} files untouched`, touched);
   const inTrash = fs.readdirSync(B.trashDir);

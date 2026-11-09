@@ -40,6 +40,7 @@ try {
     ['data', '.cache/asset-thumbs/dc.webp', 2 * MB, DAY],
     ['data', 'engine.prev.log', 2 * MB, DAY],
     ['userData', 'Partitions/hearth-game/GPUCache/dc_data', 30 * MB, DAY],
+    ['userData', 'GPUPersistentCache/GPUCache/DCTEST/cache-dc.db', 12 * MB, DAY], // (round 167) Chromium's graphics cache
   ];
   const leftovers = [
     ['data', 'renders/.hearth-titles-xpdcold/frame_00001.png', 150 * MB, DAY],
@@ -61,6 +62,8 @@ try {
   step(m.parts.play === 9 * MB + 80 * 1024 + 4 && m.parts.bakes === 300 * MB && m.parts.optimized === 280 * MB && m.parts.thumbs >= 2 * MB, 'the measure: Play builds, bakes, optimized, pictures exactly as written', { play: m.parts.play, bakes: m.parts.bakes, optimized: m.parts.optimized });
   step(m.parts.backups >= 120 * MB && m.parts.leftovers >= 560 * MB && m.parts.gameshaders >= 30 * MB && m.parts.work >= 870 * MB && m.parts.safety >= 5 * MB, 'backups, leftovers (data + temp), the game\'s shader cache, your work, safety copies counted', { backups: m.parts.backups, leftovers: m.parts.leftovers, work: m.parts.work });
   step(/^\d[\d.]* (GB|MB): .+ · /.test(m.line) && m.total >= 2 * 1024 * MB, `the one line: ${m.line}`);
+  // (round 167, paint167) Chromium's GPUPersistentCache is a cache that comes back, not "Sign-ins and window settings"
+  step(m.parts.gpucache >= 12 * MB && DiskCalmCore.classifyProfile('GPUPersistentCache/GPUCache/x/cache.db') === 'gpucache' && DiskCalmCore.BY.gpucache.free && DiskCalmCore.BY.gpucache.group === 'caches', 'the graphics cache (GPUPersistentCache) counts as a cache that comes back, offered', { gpucache: m.parts.gpucache, profile: m.parts.profile });
 
   // ---------- 2. Settings ----------
   await AppUI.openSettings(); await wait(600);
@@ -75,6 +78,7 @@ try {
   const freeBtns = rows.filter((r) => r.querySelector('.dc-free')).map((r) => r.dataset.part);
   step(rows.length >= 8 && ['play', 'bakes', 'optimized', 'leftovers'].every((id) => freeBtns.includes(id)), `a row per part; Free up on the rebuildable ones (${freeBtns.join(', ')})`);
   step(['work', 'backups', 'safety'].every((id) => rowOf(id) && !rowOf(id).querySelector('.dc-free')), 'no Free up on your work, backups or safety copies');
+  step(Boolean(rowOf('gpucache')?.querySelector('.dc-free')) && rowOf('profile') && !rowOf('profile').querySelector('.dc-free'), 'Free up on the graphics cache; none on the sign-ins');
   step(/Rebuilt next time you press ▶ Play/.test(rowOf('play')?.textContent || '') && /never frees/i.test(rowOf('work')?.textContent || ''), 'each says what comes back by itself, or why it stays');
   await smoke({ shot: '/tmp/diskcalm-fold.png' });
 
@@ -99,6 +103,14 @@ try {
   for (const id of ['optimized', 'bakes', 'thumbs', 'logs', 'gameshaders']) {
     const r = await D.free(id);
     step(r.ok, `Free up ${id}: ${r.ok ? `${DiskCalmCore.fmt(r.freed)} freed` : r.why}`);
+  }
+  // (round 167) the graphics cache is in use while Hearth runs: Free up leaves a note, nothing is removed now; the
+  // next start empties it before the graphics process starts (unit:diskcalm-test runs that part)
+  {
+    const gBefore = (await D.measure({ fresh: true })).parts.gpucache;
+    const g = await D.free('gpucache');
+    const gm = await D.measure({ fresh: true });
+    step(g.ok && g.later >= 12 * MB && gm.gpuLater === true && gm.parts.gpucache >= gBefore, 'Free up the graphics cache: emptied at the next start (a note now, nothing removed while it is in use)', { later: g.later, gpuLater: gm.gpuLater });
   }
   const refused = await D.free('work');
   step(!refused.ok && /never frees/i.test(refused.why), 'Free up of your work: refused', refused.why);
