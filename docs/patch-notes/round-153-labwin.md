@@ -49,7 +49,10 @@ Pick whichever is closest:
 ## Good to know
 
 - Hearth's main window still has to be running (it holds your chats and the AI); hiding it is fine.
-- On this test computer the Lab window with Hearth hidden used about **TBD** less CPU and **TBD** less memory than the
-  Lab inside Hearth with the same heavy scene (details for the curious: docs/upgrades/labwin153.md). On your RTX 4080
-  the scene's drawing is on the graphics card either way; the win is that nothing else in Hearth competes with it, and
-  that it keeps full speed behind other apps.
+- Honest numbers from the test computer (details: docs/upgrades/labwin153.md): the work around your scene (the Lab's
+  own window) is about a quarter to a third lower, and Hearth's main window drops to nothing while it's hidden. The
+  scene itself costs the same: it's drawn by your graphics card either way; the win is that nothing else in Hearth
+  competes with it and that it keeps full speed behind other apps.
+- It uses about **200 MB more memory**, because Hearth's main window stays loaded in the background (it holds your
+  chats and the AI). If memory is tight, keep using the Lab inside Hearth.
+- It opens in about the same time as the Lab inside Hearth (a fraction of a second more).

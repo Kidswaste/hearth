@@ -35,7 +35,7 @@ In the Lab window: **⋯ › View & help › ↩ Back to Hearth**, or close it.
 
 ## What loads in the Lab window, and what doesn't
 
-- **Eager (21 files):** `jank.js winmac.js ui.js powerwise.js icons.js keys.js progress.js storeack-core.js md.js
+- **Eager (20 files):** `jank.js winmac.js ui.js powerwise.js icons.js keys.js progress.js storeack-core.js md.js
   renderer.js tools.js bridge.js commands.js lazy-data.js lazy.js appui.js look.js keys-ui.js` + the three
   `lab-window*` files. Not loaded: `native.js` (the chat view), `panel.js` (chats list), `usage.js` (the usage
   scanner), `meter.js`, `astra.js`, `router*.js`, `missions.js`, `manager.js`, `sync.js`, `chat-*.js`, `offline*.js`,
@@ -102,16 +102,25 @@ Calm box (`--burn 0`), ms of CPU per second (1000 = one core) · MB:
 | (b) Lab window, Hearth hidden, playing | 3,516 | 3,420 | **0.0** | 28.3 | 55.7 | 6.8 | 1,267 MB | 7 | 73 |
 | (b) Lab window, Hearth hidden, stopped | 3,507 | 3,428 | **0.0** | 21.8 | 46.4 | 5.5 | 1,241 MB | 7 | 60 |
 
-Busy box (`--burn 3`): BURN_TABLE
+Busy box (`--burn 3`) (three CPU burners on 4 CPUs; load 4.9–6.3):
+
+| Setup | All | GPU (scene) | Hearth window | Lab window | Preview page | Main | Memory | Processes | Preview frames drawn / s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| (a) Lab in Hearth's window, playing | 1,729 | 1,635 | 39.9 | — | 39.9 | 10.0 | 1,043 MB | 6 | 40 |
+| (a) Lab in Hearth's window, stopped | 1,813 | 1,756 | 14.0 | — | 30.0 | 8.0 | 1,022 MB | 6 | 37 |
+| (b) Lab window, Hearth hidden, playing | 1,772 | 1,694 | **0.0** | 25.3 | 41.2 | 7.5 | 1,270 MB | 7 | 37 |
+| (b) Lab window, Hearth hidden, stopped | 1,743 | 1,685 | **0.9** | 19.1 | 30.0 | 4.5 | 1,241 MB | 7 | 28 |
+
+(The scene's drawing gets its fair share of the 4 CPUs either way; frames drawn are within noise of each other.)
 
 Time to the first preview frame (from the click / the tab): Lab in Hearth's window **2.55 s** (calm) · Lab window
 **3.21 s** (calm: the window and its page 0.22 s, the settings 0.24, the Lab's code 0.43, the scene opened 0.63, its
-first run 0.87, its first frame 3.12 s — software GL compiling the scene's shaders, as in Hearth) · busy BURN_FIRST.
+first run 0.87, its first frame 3.12 s — software GL compiling the scene's shaders, as in Hearth) · busy: Hearth's window **3.54 s** · Lab window **3.99 s** (its first frame 3.87 s after its page started).
 
 What this means:
 
-- **The Lab's own UI work** (the window's main thread around the scene) is ~25 % lower in the Lab window while playing
-  (37.9 → 28.3 ms/s) and **Hearth's window drops to 0** (hidden, throttled, its Lab released). The chat side and the 3D
+- **The Lab's own UI work** (the window's main thread around the scene) is ~25–37 % lower in the Lab window while playing
+  (calm 37.9 → 28.3 ms/s, busy 39.9 → 25.3) and **Hearth's window drops to 0** (hidden, throttled, its Lab released). The chat side and the 3D
   side no longer share one busy renderer thread: the Lab window's thread does only the Lab.
 - **The scene itself costs the same** (GPU process and preview page within noise): the window can't make the scene
   cheaper; what it changes is that nothing else in Hearth competes with it, and that it keeps full rate behind other apps
