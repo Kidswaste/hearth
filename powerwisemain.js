@@ -243,12 +243,39 @@ function testHook(t) {
   if (t.probe === 'take' && probe) out.probe = probe.take();
   if (t.probe === 'start' && probe) { probe.take(); out.probe = 'started'; }
   if (t.timers) out.timers = sched.list();
+  if (t.writes) out.writes = writesProbe(t.writes); // (round 162, main162; tests) changes under the data folder per minute
+  if (t.modules) out.modules = loadedModules(); // (round 162, main162; tests) which of Hearth's main-process modules are in
   if (t.memtrim) { try { out.memtrim = require('./memtrimmain').state(); } catch { out.memtrim = null; } } // (round 154, mem154; tests)
   if (t.metrics) { try { out.metrics = metrics({ mem: Boolean(t.mem) }); } catch (err) { out.metrics = { error: String(err?.stack || err).slice(0, 600), procs: [], pages: [] }; } } // (round 44, idlecpu) CPU time and wakeups per process, for dev/checks/idlecpu.js
   out.state = snapshot();
   out.stub = stub ? { starts: stub.starts.slice(), stops: stub.stops.slice(), live: [...stub.live] } : null;
   out.bg = bg?.state?.() || null;
   return out;
+}
+
+// (round 162, main162; tests only) every file event under the data folder (fs.watch, recursive), counted per file:
+// 'start' (re)starts the count, 'take' returns it since then and starts again. What the main process and the store
+// threads write while nothing changes should be nothing.
+let W = null;
+function writesProbe(op) {
+  const fs = require('fs'); const path = require('path');
+  const dir = process.env.HEARTH_TEST_SAVE_DIR ? require('./store').DATA_DIR : null;
+  if (!dir) return null;
+  if (!W) {
+    W = { since: Date.now(), n: 0, by: new Map(), w: null };
+    try { W.w = fs.watch(dir, { recursive: true, persistent: false }, (_ev, name) => { const f = String(name || '?').split(path.sep).join('/'); if (/(^|\/)\.writes-probe/.test(f)) return; W.n += 1; W.by.set(f, (W.by.get(f) || 0) + 1); }); } catch (err) { return { error: err.message }; }
+  }
+  const ms = Math.max(1, Date.now() - W.since);
+  const out = { seconds: Math.round(ms / 100) / 10, events: W.n, perMin: Math.round((W.n * 60000 / ms) * 10) / 10, files: [...W.by].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([f, n]) => `${n} ${f}`) };
+  if (op === 'start' || op === 'take') { W.since = Date.now(); W.n = 0; W.by.clear(); }
+  return op === 'start' ? { started: true } : out;
+}
+// (round 162, main162; tests only) Hearth's own main-process modules loaded so far (file names), and node_modules' count
+function loadedModules() {
+  const path = require('path'); const root = __dirname + path.sep;
+  const own = []; let nm = 0;
+  for (const f of Object.keys(require.cache)) { if (!f.startsWith(root)) continue; const rel = f.slice(root.length); if (/node_modules/.test(rel)) nm += 1; else own.push(rel.split(path.sep).join('/')); }
+  return { own: own.sort(), count: own.length, nodeModules: nm };
 }
 
 async function threadMem(o) {

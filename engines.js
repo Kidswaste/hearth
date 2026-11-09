@@ -1258,7 +1258,11 @@ const LOST_SESSION = /no (saved |matching )?(conversation|session|thread|rollout
 
 // (round 21) Streamed pieces are sent on in batches: Claude prints one line per few characters, and each piece was one
 // IPC message + one renderer handler call (≈ 3,500 for a long task); the chat paints every 60 ms anyway.
-const BATCH_MS = 40;
+// (round 162, main162) every 60 ms (the chat paints at most every 60 ms: 40 sent ≈ 25 messages a second for ≈ 15
+// paints), and every 250 ms while Hearth's window is hidden (nobody sees the text grow; the reply is the same)
+const BATCH_MS = 60; const BATCH_HIDDEN_MS = 250;
+let bgState;
+const batchMs = () => { if (bgState === undefined) { try { bgState = process.versions.electron ? require('./bgmain').state : null; } catch { bgState = null; } } try { return bgState?.().hidden ? BATCH_HIDDEN_MS : BATCH_MS; } catch { return BATCH_MS; } };
 function batched(emit) {
   if (emit.batched) return emit;
   let held = null;
@@ -1272,7 +1276,7 @@ function batched(emit) {
       if (held && held.type === e.type) { held.text += e.text; return; }
       flush();
       held = { type: e.type, text: e.text };
-      timer = setTimeout(flush, BATCH_MS);
+      timer = setTimeout(flush, batchMs());
       return;
     }
     flush();

@@ -13,7 +13,12 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const S = require('./sync-merge');
-const { createEngine, hearthIn } = require('./sync-engine');
+// (round 162, main162) the engine and its eight helpers (≈ 20 ms to load) come in when sync is on or the panel asks, not at
+// every start of a computer that doesn't sync
+let syncEngine = null;
+const SE = () => (syncEngine ||= require('./sync-engine'));
+const createEngine = (o) => SE().createEngine(o);
+const hearthIn = (root) => SE().hearthIn(root);
 const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
 const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
 const SAmain = require('./storeackmain'); // (round 77, storeack77) stores the main process holds in memory
