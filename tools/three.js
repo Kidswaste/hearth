@@ -6251,6 +6251,7 @@ ${frag}\`,
     openCode(code) { ensureOpen('sketch'); setTimeout(() => api.openCode?.(code), 60); },
     get lab() { return api.lab; }, // Lab actions (palette commands, MIDI simulation for tests)
     get workspace() { return api.workspace; },
+    get rest() { return api.rest; }, // (round 154, mem154) the Lab's rest when unseen: state(), wake()
     get director() { return api.director; }, // the Lab's layer / slider / palette API (the FX picker and its chat commands use it)
     get scenes() { return api.scenes || null; }, // the sketches as data, for per-chat scenes (chat-scenes.js)
     get stageHooks() { return api.stageHooks || null; }, // (round 22) tools/three-stage*.js

@@ -21,7 +21,9 @@ const label = (m, pid) => {
   const pr = m.procs.find((x) => x.pid === pid);
   return pr.type === 'Browser' ? 'main' : pr.type === 'GPU' ? 'gpu' : `${pr.type.toLowerCase()}${pr.name ? ` ${pr.name}` : ''}`;
 };
-const heap = async (target) => { const r = await smoke(target ? { cdp: 'Runtime.getHeapUsage', target } : { cdp: 'Runtime.getHeapUsage' }); return r && r.usedSize != null ? Math.round(r.usedSize / 1048576) : null; };
+const heap = async (target) => {
+  if (target === 'lab-window') { const r = await smoke({ pageEval: 'lab-window\\.html', expr: 'String(Math.round(performance.memory.usedJSHeapSize / 1048576))' }); return r?.value != null ? Number(r.value) : null; }
+  const r = await smoke(target ? { cdp: 'Runtime.getHeapUsage', target } : { cdp: 'Runtime.getHeapUsage' }); return r && r.usedSize != null ? Math.round(r.usedSize / 1048576) : null; };
 const gc = async (target) => { try { await smoke(target ? { cdp: 'HeapProfiler.collectGarbage', target } : { cdp: 'HeapProfiler.collectGarbage' }); } catch { /* none */ } };
 async function measure(name, targets = []) {
   await gc(); for (const t of targets) await gc(t);
@@ -72,7 +74,7 @@ await RS.close(); await wait(1500);
 activate(claude.id); await wait(3000);
 await measure('chat after lab', ['three-sandbox']);
 await wait(Number(window.MEM_AWAY || 0));
-if (window.MEM_AWAY) await measure('chat after lab, later', ['three-sandbox']);
+if (window.MEM_AWAY) { out.rest = ThreeLab.rest?.state?.(); await measure('chat after lab, later', ['three-sandbox']); }
 
 // the Lab window, Hearth hidden
 activate('tool:three'); await until(() => ThreeLab.workspace.state().ready || ThreeLab.workspace.state().released, 20000); await wait(1500);
@@ -82,6 +84,7 @@ await until(async () => lw('typeof LabWin !== "undefined" && LabWin.times().fram
 await wait(3000);
 await lw('(async () => { const c = await ThreeLab.cmd(); c.seek(1); await new Promise((r) => setTimeout(r, 200)); c.play(true); return c.state.playing; })()');
 await wait(Number(window.MEM_LW_WAIT || 5000));
+out.memtrim = (await T({ memtrim: true }))?.memtrim;
 await measure('lab window, hearth hidden, playing', ['lab-window', 'three-sandbox']);
 await window.hub.labwin.close();
 await until(async () => !(await window.hub.labwin.state()).open, 15000);
