@@ -131,6 +131,7 @@ const ThreeMusic = (() => {
   // ---------- live sound: the beat-lock light and the latency from your taps ----------
   let live = null; // the last tempo message { bpm, locked, lock, period, beatAt }
   let dot = null; let dotAnim = null; let dotKey = '';
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { dotAnim?.cancel(); dot = null; dotAnim = null; dotKey = ''; } }); // (round 161, fix161) a new Lab gets a new light
   function liveTempo(msg) {
     live = msg;
     const btn = lab?.live?.button;

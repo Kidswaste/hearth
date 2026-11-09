@@ -602,6 +602,7 @@ const ThreeFrames = (() => {
   }
   // footage mode on the bar: music-only controls tuck away (⋯ shows everything), the frames chip shows
   let chip = null;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) chip = null; }); // (round 161, fix161) a new Lab's timeline gets a new chip
   function paintChrome() {
     const bar = P()?.el; if (!bar) return;
     const f = on();
