@@ -9,6 +9,8 @@
 //             composited layers no more than with Lite off; the LITE tags in the Lab bar and the rail; Settings' row
 //   renders   a still and a 1 s MP4 rendered with Lite on equal the same renders with Lite off (pixels, size, frames)
 //   words     the command bar's "lite mode off / on", /lite, Ctrl/⌘+Alt+L
+//   labwin    the Lab in its own window (labwin153) follows it: Lite on there (data-lite, its preview at 30 fps with
+//             Hearth's window in front, half resolution), off from Hearth's window → off there too (the storage event)
 //   persist   after a reload (a restart of the page) Lite is on before the first frame, the preview at 30 / half again
 //   restore   the Lab bar's LITE tag turns it off: every attribute, stored setting and preview setting as before
 //   offer     Lite off, a slow layer (≈ 12 fps): "Things are slow — turn on Lite mode?" shows once, never switches by itself
@@ -74,6 +76,7 @@ async function renders(tag) {
 const clickRow = async (re) => { const row = await until(() => [...document.querySelectorAll('.mb-menu.lab-pop .menu-item')].find((b) => re.test(b.textContent)), 3000); row?.click(); return Boolean(row); };
 
 try {
+  await smoke({ cdnFor: 'lab-window\\.html' }); // (the Lab window's preview: three.js from the local copy)
   await until(() => window.hub && performance.getEntriesByName('hearth:ready').length && window.HearthLite, 60000);
   await until(() => window.LiteUI, 15000);
   activate('tool:three');
@@ -163,6 +166,29 @@ try {
     CmdBar.close?.();
     out.measure.words = { off1, on1, off2, on2 };
     step('words: the command bar\'s "lite mode off" / "turn on lite mode", /lite off, Ctrl/⌘+Alt+L', off1 === false && on1 === true && off2 === false && on2 === true, out.measure.words);
+    HearthLite.set(true);
+  });
+
+  // ---------- labwin: the Lab in its own window follows Lite ----------
+  await safe('labwin', async () => {
+    if (!window.LabWinHost || !window.hub?.labwin) { step('labwin: the Lab window is there (labwin153)', false); return; }
+    const lw = async (expr) => { const r = await smoke({ pageEval: 'lab-window\\.html', expr: `(async () => JSON.stringify(await (async () => (${expr}))()))()` }); return r?.value === undefined ? undefined : JSON.parse(r.value); };
+    const pv = (code) => lw(`ThreeLab.director.evalInSketch(${JSON.stringify(`return JSON.stringify(${code})`)}).then((r) => (r && r.ok ? JSON.parse(r.value) : null))`);
+    await LabWinHost.open(fixId);
+    await until(async () => (await lw('typeof LabWin !== "undefined" && LabWin.times().frame ? 1 : 0')) === 1, 60000);
+    await lw('window.hub.labwin.showMain({})'); // (Hearth's window in front: the Lab window would draw at full rate)
+    const on = await until(async () => { const x = await pv('window.__labLite ? window.__labLite.state() : null'); return x?.on && x.cap === 30 ? x : null; }, 30000, 600);
+    const page = await lw(`({ on: window.HearthLite?.on, attr: document.documentElement.hasAttribute('data-lite'), motion: document.documentElement.dataset.motion || '', host: window.LabWinHost?.lite?.(), tag: Boolean(document.querySelector('.three-toolbar .lite-tag')?.checkVisibility()) })`);
+    const r = await until(async () => { const x = await pv('window.__labSmooth ? window.__labSmooth.state().renderers : null'); return x?.length ? x[0] : null; }, 20000, 600);
+    HearthLite.set(false);
+    const off = await until(async () => { const x = await pv('window.__labLite ? window.__labLite.state() : null'); return x && !x.on && x.cap !== 30 ? x : null; }, 20000, 600);
+    const page2 = await lw(`({ on: window.HearthLite?.on, attr: document.documentElement.hasAttribute('data-lite') })`);
+    out.measure.labwin = { on, page, r, off, page2 };
+    step('labwin: in the Lab window Lite is on too (data-lite, Motion: off, its LITE tag), its preview at 30 fps with Hearth\'s window in front, half resolution', Boolean(on) && page?.on === true && page.attr && page.motion === 'off' && page.host === true && page.tag && r && r.q <= 0.5, out.measure.labwin);
+    step('labwin: off from Hearth\'s window → off in the Lab window too (its full rate back)', Boolean(off) && page2?.on === false && !page2.attr, { off, page2 });
+    await lw('(window.LabWinHost.rows()[0][2](), true)'); // ↩ Back to Hearth
+    await until(() => !LabWinHost.away(), 15000);
+    await wait(1500);
     HearthLite.set(true);
     localStorage.setItem('lite153.fix', fixId);
     localStorage.setItem('lite153.before', JSON.stringify({ chosen: before.chosen, shown: before.shown, lite: before.lite, r: glowR(before.smooth) }));
