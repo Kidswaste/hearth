@@ -204,7 +204,7 @@ html[data-skin~="forge"] .msg.user .body {
 /* (round 36, motionpolish) a message comes in once: yours when you send it, a reply when it starts. It was every last
    message that wasn't streaming, so a reply played its entrance again (from transparent) the moment it finished, and
    the last reply slid in on its own inside the chat's own slide on every chat switch */
-html[data-skin~="forge"] .messages > .msg:last-child:is(.user, .streaming) { animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out) both; }
+html[data-skin~="forge"] .messages > .msg:last-child:is(.user, .streaming) { animation: fh-in var(--dur-med, .18s) var(--ease-out, ease-out) backwards; } /* (round 167, paint167: backwards, not both: a 'forwards' fill that changes nothing kept the reply on its own GPU layer while it streamed) */
 /* (nobars) a reply being written: the typing dots and the look's shimmer show it; no rainbow side edge, and no
    14px indent that made the reply jump left when it finished */
 html[data-skin~="forge"] .msg.assistant.streaming { position: relative; }

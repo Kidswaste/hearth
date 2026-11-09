@@ -36,7 +36,7 @@ html[data-skin~="forge"] .bd-chip { border-radius: 0; clip-path: var(--cut-sm, n
 /* the empty board teaches in one line, under its icon */
 .bd-empty b { font-family: var(--font-head, inherit); font-size: 15px; letter-spacing: .04em; color: var(--text); }
 .bd-empty span { font-size: 12.5px; }
-:root:not([data-motion=off]) .bd-empty { animation: hx-rise .4s var(--ease-out, ease-out) both; }
+:root:not([data-motion=off]) .bd-empty { animation: hx-rise .4s var(--ease-out, ease-out) backwards; } /* (round 167, paint167: backwards, not both: no GPU layer kept after it rose) */
 /* the minimap, the quick bar, search, the selection: the look's metal and line */
 .bd-mini { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); } /* (no shadow or clip: it redraws while you move) */
 .bd-quick { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }

@@ -92,8 +92,33 @@ async function met() {
   if (!r?.metrics || r.metrics.error) (out.metricsTrouble ||= []).push(r?.metrics?.error || `no metrics: ${Object.keys(r || {}).join(',')}`);
   return r?.metrics || { procs: [], pages: [] };
 }
-async function measure(name) {
+// (round 167, paint167) what a step leaves behind settles before idle is counted: no notification on screen (they leave
+// by themselves after a few seconds), no progress bar or ✓ dot still fading out, then 3 s in which nothing in the page
+// changed (a MutationObserver of the check's own, disconnected before the count; its own wake-ups are reset with
+// P.take). A reply the check sent ends with its own after-effects (the bar's ✓ fading, "This chat is in Earlier chats"
+// leaving at 7 s, juice's sparks): those are the test's, not idle work. Never longer than 30 s; said when it didn't settle.
+async function settle(name, { quietMs = 3000, maxMs = 30000 } = {}) {
+  const t0 = performance.now(); let last = performance.now(); const seen = [];
+  const mo = new MutationObserver((list) => { last = performance.now(); for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList?.contains('toast')) seen.push(String(n.textContent || '').slice(0, 80)); });
+  mo.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  const busy = () => [document.querySelector('#toasts .toast') && 'a notification', document.querySelector('.pg-bar') && 'a progress bar', document.querySelector('#pg-dot:not([hidden])') && 'the progress dot'].filter(Boolean);
+  let why = busy();
+  while (performance.now() - t0 < maxMs) {
+    why = busy();
+    if (!why.length && performance.now() - last >= quietMs) break;
+    await sleep(250);
+  }
+  mo.disconnect();
+  const r = { ms: Math.round(performance.now() - t0), settled: !why.length && performance.now() - last >= quietMs, still: why, toasts: seen.slice(0, 5) };
+  (out.settle ||= {})[name] = r;
+  return r;
+}
+// (round 167) every notification the run shows, with when (s since the page started): one shown while idle is counted
+out.toastLog = [];
+{ const box = document.getElementById('toasts'); if (box) new MutationObserver((l) => { for (const m of l) for (const n of m.addedNodes) if (n.nodeType === 1) out.toastLog.push(`${Math.round(performance.now() / 100) / 10}s ${String(n.textContent || '').slice(0, 70)}`); }).observe(box, { childList: true }); }
+async function measure(name, { settleFirst = false } = {}) {
   await sleep(6000); // (what the last step started lands first: software GL draws for a few seconds after a change)
+  if (settleFirst) await settle(name);
   // (the Lab on screen: someone away for a while, the still picture past its first 10 s)
   if (labUp() && /lab/.test(name)) out[`${name} doze wait`] = await until(async () => (await sbx('return window.__labPace?.state()'))?.doze?.ms >= 250, 25000);
   // (the garbage the last step left collected now: a big collection after the board read its clips took ≈ 1 s of the
@@ -121,7 +146,7 @@ async function measure(name) {
   for (const v of Object.values(procs)) { v.cpuPct = Math.round(v.cpuPct * 100) / 100; v.ctxPerSec = Math.round(v.ctxPerSec * 10) / 10; }
   const th = {};
   for (const [k, v] of Object.entries(m1.threads || {})) { const a = m0.threads?.[k]; th[k] = a ? `${Math.round((v.activeMs - a.activeMs) * 10) / 10} ms busy` : 'started'; }
-  const r = { procs, threads: th, page: { perSec: page.perSec, top: page.top }, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 5) }, anims: anims(),
+  const r = { at: `${Math.round(t0 / 100) / 10}–${Math.round(performance.now() / 100) / 10}s`, procs, threads: th, page: { perSec: page.perSec, top: page.top }, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 5) }, anims: anims(),
     schedule: window.Power?.timers?.().filter((x) => x.every != null).map((x) => `${x.id} ${Math.round(x.every / 100) / 10}s`) || [] };
   // the Lab preview's page: frames it woke for (its frame counter's ticks), drawn, the still check's skips, dozing
   if (s0 && s1) r.lab = { framesPerSec: Math.round(((s1.frameTick - s0.frameTick) / sec) * 10) / 10, drawnPerSec: Math.round(((s1.drawn - s0.drawn) / sec) * 10) / 10, still: s1.still, doze: s1.doze || null, parked: s1.parked };
@@ -159,7 +184,7 @@ activate(claude.id); await wait(300); Native.newChat(claude.id); await wait(200)
 await Native.send(claude.id, 'hello there');
 await until(() => !Native.isAgentBusy(claude.id), 30000);
 document.activeElement?.blur?.();
-await measure('chat');
+await measure('chat', { settleFirst: true }); // (round 167: the reply's own after-effects gone first)
 
 // ---------- 2. the Lab with a still scene ----------
 activate('tool:three');
@@ -261,7 +286,9 @@ await T({ window: 'show' }); await wait(800);
 // per setup, over 10 s of idle: the window's CPU and wakeups (timers, frames, idle callbacks, observers), the main
 // process', and the Lab preview's page while the Lab is on screen (CPU, frames it wakes for)
 const B = { windowCpu: 1.5, wakeups: 1.5, labWakeups: 2, mainCpu: 1, mainTimersPerMin: 20, labCpu: 2.5, labFrames: 15, hiddenWakeups: 0.3, hiddenMainTimersPerMin: 2, hiddenAllCpu: 0.8, ...(window.IDLE_BUDGET || {}) };
-out.table = [];
+out.table = []; out.codexNotes = [];
+const CODEX_TIMER = /codex-[\w-]+\.js:\d+/;
+const codexTimers = (mt) => Math.round((mt?.top || []).filter((x) => CODEX_TIMER.test(x)).reduce((a, x) => a + (parseFloat(x) || 0), 0) * 10) / 10;
 for (const [name, r] of Object.entries(out.setups)) {
   const w = r.procs.window || { cpuPct: 0 }; const m = r.procs.main || { cpuPct: 0 }; const l = r.procs['lab preview'];
   const onLab = Boolean(r.lab && !r.lab.parked && /lab/.test(name));
@@ -271,7 +298,11 @@ for (const [name, r] of Object.entries(out.setups)) {
   const wb = onLab ? B.labWakeups : B.wakeups;
   if (r.page.perSec > wb) out.problems.push(`${name}: the window woke ${r.page.perSec}×/s idle (> ${wb}): ${r.page.top.slice(0, 3).join('; ')}`);
   if (m.cpuPct > B.mainCpu) out.problems.push(`${name}: the main process used ${m.cpuPct} % idle (> ${B.mainCpu})`);
-  if (r.mainTimers.perMin > B.mainTimersPerMin) out.problems.push(`${name}: the main process ran ${r.mainTimers.perMin} timers/min (> ${B.mainTimersPerMin})`);
+  // (round 167) Codex's app catalog (codex-capabilities.js: Catalog.fetch's 5-minute close timer, ≈ 3.5–5.5 wake-ups a
+  // minute while Codex reads its catalog) is Codex's own file: reported on its own line, not judged as Hearth's idle work
+  const cx = codexTimers(r.mainTimers); const ownTimers = Math.round((r.mainTimers.perMin - cx) * 10) / 10;
+  if (cx) out.codexNotes.push(`${name}: Codex's catalog (codex-capabilities.js) woke the main process ${cx}×/min — Codex-owned, not counted against Hearth (${(r.mainTimers.top || []).filter((x) => CODEX_TIMER.test(x)).join('; ')})`);
+  if (ownTimers > B.mainTimersPerMin) out.problems.push(`${name}: the main process ran ${ownTimers} timers/min (> ${B.mainTimersPerMin})`);
   if (onLab && l && l.cpuPct > B.labCpu) out.problems.push(`${name}: the Lab preview used ${l.cpuPct} % idle (> ${B.labCpu})`);
   if (onLab && r.lab.framesPerSec > B.labFrames) out.problems.push(`${name}: the Lab preview woke for ${r.lab.framesPerSec} frames/s on a still picture (> ${B.labFrames})`);
 }
@@ -282,10 +313,13 @@ for (const [name, r] of Object.entries(out.setups)) {
   if (r) {
     out.table.push(`hidden (all processes): ${r.allCpuPct}% · ${r.allCtxPerSec} wakeups/s (kernel)`);
     if (r.page.perSec > B.hiddenWakeups) out.problems.push(`hidden: the window woke ${r.page.perSec}×/s (> ${B.hiddenWakeups}): ${r.page.top.slice(0, 3).join('; ')}`);
-    if (r.mainTimers.perMin > B.hiddenMainTimersPerMin) out.problems.push(`hidden: the main process ran ${r.mainTimers.perMin} timers/min (> ${B.hiddenMainTimersPerMin}): ${(r.mainTimers.top || []).slice(0, 3).join('; ')}`);
+    const hiddenOwn = Math.round((r.mainTimers.perMin - codexTimers(r.mainTimers)) * 10) / 10; // (round 167: Codex's catalog on its own line, above)
+    if (hiddenOwn > B.hiddenMainTimersPerMin) out.problems.push(`hidden: the main process ran ${hiddenOwn} timers/min (> ${B.hiddenMainTimersPerMin}): ${(r.mainTimers.top || []).filter((x) => !CODEX_TIMER.test(x)).slice(0, 3).join('; ')}`);
     if (r.allCpuPct > B.hiddenAllCpu) out.problems.push(`hidden: all processes used ${r.allCpuPct} % of a CPU (> ${B.hiddenAllCpu}): ${JSON.stringify(r.procs)}`);
   }
 }
+if (out.settle?.chat && !out.settle.chat.settled) out.problems.push(`chat: the page never settled after the test's reply (30 s): still ${out.settle.chat.still.join(', ') || 'changing'} · ${out.settle.chat.toasts.join(' | ')}`);
+if (out.codexNotes.length) console.log(`[IC] For Codex: ${out.codexNotes.join(' · ')}`);
 if (out.metricsTrouble) out.problems.push(`the process numbers failed: ${out.metricsTrouble[0]}`);
 if (window.IDLE_REPORT) { out.unenforced = out.problems; out.problems = []; }
 return J.done();

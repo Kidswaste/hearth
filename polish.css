@@ -609,11 +609,14 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(8) { animation-delay: 112ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(9) { animation-delay: 126ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(10) { animation-delay: 140ms; }
-:root:not([data-motion=off]) dialog[open] { animation: hx-dialog var(--dur-slow) var(--ease-pop) both; }
-:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade var(--dur-slow) var(--ease-out) both; }
+/* (round 167, paint167) entrances fill backwards, not both: their keyframes are a 'from' only, so the end is the element's
+   own style either way, but a 'forwards' fill that changes nothing left the element on its own GPU layer for good
+   (a dialog, the open surface, the board's empty card): every later frame drew it again (≈ 30 % of a frame here) */
+:root:not([data-motion=off]) dialog[open] { animation: hx-dialog var(--dur-slow) var(--ease-pop) backwards; }
+:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade var(--dur-slow) var(--ease-out) backwards; }
 :root:not([data-motion=off]) .palette-card { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top center; }
 /* switching agents / tools: the new surface eases in */
-:root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) both; }
+:root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) backwards; } /* (round 167: backwards, above) */
 /* switching chats: the conversation slides up into place */
 :root:not([data-motion=off]) .chat-enter { animation: hx-chat var(--dur-slow) var(--ease-out) both; }
 /* the Lab preview: a cover that fades away once the new scene has drawn (see three.js scene-cover) */
