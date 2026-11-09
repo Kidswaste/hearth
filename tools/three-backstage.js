@@ -673,7 +673,7 @@ function makeBackstage(opts = {}) {
       return { ok: false, error: `${tool.replace(/^three_/, '')} needs this chat's scene on screen, and the owner is looking at another chat right now. Your scene "${x.name}" runs backstage, where code, layers, sliders, keyframes, the timeline's cues, 3D models, materials, physics, screenshots and eval all work. Tell the owner what's left, or carry on with those.` };
     }
     if (tool === 'three_new_sketch') {
-      const s = SC().create({ name: String(args.name || 'Untitled'), code: String(args.code || ''), frame: SC().frameOf(route.sketchId) });
+      const s = SC().create({ name: String(args.name || 'Untitled'), code: String(args.code || ''), frame: SC().frameOf(route.sketchId), ...(ThreeData.isV2Code?.(args.code) ? { format: 'gpu' } : {}) }); // (Nov 9: v2 code makes a v2 scene)
       route.sketchId = s.id;
       await load(s, { force: true });
       await settle(args.wait);

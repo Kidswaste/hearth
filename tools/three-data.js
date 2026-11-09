@@ -515,5 +515,8 @@ void main() {
   // a v2 template's layers as a scene's layers ({ id, name, code, slot })
   const v2Layers = (tpl) => (tpl?.layers || []).map((id, i) => { const L = V2_LAYERS.find((x) => x.id === id); return L ? { id: i ? `l${i + 1}` : 'main', name: L.name.replace(/ \(v2\)$/, ''), code: L.code, slot: i } : null; }).filter(Boolean);
 
-  return { TEMPLATES, SNIPPETS, SHADERS, V2_LAYERS, V2_TEMPLATES, v2Layers, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
+  // (Nov 9) code written as a v2 layer (a default export, no renderer of its own): a director's new scene takes the v2
+  // format then; old-style code (its own WebGLRenderer / animation loop) keeps the old format, so it still runs
+  const isV2Code = (code) => /\bexport\s+default\b/.test(String(code || '')) && !/\bWebGL1?Renderer\b|\bsetAnimationLoop\b/.test(String(code || ''));
+  return { isV2Code, TEMPLATES, SNIPPETS, SHADERS, V2_LAYERS, V2_TEMPLATES, v2Layers, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
 })();
