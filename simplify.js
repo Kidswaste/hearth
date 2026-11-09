@@ -32,6 +32,7 @@ const Simplify = (() => {
     const slow = window.Jank?.openCard ? [{ label: 'That was slow', icon: 'clock', tip: 'Click right after a hiccup: what it was, today’s count, Copy report for Claude', action: () => Jank.openCard() }] : [];
     slow.push({ label: 'Ideas', icon: 'notes', tip: 'Every idea you jotted with 💡 Quick idea (tray menu, or its key from any app): Move to…, Delete', action: () => Lazy.load('quickidea').then(() => QuickIdeas.open()).catch((err) => toast(calmError(err), { type: 'error' })) }); // (round 71, quickidea71)
     if (window.BugWatch) slow.push({ label: 'Something broke', icon: 'bug', tip: 'What went wrong lately, Copy report for Claude, Restart Hearth', action: () => BugWatch.open() }); // (round 68)
+    if (window.LiteUI) slow.unshift(LiteUI.railRow()); // (round 153a, lite153) ⚡ Lite mode, the top row (lite.js)
     const rows = [...slow, ...TUCKED.filter(([id]) => $(id)).map(([id, label]) => ({
       label: String(label).replace(/^[^\p{L}\d]+/u, '').replace(/⌘\+/g, 'Ctrl+'), icon: ICON[id], checked: $(id).classList.contains('on'), action: () => $(id).click() }))];
     const hidden = !window.WorkspaceNav && typeof Tools !== 'undefined' ? Tools.all().filter((t) => !Tools.enabled().includes(t)) : [];

@@ -47,6 +47,16 @@ const CmdBar = (() => {
   // The Lab (tools/three-say.js, lazy group labsay): a line under the bar says what Enter will do ("Glow ring · glow →
   // 0.8 at Drop 1"), Enter applies it as one undo step, "?" lists what it understands. A provider: { when(), preview(text)
   // → { ok, node }, run(text, { show, close }), help({ show }), placeholder(), opened(input), rect() }.
+  // (round 153a, lite153) ⚡ Lite mode's words: "lite mode on", "turn off lite", "enable lite mode", "lite" → true / false /
+  // 'toggle', or null (not these words)
+  function litePhrase(text) {
+    if (!window.HearthLite) return null;
+    const s = String(text || '').trim().toLowerCase().replace(/[.!]+$/, '').replace(/\s+/g, ' ');
+    const m = /^(?:(turn|switch|put) )?(on|off)? ?(?:the )?(?:⚡ ?)?lite(?: mode)?(?: (on|off))?$/.exec(s) || /^(enable|disable|start|stop) (?:the )?lite(?: mode)?$/.exec(s);
+    if (!m) return null;
+    const w = m.slice(1).find((x) => /^(on|off|enable|disable|start|stop)$/.test(x || ''));
+    return w ? /^(on|enable|start)$/.test(w) : 'toggle';
+  }
   const PLAIN_GROUPS = { three: 'labsay' };
   const plains = [];
   const plainNow = () => plains.find((p) => { try { return p.when(); } catch { return false; } }) || null;
@@ -184,6 +194,7 @@ const CmdBar = (() => {
       const text = input.value.trim();
       if (!text) { close(); return; }
       // (round 141, cmdbar141) plain words in the Lab: its own reading first (the line under the bar), one undo step
+      if (litePhrase(text) != null) { if (!e.altKey) { input.value = ''; grow(); } histAt = -1; menuApi?.close(); runLine(text); return; } // (round 153a, lite153) "lite mode on / off", in the Lab too
       const lab = plainNow();
       if (lab && plainText(text)) {
         if (!e.altKey) { input.value = ''; grow(); }
@@ -295,6 +306,9 @@ const CmdBar = (() => {
       await Native.sendText(agent.id, msg);
       return true;
     }
+    // (round 153a, lite153) "lite mode on", "turn off lite", "lite": the one switch (powerwise.js HearthLite)
+    const lite = window.HearthLite ? litePhrase(text) : null;
+    if (lite != null) { Commands.addHistory(text); const on = HearthLite.set(lite === 'toggle' ? !HearthLite.on : lite); show(on ? '**⚡ Lite mode on**: the Lab preview at 30 fps and half resolution, no glow, no animations, slower background checks. Renders stay full quality.' : '**Lite mode off**: everything is back as it was.', { actions: [{ label: on ? 'Turn it off' : 'Turn it on', run: () => runLine(on ? 'lite mode off' : 'lite mode on') }] }); return true; }
     // a timer-free plain sentence: the best matches as buttons
     if (!text.startsWith('/')) {
       const s = Commands.suggest(text, { limit: 5, ctx: Commands.context(agent.id, null, { source: 'bar' }) });
@@ -1000,5 +1014,5 @@ const CmdBar = (() => {
   // (round 29, fastboot) loaded after the first screen: the replies already on screen get their clickable commands too
   if (performance.getEntriesByName('hearth:ready').length) setTimeout(() => decorate(), 0);
 
-  return { open, close, toggle, isOpen, help, runLine, target, decorate, addPlain, timers: () => timers.slice(), parseDur, parseAt, recording: () => rec && { ...rec } }; // (round 141, cmdbar141) addPlain
+  return { open, close, toggle, isOpen, help, runLine, target, decorate, addPlain, litePhrase, timers: () => timers.slice(), parseDur, parseAt, recording: () => rec && { ...rec } }; // (round 141, cmdbar141) addPlain
 })();

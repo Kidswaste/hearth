@@ -547,7 +547,7 @@ function cpxHook() {
     const spr = P.setPixelRatio; const rnd = P.render;
     // the code's own ratio: kept as its share of the scene's own ratio (the renderer's before any lightening)
     P.setPixelRatio = function (v) { if (!CPX.inner) { const r = this.renderer; const base = r ? r.__basePR ?? r.getPixelRatio?.() : 0; if (base > 0 && Number(v) > 0) this.__cpxK = Number(v) / base; } return spr.call(this, v); };
-    P.render = function (dt) { if (CPX.on) cpxFollow(this, spr); else if (this.__cpxFull > 0 && Math.abs(this._pixelRatio - this.__cpxFull) > 1e-3) { CPX.inner = true; try { spr.call(this, this.__cpxFull); } finally { CPX.inner = false; } } return rnd.call(this, dt); }; // (checks' A/B off: back at its full-quality ratio, as it stayed before this round)
+    P.render = function (dt) { if (CPX.on) cpxFollow(this, spr); else if (this.__cpxFull > 0 && Math.abs(this._pixelRatio - this.__cpxFull) > 1e-3) { CPX.inner = true; try { spr.call(this, this.__cpxFull); } finally { CPX.inner = false; } } return LITE.on ? cpxLite(this, rnd, dt) : rnd.call(this, dt); }; // (checks' A/B off: back at its full-quality ratio, as it stayed before this round)
   }).catch(() => { CPX.hooked = false; });
 }
 function cpxFollow(c, spr) {
@@ -564,6 +564,19 @@ function cpxFollow(c, spr) {
   CPX.resized += 1;
 }
 const XP_PAGE_EARLY = new URLSearchParams(location.search).get('xp') === '1'; // (XP_PAGE is defined further down)
+// (round 153a, lite153) ⚡ Lite mode: a composer draws only its scene (RenderPass) and its last colour step (OutputPass,
+// so the picture's colours stay right): bloom and every other pass step aside for that frame (their own `enabled` is
+// put back after it, so the scene's code never sees a change; EffectComposer hands the screen to its last enabled pass).
+// Never in a still / recording (fullRes), a show (Present: RDY.lock), ▶ Play or a composer on its own render target.
+const CPX_KEEP = /^(RenderPass|OutputPass|ClearPass|MaskPass|ClearMaskPass)$/;
+function cpxLite(c, rnd, dt) {
+  if (fullRes() || GAME || RDY.lock || c.__cpxRT || !Array.isArray(c.passes)) return rnd.call(c, dt);
+  const off = [];
+  for (const p of c.passes) if (p && p.enabled && !p.isOutputPass && !CPX_KEEP.test(p.constructor?.name || '')) { p.enabled = false; off.push(p); }
+  if (!off.length || off.length === c.passes.length) { for (const p of off) p.enabled = true; return rnd.call(c, dt); }
+  LITE.bypassed += off.length;
+  try { return rnd.call(c, dt); } finally { for (const p of off) p.enabled = true; }
+}
 if (new URLSearchParams(location.search).get('xp') !== '1') setTimeout(() => (window.requestIdleCallback || setTimeout)(() => { for (const k of LIBS) loadLib(k).catch(() => {}); }, { timeout: 4000 }), 2500);
 const post = (msg, transfer) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*', transfer || []));
 // (round 20, offmain) pictures for the Lab / the director (three_screenshot) are encoded by the browser off this thread
@@ -776,11 +789,19 @@ let fpsCap = Number(new URLSearchParams(location.search).get('cap')) || 0; let c
 // the preview at most 1× pixel ratio, soft filters at half resolution.
 const capWant = { value: fpsCap, auto: false, focused: true };
 let autoCap = 0; let lightMode = false;
+// (round 153a, lite153) ⚡ Lite mode (the Lab's 'lite' message, from the owner's one switch: tools/three.js): the live
+// preview at 30 fps always, at half resolution (½ a device pixel per CSS pixel at most), its EffectComposer passes and
+// glow-type filters stepped aside (cpxLite, fxLiteOff), and with the Lab's ⚡ settings at their lightest (shadows off,
+// antialias off from the scene's next run, filters at half: the 'speed' message). Never on the export page (renders and
+// exports stay exactly as they were), in ▶ Play, on the Stage window, in a show (Present), a recording, a still.
+const LITE = { on: false, bypassed: 0, fxOff: 0 };
+const recNow = () => recorder != null || recUntil != null;
 let adTier = 0; // (round 142, smooth142) Smooth's steady frame rate when the screen's own is out of reach (240 → 120 → 60), see "smooth playback"
 const SPD = { px1: false, noAA: false, sh: null, fxHalf: false, shOff: false, gen: 0, skip: null, meas: null, lay: {}, layN: 0, measures: 0 }; // (round 146, layercost146: lay = one layer's own preview lightening { half, sh0 }, measures = how many measures ran) // (round 133, speed133) ⚡ the preview's speed settings, see "speed check"
 function applyCap() {
   let c = capWant.auto ? (!capWant.focused ? 30 : autoCap) : capWant.value;
   if (lightMode) c = c ? Math.min(c, 30) : 30;
+  if (LITE.on && !recNow()) c = c ? Math.min(c, 30) : 30; // (round 153a, lite153) 30 always, focused or not
   if (capWant.auto && PACE.battery) c = c ? Math.min(c, 60) : 60; // (round 33 "labpace": on battery, Auto holds 60 at most)
   // (Oct 29) and on any fast screen: at 240 Hz the preview kept the graphics card so busy that Windows' audio crackled
   // in every app (Spotify, the DAW). 60 is a quarter of the work; Max fps is still the screen's own rate.
@@ -844,6 +865,7 @@ function prQ(r, EL) {
   if (!(fullRes() || r.__helper || SQ.off)) { const raw = quality * (EL?.props.pcOf ? pcRes(EL) : 1) * (r.__lowRes || 1) * paceDragK(); if (r.__prRaw !== raw) { r.__prRaw = raw; r.__prQ = +raw.toFixed(2); } q = r.__prQ; }
   if ((lightMode || SPD.px1) && !fullRes() && !r.__helper && !SQ.off && typeof r.getPixelRatio === 'function') q = Math.min(q, +(1 / Math.max(1, r.__basePR ?? r.getPixelRatio())).toFixed(2)); // (round 133, speed133: ⚡ "Preview at 1× pixels" too)
   if (SPD.layN && EL && SPD.lay[EL.id]?.half && !fullRes() && !r.__helper && !SQ.off) q = Math.round(q * 50) / 100; // (round 146, layercost146) ⚡ this layer at ½ resolution, the preview only
+  if (LITE.on && !fullRes() && !r.__helper && !SQ.off && typeof r.getPixelRatio === 'function') q = Math.min(q, +(0.5 / Math.max(0.5, r.__basePR ?? r.getPixelRatio())).toFixed(3)); // (round 153a, lite153) ⚡ Lite: half resolution
   return q;
 }
 // (round 37, labboot) a layer's new renderer draws at that share from its first setSize: the sketch's
@@ -2296,6 +2318,7 @@ function smoothPlayWarm() {
 }
 const pagePlaying = () => Boolean(mediaEl && !mediaEl.paused);
 // (checks, the Lab's ⚡ card) where Smooth is and why, each renderer's share / pixel ratio / antialias / shadow maps
+window.__labLite = { state: () => ({ on: LITE.on, cap: fpsCap, shadowLights: [...renderers].reduce((a, r) => a + (r.__spdN || 0), 0), shadowsOff: [...renderers].reduce((a, r) => a + (r.__spdOffN || 0), 0), bypassed: LITE.bypassed, fxOff: LITE.fxOff, spd: { px1: SPD.px1, noAA: SPD.noAA, sh: SPD.sh, fxHalf: SPD.fxHalf }, xp: XP_PAGE, light: lightMode }) }; // (round 153a, lite153: the checks' view)
 window.__labSmooth = {
   state: () => ({ ...adaptInfo(), quality, qWant: AD.qWant, cap: fpsCap, hz: Math.round(1000 / dispMs), playing: pagePlaying(), halfSkips: AD.halfN, warm: { ...SMW, ms: Math.round(SMW.ms) }, log: AD.log.slice(-10),
     renderers: rdyLive().map((r) => { let aa = null; try { aa = Boolean(r.getContext().getContextAttributes()?.antialias); } catch { /* lost */ } const sh = []; try { r.__lastScene?.traverse((o) => { if (o.isLight && o.castShadow && o.shadow?.mapSize) sh.push(o.shadow.mapSize.x); }); } catch { /* fine */ } return { layer: r.__layer || null, q: r.__q ?? 1, pr: r.getPixelRatio?.() ?? null, base: r.__basePR ?? null, aa, shadows: sh, ms: r.__msA ? Math.round(r.__msA[0] * 10) / 10 : 0 }; }) }),
@@ -3253,7 +3276,7 @@ function statsTick() {
   // (round 76, labframe76) the message made once: no closure per read, percentiles without text (toFixed), perfNote sent
   // as it is and the message not spread again by post() (both ways of sending copy it there and then)
   const msg = { source: 'three-sandbox', type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
-    p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
+    p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, lite: LITE.on, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
     hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null }; // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
   if (window.__stageHost) window.__stageHost.post(msg); else parent.postMessage(msg, '*');
 }
@@ -3518,6 +3541,7 @@ function spdShadows(r, scene, EL) {
   list.sort((a, b) => (b.shadow.mapSize?.x || 0) - (a.shadow.mapSize?.x || 0));
   const keep = SPD.layN && EL && SPD.lay[EL.id]?.sh0 ? 0 : SPD.sh == null ? Infinity : SPD.sh; // (round 146, layercost146: "No shadows" on one layer)
   list.forEach((o, i) => { if (i >= keep) { if (o.castShadow) { o.castShadow = false; o.__spdOff = true; } } else if (o.__spdOff) { o.castShadow = true; o.__spdOff = false; } });
+  r.__spdN = list.length; r.__spdOffN = list.filter((o) => o.__spdOff).length; // (round 153a: lights casting / held off, for the checks)
 }
 function spdGl(L) {
   const out = []; let progs = 0; let frag = 0;
@@ -5373,10 +5397,11 @@ function startRecording({ fps = 60, bitrate = 16e6, until = null, recordId = nul
   const chunks = [];
   recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 320000 });
   const take = recorder, started = performance.now(); take.hearthRecordId = recordId;
+  if (LITE.on) applyCap(); // (round 153a, lite153) a recording draws at its own rate, Lite or not
   const release = () => {
     clearTimeout(timer);
     for (const tr of stream.getVideoTracks()) { try { tr.stop(); } catch { /* ended */ } }
-    if (recorder === take) { recorder = null; compRec = null; recUntil = null; }
+    if (recorder === take) { recorder = null; compRec = null; recUntil = null; if (LITE.on) applyCap(); }
   };
   let failed = false;
   recorder.onerror = e => { failed = true; release(); post({ type: 'record-error', recordId, message: e.error?.message || 'The video encoder failed.' }); };
@@ -10169,7 +10194,8 @@ globalThis.filter = (type, P = {}) => {
   renderer.setAnimationLoop(() => {
     if (L.adCovered && L.drawnGen === L.gen && !adFull()) return; // (round 31: under an opaque layer: no merge, no pass)
     fxPlan();
-    const off = (idKey != null && P[idKey] === 0) || Boolean(L.fxInto);
+    const off = (idKey != null && (P[idKey] === 0 || (LITE.on && !fullRes() && !RDY.lock))) || Boolean(L.fxInto); // (round 153a, lite153: ⚡ Lite: bloom / blur / grain / vignette… step aside in the live preview)
+    if (off && LITE.on && idKey != null && P[idKey] !== 0) LITE.fxOff += 1;
     if (off !== Boolean(L.fxSkip)) {
       L.fxSkip = off; renderer.domElement.__skip = off; renderer.domElement.style.visibility = off ? 'hidden' : ''; force = true;
       if (off && OC.by === L) occlClear(); // (round 50: it hid the layers under it; they show in this frame)
@@ -16665,9 +16691,10 @@ addEventListener('message', async (e) => {
   if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
   if (msg.type === 'audio-stems') { STEMS.track = msg.track; STEMS.el = mediaEl; return; } // (round 30, stems) the song's parts, for the song loaded now
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
-  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; applyCap(); }
+  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; if (msg.lite !== undefined) LITE.on = Boolean(msg.lite) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
+  if (msg.type === 'lite') { LITE.on = Boolean(msg.on) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); if (DOZE.on) dozeWake('lite'); } // (round 153a, lite153)
   if (msg.type === 'power') pacePower(msg.battery); // (round 33 "labpace": on battery or not, from the Lab)
   if (msg.type === 'pace') PACE.on = msg.on !== false;
   if (msg.type === 'loop-clock') { loopMessage(msg); return; } // (round 31, perfectloop)

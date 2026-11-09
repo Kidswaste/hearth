@@ -42,7 +42,7 @@ const LabHudStage = (() => {
   const look = () => (window.LabRegroup?.look?.() || de.dataset.lablook || 'forge');
   const reduced = () => rmq.matches || de.dataset.motion === 'calm' || de.dataset.motion === 'off';
   // what the stage does now: 'off' (Plain or the setting), 'calm' (colour), 'reactive' (colour + pulse); still: no easing
-  const fx = () => (look() === 'plain' ? 'none' : pref());
+  const fx = () => (look() === 'plain' || de.hasAttribute('data-lite') ? 'none' : pref()); // (round 153a, lite153: ⚡ Lite mode: no reactive stage, no colour reading)
   const tintOn = () => S.vis && (fx() === 'reactive' || fx() === 'calm') && !(reduced() && S.playing);
   const pulseOn = () => S.vis && fx() === 'reactive' && !reduced();
   const base = () => BASE[look()] ?? 40;
@@ -350,7 +350,7 @@ const LabHudStage = (() => {
     addEventListener('hearth:lab-playing', (e) => { S.playing = Boolean(e.detail?.playing); S.lastT = -1; if (!S.playing) { S.lvlShown = -1; S.h.glow.style.opacity = ''; } progress(true); config(); paint(); });
     const re = () => { S.sent = ''; config(); };
     rmq.addEventListener?.('change', re);
-    new MutationObserver(re).observe(de, { attributes: true, attributeFilter: ['data-motion', 'data-lablook'] });
+    new MutationObserver(re).observe(de, { attributes: true, attributeFilter: ['data-motion', 'data-lablook', 'data-lite'] });
     S.playing = Boolean(window.LabPlay?.playing);
     setPips(4);
     measure(); paintMode(); paint(); config(true);

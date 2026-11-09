@@ -7,6 +7,8 @@
 // a song) playing · the Lab paused · Hearth hidden after the Lab. Run it twice: calm, and with --burn 3 (a busy PC).
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --script dev/perf151-measure.js [--burn 3]
 // Prints one "[PERF151] {json}" line at the end (and returns it).
+// (round 153a, lite153) Lite mode on for the whole run: add --eval "localStorage.setItem('hub.lite', 'true')" (the evals run
+// before the script, and its reload keeps it); out.lite says which, each setup also counts the window's composited layers.
 const probe = () => {
   if (window.__pfProbe) return;
   const P = window.__pfProbe = { n: 0, by: new Map(), since: performance.now(), raw: { setTimeout: window.setTimeout.bind(window) } };
@@ -47,7 +49,7 @@ const until = async (fn, ms = 20000, every = 150) => { const t = Date.now(); whi
 const P = window.__pfProbe;
 const T = (o) => window.hub.power.test(o);
 const MEASURE = Number(window.PF_MS || 10000);
-const out = { burn: window.SMOKE_BURN || 0, setups: {}, notes: [] };
+const out = { burn: window.SMOKE_BURN || 0, lite: Boolean(window.HearthLite?.on), setups: {}, notes: [] };
 const r1 = (x) => Math.round(x * 10) / 10;
 const sbx = async (expr) => (await smoke({ target: 'three-sandbox', cdp: 'Runtime.evaluate', params: { expression: `(() => { ${expr} })()`, returnByValue: true } }))?.result?.value;
 const label = (m, pid) => {
@@ -97,10 +99,12 @@ async function measure(name, { trace = true, target = null } = {}) {
   const snap = await smoke({ loadwait: 'snap' });
   const m0 = await met(); const w0 = await perf(); const s0 = target ? await perf(target) : null;
   const pace0 = target ? await sbx('return window.__labPace ? window.__labPace.state() : null') : null;
+  const fpsSeen = []; const onStats = (e) => { if (e.data?.source === 'three-sandbox' && e.data.type === 'stats' && e.data.fps >= 0) fpsSeen.push(e.data.fps); }; addEventListener('message', onStats); // (round 153a) the preview's own drawn frames a second
   P.take(); await T({ probe: 'start' });
   const t0 = performance.now();
   await new Promise((r) => P.raw.setTimeout(r, MEASURE));
   const page = P.take(); const main = (await T({ probe: 'take' }))?.probe;
+  removeEventListener('message', onStats);
   const m1 = await met(); const w1 = await perf(); const s1 = target ? await perf(target) : null;
   const pace1 = target ? await sbx('return window.__labPace ? window.__labPace.state() : null') : null;
   const sec = (performance.now() - t0) / 1000;
@@ -115,11 +119,12 @@ async function measure(name, { trace = true, target = null } = {}) {
   }
   for (const v of Object.values(procs)) v.msPerSec = r1(v.msPerSec);
   const d = (a, b, k) => (a?.[k] != null && b?.[k] != null ? r1(((b[k] - a[k]) * 1000) / sec) : null);
-  const r = { sec: r1(sec), allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
+  const lay = await smoke({ layers: true }).catch(() => null); // (round 153a) the window's composited layers now
+  const r = { sec: r1(sec), layers: lay && !lay.timedOut ? { count: lay.count, drawing: lay.drawing } : null, allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
     window: { task: d(w0, w1, 'TaskDuration'), script: d(w0, w1, 'ScriptDuration'), style: d(w0, w1, 'RecalcStyleDuration'), layout: d(w0, w1, 'LayoutDuration'), heapMb: Math.round((w1.JSHeapUsedSize || 0) / 1048576), nodes: w1.Nodes, listeners: w1.JSEventListeners },
     wakeups: page, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 6) }, anims: anims(), suspects: suspects(), visibility: document.visibilityState,
     load: { loadavg: lw?.loadavg?.map((x) => Math.round(x * 100) / 100), cpus: lw?.cpus, cpuWait: lw?.waited?.cpuWait } };
-  if (target && s0 && s1) r.preview = { task: d(s0, s1, 'TaskDuration'), script: d(s0, s1, 'ScriptDuration'), drawnPerSec: pace0 && pace1 ? r1((pace1.drawn - pace0.drawn) / sec) : null, framesPerSec: pace0 && pace1 ? r1((pace1.frameTick - pace0.frameTick) / sec) : null };
+  if (target && s0 && s1) r.preview = { task: d(s0, s1, 'TaskDuration'), script: d(s0, s1, 'ScriptDuration'), drawnPerSec: pace0 && pace1 ? r1((pace1.drawn - pace0.drawn) / sec) : null, framesPerSec: pace0 && pace1 ? r1((pace1.frameTick - pace0.frameTick) / sec) : null, drawnFps: fpsSeen.length ? r1(fpsSeen.reduce((a, x) => a + x, 0) / fpsSeen.length) : null, cap: pace1?.cap ?? null };
   if (trace) {
     await smoke({ trace: 'start', detail: true }); await new Promise((res) => P.raw.setTimeout(res, 3000));
     const tr = await smoke({ trace: 'stop', detail: true });
