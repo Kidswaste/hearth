@@ -40,6 +40,7 @@ const LabGrade = (() => {
     pages.add(deliver);
     loadLuts().then(() => { for (const n of lutNames()) try { sendLut(deliver, n); } catch { pages.delete(deliver); return; } }).catch(() => {});
   }
+  const offPage = (deliver) => pages.delete(deliver); // (round 161, fix161) a Lab page let go for good (ThreeLab.drop)
   function broadcast(name) { for (const d of [...pages]) try { sendLut(d, name); } catch { pages.delete(d); } }
   async function importCube(path, { name = null } = {}) {
     await loadLuts();
@@ -498,6 +499,6 @@ const LabGrade = (() => {
   function init() { registerFilters(); registerPicker(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  return { open, close, toggle, isOpen, set, keep, applyPreset, setLut, off, bake, exportCube, exportCubeDialog, importCube, removeLut, pickCubes, luts: async () => { await loadLuts(); return { pack: G.PACK_IDS, imported: (LUTS.list || []).slice() }; }, state, onPage, previewItem, clipMenu, findLayers, curveAt, refresh: refreshPanel, get panel() { return P.root; } };
+  return { open, close, toggle, isOpen, set, keep, applyPreset, setLut, off, bake, exportCube, exportCubeDialog, importCube, removeLut, pickCubes, luts: async () => { await loadLuts(); return { pack: G.PACK_IDS, imported: (LUTS.list || []).slice() }; }, state, onPage, offPage, previewItem, clipMenu, findLayers, curveAt, refresh: refreshPanel, get panel() { return P.root; } };
 })();
 window.LabGrade = LabGrade;

@@ -327,7 +327,7 @@ const ThreeLab = (() => {
         frame.src = 'about:blank'; uncover();
       },
       // (round 161, fix161) for good (ThreeLab.drop): released, and its window listener gone (a new Lab makes a new one)
-      dispose() { this.release(); window.__labFrames?.delete(crashCheck); removeEventListener('message', listener); target = 'gone'; onMessage = () => {}; onStageClosed = null; },
+      dispose() { this.release(); window.__labFrames?.delete(crashCheck); window.LabGrade?.offPage?.(deliver); removeEventListener('message', listener); target = 'gone'; onMessage = () => {}; onStageClosed = null; },
       // (round 37, labboot) once: the page just taken over drew a warm run (of this sketch id): run() swaps over it
       takeWarmRun: () => { const r = warmRun; warmRun = false; return r; },
       // (round 37, labboot) the page was loaded for another ?dpr= only (fit ⇄ an exact frame size): it switches in place
@@ -4693,8 +4693,10 @@ const ThreeLab = (() => {
     if (inflight) await new Promise((r) => idleWaiters.push(r));
     try { await api.teardown(); } catch (err) { return { ok: false, why: err?.message || String(err) }; }
     const s = H.surfaces?.get('tool:three');
-    // what another module keeps of the Lab's DOM leaves it first, so it doesn't keep the rest (LabDirection's chip)
-    for (const n of s?.el.querySelectorAll('.dir-chip') || []) n.remove();
+    // what other modules keep of the Lab's DOM (their own chips and buttons, put back when a new Lab is made) leaves it
+    // first, so it doesn't keep the rest of the tab alive through its parent: LabDirection's and Finish's chips, Lab
+    // search's button, the frame budget, the project look, the footage chip, the live dot, the sequence view
+    for (const n of s?.el.querySelectorAll('.dir-chip, .fl-chip, .ls-btn, .three-stats > .fb, .lab-projlook, .mb-framechip, .live-lock, .sq-view') || []) n.remove();
     tabs.bar?.remove();
     s?.body.replaceChildren(); s?.head?.classList.remove('lab-head');
     tabs = null;
