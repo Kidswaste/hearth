@@ -7,6 +7,9 @@
 // and per window: the Lab's code loaded (KB of the lazy groups' files that are in), the JS heap after a GC.
 //   node dev/split158-measure.js [--runs 3] [--app <dir>] [--json out.json]
 //   (under the lock: HEARTH_THREE_DIR=/opt/cdn-cache/three@0.186.1/package flock /tmp/hearth-run.lock node dev/split158-measure.js)
+//   node dev/split158-measure.js --parse [--app <dir>]   # no app: V8 (this node) compiling tools/three.js, median of 30:
+//       as a page does (top level, inner functions pre-parsed) and the sketch tab's own compile when it first runs
+//       (forced eager), in a fresh context each time
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -16,6 +19,21 @@ const { spawnSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
+if (argv.includes('--parse')) {
+  const vm = require('vm');
+  const file = path.join(path.resolve(opt('--app', ROOT)), 'tools', 'three.js');
+  const src = fs.readFileSync(file, 'utf8');
+  const med = (xs) => xs.sort((a, b) => a - b)[xs.length >> 1];
+  const time = (fn) => { const t = process.hrtime.bigint(); fn(); return Number(process.hrtime.bigint() - t) / 1e6; };
+  // a unique tail each time: never V8's in-process cache
+  const run = () => { const xs = []; for (let i = 0; i < 30; i += 1) xs.push(time(() => new vm.Script(`${src}\n//${i}-${Math.random()}`, { filename: `three-${i}.js` }))); return xs; };
+  const lazy = run();
+  // every function compiled at once (the sketch tab included): what V8 does for each function the first time it runs
+  require('v8').setFlagsFromString('--no-lazy');
+  const eager = run();
+  console.log(`${file}: ${Math.round(fs.statSync(file).size / 1024)} KB · compile (pre-parse) ${med(lazy).toFixed(1)} ms · compile eager ${med(eager).toFixed(1)} ms (median of 30)`);
+  process.exit(0);
+}
 const RUNS = Math.max(1, Number(opt('--runs', 1)) || 1);
 const APP = path.resolve(opt('--app', ROOT));
 const BASE = fs.mkdtempSync(path.join(os.tmpdir(), 'split158-'));
@@ -38,6 +56,12 @@ const CATS = 'v8,disabled-by-default-v8.compile,devtools.timeline,toplevel,blink
 // ---------- main window ----------
 await smoke({ trace: 'start', cats: CATS });
 await wait(300);
+// the Lab tool's mount (the sketch tab built: V8 compiles its function the first time it runs, then it runs), timed
+const define0 = Tools.define;
+Tools.define = function (tool) {
+  if (tool?.id === 'three' && !tool.__lazy && typeof tool.mount === 'function' && !tool.__s158) { const m = tool.mount; tool.__s158 = true; tool.mount = function (...a) { const s = now(); try { return m.apply(this, a); } finally { R.main.mountMs = Math.round(now() - s); } }; }
+  return define0.call(this, tool);
+};
 performance.mark('s158-press');
 const t0 = now();
 activate('tool:three');
@@ -126,7 +150,7 @@ for (let run = 1; run <= RUNS; run += 1) {
   let R = null; try { R = JSON.parse(fs.readFileSync(path.join(tmp, 's158.json'), 'utf8')); } catch { console.log(`run ${run}: no result\n${text.slice(-2000)}`); continue; }
   const row = {
     run,
-    main: { labBefore: R.main.labBefore, first: R.main.first, labGroupMs: R.main.labGroupMs, kb: kbOf(R.main.groups), heapMB: R.main.heap?.usedSize ? Math.round(R.main.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.main.trace, /index\.html/) },
+    main: { labBefore: R.main.labBefore, first: R.main.first, labGroupMs: R.main.labGroupMs, mountMs: R.main.mountMs ?? null, kb: kbOf(R.main.groups), heapMB: R.main.heap?.usedSize ? Math.round(R.main.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.main.trace, /index\.html/) },
     lw: { times: R.lw.times, codeMs: R.lw.times ? R.lw.times.lab - R.lw.times.start : null, frameMs: R.lw.times ? R.lw.times.frame - R.lw.times.start : null, clickToFrame: R.lw.clickToFrame, kb: kbOf(R.lw.groups || []), heapMB: R.lw.heap?.usedSize ? Math.round(R.lw.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.lw.trace, /lab-window\.html/) },
   };
   console.log(`run ${run} (${Math.round((Date.now() - t0) / 1000)} s): ${JSON.stringify(row)}`);
@@ -135,7 +159,7 @@ for (let run = 1; run <= RUNS; run += 1) {
 const med = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
 const m = (f) => med(all.map((r) => { try { return f(r); } catch { return NaN; } }));
 console.log(`\n== medians of ${all.length} run(s) · ${APP} · tools/three.js ${Math.round(size('tools/three.js') / 1024)} KB ==`);
-console.log(`main window: first frame ${m((r) => r.main.first)} ms · lab group load ${m((r) => r.main.labGroupMs)} ms · three.js compile ${m((r) => r.main.trace.three.compile)} + run ${m((r) => r.main.trace.three.run)} ms · Lab files compile ${m((r) => r.main.trace.lab.compile)} + run ${m((r) => r.main.trace.lab.run)} ms · main-thread compiles ${m((r) => r.main.trace.mainCompile)} ms · code loaded ${m((r) => r.main.kb)} KB · heap ${m((r) => r.main.heapMB)} MB`);
+console.log(`main window: first frame ${m((r) => r.main.first)} ms · lab group load ${m((r) => r.main.labGroupMs)} ms · Lab mount (sketch tab compiled + built) ${m((r) => r.main.mountMs)} ms · three.js compile ${m((r) => r.main.trace.three.compile)} + run ${m((r) => r.main.trace.three.run)} ms · Lab files compile ${m((r) => r.main.trace.lab.compile)} + run ${m((r) => r.main.trace.lab.run)} ms · main-thread compiles ${m((r) => r.main.trace.mainCompile)} ms · code loaded ${m((r) => r.main.kb)} KB · heap ${m((r) => r.main.heapMB)} MB`);
 console.log(`Lab window:  first frame ${m((r) => r.lw.frameMs)} ms after its page started (click → frame ${m((r) => r.lw.clickToFrame)}) · code in ${m((r) => r.lw.codeMs)} ms · three.js compile ${m((r) => r.lw.trace.three.compile)} + run ${m((r) => r.lw.trace.three.run)} ms · Lab files compile ${m((r) => r.lw.trace.lab.compile)} + run ${m((r) => r.lw.trace.lab.run)} ms · main-thread compiles ${m((r) => r.lw.trace.mainCompile)} ms · code loaded ${m((r) => r.lw.kb)} KB · heap ${m((r) => r.lw.heapMB)} MB`);
 if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify(all, null, 1));
 if (argv.includes('--keep')) console.log(`kept: ${BASE}`); else fs.rmSync(BASE, { recursive: true, force: true });
