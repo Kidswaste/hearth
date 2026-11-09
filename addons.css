@@ -56,29 +56,10 @@
 #preset-row { gap: 8px; }
 
 /* ---------- kit window ---------- */
-.kit-dialog { width: min(1020px, calc(100vw - 32px)); }
 .kit-dialog .kit-body { height: min(620px, 70vh); display: flex; flex-direction: column; }
-.kit-dialog .tabpane { padding: 12px 4px; }
-.kit-dialog .tabbar { padding-left: 0; }
-.kit-col { display: flex; flex-direction: column; gap: 8px; }
 .kit-col > .row { flex-wrap: wrap; align-items: center; }
-.kit-chip.big { width: 44px; height: 32px; }
-.kit-harmony { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kit-harmony .kit-format-label { width: 150px; }
-.kit-contrast-sample { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); }
 .kit-contrast-sample b { font-size: 22px; }
-.kit-ratio { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
-.kit-badge { padding: 1px 9px; border-radius: 999px; font-size: 12px; }
-.kit-badge.ok { background: color-mix(in srgb, #22c55e 25%, transparent); }
-.kit-badge.bad { background: color-mix(in srgb, #ef4444 25%, transparent); }
-.kit-gradient { height: 90px; border-radius: 12px; border: 1px solid var(--line); }
-.kit-formats-1 { grid-template-columns: 1fr; }
 .kit-table table { font-size: 12.5px; }
-.kit-frame { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
-.kit-frame-canvas { width: 260px; height: 260px; border-radius: 10px; background: color-mix(in srgb, #000 20%, var(--bg)); }
-.kit-ratio-in { width: 100%; }
-.kit-frame-info code { white-space: pre-wrap; word-break: break-word; }
-.kit-tc-out { font-size: 15px; }
 .kit-tc-out strong { font-size: 24px; font-family: var(--mono, ui-monospace, monospace); }
 
 /* ---------- forge debug: stat watch ---------- */
