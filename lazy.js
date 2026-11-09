@@ -45,7 +45,8 @@ const Lazy = (() => {
   // and the feature's buttons outside its own files are hidden (HearthFeatures.HIDE). Turning one back on is live
   // (setFeature): its stand-ins come back and a group that loads at the start loads now.
   const HF = typeof HearthFeatures !== 'undefined' ? HearthFeatures : null;
-  const offKeys = new Set(); // keys-sheet areas of switched-off features (polish8's Board / Capture lines)
+  // keys-sheet areas of switched-off features (polish8's Board / Capture lines)
+  const offKeys = new Set();
   function applyOff() {
     let gs = []; try { gs = HF ? HF.offGroups() : []; } catch { gs = []; }
     const now = new Set(gs);
@@ -81,7 +82,8 @@ const Lazy = (() => {
     if (navigator.userActivation?.isActive && Date.now() - offToastAt > 4000) { offToastAt = Date.now(); try { toast(err.message, { timeout: 5000 }); } catch { /* no toasts yet */ } }
     return err;
   }
-  const names = new Map(); // group → { commands, actions, tools, apps, bridge } (what Trim Hearth matches usage with), kept after the manifest goes
+  // group → { commands, actions, tools, apps, bridge } (what Trim Hearth matches usage with), kept after the manifest goes
+  const names = new Map();
   function namesOf(name) {
     if (names.has(name)) return names.get(name);
     const m = (D.META || {})[name] || {};
@@ -355,7 +357,8 @@ const Lazy = (() => {
       const pass = [];
       for (const e of entries.flat()) {
         if (!e?.keys) continue;
-        if (offKeys.has(e.area || 'General')) continue; // (round 153) a switched-off feature's lines (polish8's Board / Capture)
+        // (round 153) a switched-off feature's lines (polish8's Board / Capture)
+        if (offKeys.has(e.area || 'General')) continue;
         rep.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) });
         const id = `${e.area || 'General'}|${e.keys}`;
         const s = stubKeys.get(id);
@@ -443,7 +446,8 @@ const Lazy = (() => {
     if (g.promise) return g.promise;
     g.by = (new Error().stack || '').split('\n').slice(2, 5).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < '); // (round 94) who asked first (Lazy.by(name))
     g.promise = (async () => {
-      for (const dep of g.after || []) { if (groups.get(dep)?.off) continue; await load(dep, { ...o, dep: true }); } // (round 153: an off one only ordered it, HearthFeatures SOFT)
+      // (round 153) a switched-off group it needs only for order (HearthFeatures SOFT) is skipped
+      for (const dep of g.after || []) { if (groups.get(dep)?.off) continue; await load(dep, { ...o, dep: true }); }
       const go = chain.then(text).then(async () => {
         g.state = 'loading';
         const t0 = performance.now();
@@ -619,41 +623,12 @@ const Lazy = (() => {
   // start.js never got there (an error during startup): don't leave the features unloaded
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
-  // (round 153, trim153) a feature switched on or off from Trim Hearth: on is live (stand-ins back, a group that loads at
-  // the start loads now); off hides its entry points now (stand-in commands go, its buttons hide), and a group already
-  // loaded (or with Ctrl/⌘+K lines, rail tools or app windows) keeps them until the next start → { restart: true }
-  function setFeature(id, on) {
-    if (!HF || !HF.set(id, on)) return { ok: false, restart: false };
-    const was = new Map([...groups.values()].map((g) => [g.name, Boolean(g.off)]));
-    applyOff();
-    let restart = false;
-    for (const g of groups.values()) {
-      if (was.get(g.name) === Boolean(g.off)) continue;
-      if (g.off) {
-        if (g.state !== 'stub') { restart = true; continue; }
-        for (const [key, cmd] of [...stubCmds]) {
-          if (!key.startsWith(`${g.name}|`)) continue;
-          stubCmds.delete(key);
-          const self = stubSelf.get(key);
-          if (Commands.get(cmd) === self) unregs.get(key)?.(); else if (self) self.when = () => false;
-        }
-        const m = groupMeta(g.name);
-        if ((m.actions || []).length || (m.tools || []).length || (m.apps || []).length || (m.keys || []).length) restart = true;
-      } else if (g.state === 'stub') {
-        if (placed.has(g.name)) {
-          if (!g.stubbed) stubNow(g);
-          else { const m = groupMeta(g.name); each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c)); }
-          if (document.readyState !== 'loading') stubLater(g);
-        }
-        if (g.tier === 'soon' && readyAt && !hold) idle(() => (g.state === 'stub' && !g.off ? load(g.name, { auto: true }) : null)?.catch(() => {}));
-      }
-    }
-    try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ }
-    return { ok: true, restart };
-  }
   return {
-    load, state, start, at, text, setFeature,
+    load, state, start, at, text,
+    // (round 153, trim153) Trim Hearth: off(group), names(group) (what its usage is matched with), used(group), and
+    // kit() — what trim.js's live switch (Trim.setFeature) needs of the stand-ins
     off: (name) => Boolean(groups.get(name)?.off), names: namesOf, used: (name) => { const g = groups.get(name); if (g) used(g); },
+    kit: () => ({ groups, stubCmds, stubSelf, unregs, placed, stubNow, stubLater, stubCommand, groupMeta, each, applyOff, idle, load, started: () => Boolean(readyAt) && !hold }),
     // (round 94, labload94) prefetch(name): load it in the background, paced (lab-intent.js decides when) · groupOfAction(label)
     prefetch: (name) => load(name, { idle: true }), groupOfAction: (label) => actOf.get(label) || null, by: (name) => groups.get(name)?.by || null,
     calmNow: () => { CALM.fast = true; openGate(); }, // (round 83) the rest of the 'soon' groups now, back to back (tests)

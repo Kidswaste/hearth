@@ -52,6 +52,41 @@ const Trim = (() => {
   // not used for 30 days (or never), not one that works by itself, and on now
   const suggested = (r) => r.on && !TrimData.WORDS[r.id]?.passive && (!r.use.n || Date.now() - (r.use.last || 0) > 30 * DAY);
 
+  // A feature switched on or off: on is live (its stand-ins come back; a group that loads at the start loads now); off
+  // hides its entry points now (its stand-in commands go, its buttons hide) and a group already loaded, or one with
+  // Ctrl/⌘+K lines, keys, rail tools or app windows, keeps them until the next reload → { restart: true }
+  function setFeature(id, on) {
+    if (!HF() || !HF().set(id, on)) return { ok: false, restart: false };
+    if (!window.Lazy?.kit) return { ok: true, restart: true };
+    const K = Lazy.kit();
+    const was = new Map([...K.groups.values()].map((g) => [g.name, Boolean(g.off)]));
+    K.applyOff();
+    let restart = false;
+    for (const g of K.groups.values()) {
+      if (was.get(g.name) === Boolean(g.off)) continue;
+      if (g.off) {
+        if (g.state !== 'stub') { restart = true; continue; }
+        for (const [key, cmd] of [...K.stubCmds]) {
+          if (!key.startsWith(`${g.name}|`)) continue;
+          K.stubCmds.delete(key);
+          const self = K.stubSelf.get(key);
+          if (Commands.get(cmd) === self) K.unregs.get(key)?.(); else if (self) self.when = () => false;
+        }
+        const m = K.groupMeta(g.name);
+        if ((m.actions || []).length || (m.tools || []).length || (m.apps || []).length || (m.keys || []).length) restart = true;
+      } else if (g.state === 'stub') {
+        if (K.placed.has(g.name)) {
+          if (!g.stubbed) K.stubNow(g);
+          else { const m = K.groupMeta(g.name); K.each(g, (m.commands || []).filter((c) => !c.dcl), (c) => K.stubCommand(g, c)); }
+          if (document.readyState !== 'loading') K.stubLater(g);
+        }
+        if (g.tier === 'soon' && K.started()) K.idle(() => (g.state === 'stub' && !g.off ? K.load(g.name, { auto: true }) : null)?.catch(() => {}));
+      }
+    }
+    try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ }
+    return { ok: true, restart };
+  }
+
   let dlg = null;
   function open() {
     dlg?.close();
@@ -108,7 +143,7 @@ const Trim = (() => {
     const apply = () => {
       let restart = false;
       const changed = list.filter((r) => pending.get(r.id) !== r.on);
-      for (const r of changed) { const res = window.Lazy?.setFeature ? Lazy.setFeature(r.id, pending.get(r.id)) : (HF().set(r.id, pending.get(r.id)), { restart: true }); restart ||= Boolean(res?.restart); }
+      for (const r of changed) { const res = setFeature(r.id, pending.get(r.id)); restart ||= Boolean(res?.restart); }
       const offN = changed.filter((r) => !pending.get(r.id)).length; const onN = changed.length - offN;
       dlg.close();
       const words = [offN ? `${offN} switched off` : '', onN ? `${onN} back on` : ''].filter(Boolean).join(', ');
@@ -145,5 +180,5 @@ const Trim = (() => {
   if (typeof Commands !== 'undefined') Commands.register({ name: 'trim', aliases: ['trim-hearth'], area: 'App', desc: 'Trim Hearth: switch off the features you don\'t use (they stop loading; your data stays)', keywords: ['features', 'lighter', 'switch off', 'disable', 'unused', 'remove features'], run: () => { open(); return 'Trim Hearth is open.'; } });
   if (typeof AppUI !== 'undefined') AppUI.addAction('Trim Hearth… (switch off features you don\'t use)', () => open());
 
-  return { open, rows, usageOf, weightOf, suggested: () => rows().filter(suggested).map((r) => r.id) };
+  return { open, rows, usageOf, weightOf, setFeature, suggested: () => rows().filter(suggested).map((r) => r.id) };
 })();
