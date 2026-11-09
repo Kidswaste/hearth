@@ -225,7 +225,59 @@ const ChatScenes = (() => {
   // breathes, its glow swells, the camera drifts), not on the music until you ask ("make it react").
   // tools/three-nodes.js builds the graphs (ThreeNodes.orbScene); the timeline lives with the sketch (tools/three.js).
   const orbOf = (tint) => (typeof ThreeNodes !== 'undefined' && ThreeNodes.orbScene ? ThreeNodes.orbScene(tint) : null);
+  // (Nov 9, Scenes v2) a new chat's scene is a v2 scene (one WebGPU renderer): Backdrop + Orb written as v2 layers in
+  // the chat's color. The node-graph orb (oldOrbLayers, old format) is kept to recognise an untouched starter made before.
+  const V2_HEAD = '// v2 layer (WebGPU): fill `scene` and `camera`; the scene\'s one renderer draws it. No renderer, canvas or loop here.\n';
+  const v2Backdrop = (tint) => `${V2_HEAD}export default ({ THREE, tsl, scene, tweak, audio, onFrame }) => {
+  const { mix, screenUV, sin, time, uniform } = tsl;
+  const P = tweak({
+    tint: { value: '${tint}', label: 'Tint', group: 'Colors' },
+    breathe: { value: 0.35, min: 0, max: 1.5, label: 'Music breath', group: 'Music' },
+  });
+  const tint = uniform(new THREE.Color(P.tint)); const bass = uniform(0);
+  const glow = screenUV.sub(0.5).length().mul(1.6).oneMinus().clamp(0, 1).pow(2);
+  scene.backgroundNode = mix(tint.mul(0.03), tint.mul(0.14), glow.mul(sin(time.mul(0.4)).mul(0.1).add(0.9)).add(bass.mul(0.15)));
+  onFrame(() => { tint.value.set(P.tint); bass.value = audio.bass * P.breathe; });
+};
+`;
+  const v2Orb = (tint) => `${V2_HEAD}export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { uniform, instanceIndex, hash, vec3, sin, cos, time, float, uv } = tsl;
+  const P = tweak({
+    tint: { value: '${tint}', label: 'Tint', group: 'Colors' },
+    drift: { value: 0.25, min: 0, max: 2, label: 'Drift', group: 'Motion' },
+    breathe: { value: 0.35, min: 0, max: 1.5, label: 'Music breath', group: 'Music' },
+  });
+  const tint = uniform(new THREE.Color(P.tint)); const bass = uniform(0);
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.4, 3), new THREE.MeshBasicNodeMaterial({ wireframe: true, transparent: true, opacity: 0.55 }));
+  core.material.colorNode = tint;
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(0.7, 48, 32), new THREE.MeshBasicNodeMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  heart.material.colorNode = tint.mul(bass.mul(0.8).add(0.35));
+  const i = float(instanceIndex);
+  const a = hash(i).mul(6.2832); const b = hash(i.add(7.1)).mul(2).sub(1); const r = hash(i.add(3.3)).mul(2.6).add(2.2);
+  const sh = b.mul(b).oneMinus().sqrt();
+  const dustMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  dustMat.positionNode = vec3(sh.mul(cos(a)), b, sh.mul(sin(a))).mul(r);
+  dustMat.colorNode = tint;
+  dustMat.opacityNode = uv().sub(0.5).length().mul(2).oneMinus().clamp(0, 1).mul(0.7);
+  dustMat.scaleNode = float(0.035).mul(sin(time.mul(1.3).add(hash(i).mul(20))).mul(0.3).add(1));
+  const dust = new THREE.Sprite(dustMat); dust.count = 700; dust.frustumCulled = false;
+  scene.add(core, heart, dust);
+  camera.position.set(0, 0, 6);
+  onFrame((t) => {
+    tint.value.set(P.tint); bass.value = audio.bass * P.breathe;
+    core.rotation.set(t * P.drift * 0.6, t * P.drift, 0);
+    dust.rotation.y = -t * P.drift * 0.2;
+    const k = 1 + Math.sin(t * 0.8) * 0.04 + audio.bass * P.breathe * 0.3;
+    core.scale.setScalar(k); heart.scale.setScalar(k);
+  });
+};
+`;
   function starterLayers(tint) {
+    const D = typeof ThreeLayers !== 'undefined' ? ThreeLayers.defaults() : {};
+    const C = typeof ThreeLayers !== 'undefined' ? ThreeLayers.COLORS : ['#ffd75e', '#48ddff'];
+    return [{ ...D, id: 'main', name: 'Backdrop', code: v2Backdrop(tint), color: C[0], slot: 0, keys: {} }, { ...D, id: 'orb', name: 'Orb', code: v2Orb(tint), color: C[1], slot: 1, keys: {} }];
+  }
+  function oldOrbLayers(tint) {
     const sc = orbOf(tint);
     if (!sc) return null;
     return sc.layers.map((L, i) => ({ ...(typeof ThreeLayers !== 'undefined' ? ThreeLayers.defaults() : {}), id: i ? 'orb' : 'main', name: L.name, code: L.code, color: (typeof ThreeLayers !== 'undefined' ? ThreeLayers.COLORS : ['#ffd75e', '#48ddff'])[i], slot: i, keys: JSON.parse(JSON.stringify(L.keys || {})), ...(L.lanes ? { lanes: [...L.lanes] } : {}) }));
@@ -234,7 +286,7 @@ const ChatScenes = (() => {
   // one sketch's worth of starter: { name, code, layers, timeline } for ThreeLab.scenes.create
   function starterSketch(name, tint, frame) {
     const layers = starterLayers(tint);
-    return layers ? { name, code: layers[0].code, layers, timeline: starterTimeline(), frame } : { name, code: legacyStarter(tint), frame };
+    return { name, code: layers[0].code, layers, timeline: starterTimeline(), frame, format: 'gpu' };
   }
   // The orb layer's code on its own (a whole sketch: tests and /scene use it as "a starter").
   const starter = (tint) => orbOf(tint)?.layers[1].code || legacyStarter(tint);
@@ -285,11 +337,10 @@ renderer.setAnimationLoop((now) => {
   const keysSig = (Ls) => JSON.stringify(Ls.map((L) => L.keys || {}));
   function pristine(sk, tint) {
     const Ls = lab()?.layersOf(sk) || [];
-    const want = starterLayers(tint);
-    if (want && Ls.length === want.length && Ls.every((L, i) => L.code === want[i].code) && keysSig(Ls) === keysSig(want)) return true;
+    for (const want of [starterLayers(tint), oldOrbLayers(tint)]) if (want && Ls.length === want.length && Ls.every((L, i) => L.code === want[i].code) && keysSig(Ls) === keysSig(want)) return true;
     return Ls.length <= 1 && (Ls[0]?.code ?? sk.code) === legacyStarter(tint);
   }
-  const isLegacy = (sk) => (lab()?.layersOf(sk) || []).length <= 1;
+  const isLegacy = (sk) => sk.format !== 'gpu'; // (Nov 9) an untouched old-format starter (either old one) becomes the v2 orb
   // an untouched starter takes the orb in place (the previous starter, or another color): same sketch, new layers
   function makeOrb(sk, tint) {
     const S = lab();
@@ -297,8 +348,8 @@ renderer.setAnimationLoop((now) => {
     if (!layers) return false;
     const have = S.layersOf(sk);
     // the same layers (a recolor): changed in place, so the Lab's sliders keep their layers; else the orb's layers
-    if (have.length === layers.length && have.every((L, i) => L.id === layers[i].id)) have.forEach((L, i) => { L.code = layers[i].code; L.keys = layers[i].keys; });
-    else { sk.layers = layers; S.setTimeline?.(sk.id, starterTimeline()); }
+    if (sk.format === 'gpu' && have.length === layers.length && have.every((L, i) => L.id === layers[i].id)) have.forEach((L, i) => { L.code = layers[i].code; L.keys = layers[i].keys; });
+    else { sk.layers = layers; sk.format = 'gpu'; S.setTimeline?.(sk.id, starterTimeline()); }
     sk.code = S.layersOf(sk)[0].code;
     S.changed(sk.id);
     return true;
@@ -308,7 +359,7 @@ renderer.setAnimationLoop((now) => {
     const d = store.get(DRAFT_KEY, null);
     const have = d && S.get(d.id);
     if (have && !ownerOf(have.id) && pristine(have, d.tint)) {
-      if (isLegacy(have) && starterLayers(d.tint)) makeOrb(have, d.tint); // an untouched draft from before the orb
+      if (isLegacy(have)) makeOrb(have, d.tint); // an untouched draft from before (old format): the v2 orb
       return have;
     }
     const sk = S.create(starterSketch('New chat', NEUTRAL, S.frameOf(S.currentId())));
@@ -323,9 +374,7 @@ renderer.setAnimationLoop((now) => {
     const d = store.get(DRAFT_KEY, null);
     const from = d?.id === sk.id ? d.tint : NEUTRAL;
     if (!pristine(sk, from) || (from === tint && !isLegacy(sk))) return;
-    if (makeOrb(sk, tint)) return;
-    lab().layersOf(sk)[0].code = legacyStarter(tint);
-    lab().changed(sk.id);
+    makeOrb(sk, tint);
   }
 
   // ---------- following the chat on screen ----------
@@ -751,7 +800,7 @@ renderer.setAnimationLoop((now) => {
     linkGuest, isLabChat, sceneName, isGuest: (chatId) => Boolean(data.links[chatId]?.guest), // (round 72, labbridge72)
     freshGuest(chatId) { const sk = freshScene(chatId); linkGuest(chatId, sk.id); return sk; }, // a fresh starter (not opened) for a plain chat
     ready: () => readyP, // resolves once the links are read (a call routed before that went to the scene on screen)
-    refreshLinks, recoverLost, get _data() { return data; },
+    refreshLinks, recoverLost, get _data() { return data; }, _test: { oldOrbLayers, starterLayers, DRAFT_KEY }, // (Nov 9) dev/checks/scenesv2-newchat.js
     // comp-dispatch.js: a chat (made in the background) gets a fresh scene of its own, in its color, not opened
     fresh(chatId) { const sk = freshScene(chatId); link(chatId, sk.id, { rename: false }); data.links[chatId].auto = sk.name; save(); return sk; },
     // scene stills: the row picture of a chat (jam rounds and backstage edits refresh it), and the switch's fade

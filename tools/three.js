@@ -4506,7 +4506,7 @@ const ThreeLab = (() => {
         return report();
       },
       async newSketch(name, code, wait = 2.5) {
-        create(name, code);
+        create(name, code, undefined, { format: ThreeData.isV2Code?.(code) ? 'gpu' : null }); // (Nov 9: v2 code makes a v2 scene)
         await sleep(Math.min(15, Math.max(1, wait)) * 1000);
         return report();
       },
