@@ -1,4 +1,4 @@
-# Round 156: Hearth gives memory back
+# Round 155: Hearth gives memory back
 *November 2026*
 
 You asked for Hearth to be lighter. We measured every part of Hearth's memory and fixed the biggest waste, without
