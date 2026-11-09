@@ -1867,6 +1867,7 @@ const ThreeMedia = (() => {
     const TK = { scr: 16.7, prev: -1, work: -1e9, off: false, skips: 0 };
     LabPlay.tickInfo = () => ({ scr: Math.round(TK.scr * 100) / 100, skips: TK.skips, off: TK.off });
     LabPlay.tickOff = (v) => { TK.off = Boolean(v); return TK.off; };
+    const tickHooks = [LabPlay.tickInfo, LabPlay.tickOff]; // (round 161, fix161) dispose lets go of them (they'd keep this player alive)
     function tick(ts) {
       // (round 16 "labperf": with the Lab behind another tool the timeline isn't drawn, its time isn't written and the
       // playheads aren't placed, 10 times a second for nothing; the beat still ticks for the click track. Back on
@@ -3405,7 +3406,7 @@ const ThreeMedia = (() => {
       el: bar,
       load, pick, attach, toggle, seek, onMessage, unload, onKey, setTracks, setNotes, setSize, restoreSize,
       // (round 161, fix161) for good: its window listeners, timers and sound contexts let go (call unload first)
-      dispose() { gone.abort(); clearInterval(parkT); parkT = 0; cancelAnimationFrame(raf); raf = 0; clearTimeout(lookT); lookT = 0; for (const c of [scrub.ctx, clickCtx]) { try { c?.close(); } catch { /* closed */ } } scrub.ctx = null; clickCtx = null; },
+      dispose() { if (LabPlay.tickInfo === tickHooks[0]) { delete LabPlay.tickInfo; delete LabPlay.tickOff; } mapsHold?.off?.(); mapsHold = null; gone.abort(); clearInterval(parkT); parkT = 0; cancelAnimationFrame(raf); raf = 0; clearTimeout(lookT); lookT = 0; for (const c of [scrub.ctx, clickCtx]) { try { c?.close(); } catch { /* closed */ } } scrub.ctx = null; clickCtx = null; },
       // ---------- for the footage side (tools/three-frames.js) ----------
       hooks,
       addHooks: (o) => { if (!xhooks.includes(o)) xhooks.push(o); drawNext(); }, // (round 40, labcamera) · (round 52) drawn in the next frame: drawn at once, it laid the Lab out while it was being built (≈ 40 ms of its opening)

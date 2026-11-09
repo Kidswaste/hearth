@@ -551,6 +551,7 @@ renderer.setAnimationLoop((now) => {
   }
   // "Your sketches": the picker carries the color of the chat that owns the open sketch, each option its owner's
   let pickerSeen = null;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) pickerSeen = null; }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): its picker too
   function paintPicker() {
     const picker = document.querySelector('.three-sketch-select');
     if (!picker) return;

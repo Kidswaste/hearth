@@ -12,6 +12,7 @@ const ThreeLab = (() => {
   let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
   let npStarted = false; let nowPlayingTo = null; // (round 161, fix161) the now-playing subscription, once per window
+  const nowPlayingRelay = (info) => nowPlayingTo?.(info); // (made here: a closure made inside the tab would keep the tab alive)
   // (round 158, split158) The Lab's cold parts: what opening the Lab, playing a scene, selecting a layer, moving its
   // knobs and the director's everyday calls never run (dialogs, menus, references, notes, MIDI, the other tools…) lives
   // in tools/three-lab-*.js, lazy groups loaded on first use (docs/upgrades/split158.md). A stand-in left here
@@ -326,7 +327,7 @@ const ThreeLab = (() => {
         frame.src = 'about:blank'; uncover();
       },
       // (round 161, fix161) for good (ThreeLab.drop): released, and its window listener gone (a new Lab makes a new one)
-      dispose() { this.release(); removeEventListener('message', listener); target = 'gone'; onMessage = () => {}; onStageClosed = null; },
+      dispose() { this.release(); window.__labFrames?.delete(crashCheck); removeEventListener('message', listener); target = 'gone'; onMessage = () => {}; onStageClosed = null; },
       // (round 37, labboot) once: the page just taken over drew a warm run (of this sketch id): run() swaps over it
       takeWarmRun: () => { const r = warmRun; warmRun = false; return r; },
       // (round 37, labboot) the page was loaded for another ?dpr= only (fit ⇄ an exact frame size): it switches in place
@@ -943,7 +944,7 @@ const ThreeLab = (() => {
     // (round 161, fix161) one subscription for the window's life (hub.onNowPlaying can't be undone): it reaches the Lab
     // mounted now (a dropped Lab's comes back as a new mount)
     nowPlayingTo = onNowPlaying;
-    if (!npStarted) { npStarted = true; window.hub.onNowPlaying((info) => nowPlayingTo?.(info)); }
+    if (!npStarted) { npStarted = true; window.hub.onNowPlaying(nowPlayingRelay); }
 
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
     // Preview frame rate: Max follows the screen (240 Hz screens render 240 frames a second); 60 or 30 is lighter.
@@ -1111,7 +1112,7 @@ const ThreeLab = (() => {
     try {
       navigator.getBattery?.().then((b) => {
         const upd = () => { batApi = !b.charging; updPower(); };
-        upd(); b.addEventListener('chargingchange', upd);
+        upd(); b.addEventListener('chargingchange', upd, { signal: life.ac.signal }); // (round 161, fix161)
       }).catch(() => { /* no battery API: plugged in */ });
     } catch { /* none */ }
     // (round 142, smooth142) the preview's quality, three ways: Smooth (auto, the default: lighter before frames drop,
@@ -2938,10 +2939,10 @@ const ThreeLab = (() => {
     const sandboxCalls = new Map();
     // (round 72, labbridge72) the preview reloading (Run, a fresh page, a lost GPU…) while an eval / play-test waits on it: the
     // old page will never answer, so the call ends now, in words, instead of "did not answer" seconds later
-    live.onReload((name) => {
+    life.undo.push(live.onReload((name) => { // (round 161, fix161: let go on ThreeLab.drop)
       if (name !== 'preview' || !sandboxCalls.size) return;
       for (const [id, resolve] of [...sandboxCalls]) { sandboxCalls.delete(id); resolve({ ok: false, error: 'The Lab preview reloaded while this ran (the page it ran in is gone): nothing was changed by it. Call it again.' }); }
-    });
+    }));
     function sandboxCall(msg, timeout) {
       return new Promise((resolve) => {
         const id = `c${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
@@ -3813,7 +3814,7 @@ const ThreeLab = (() => {
     // scroll: it's only opened again when it changed. While an edit is being tried (Keep / Undo), or when the scene on
     // screen was deleted there, the Lab keeps what it has and sync keeps merging (nothing lost; acked next time).
     // (three-history / three-thumbs: megabytes of versions and pictures, left to sync's guard: never lost, not re-read)
-    const SA = window.StoreAck;
+    const SA = window.StoreAck && { ...window.StoreAck, hold: (...a) => { const r = window.StoreAck.hold(...a); if (r?.off) life.undo.push(() => r.off()); return r; } }; // (round 161, fix161: its holders let go on ThreeLab.drop)
     SA?.hold('three-sketches', {
       name: 'Lab scenes',
       pending: () => save.pending() || dirtyHere(), flush: () => { if (dirtyHere()) persist(); return save.flush(); },
@@ -4268,7 +4269,8 @@ const ThreeLab = (() => {
       for (const u of life.undo.splice(0)) { try { u(); } catch { /* gone */ } }
       for (const id of ['lab-media', 'lab-stall']) window.Power?.stop?.(id);
       clearInterval(K.hudTimer); clearInterval(K.lookTimer); clearInterval(K.hubLive?.timer); // (the parts' timers: Present's HUD, cycle looks, live sound)
-      box.dispose(); if (nowPlayingTo === onNowPlaying) nowPlayingTo = null;
+      keyHint.remove(); exitFocus.remove(); // (made on document.body)
+      box.dispose(); player.dispose?.(); if (nowPlayingTo === onNowPlaying) nowPlayingTo = null;
       for (const k of ['__labRest', '__labLiveStart', 'LabPresets']) { try { delete window[k]; } catch { window[k] = undefined; } }
     };
     api.rest = {
@@ -4691,6 +4693,8 @@ const ThreeLab = (() => {
     if (inflight) await new Promise((r) => idleWaiters.push(r));
     try { await api.teardown(); } catch (err) { return { ok: false, why: err?.message || String(err) }; }
     const s = H.surfaces?.get('tool:three');
+    // what another module keeps of the Lab's DOM leaves it first, so it doesn't keep the rest (LabDirection's chip)
+    for (const n of s?.el.querySelectorAll('.dir-chip') || []) n.remove();
     tabs.bar?.remove();
     s?.body.replaceChildren(); s?.head?.classList.remove('lab-head');
     tabs = null;
