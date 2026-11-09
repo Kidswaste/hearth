@@ -22,8 +22,9 @@ picker, the keys sheet, Apps' on-demand work). The target was ≥ 10 % fewer eag
 | Every 'soon' group in (calm gate opened at once, median of 10) | 3,185 ms | 3,099 ms | — (noise across launches) |
 | Window JS heap / DOM nodes / listeners once settled (median of 10) | 13.8 MB / 2,223 / 1,328 | 13.0 MB / 2,228 / 1,308 | ≈ |
 
-Budget (`dev/boot-test.js`): scripts 51 → **50**, code 1,207 → **1,070 KB** (1,039 + 3 %). Stylesheets / CSS unchanged
-here (24 / 410 KB; css159 lowers the CSS budget).
+With split158 and css159 merged (origin's claude/intelligent-galileo-yaiqem) the first screen is **1,041 KB** of code (css159's
+CSS_AFTER reader in lazy.js / lazy-data.js), 48 scripts, 20 sheets (376 KB). Budget (`dev/boot-test.js`): scripts 51 →
+**50**, code 1,207 → **1,072 KB** (1,041 + 3 %); sheets / CSS are css159's (20 / 385 KB).
 
 ## How it was measured
 
@@ -136,7 +137,7 @@ collab-eyes.js (other streams' scope). The Lab window's eager files are unchange
 
 ## Checks
 
-No new check: boot-test's lowered budget is the guard (50 scripts, 1,070 KB of code).
+No new check: boot-test's lowered budget is the guard (50 scripts, 1,072 KB of code).
 
 - Asked-for run (`flock /tmp/hearth-run.lock timeout 2900 node dev/run-checks.js --exact unit:boot-test unit:lazymanifest-test
   lazy fastboot firstscreen96 liveness-ui progress chat-stream calmstart trim153 labwin153 lite153 qa-keys cmdbar141

@@ -3,7 +3,7 @@
 
 ## Faster to open
 
-Hearth now reads about a tenth less code before its window shows up (1,168 KB → 1,039 KB). On our slow test computer
+Hearth now reads about a tenth less code before its window shows up (1,168 KB → 1,041 KB). On our slow test computer
 the first screen is up in 482 ms instead of 512 ms (median of 10 starts).
 
 ## Nothing else changes
