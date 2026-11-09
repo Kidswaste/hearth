@@ -118,7 +118,7 @@ async function measure(name, { trace = true, target = null } = {}) {
   for (const v of Object.values(procs)) v.msPerSec = r1(v.msPerSec);
   const d = (a, b, k) => (a?.[k] != null && b?.[k] != null ? r1(((b[k] - a[k]) * 1000) / sec) : null);
   const lay = await smoke({ layers: true }).catch(() => null); // (round 153a) the window's composited layers now
-  const r = { sec: r1(sec), layers: lay ? { count: lay.count, drawing: lay.drawing } : null, allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
+  const r = { sec: r1(sec), layers: lay && !lay.timedOut ? { count: lay.count, drawing: lay.drawing } : null, allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
     window: { task: d(w0, w1, 'TaskDuration'), script: d(w0, w1, 'ScriptDuration'), style: d(w0, w1, 'RecalcStyleDuration'), layout: d(w0, w1, 'LayoutDuration'), heapMb: Math.round((w1.JSHeapUsedSize || 0) / 1048576), nodes: w1.Nodes, listeners: w1.JSEventListeners },
     wakeups: page, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 6) }, anims: anims(), suspects: suspects(), visibility: document.visibilityState,
     load: { loadavg: lw?.loadavg?.map((x) => Math.round(x * 100) / 100), cpus: lw?.cpus, cpuWait: lw?.waited?.cpuWait } };

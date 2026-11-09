@@ -2318,7 +2318,7 @@ function smoothPlayWarm() {
 }
 const pagePlaying = () => Boolean(mediaEl && !mediaEl.paused);
 // (checks, the Lab's ⚡ card) where Smooth is and why, each renderer's share / pixel ratio / antialias / shadow maps
-window.__labLite = { state: () => ({ on: LITE.on, cap: fpsCap, bypassed: LITE.bypassed, fxOff: LITE.fxOff, spd: { px1: SPD.px1, noAA: SPD.noAA, sh: SPD.sh, fxHalf: SPD.fxHalf }, xp: XP_PAGE, light: lightMode }) }; // (round 153a, lite153: the checks' view)
+window.__labLite = { state: () => ({ on: LITE.on, cap: fpsCap, shadowLights: [...renderers].reduce((a, r) => a + (r.__spdN || 0), 0), shadowsOff: [...renderers].reduce((a, r) => a + (r.__spdOffN || 0), 0), bypassed: LITE.bypassed, fxOff: LITE.fxOff, spd: { px1: SPD.px1, noAA: SPD.noAA, sh: SPD.sh, fxHalf: SPD.fxHalf }, xp: XP_PAGE, light: lightMode }) }; // (round 153a, lite153: the checks' view)
 window.__labSmooth = {
   state: () => ({ ...adaptInfo(), quality, qWant: AD.qWant, cap: fpsCap, hz: Math.round(1000 / dispMs), playing: pagePlaying(), halfSkips: AD.halfN, warm: { ...SMW, ms: Math.round(SMW.ms) }, log: AD.log.slice(-10),
     renderers: rdyLive().map((r) => { let aa = null; try { aa = Boolean(r.getContext().getContextAttributes()?.antialias); } catch { /* lost */ } const sh = []; try { r.__lastScene?.traverse((o) => { if (o.isLight && o.castShadow && o.shadow?.mapSize) sh.push(o.shadow.mapSize.x); }); } catch { /* fine */ } return { layer: r.__layer || null, q: r.__q ?? 1, pr: r.getPixelRatio?.() ?? null, base: r.__basePR ?? null, aa, shadows: sh, ms: r.__msA ? Math.round(r.__msA[0] * 10) / 10 : 0 }; }) }),
@@ -3541,6 +3541,7 @@ function spdShadows(r, scene, EL) {
   list.sort((a, b) => (b.shadow.mapSize?.x || 0) - (a.shadow.mapSize?.x || 0));
   const keep = SPD.layN && EL && SPD.lay[EL.id]?.sh0 ? 0 : SPD.sh == null ? Infinity : SPD.sh; // (round 146, layercost146: "No shadows" on one layer)
   list.forEach((o, i) => { if (i >= keep) { if (o.castShadow) { o.castShadow = false; o.__spdOff = true; } } else if (o.__spdOff) { o.castShadow = true; o.__spdOff = false; } });
+  r.__spdN = list.length; r.__spdOffN = list.filter((o) => o.__spdOff).length; // (round 153a: lights casting / held off, for the checks)
 }
 function spdGl(L) {
   const out = []; let progs = 0; let frag = 0;

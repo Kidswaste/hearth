@@ -111,7 +111,7 @@ try {
     const r = glowR(s || await smoothState());
     out.measure.preview = { lite: l1, renderer: r, focused: document.hasFocus() };
     step('preview: 30 fps (the window in front), the Lab\'s ⚡ settings at their lightest (1× pixels, no antialias, no shadows, filters at half)', l1?.on && l1.cap === 30 && l1.spd.px1 && l1.spd.noAA && l1.spd.sh === 0 && l1.spd.fxHalf, l1);
-    step('preview: half resolution (pixel ratio ≤ 0.5 of a 2× scene), antialias off, no shadow casters', r && r.pr <= 0.51 && r.aa === false && !(r.shadows || []).length, r);
+    step('preview: half resolution (pixel ratio ≤ 0.5 of a 2× scene), antialias off, the spot light\'s shadow held off', r && r.pr <= 0.51 && r.aa === false && l1?.shadowLights >= 1 && l1.shadowsOff === l1.shadowLights, { r, shadowLights: l1?.shadowLights, shadowsOff: l1?.shadowsOff });
     step('preview: the composer\'s bloom is stepped aside while it draws', l1 && l0 && l1.bypassed > l0.bypassed, { before: l0?.bypassed, after: l1?.bypassed });
   });
 
@@ -216,7 +216,7 @@ try {
     out.measure.restore = { tag: Boolean(tag), stored: localStorage.getItem('hub.lite'), before, now, bypassedIn2s: l1 && l0 ? l1.bypassed - l0.bypassed : null };
     step('restore: the Lab bar\'s LITE tag turns Lite off and is gone (stored off)', Boolean(tag) && !HearthLite.on && !de.hasAttribute('data-lite') && localStorage.getItem('hub.lite') === 'false' && !tag.checkVisibility(), out.measure.restore.stored);
     step('restore: the look, motion, textures, glow, Lab look, stage and quality mode exactly as before', before && JSON.stringify(now.chosen) === JSON.stringify(before.chosen) && JSON.stringify(now.shown) === JSON.stringify(before.shown), { before: before && { ...before.chosen, ...before.shown }, now: { ...now.chosen, ...now.shown } });
-    step('restore: the preview as before (frame cap, ⚡ settings, pixel ratio, antialias, shadows; no bypass)', before && l1 && l1.on === false && l1.cap === before.lite?.cap && JSON.stringify(l1.spd) === JSON.stringify(before.lite?.spd) && r && Math.abs(r.pr - before.r?.pr) < 0.01 && r.aa === before.r?.aa && (r.shadows || []).length === (before.r?.shadows || []).length && l1.bypassed === l0.bypassed, { before: before && { cap: before.lite?.cap, spd: before.lite?.spd, r: before.r }, now: { cap: l1?.cap, spd: l1?.spd, r } });
+    step('restore: the preview as before (frame cap, ⚡ settings, pixel ratio, antialias, shadows; no bypass)', before && l1 && l1.on === false && l1.cap === before.lite?.cap && JSON.stringify(l1.spd) === JSON.stringify(before.lite?.spd) && r && Math.abs(r.pr - before.r?.pr) < 0.01 && r.aa === before.r?.aa && l1.shadowLights >= 1 && l1.shadowsOff === 0 && l1.bypassed === l0.bypassed, { before: before && { cap: before.lite?.cap, spd: before.lite?.spd, r: before.r }, now: { cap: l1?.cap, spd: l1?.spd, r } });
   });
 
   // ---------- offer: a slow layer, Lite off ----------
