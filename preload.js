@@ -141,6 +141,15 @@ contextBridge.exposeInMainWorld('hub', {
     ipcRenderer.on('context:note', (_e, text) => cb('note', text));
   },
   onDownload: on('download:update'),
+  // (round 153c, labwin153) the Lab in its own lean window (labwinmain.js): scene = the scene this window owns (the Lab
+  // window only; null in Hearth's window)
+  labwin: {
+    scene: (process.argv.find((a) => a.startsWith('--hearth-labwin=')) || '').slice(16) || null,
+    open: call('labwin:open'), close: call('labwin:close'), focus: call('labwin:focus'), state: call('labwin:state'),
+    call: call('labwin:call'), result: call('labwin:result'), ask: call('labwin:ask'), showMain: call('labwin:showMain'),
+    note: (o) => ipcRenderer.send('labwin:note', o),
+    onCall: on('labwin:call'), onClosed: on('labwin:closed'), onAsk: on('labwin:ask'), onNote: on('labwin:note'), onShowChat: on('labwin:showChat'),
+  },
   onGameCall: on('game:call'),
   onGameHops: on('game:hops'), // (round 74, labcalls74) a call's hop times, after it answered
   gameResult: (id, result) => ipcRenderer.invoke('game:result', id, result),

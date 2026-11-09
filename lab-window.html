@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en" data-labwin="1">
+<head>
+  <meta charset="utf-8">
+  <!-- (round 153c, labwin153) the Lab in its own lean window: the same CSP as Hearth's window -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data: blob: file:; media-src 'self' file: blob:; frame-src 'self' file:">
+  <title>Hearth Lab</title>
+  <style id="lw-first">html, body { background: #0b0b0c; margin: 0; height: 100%; overflow: hidden; }</style>
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="features.css">
+  <link rel="stylesheet" href="forge-skin.css">
+  <link rel="stylesheet" href="director.css">
+  <link rel="stylesheet" href="look.css">
+  <link rel="stylesheet" href="polish.css">
+  <link rel="stylesheet" href="chat-scenes.css">
+  <link rel="stylesheet" href="simplify.css">
+  <link rel="stylesheet" href="polish8.css">
+  <link rel="stylesheet" href="speed.css">
+  <link rel="stylesheet" href="nativefeel.css">
+  <link rel="stylesheet" href="powerwise.css">
+  <link rel="stylesheet" href="lab-window.css">
+  <style id="user-theme"></style>
+</head>
+<body>
+  <div id="app">
+    <main>
+      <div id="error"></div>
+      <div id="surfaces"></div>
+    </main>
+  </div>
+  <div id="menu" hidden></div>
+  <!-- only what the Lab needs: no chats, no boards, no usage scanners, no background features (lab-window.js) -->
+  <script defer src="lab-window-pre.js"></script>
+  <script defer src="jank.js"></script>
+  <script defer src="winmac.js"></script>
+  <script defer src="ui.js"></script>
+  <script defer src="powerwise.js"></script>
+  <script defer src="icons.js"></script>
+  <script defer src="keys.js"></script>
+  <script defer src="progress.js"></script>
+  <script defer src="storeack-core.js"></script>
+  <script defer src="md.js"></script>
+  <script defer src="renderer.js"></script>
+  <script defer src="tools.js"></script>
+  <script defer src="bridge.js"></script>
+  <script defer src="commands.js"></script>
+  <script defer src="lazy-data.js"></script>
+  <script defer src="lazy.js"></script>
+  <script defer src="appui.js"></script>
+  <script defer src="lazy-at.js#kit,nodes,lab,labintent"></script>
+  <script defer src="look.js"></script>
+  <script defer src="lazy-at.js#cmdbar"></script>
+  <script defer src="keys-ui.js"></script>
+  <script defer src="lab-window.js"></script>
+</body>
+</html>
