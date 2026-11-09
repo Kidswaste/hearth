@@ -7,6 +7,8 @@
 // a song) playing · the Lab paused · Hearth hidden after the Lab. Run it twice: calm, and with --burn 3 (a busy PC).
 //   node dev/smoke.js --fake-engines --check-timeout 900000 --script dev/perf151-measure.js [--burn 3]
 // Prints one "[PERF151] {json}" line at the end (and returns it).
+// (round 153a, lite153) Lite mode on for the whole run: add --eval "localStorage.setItem('hub.lite', 'true')" (the evals run
+// before the script, and its reload keeps it); out.lite says which, each setup also counts the window's composited layers.
 const probe = () => {
   if (window.__pfProbe) return;
   const P = window.__pfProbe = { n: 0, by: new Map(), since: performance.now(), raw: { setTimeout: window.setTimeout.bind(window) } };
@@ -47,7 +49,7 @@ const until = async (fn, ms = 20000, every = 150) => { const t = Date.now(); whi
 const P = window.__pfProbe;
 const T = (o) => window.hub.power.test(o);
 const MEASURE = Number(window.PF_MS || 10000);
-const out = { burn: window.SMOKE_BURN || 0, setups: {}, notes: [] };
+const out = { burn: window.SMOKE_BURN || 0, lite: Boolean(window.HearthLite?.on), setups: {}, notes: [] };
 const r1 = (x) => Math.round(x * 10) / 10;
 const sbx = async (expr) => (await smoke({ target: 'three-sandbox', cdp: 'Runtime.evaluate', params: { expression: `(() => { ${expr} })()`, returnByValue: true } }))?.result?.value;
 const label = (m, pid) => {
@@ -115,7 +117,8 @@ async function measure(name, { trace = true, target = null } = {}) {
   }
   for (const v of Object.values(procs)) v.msPerSec = r1(v.msPerSec);
   const d = (a, b, k) => (a?.[k] != null && b?.[k] != null ? r1(((b[k] - a[k]) * 1000) / sec) : null);
-  const r = { sec: r1(sec), allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
+  const lay = await smoke({ layers: true }).catch(() => null); // (round 153a) the window's composited layers now
+  const r = { sec: r1(sec), layers: lay ? { count: lay.count, drawing: lay.drawing } : null, allMsPerSec: r1(all), allMb: Math.round(mem), procCount: m1.procs.length, procs,
     window: { task: d(w0, w1, 'TaskDuration'), script: d(w0, w1, 'ScriptDuration'), style: d(w0, w1, 'RecalcStyleDuration'), layout: d(w0, w1, 'LayoutDuration'), heapMb: Math.round((w1.JSHeapUsedSize || 0) / 1048576), nodes: w1.Nodes, listeners: w1.JSEventListeners },
     wakeups: page, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 6) }, anims: anims(), suspects: suspects(), visibility: document.visibilityState,
     load: { loadavg: lw?.loadavg?.map((x) => Math.round(x * 100) / 100), cpus: lw?.cpus, cpuWait: lw?.waited?.cpuWait } };
