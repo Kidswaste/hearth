@@ -8,12 +8,18 @@ file does at startup, moved what the first frame doesn't draw behind it, and low
 
 | | Before (round 154) | After | |
 |---|---:|---:|---:|
-| First-screen code (boot-test: without whole-line comments) | 1,547 KB | **1,158 KB** | **−389 KB (−25.1 %)** |
-| First-screen scripts | 62 | **48** | −14 |
+| First-screen code (boot-test: without whole-line comments) | 1,547 KB | **1,172 KB** | **−375 KB (−24.2 %)** |
+| First-screen scripts | 62 | **49** | −13 |
 | First-screen stylesheets | 27 (415 KB) | **23** (398 KB) | −4 |
-@@NUMBERS@@
+| First screen up (`hearth:ready`, ms since the process started, median of 10 launches) | 521 ms | **470 ms** | −51 ms (−10 %) |
+| Window on screen with its first frame (`ready-to-show`, median of 10) | 503 ms | **454 ms** | −49 ms |
+| Script evaluation on the window's main thread before the first screen, no code cache (trace, 2 launches) | 99 · 113 ms | **93 · 75 ms** | ≈ −21 % |
+| V8 parse + compile on the main thread before it (trace) | 1.3 · 1.6 ms | 1.4 · 1.6 ms | — (V8 compiles off the main thread / lazily here) |
+| Window JS heap once settled (median of 10) | 12.8 MB | 13.4 MB | — (same code loaded a moment later: noise) |
+| DOM nodes / listeners once settled | 2,191 / 1,245 | 2,220 / 1,294 | ≈ (the redraw's nodes) |
+| Every 'soon' group in (calm gate opened at once) | 3.2 s | 3.5 s | — (noise across launches: 3.0–3.7 s both) |
 
-Budget (`dev/boot-test.js`): scripts 62 → **50**, code 1,547 → **1,193 KB** (1,158 + 3 %: room for Lite's small eager
+Budget (`dev/boot-test.js`): scripts 62 → **51**, code 1,547 → **1,207 KB** (1,172 + 3 %: room for Lite's small eager
 flag reader, ≈ 3 KB), sheets 27 → **24**, CSS 420 → **410 KB** (398 + 3 %).
 
 ## How it was measured
@@ -25,7 +31,8 @@ flag reader, ≈ 3 KB), sheets 27 → **24**, CSS 420 → **410 KB** (398 + 3 %)
   "does the first frame draw anything from it, and does anything call it synchronously before then".
   smoke.js' `--coverage-ready` was fixed on the way: it read the page from *before* the reload (17 scripts), it now
   waits for the new document (`performance.timeOrigin`).
-- **Start** (`dev/coldstart-report.js`, this round adds the window's JS heap / DOM nodes / listeners once settled, and with
+- **Start** (`flock /tmp/hearth-run.lock` around `node dev/coldstart-report.js [--app <round-154 copy>] --runs 5 --json …` and
+  `--runs 1 --no-code-cache --trace …`, twice each, interleaved; `dev/coldstart-report.js`, this round adds the window's JS heap / DOM nodes / listeners once settled, and with
   `--trace` the window's V8 parse + compile and script evaluation before the first screen; `--no-code-cache` drops
   V8's code cache, as on the first start after an update). Before = a copy of round 154 (7d30db1) through `--app`,
   run interleaved with the after runs, two rounds each, under the shared check lock (no check ran meanwhile). This box:
@@ -33,7 +40,7 @@ flag reader, ≈ 3 KB), sheets 27 → **24**, CSS 420 → **410 KB** (398 + 3 %)
 
 ## What moved behind the first frame
 
-Fourteen files and four stylesheets, in eight lazy groups, all `asap` (right after the first frame, first of all, in
+Thirteen files and four stylesheets, in seven lazy groups, all `asap` (right after the first frame, first of all, in
 their old order), all registered in HearthFeatures' core features (trim-data.js: `astra` → Astra and the AI programs,
 the rest → Chats), so trim153's registry check holds:
 
@@ -46,7 +53,6 @@ the rest → Chats), so trim153's registry check holds:
 | `chatkit` | chat-things.js, chat-media.js, chat-reach.js, chat-context.js | 64 | a reply's cards, media, paths; the chat's context line |
 | `chatattach` | chat-attach.js | 17 | the ＋ attach menu and /attach-* |
 | `access` | access-rules.js, access.js + access.css | 77 | file access: checks, asks, badges, the activity line |
-| `progresshooks` | progress-hooks.js | 14 | what feeds the progress model |
 
 ### Keeping behaviour identical (lazy.js, three new group flags)
 
@@ -65,10 +71,12 @@ the rest → Chats), so trim153's registry check holds:
 - `actionsNow` (astra: its Ctrl/⌘+K lines at its old place, as it added them while running) and `keysNow` (chatkit,
   chatattach, access) keep the palette's and the keys sheet's order. panel.js' "Drag a chat onto a 📁 folder" line is
   added at DOMContentLoaded (its timer used to run after keys-ui.js only because the first screen was slower).
-- Other loads that read these globals at their own load: `accessui` now has `after: ['access']`, `progressui`
-  `after: ['progresshooks']`, `usagelimits` `after: ['offline']` (it captures OfflineCore once), `jam` `after: ['astra']`
+- Other loads that read these globals at their own load: `accessui` now has `after: ['access']`, `usagelimits` `after: ['offline']` (it captures OfflineCore once), `jam` `after: ['astra']`
   (jam.css uses astra.css' colours). Everything else reaches them through `typeof X` guards, which also pull the group
-  in (lazy.js' global guards).
+  in (lazy.js' global guards). A `typeof Astra` peek while the first screen is drawn (native.js' empty-chat hints,
+  missions.js' chip) isn't counted as a miss for a `redraw` group (fastboot): it loads first and the chat is drawn again.
+- A send that finds every group in doesn't await anything (liveness-ui caught an extra await: a new chat used to be
+  busy in the same task as `Native.send`).
 - The manifest (`node dev/lazy-manifest.js`, `--check`) records the same names, aliases, actions, keys, apps and tools
   as the eager build (957 / 339 / 1414 / 505 / 51 / 8, no duplicates); trim weights regenerated (169 groups).
 
@@ -76,6 +84,8 @@ the rest → Chats), so trim153's registry check holds:
 
 - The chat view itself (native.js, renderer.js, panel.js, md.js, commands.js, chat-ux.js, chat-slash.js, chat-calm.js,
   chatcore.css / chat-live.css: their rules lay out native messages), the rail, Settings' entry, the token meter strip.
+- **progress-hooks.js** (14 KB) was moved, then put back: firstscreen96 proves what Hearth learned of how long things
+  take is read from the start (the progress model is eager, and something can start before the hooks would load).
 - **Safety nets and calm**: jank.js (the hiccup recorder runs from the start), habits.js (counts every error from the
   start), hints.js (the one-hint queue takes notes from the start), splash.js, devreport-hooks.js; the crash journal
   (safetynet) was already a lazy group that loads first.
