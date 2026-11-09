@@ -77,7 +77,10 @@ const HubBridge = (() => {
   // (round 73, labtools73) every Lab call goes through tools/three-txn.js once it's loaded (whole or not at all; one undo
   // step per AI reply; what changed in words); calls made inside another call pass straight through it
   let around = null;
-  const run = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, (c) => h.fn(tool, args, c || ctx)) : h.fn(tool, args, ctx));
+  const here = (h, tool, args, ctx) => (around && tool.startsWith('three_') ? around(tool, args, ctx, (c) => h.fn(tool, args, c || ctx)) : h.fn(tool, args, ctx));
+  // (round 153c, labwin153) a call for the scene open in the Lab window runs there, whole (its own txn / history); null
+  // from LabWinHost.route: not that scene (or the window just closed), so it runs here as before
+  const run = (h, tool, args, ctx) => (tool.startsWith('three_') && window.LabWinHost?.active?.() && !ctx?.batch ? LabWinHost.route(tool, args, ctx || {}).then((r) => r ?? here(h, tool, args, ctx)) : here(h, tool, args, ctx));
   const emit = (entry) => { for (const fn of listeners) { try { fn(entry, log); } catch (err) { console.warn(err); } } };
 
   // (round 74, labcalls74) every hop of an agent's call, timed: the MCP server (mcp/common.js) → the hub's bridge

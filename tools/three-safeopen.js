@@ -209,6 +209,9 @@ const LabSafe = (() => {
   const state = () => ({ open: S.openId, crashed: S.crashed, recovered: S.recovered, safe: S.safe ? { id: S.safe.id, why: S.safe.why, kind: S.safe.kind, held: [...S.safe.held], back: [...S.safe.back], total: S.safe.total, culprit: [...S.safe.culprit], hit: S.safe.hit, folded: S.safe.folded, note: S.safe.noteMsg || null } : null, marks: read().v, stats: { ...st }, hangMs: hangMs() });
   // a normal close isn't a crash: an open still pending is let go (a crash never gets here)
   addEventListener('pagehide', () => { if (S.openId && !S.crashed && !S.safe) letGo(S.openId); });
-  return { on: (id) => Boolean(S.safe && S.safe.id === id), held: (id) => (S.safe && S.safe.id === id ? S.safe.held : null), opening, msg, tick, next, openNormally, fold, state, marker, _reset() { end(); S.openId = null; S.crashed = 0; S.recovered = true; } };
+  // (round 153c, labwin153) the scene handed to the Lab window (this window let go of it without a crash): its open is
+  // not pending any more here, so the Lab window doesn't take it for a crash of the last open
+  function handOff(id) { if (!id || S.openId !== id || S.crashed || S.safe) return false; letGo(id); S.openId = null; clearTimeout(S.healthyT); S.healthyT = 0; return true; }
+  return { on: (id) => Boolean(S.safe && S.safe.id === id), held: (id) => (S.safe && S.safe.id === id ? S.safe.held : null), opening, handOff, msg, tick, next, openNormally, fold, state, marker, _reset() { end(); S.openId = null; S.crashed = 0; S.recovered = true; } };
 })();
 window.LabSafe = LabSafe;
