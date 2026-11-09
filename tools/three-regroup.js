@@ -16,7 +16,8 @@ const LabRegroup = (() => {
   const folds = [];
   let wired = false;
   // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): its folds go with it (a new Lab makes its own)
-  addEventListener('hearth:lab-drop', (e) => { if (!e.detail?.dropped) return; folds.length = 0; try { hud.obs?.disconnect(); } catch { /* gone */ } clearTimeout(hud.tlT); Object.assign(hud, { pv: null, tl: null, media: null, fpsN: [], obs: null, tlT: 0 }); });
+  addEventListener('hearth:lab-drop', (e) => { if (!e.detail?.dropped) return; folds.length = 0; try { hud.obs?.disconnect(); } catch { /* gone */ } clearTimeout(hud.tlT); Object.assign(hud, { pv: null, tl: null, media: null, fpsN: [], obs: null, tlT: 0 }); hudAC.abort(); hudAC = new AbortController(); });
+  let hudAC = new AbortController(); // (round 161) the timeline header's window listener, per Lab
   // (round 151, redux151) two looks: Forgeheart ("Hearth Redux": gold / ember on graphite, mono, few controls in sight,
   // the rest where you point) and Plain (flat, every control in sight, no motion, no headers). Round 148's Plate (light
   // lavender plates) is gone: a "plate" kept in the store opens as Forgeheart.
@@ -213,7 +214,7 @@ const LabRegroup = (() => {
     hud.obs = new MutationObserver(soon);
     const watch = () => { for (const n of bar.querySelectorAll('.mb-time, .mb-bpmread')) hud.obs.observe(n, { childList: true, characterData: true, subtree: true }); };
     watch();
-    addEventListener('hearth:lab-playing', (e) => { if (e.detail?.playing) hud.obs.disconnect(); else { watch(); paintTimeline(); } });
+    addEventListener('hearth:lab-playing', (e) => { if (e.detail?.playing) hud.obs.disconnect(); else { watch(); paintTimeline(); } }, { signal: hudAC.signal });
   }
   function paintTimeline() {
     const T = hud.tl; let m = null;

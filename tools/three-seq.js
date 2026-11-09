@@ -43,7 +43,8 @@ const ThreeSeq = (() => {
   const listeners = {};
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
   const lab = () => S.L;
-  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { S.L = null; S.view = false; S.drag = null; S.hover = null; for (const k of Object.keys(refs)) delete refs[k]; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { S.L = null; S.view = false; S.drag = null; S.hover = null; for (const k of Object.keys(refs)) delete refs[k]; buildAC.abort(); buildAC = new AbortController(); } });
+  let buildAC = new AbortController(); // (round 161) the strip's window listeners, per Lab // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const fps = () => S.edit?.seq?.fps || 30;
   const frameOf = (T) => Math.floor(T * fps() + 1e-3);
   const frameStart = (n) => Math.max(0, n) / fps();
@@ -2473,7 +2474,7 @@ const ThreeSeq = (() => {
     refs.tl.addEventListener('drop', onDrop);
     new ResizeObserver(() => { measure(); redraw(); placeHead(); }).observe(refs.tl);
     const onDpr = () => { if (!refs.tl.isConnected) removeEventListener('hearth:dpr', onDpr); else { measure(); redraw(); } }; // (round 36, nativefeel) crisp after a screen-scale change
-    addEventListener('hearth:dpr', onDpr);
+    addEventListener('hearth:dpr', onDpr, { signal: buildAC.signal });
     // the name chip follows the sequence (written only when it changes)
     listeners.change = [...(listeners.change || []), () => { const n = S.key ? `${S.key.slice(4)} · ${D.formatOf(S.edit)}` : 'Sequence'; if (refs.name.textContent !== `${n} ▾`) refs.name.textContent = `${n} ▾`; }];
   }

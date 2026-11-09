@@ -69,7 +69,7 @@ const ThreeLab = (() => {
     const have = () => window.__sbxLibFn?.[name];
     libFiles[name] ||= have() ? Promise.resolve() : new Promise((res, rej) => {
       const s = document.createElement('script'); s.src = LIB_FILES[name];
-      s.onload = res; s.onerror = () => { delete libFiles[name]; s.remove(); rej(new Error(`${LIB_FILES[name]} didn't load`)); };
+      s.onload = () => { s.onload = s.onerror = null; res(); }; s.onerror = () => { s.onload = s.onerror = null; delete libFiles[name]; s.remove(); rej(new Error(`${LIB_FILES[name]} didn't load`)); }; // (round 161: the handlers let go once done, they kept the page that asked)
       document.head.append(s);
     });
     libFiles[name].then(() => deliver({ target: 'three-sandbox', type: 'lib', name, code: String(have()) }), (err) => deliver({ target: 'three-sandbox', type: 'lib', name, error: err.message }));
@@ -553,7 +553,7 @@ const ThreeLab = (() => {
     // (round 161, fix161) ThreeLab.drop(): while the Lab window holds the scene, Hearth's window lets its Lab go entirely
     // (its DOM, state, preview page): what this tab hooks outside its own DOM is let go with it. The bare names below are
     // this tab's own: window listeners with one AbortSignal, the observers and intervals it starts, its chat hooks.
-    const life = { ac: new AbortController(), obs: [], iv: new Set(), undo: [] };
+    const life = { ac: new AbortController(), obs: [], iv: new Set(), to: new Set(), undo: [] };
     life.hook = (list, fn) => { list.push(fn); life.undo.push(() => { const i = list.indexOf(fn); if (i >= 0) list.splice(i, 1); }); };
     const scoped = (o) => (o === true ? { capture: true, signal: life.ac.signal } : { ...(o && typeof o === 'object' ? o : {}), signal: life.ac.signal });
     const addEventListener = (t, fn, o) => window.addEventListener(t, fn, scoped(o));
@@ -561,6 +561,8 @@ const ThreeLab = (() => {
     const tracked = (C) => (C ? class extends C { constructor(cb) { super(cb); life.obs.push(this); } } : C);
     const MutationObserver = tracked(window.MutationObserver); const IntersectionObserver = tracked(window.IntersectionObserver); const ResizeObserver = tracked(window.ResizeObserver);
     const setInterval = (fn, ms, ...a) => { const t = window.setInterval(fn, ms, ...a); life.iv.add(t); return t; };
+    // (its timeouts too: one still waiting when the tab is let go would keep it until it fires; the saves are flushed first)
+    const setTimeout = (fn, ms, ...a) => { const t = window.setTimeout(() => { life.to.delete(t); fn(...a); }, ms); life.to.add(t); return t; };
     // (round 158, split158) what the Lab's cold parts (tools/three-lab-*.js, loaded on first use: labPart) reach in here
     const K = {
       get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
@@ -4266,6 +4268,8 @@ const ThreeLab = (() => {
       for (const o of life.obs.splice(0)) { try { o.disconnect(); } catch { /* gone */ } }
       for (const t of life.iv) clearInterval(t);
       life.iv.clear();
+      for (const t of life.to) clearTimeout(t);
+      life.to.clear();
       for (const u of life.undo.splice(0)) { try { u(); } catch { /* gone */ } }
       for (const id of ['lab-media', 'lab-stall']) window.Power?.stop?.(id);
       clearInterval(K.hudTimer); clearInterval(K.lookTimer); clearInterval(K.hubLive?.timer); // (the parts' timers: Present's HUD, cycle looks, live sound)
