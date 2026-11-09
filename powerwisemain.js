@@ -243,7 +243,8 @@ function testHook(t) {
   if (t.probe === 'take' && probe) out.probe = probe.take();
   if (t.probe === 'start' && probe) { probe.take(); out.probe = 'started'; }
   if (t.timers) out.timers = sched.list();
-  if (t.metrics) { try { out.metrics = metrics(); } catch (err) { out.metrics = { error: String(err?.stack || err).slice(0, 600), procs: [], pages: [] }; } } // (round 44, idlecpu) CPU time and wakeups per process, for dev/checks/idlecpu.js
+  if (t.memtrim) { try { out.memtrim = require('./memtrimmain').state(); } catch { out.memtrim = null; } } // (round 154, mem154; tests)
+  if (t.metrics) { try { out.metrics = metrics({ mem: Boolean(t.mem) }); } catch (err) { out.metrics = { error: String(err?.stack || err).slice(0, 600), procs: [], pages: [] }; } } // (round 44, idlecpu) CPU time and wakeups per process, for dev/checks/idlecpu.js
   out.state = snapshot();
   out.stub = stub ? { starts: stub.starts.slice(), stops: stub.stops.slice(), live: [...stub.live] } : null;
   out.bg = bg?.state?.() || null;
@@ -283,8 +284,14 @@ function longrunSample(o = {}) {
 // (round 44, idlecpu; tests only) every process' CPU time (seconds since it started), Chromium's idle wakeups / s since the
 // last call, and on Linux each process' context switches over all its threads (/proc: wakeups, counted by the kernel);
 // which page / frame runs in which process; the store threads' busy time (event loop utilization)
-function metrics() {
+function metrics({ mem = false } = {}) {
   const { app, webContents } = require('electron');
+  // (round 154, mem154; tests only, with { mem: true }) each process' private / proportional memory (Linux: smaps_rollup,
+  // KB; Windows / Mac: Electron's privateBytes) and the main process' own JS heap, for dev/mem154-measure.js and its check
+  const roll = (pid) => {
+    if (process.platform !== 'linux') return null;
+    try { const s = fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8'); const k = (n) => Number(new RegExp(`^${n}:\\s+(\\d+)`, 'm').exec(s)?.[1] || 0); return { rss: k('Rss'), pss: k('Pss'), priv: k('Private_Clean') + k('Private_Dirty') }; } catch { return null; }
+  };
   const fs = require('fs');
   const switches = (pid) => {
     if (process.platform !== 'linux') return null;
@@ -292,7 +299,7 @@ function metrics() {
     try { for (const tid of fs.readdirSync(`/proc/${pid}/task`)) { try { const s = fs.readFileSync(`/proc/${pid}/task/${tid}/status`, 'utf8'); n += Number(/voluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0) + Number(/nonvoluntary_ctxt_switches:\s+(\d+)/.exec(s)?.[1] || 0); } catch { /* thread gone */ } } } catch { return null; }
     return n;
   };
-  const procs = app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', cpuS: m.cpu?.cumulativeCPUUsage ?? null, pct: m.cpu?.percentCPUUsage ?? null, wake: m.cpu?.idleWakeupsPerSecond ?? null, ctx: switches(m.pid), mem: m.memory?.workingSetSize ?? null })); // (round 75, labload75: mem = working set KB, the GPU process' for dev/checks/labload75.js)
+  const procs = app.getAppMetrics().map((m) => ({ pid: m.pid, type: m.type, name: m.name || m.serviceName || '', cpuS: m.cpu?.cumulativeCPUUsage ?? null, pct: m.cpu?.percentCPUUsage ?? null, wake: m.cpu?.idleWakeupsPerSecond ?? null, ctx: switches(m.pid), mem: m.memory?.workingSetSize ?? null, ...(mem ? { priv: roll(m.pid)?.priv ?? m.memory?.privateBytes ?? null, pss: roll(m.pid)?.pss ?? null } : {}) })); // (round 75, labload75: mem = working set KB, the GPU process' for dev/checks/labload75.js)
   const pages = [];
   for (const wc of webContents.getAllWebContents()) {
     try {
@@ -301,7 +308,7 @@ function metrics() {
     } catch { /* closing */ }
   }
   let threads = null; try { threads = require('./store')._threads?.() || null; } catch { /* none */ }
-  return { at: Date.now(), mainCpu: process.cpuUsage(), procs, pages, threads };
+  return { at: Date.now(), mainCpu: process.cpuUsage(), procs, pages, threads, ...(mem ? { mainMem: process.memoryUsage() } : {}) };
 }
 
 module.exports = { register, hold, during, turn, download, quiet, quietNow: () => quietOn, every: (id, ms, fn, o) => sched.every(id, ms, fn, o), stop: (id) => sched.stop(id), state: snapshot, policy: () => Core.policy(st),

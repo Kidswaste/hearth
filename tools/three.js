@@ -1119,6 +1119,9 @@ const ThreeLab = (() => {
     // hidden or minimised, another Lab tab). Recordings, the Stage window and offline renders go on.
     let parkedNow = false;
     let workspacePreparing = false, workspaceMessage = null, workspaceReleased = false, workspaceDrawn = null, workspaceAbandoned = 0; // (round 109, projopen109: warm-ups let go off screen)
+    // (round 154, mem154) the Lab rests when nobody can see it (restArm / restTry below): since = unseen and quiet since,
+    // by = the page was let go by the rest (an AI call or showing the Lab brings it back)
+    const REST = { t: 0, since: 0, by: false, closing: false, rested: 0, woke: 0, last: null };
     // (round 72, projects72) a project → project switch keeps the preview page (three.js loaded, contexts warm): the next
     // project's scene runs in it like any Lab sketch switch, instead of a new page per switch. Leaving to Projects releases it.
     let pageKept = false;
@@ -1132,6 +1135,7 @@ const ThreeLab = (() => {
       if (on === parkedNow && !force) return;
       parkedNow = on;
       api.parkTweaks?.(on);
+      restArm(); // (round 154, mem154)
       stallArm?.(on);
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
@@ -4587,7 +4591,7 @@ const ThreeLab = (() => {
     function openSketch(id, opts = {}) {
       if (kvOk.has('three-history')) loadHist(id).catch(() => {}); // (round 88) its versions (kv/three-hv-<scene>.json)
       plainSwap = opts.by === 'project' || window.ProjectWorkspace?.state?.().phase === 'opening'; // (round 73, see plainSwap)
-      workspaceReleased = false; pageKept = false;
+      workspaceReleased = false; pageKept = false; REST.by = false; // (round 154, mem154)
       // unsaved slider values in any layer of the sketch you leave
       const left = current;
       const pendings = left ? [...controllers.entries()].map(([lid, c]) => ({ lid, p: c.pending() })).filter((x) => x.p) : [];
@@ -5321,6 +5325,51 @@ ${code}
         workspaceReleased = true; stallArm?.(true);
       },
     };
+    // (round 154, mem154) The Lab rests when nobody can see it: out of view (a chat, another tool, Hearth hidden or
+    // minimised) for 5 minutes with nothing going on in it, its preview page is let go as when you leave for Projects
+    // (workspace.close(): the code and slider edits saved first, the song's place remembered; the page's process, its
+    // WebGL contexts, decoded textures and sound output go: ≈ 390 MB and 2 processes here, docs/upgrades/mem154.md).
+    // Showing the Lab runs the scene again (onShow → workspace.resume()); an AI call on the scene wakes it first
+    // (handleVisible → api.rest.wake()). Never while the song / timeline plays, a recording or a render runs, live sound
+    // is on, on the Stage window, ▶ Play or a baked show, a project opening, an AI turn on this scene, or while the Lab
+    // window holds it (it is released then anyway). Tests: localStorage 'lab.restMs' (ms; '0' = never).
+    const restMs = () => { let v = null; try { v = localStorage.getItem('lab.restMs'); } catch { /* none */ } const n = v == null || v === '' ? 300000 : Number(v); return Number.isFinite(n) && n >= 0 ? n : 300000; };
+    const restUnseen = () => !box.onStage && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
+    const restBlock = () => (workspaceReleased ? 'released' : !current ? 'no scene' : !restUnseen() ? 'seen' : REST.closing ? 'closing'
+      : workspacePreparing || pagePrimed || box.loading ? 'preparing' : player.playing ? 'playing' : player.recording ? 'recording' : liveKind ? 'live'
+      : xpOn ? 'rendering' : previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing') ? 'show'
+      : directorWorking() ? 'ai' : window.ProjectWorkspace?.state?.().phase === 'opening' ? 'opening' : window.LabWinHost?.holds?.(current.id) ? 'lab window' : null);
+    function restArm() {
+      const ms = restMs();
+      if (!parkedNow || !ms || workspaceReleased) { clearTimeout(REST.t); REST.t = 0; REST.since = 0; return; }
+      if (REST.t) return;
+      REST.since = Date.now();
+      REST.t = setTimeout(restTry, ms);
+    }
+    function restTry() {
+      REST.t = 0;
+      const ms = restMs(); const why = restBlock(); REST.last = why;
+      if (!ms || why === 'released' || why === 'seen' || why === 'no scene') { REST.since = 0; return; }
+      if (why) { REST.since = Date.now(); REST.t = setTimeout(restTry, Math.min(ms, 30000)); return; } // busy: the quiet time starts again after it
+      const left = REST.since + ms - Date.now();
+      if (left > 250) { REST.t = setTimeout(restTry, left); return; }
+      REST.closing = true;
+      api.workspace.close().then(() => {
+        REST.by = workspaceReleased; if (REST.by) REST.rested += 1;
+        if (REST.by && !restUnseen()) { REST.by = false; api.workspace.resume(); } // shown while it was being let go
+      }, (err) => { REST.last = `close: ${err?.message || err}`; }).finally(() => { REST.closing = false; });
+    }
+    api.rest = {
+      state: () => ({ rested: REST.rested, woke: REST.woke, by: REST.by && workspaceReleased, armed: Boolean(REST.t), since: REST.since, last: REST.last, block: restBlock(), ms: restMs() }),
+      // an AI call on the scene (or anything that needs its page): the rested page comes back first (≤ 15 s for its 'ready')
+      async wake() {
+        if (!REST.by || !workspaceReleased || !current || window.LabWinHost?.holds?.(current.id)) return false;
+        REST.by = false; REST.woke += 1;
+        api.workspace.resume();
+        for (let i = 0; i < 150 && !box.ready; i += 1) await new Promise((r) => setTimeout(r, 100));
+        return true;
+      },
+    };
     const sleep = (ms) => (typeof ThreeDirector !== 'undefined' && ThreeDirector.settle ? ThreeDirector.settle(ms) : new Promise((r) => setTimeout(r, ms)));
     const layersSummary = () => layersOf().map((L, i) => ({
       id: L.id, name: L.name, ...(ThreeLayers.isFilter(L.code) ? { kind: 'filter (changes the layers below it)' } : {}), ...(typeof ShaderLib !== 'undefined' && ShaderLib.isShader(L.code) ? { kind: 'shader (GLSL: three_do shader)' } : {}), ...(typeof LabParticles !== 'undefined' && LabParticles.isParticles(L.code) ? { kind: 'particles (GPU: three_do particles)' } : {}), ...(typeof LabPhysics !== 'undefined' && LabPhysics.isPhysics(L.code) ? { kind: 'physics (three_do physics)' } : {}), ...(typeof LabType !== 'undefined' && LabType.isType(L.code) ? { kind: 'type (text / lyrics: three_do type)' } : {}), ...(L.precomp && typeof ThreeComp !== 'undefined' && ThreeComp.isComp(L) ? { kind: `precomp of ${ThreeComp.describe(L)} (three_do comp)` } : {}), order: `${i + 1} of ${layersOf().length} (1 = bottom)`, selected: L.id === selId,
@@ -6035,7 +6084,7 @@ ${frag}\`,
     capture();
     addEventListener('hearth:view', capture);
     api.directorWork?.(1); live.why = tool;
-    try { return await directorCall(tool, args, ctx); } finally { removeEventListener('hearth:view', capture); surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
+    try { await api.rest?.wake?.(); return await directorCall(tool, args, ctx); } finally { removeEventListener('hearth:view', capture); surface?.classList.remove('capturing'); api.directorWork?.(-1); live.why = null; }
   }
   async function directorCall(tool, args, ctx = {}) {
     for (let i = 0; i < 100 && !api.director; i += 1) await new Promise((r) => setTimeout(r, 100));
