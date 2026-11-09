@@ -9,6 +9,7 @@ const ThreeLab = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
   let dropped = false; // (round 161, fix161) ThreeLab.drop(): Hearth's Lab let go entirely while the Lab window holds its scene
+  let mountAC = null; // (round 161) the mount's listener on the surface's body
   let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
   let npStarted = false; let nowPlayingTo = null; // (round 161, fix161) the now-playing subscription, once per window
@@ -4661,7 +4662,8 @@ const ThreeLab = (() => {
       for (const b of tabs.bar.querySelectorAll('button[data-id]')) b.addEventListener('click', paintTabs);
       paintTabs();
       if (head) { head.classList.add('lab-head'); head.querySelector('.tool-desc')?.after(tabs.bar); }
-      body.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tabs.current !== 'sketch' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) tabs.show('sketch'); });
+      mountAC = new AbortController(); // (round 161, fix161: let go with a dropped Lab, the surface's body stays)
+      body.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tabs && tabs.current !== 'sketch' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) tabs.show('sketch'); }, { signal: mountAC.signal });
     },
     get commands() { return [
       { label: 'New three.js sketch', run: () => { tabs?.show('sketch'); } },
@@ -4701,7 +4703,7 @@ const ThreeLab = (() => {
     // first, so it doesn't keep the rest of the tab alive through its parent: LabDirection's and Finish's chips, Lab
     // search's button, the frame budget, the project look, the footage chip, the live dot, the sequence view
     for (const n of s?.el.querySelectorAll('.dir-chip, .fl-chip, .ls-btn, .three-stats > .fb, .lab-projlook, .mb-framechip, .live-lock, .sq-view') || []) n.remove();
-    tabs.bar?.remove();
+    tabs.bar?.remove(); mountAC?.abort(); mountAC = null;
     s?.body.replaceChildren(); s?.head?.classList.remove('lab-head');
     tabs = null;
     for (const k of Object.keys(api)) delete api[k];
