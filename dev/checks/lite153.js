@@ -136,7 +136,8 @@ try {
     step('ui: the LITE tag shows in the Lab bar and in the rail', tags.some((t) => !t.rail && t.seen) && tags.some((t) => t.rail && t.seen), tags);
     await AppUI.openSettings(); await wait(600);
     const box = document.querySelector('dialog.settings-dialog .lite-row input[type=checkbox]');
-    step('ui: Settings › Look & size has the Lite mode switch, ticked', Boolean(box?.checked), { found: Boolean(box) });
+    const foldLine = box?.closest('details')?.querySelector('summary')?.textContent || '';
+    step('ui: Settings › Look & size › More looks and tweaks has the Lite mode switch, ticked, and the fold\'s line says so (round 161)', Boolean(box?.checked) && /Lite mode on/.test(foldLine), { found: Boolean(box), foldLine });
     document.querySelector('dialog.settings-dialog')?.close();
   });
 
