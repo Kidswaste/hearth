@@ -112,11 +112,13 @@ const Lazy = (() => {
         Object.defineProperty(window, name, {
           configurable: true, enumerable: false,
           get() {
-            if (g.state === 'stub') {
+            // (round 157, boot157) a `redraw` group peeked at while the first screen is drawn (native.js' empty-chat hints,
+            // missions' chip) isn't a miss: it loads first right after the first frame and the chat is drawn again then
+            if (g.state === 'stub' && !(g.redraw && !painted)) {
               missLog.push({ name, group: g.name, at: Math.round(performance.now()), where: (new Error().stack || '').split('\n').slice(2, 4).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
               if (missLog.length > 200) missLog.shift();
               want(g);
-            }
+            } else if (g.state === 'stub') want(g);
             return undefined;
           },
           set(v) { Object.defineProperty(window, name, { value: v, writable: true, configurable: true, enumerable: true }); },
