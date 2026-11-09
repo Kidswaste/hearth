@@ -227,7 +227,7 @@ try {
     const s = await until(async () => { const x = await smoothState(); const r = glowR(x); return r && r.aa === false && r.pr <= 0.51 ? x : null; }, 40000, 600);
     const l = await liteState();
     out.measure.persist = { boot, on: HearthLite.on, lite: l, r: glowR(s) };
-    step('persist: after a reload Lite is on before the first frame (set by DOMContentLoaded), Motion: off', HearthLite.on && boot.dcl === true && boot.frame === true && de.dataset.motion === 'off', out.measure.persist);
+    step('persist: after a reload Lite is on before the first frame (lite-early.js, at the top of <head>; round 161: powerwise.js alone is deferred and a first frame could come before it), Motion: off', HearthLite.on && boot.dcl === true && boot.frame === true && de.dataset.motion === 'off', out.measure.persist);
     step('persist: the preview is at 30 fps and half resolution again, antialias off', l?.on && l.cap === 30 && glowR(s)?.pr <= 0.51 && glowR(s)?.aa === false, out.measure.persist);
   });
 
