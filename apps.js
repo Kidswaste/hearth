@@ -44,6 +44,20 @@ const Apps = (() => {
     catalogSoon();
     return app;
   }
+  // (round 160, boot160) slot() / fill(slot, fn): the apps fn registers take the place they had when the slot was made
+  // (lazy.js: a lazy group's stand-in app windows, read right after the first frame), so Apps.list() keeps its old order
+  const slot = () => ({ ids: new Set(reg.keys()) });
+  function fill(s, fn) {
+    const had = new Set(reg.keys());
+    try { fn(); } finally {
+      const all = [...reg];
+      const added = all.filter(([id]) => !had.has(id));
+      if (added.length) {
+        reg.clear();
+        for (const e of [...all.filter(([id]) => s.ids.has(id)), ...added, ...all.filter(([id]) => had.has(id) && !s.ids.has(id))]) reg.set(e[0], e[1]);
+      }
+    }
+  }
   const get = (id) => reg.get(String(id || '').toLowerCase()) || find(id);
   function find(q) {
     const s = String(q || '').trim().toLowerCase();
@@ -435,7 +449,7 @@ const Apps = (() => {
   });
 
   return {
-    register, get, find, list, open, openWindow, menu, menuCenter, menuItems, route, tryRoute, grid, ask, on, emit, chatAgent, fileUrl,
+    register, slot, fill, get, find, list, open, openWindow, menu, menuCenter, menuItems, route, tryRoute, grid, ask, on, emit, chatAgent, fileUrl,
     downloads: allDownloads, downloadsDialog, describeAll, GROUPS, tool: handleTool, windows: () => new Map(windows),
   };
 })();

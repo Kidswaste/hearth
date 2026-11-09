@@ -39,6 +39,7 @@ for (const g of LazyData.GROUPS) {
   }
   for (const c of g.css || []) { ok(fs.existsSync(path.join(ROOT, c)), `${g.name}: ${c} is missing`); ok(!html.includes(`href="${c}"`), `${g.name}: ${c} is still linked in index.html`); }
   for (const d of g.after || []) ok(names.has(d), `${g.name}: after "${d}" isn't a group`);
+  for (const d of g.wait || []) ok(names.has(d), `${g.name}: wait "${d}" isn't a group`); // (round 160, boot160)
   ok(LazyData.META[g.name], `${g.name}: no manifest (node dev/lazy-manifest.js)`);
 }
 const at = [...html.matchAll(/lazy-at\.js#([\w,-]+)/g)].flatMap((m) => m[1].split(','));
@@ -52,6 +53,14 @@ for (const [g, cmds] of Object.entries(LazyText)) {
   ok(names.has(g), `lazy-meta.js: ${g} isn't a group (node dev/lazy-manifest.js)`);
   const stubs = new Set((LazyData.META[g]?.commands || []).map((c) => c.name.toLowerCase()));
   for (const n of Object.keys(cmds)) if (n !== '#keys') ok(stubs.has(n), `lazy-meta.js: /${n} (${g}) isn't in the manifest (node dev/lazy-manifest.js)`);
+}
+// (round 160, boot160) the stand-ins' keys-sheet lines, Ctrl/⌘+K lines and app windows are read after the first frame too (LazyLines)
+const LazyLines = new Function(`${fs.readFileSync(path.join(ROOT, 'lazy-meta.js'), 'utf8')}; return typeof LazyLines === 'undefined' ? null : LazyLines;`)(); // eslint-disable-line no-new-func
+ok(LazyLines && Object.keys(LazyLines).length > 20, 'lazy-meta.js has the lazy groups\' lines (LazyLines: node dev/lazy-manifest.js)');
+for (const [g, l] of Object.entries(LazyLines || {})) {
+  ok(names.has(g), `lazy-meta.js LazyLines: ${g} isn't a group (node dev/lazy-manifest.js)`);
+  ok(!['keys', 'actions', 'apps'].some((k) => LazyData.META[g]?.[k]), `lazy-data.js: ${g}'s lines are in the first screen's manifest too`);
+  for (const k of Object.keys(l)) ok(['keys', 'karea', 'actions', 'apps'].includes(k), `lazy-meta.js LazyLines: ${g}.${k}?`);
 }
 console.log(`✓ ${LazyData.GROUPS.length} lazy groups, ${LazyData.GROUPS.reduce((a, g) => a + g.files.length, 0)} files`);
 // (round 54, fixes54) the groups stay whole through merges: one loader per file, every listed global defined by the

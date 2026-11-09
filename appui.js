@@ -109,7 +109,13 @@ const AppUI = (() => {
 
   // ---------- command palette ----------
   const actions = [];
-  function addAction(label, run, keys = '') { actions.push({ label, run, keys }); }
+  // (round 160, boot160) slot() / fill(slot, fn): a quiet place where a lazy group's stand-in lines used to be added
+  // (lazy.js reads them right after the first frame); the lines fn adds go there, in the palette's old order
+  let into = null;
+  function addAction(label, run, keys = '') { const a = { label, run, keys }; const at = into ? actions.indexOf(into) : -1; if (at < 0) actions.push(a); else actions.splice(at, 0, a); }
+  function actionSlot() { const s = { label: '', slot: true }; actions.push(s); return s; }
+  function fillActions(s, fn) { const was = into; into = s; try { fn(); } finally { into = was; const i = actions.indexOf(s); if (i >= 0) actions.splice(i, 1); } }
+  const actionsBefore = (s) => { flushLater(); const i = actions.indexOf(s); return (i < 0 ? actions : actions.slice(0, i)).filter((a) => !a.slot); };
   // (round 91, projaudit91) rows made fresh each time the palette opens, ahead of the others (projects: projaudit91.js)
   const sources = [];
   const addSource = (fn) => { if (typeof fn === 'function') sources.push(fn); };
@@ -168,7 +174,7 @@ const AppUI = (() => {
       if (a) for (const h of list.slice(0, 50)) items.push({ kind: `${a.name} chat`, label: h.title, run: () => openWebChat(agentId, h.url) });
     }
     flushLater();
-    for (const act of actions) items.push({ kind: 'Action', label: act.label, keys: act.keys, run: act.run });
+    for (const act of actions) if (!act.slot) items.push({ kind: 'Action', label: act.label, keys: act.keys, run: act.run });
     const ranked = typeof SpeedRank !== 'undefined' ? SpeedRank.palette(items) : items; // (round 13) what you pick most here, now, first; ↻ Again on top
     // (round 37, appsearch) Find anything: rows say what they do (no "/name"), and it indexes them with everything else
     const f = finder();
@@ -551,7 +557,7 @@ const AppUI = (() => {
 
   // (round 37, appsearch) what it shows, again (rows that joined: a chat's messages, the Lab's things, patch notes)
   const paletteRefresh = () => { if (pal?.box.isConnected && !pal.input.value.startsWith('?')) paletteRender(); };
-  return { actions: () => { flushLater(); return actions.slice(); }, addActionsLater, addSource, paletteRefresh, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory,
+  return { actions: () => { flushLater(); return actions.filter((a) => !a.slot); }, actionSlot, fillActions, actionsBefore, addActionsLater, addSource, paletteRefresh, init, offerSwirl, openSettings, palette, find, shortcutsHelp, zoom, switchRecent, replyFinished, usageDialog, downloadsDialog, trashDialog, addAction, THEMES, snapshotToChat, toggleOnTop, backupsDialog, backupNow, restoreBackup, autoBackup, exportData, downloadHistory: dlHistory,
     // (round 83) for appui-dialogs.js only
     _dialogs: { THEMES, SPELL_LANGS, loadFind, createShortcuts, packForMac, backupNow, exportData, downloads, dlHistory, clearLog: () => { dlLog = []; }, setView: (fn) => { dlView = fn; } } };
 })();

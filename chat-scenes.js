@@ -737,7 +737,8 @@ renderer.setAnimationLoop((now) => {
     loaded = true;
     readyFn();
     sync();
-    Panel.render();
+    // (round 160, boot160) read right after the first frame: the rows drawn without their marks are built again
+    if (Panel.redrawRows) Panel.redrawRows(); else Panel.render();
   })();
 
   // (round 139, room139) /scene and /scene-timeline are chat-scenes-cmds.js (lazy group 'scenecmds')
