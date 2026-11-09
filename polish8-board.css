@@ -1,0 +1,38 @@
+/* (round 159, css159) from polish8.css: only "board" code makes these match; loaded with it, right after polish8.css (lazy-data.js CSS_AFTER) */
+.bd-chip:hover { color: var(--fh-gold-text, var(--text)); }
+.bd-chip:active { transform: translateY(1px); }
+.bd-chip .p8-ico { width: 15px; height: 15px; flex: none; color: var(--fh-gold, var(--accent)); }
+:root[data-look~=v2] .bd-add:hover { color: var(--m-gold-ink, #1a1206); filter: brightness(1.08); }
+:root[data-look~=v2][data-scheme=light] .bd-chip { box-shadow: 0 3px 10px #0002; }
+.bd-root:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent); }
+.bd-empty { gap: 10px; }
+.bd-empty .p8-ico { width: 44px; height: 44px; color: var(--fh-gold, var(--accent)); opacity: .55; filter: drop-shadow(0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent)); }
+:root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) both; }
+.bd-search:focus-within { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); }
+.bd-root:not(.bd-hand) .bd-item:not(.bd-locked):not(.bd-t-link):hover { cursor: grab; }
+.bd-root .bd-item [contenteditable="true"] { cursor: text; }
+.bd-dropping .bd-vp { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bd-gold) 85%, transparent), inset 0 0 60px color-mix(in srgb, var(--bd-gold) 18%, transparent); }
+html[data-skin~="forge"] .bd-dropping .bd-vp::after { border-radius: 0; clip-path: var(--cut-sm, none); }
+:root[data-scheme=light] .bd-item[data-shadow="soft"] .bd-clip { box-shadow: 0 10px 26px #0003; }
+:root[data-scheme=light] .bd-badge { background: #000a; }
+html[data-skin~="forge"] .bd-badge { clip-path: var(--cut-sm, none); }
+.bd-open:focus-visible { outline: none; opacity: 1; color: var(--bd-gold); box-shadow: inset 0 0 0 1px var(--bd-gold); }
+.bd-vibe-card .bd-pal { border-radius: var(--r-md, 8px); box-shadow: inset 0 0 0 1px #0004; }
+html[data-skin~="forge"] .bd-vibe-card .bd-pal { clip-path: var(--cut-sm, none); }
+.bd-vibe-card .bd-meter { border-radius: var(--r-pill, 3px); background: color-mix(in srgb, var(--text) 10%, transparent); }
+.bd-root:not(.bd-moving):not(.bd-presenting) .bd-item:not(.bd-t-frame):not(.bd-t-link):not(.bd-locked):hover { outline: 1px solid color-mix(in srgb, var(--bd-gold) 45%, transparent); outline-offset: 2px; }
+.bd-root:not(.bd-moving) .bd-t-frame:hover .bd-ftitle { color: var(--bd-gold); }
+html[data-skin~="forge"] .bdd { clip-path: var(--cut, none); }
+:root[data-look~=v2] .bdd { background: var(--hairline) top / 100% 1px no-repeat, linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); }
+.bdd-head { padding-top: 12px; }
+.bdd-search:focus { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); outline: none; }
+.bdd-vibe:hover { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, var(--line)); color: var(--text); }
+.bdd-tile:hover { transform: translateY(-1px); }
+.bdd-tile:focus-visible, .bdd-tile:focus-within { outline: none; border-color: var(--fh-gold, var(--accent)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 30%, transparent); }
+.bdd-tile .bdd-send { border-radius: var(--r-sm, 6px); background: color-mix(in srgb, var(--fh-gold, #e6b450) 92%, #000); color: var(--m-gold-ink, #1a1206); font-weight: 700; }
+.bdd-tile .bdd-k { font-family: var(--mono, ui-monospace, monospace); letter-spacing: .03em; }
+:root[data-scheme=light] .bdd { box-shadow: 0 18px 50px #0003; }
+:root[data-motion=off] .bdd, :root[data-motion=off] .bdd.open { transition: visibility 0s; }
+/* ---------- Forgeheart Classic keeps its colors; the shapes above apply to it too ---------- */
+html[data-skin~="forge"]:not([data-look~=v2]) .bd-add { color: var(--r-rare, var(--accent)); }
+html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar); }

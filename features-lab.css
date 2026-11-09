@@ -1,0 +1,43 @@
+/* (round 159, css159) from features.css: only "lab" code makes these match; loaded with it, right after features.css (lazy-data.js CSS_AFTER) */
+.three-preview.drop-on { outline: 2px dashed var(--ui-gold); outline-offset: -6px; }
+@container (max-width: 760px) {
+.three-split.with-tweaks .tweaks { max-height: 45vh; }
+}
+.media-bar.mb-empty .mb-row > .ghost:first-child { display: inline-block; }
+.media-bar.locked button.on[title^="Lock"] { color: var(--ui-cyan); border-color: color-mix(in srgb, var(--ui-cyan) 50%, transparent); }
+.tw-column .tw-slot > .tweaks { flex: 1; min-width: 0; }
+@container (max-width: 760px) {
+.three-split.with-tweaks .three-right { height: 78vh; }
+.three-split.with-tweaks .tw-column { height: 72vh; }
+/* the code / nodes pane gets a screen-sized box too (it grew to the whole code, ~2300 px, with the nodes lost in it) */
+.three-split.with-tweaks .three-editor { height: 70vh; min-height: 320px; }
+.three-split.with-tweaks .tweaks { max-height: none; }
+}
+body.lab-focus .three-split, body.lab-focus .three-split.with-tweaks, body.lab-focus .three-split.no-code.with-tweaks { grid-template-columns: minmax(0, 1fr) !important; }
+.three-preview.presenting .present-hint.gone { opacity: 0; }
+.sb-thumb img { object-fit: cover; }
+.media-bar .mb-main .tb-group { flex-wrap: nowrap; }
+.tweaks.comparing .tw-head b::after { content: ' · A (code values)'; color: var(--ui-cyan); }
+.tw-sec[open] > .tw-sec-head::before { transform: rotate(90deg); }
+.tw-knob:focus-visible .kn-cap { stroke: var(--ui-gold); }
+.kn-track { fill: none; stroke: color-mix(in srgb, var(--text) 14%, transparent); stroke-width: 4; stroke-linecap: round; }
+.kn-arc { fill: none; stroke: var(--ui-gold); stroke-width: 4; stroke-linecap: round; transition: stroke .15s; }
+.kn-cap { fill: color-mix(in srgb, #000 40%, var(--bg)); stroke: color-mix(in srgb, var(--text) 25%, transparent); stroke-width: 1; }
+.kn-ptr { stroke: var(--text); stroke-width: 2.4; stroke-linecap: round; }
+.kn-notch { stroke: var(--ui-cyan); stroke-width: 2; stroke-linecap: round; }
+.tw-knob-cell.at-orig .kn-arc { stroke: var(--ui-cyan); }
+.tw-knob-cell.turning .kn-cap { stroke: var(--ui-gold); }
+.tw-knob-cell.music .kn-arc { stroke: var(--ui-cyan); stroke-dasharray: none; }
+.tw-range input[type=range] { width: 100%; }
+.three-preview.editing { box-shadow: inset 0 0 0 2px var(--ui-cyan); }
+.three-preview.on-stage iframe { visibility: hidden; }
+.mb-tl-wrap > canvas, .mb-mm-wrap > canvas { display: block; }
+.np-box[hidden] { display: none; }
+.media-bar .mb-main .tb-group[data-cat="Song"] { flex-wrap: wrap; row-gap: 4px; }
+.trg-detail .spacer { flex: 1; }
+.trg-sense[hidden] { display: none; }
+.media-bar .mb-main .mb-more { margin-left: auto; }
+.three-stall[hidden] { display: none; }
+.stage-pill .freeze-btn.on { color: var(--ui-cyan); }
+.three-preview.frozen { outline: 2px solid color-mix(in srgb, var(--ui-cyan) 40%, transparent); outline-offset: -2px; }
+.media-bar .mb-vol.muted { opacity: .35; }
