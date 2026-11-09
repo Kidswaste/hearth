@@ -54,40 +54,48 @@ const Native = (() => {
     });
   }
 
-  // (round 165, chat165) A chat's list scrolls on the compositor when what shows through it is one solid colour.
+  // (round 165, chat165) A chat's list scrolls on the compositor when what shows through it is one plain, opaque colour.
   // Chromium keeps a scroll box whose background isn't opaque on the main thread (so its text keeps subpixel
   // antialiasing): every scrolled frame, and every streamed piece that scrolls the chat to its end, repainted the whole
-  // visible chat on the window's thread (≈ 75 % of its time while wheeling a long chat here). When the list itself is
-  // transparent and the first thing painted under it is an ancestor's opaque, plain colour (no picture or gradient, no
-  // filter, no inset shadow, no pseudo-element or earlier sibling drawn under it, no rounded corner it could spill
-  // past), the list takes that exact colour: the same pixels, but now an opaque box the compositor scrolls (only what
-  // changed is painted). A look with a gradient or a picture behind the chat (the Forgeheart grid) is left as it was.
-  // Judged again when the look changes (the root's look / skin attributes, the theme sheet, a style sheet arriving) and
-  // when the view moves (a project's tools); judged without its own colour, so a change never leaves an old one.
+  // visible chat on the window's thread, and the wheel waited for that thread (a busy moment — a block of older
+  // messages waking, a reply streaming — held the scroll). When the list itself is transparent and the first thing
+  // painted under it is an ancestor's opaque plain colour, the list takes that exact colour: the same pixels, but an
+  // opaque box the compositor scrolls by itself (only what changed is painted). Not when anything else could show
+  // through: a picture or gradient (the Forgeheart looks' ground: Chromium can't paint a gradient that stays put into a
+  // scrolled layer, so text there would lose its subpixel antialiasing; left exactly as it was), a filter or blend, an
+  // inset shadow, a pseudo-element or an earlier sibling drawn under it, a rounded corner it could spill past. Judged
+  // again when the look changes (the root's look / skin attributes, the theme sheet, a style sheet arriving) and when the
+  // view moves (a project's tools). list.backWhy says why a list was left transparent.
   const clearBg = (c) => c === 'transparent' || /^rgba\([^)]*,\s*0\)$/.test(c);
+  const OPAQUE = /^rgb\(\d+, \d+, \d+\)$/;
+  const each = (v, ok) => String(v).split(/,\s*(?![^()]*\))/).every((x) => ok.test(x.trim()));
+  const under = (e, p) => { const s = getComputedStyle(e, p); if (!s.content || s.content === 'none' || s.content === 'normal' || s.display === 'none') return false; return !(/^(absolute|fixed)$/.test(s.position) && parseInt(s.zIndex, 10) > 0); }; // (a positioned one with z-index ≥ 1 is drawn over the chat)
+  const no = (list, why, e) => { list.backWhy = e ? `${why}: ${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${typeof e.className === 'string' && e.className ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}` : why; return null; };
   function backdropOf(list) {
     const cs = getComputedStyle(list);
-    const mine = list.classList.contains('solid-back') ? list.style.getPropertyValue('--solid-back') : '';
-    if (cs.backgroundImage !== 'none' || !(clearBg(cs.backgroundColor) || (mine && cs.backgroundColor === mine))) return null; // (a look that paints the list itself: chatcore.css gives way to it)
+    const mine = list.classList.contains('solid-back');
+    if (!mine && (cs.backgroundImage !== 'none' || !clearBg(cs.backgroundColor))) return no(list, 'the look paints the list');
+    if (mine && list.style.getPropertyValue('--solid-back') !== cs.backgroundColor) return no(list, 'the look paints the list'); // (chatcore.css' zero-specificity rule gave way to the look's)
     const lr = list.getBoundingClientRect();
     if (!lr.width || !lr.height) return undefined; // (not laid out: judged later)
     let child = list;
     for (let e = list.parentElement; e; child = e, e = e.parentElement) {
       const s = getComputedStyle(e);
-      if (s.filter !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none') || s.mixBlendMode !== 'normal' || /inset/.test(s.boxShadow)) return null;
-      for (const p of ['::before', '::after']) { const c = getComputedStyle(e, p).content; if (c && c !== 'none' && c !== 'normal') return null; }
+      if (s.filter !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none') || s.mixBlendMode !== 'normal' || /inset/.test(s.boxShadow)) return no(list, 'a filter, blend or inset shadow', e);
+      if (under(e, '::before') || under(e, '::after')) return no(list, 'a pseudo-element under it', e);
       for (let c = e.firstElementChild; c && c !== child; c = c.nextElementSibling) { // drawn before the list's branch: under it
         const r = c.getBoundingClientRect();
-        if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return null;
+        if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return no(list, 'something drawn under it', c);
       }
-      if (s.backgroundImage !== 'none') return null;
       const c = s.backgroundColor;
+      if (s.backgroundImage !== 'none') return no(list, 'a picture or gradient under it', e);
       if (clearBg(c)) continue;
-      if (!/^rgb\(\d+, \d+, \d+\)$/.test(c) || !/^(border|padding)-box$/.test(s.backgroundClip)) return null; // (translucent, or not under the padding)
-      if (s.overflow === 'visible' && ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].some((k) => parseFloat(s[`border${k}Radius`]) > 0)) return null;
+      if (!OPAQUE.test(c)) return no(list, `a translucent ground (${c})`, e);
+      if (!each(s.backgroundClip, /^(border|padding)-box$/)) return no(list, 'a ground not under its padding', e);
+      if (s.overflow === 'visible' && ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].some((k) => parseFloat(s[`border${k}Radius`]) > 0)) return no(list, 'a rounded ground', e);
       return c;
     }
-    return null;
+    return no(list, 'no ground');
   }
   let backGen = 0; let backRaf = 0; const backWant = new Set(); const backSeen = new WeakMap();
   // (the colour goes in --solid-back, read by chatcore.css' zero-specificity rule: nothing is written when it is the same)
@@ -96,6 +104,7 @@ const Native = (() => {
     const at = list.parentElement?.parentElement;
     const k = backSeen.get(list);
     if (k && k[0] === backGen && k[1] === at) return;
+    list.backWhy = '';
     const c = backdropOf(list);
     if (c === undefined) return; // (hidden: the next draw judges it)
     backSeen.set(list, [backGen, at]);
