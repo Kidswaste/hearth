@@ -38,6 +38,56 @@ const Lazy = (() => {
   // it: it loads once that one is in (and the start is calm), never pulling it in itself
   for (const g of groups.values()) if (g.tier === 'soon' && g.after.some((d) => groups.get(d)?.tier === 'use')) { g.tier = 'use'; g.follow = true; }
 
+  // ---------- (round 153, trim153) switched-off features: their groups never load ----------
+  // HearthFeatures (lazy-data.js) says which groups belong to features switched off on this computer (Settings › Trim
+  // Hearth). Such a group gets no stand-ins (commands, Ctrl/⌘+K lines, keys, tools, apps, agent tools), never loads at
+  // the start nor on use (load() refuses with code EFEATUREOFF: appui.js keeps it calm), its early keys do nothing,
+  // and the feature's buttons outside its own files are hidden (HearthFeatures.HIDE). Turning one back on is live
+  // (setFeature): its stand-ins come back and a group that loads at the start loads now.
+  const HF = typeof HearthFeatures !== 'undefined' ? HearthFeatures : null;
+  const offKeys = new Set(); // keys-sheet areas of switched-off features (polish8's Board / Capture lines)
+  function applyOff() {
+    let gs = []; try { gs = HF ? HF.offGroups() : []; } catch { gs = []; }
+    const now = new Set(gs);
+    for (const g of groups.values()) g.off = now.has(g.name);
+    offKeys.clear();
+    const ids = HF ? HF.offIds() : [];
+    for (const id of ids) for (const a of HF.KEYAREAS?.[id] || []) offKeys.add(a);
+    const sels = ids.map((id) => HF.HIDE?.[id]).filter(Boolean);
+    let st = document.getElementById('trim-hide');
+    if (!sels.length) { st?.remove(); return; }
+    if (!st) { st = document.createElement('style'); st.id = 'trim-hide'; (document.head || document.documentElement).append(st); }
+    st.textContent = `${sels.join(', ')} { display: none !important; }`;
+  }
+  try { applyOff(); } catch (err) { say(`trim: ${err.message}`); }
+  // a feature's use, counted here on this computer only (localStorage 'hub.trim.use': { group: { n, first, last } }):
+  // its group loaded because someone used it (a click, a key, a command); every later use is in usage.js's counts
+  const USE = 'hub.trim.use';
+  function used(g) {
+    try {
+      const u = JSON.parse(localStorage.getItem(USE) || '{}') || {};
+      const x = (u[g.name] ||= { n: 0, first: Date.now() });
+      x.n += 1; x.last = Date.now();
+      localStorage.setItem(USE, JSON.stringify(u));
+    } catch { /* storage is a convenience */ }
+  }
+  let offToastAt = 0;
+  function offError(g) {
+    const id = HF?.featureOf(g.name) || g.name;
+    const name = (typeof TrimData !== 'undefined' && TrimData.WORDS[id]?.name) || id;
+    const err = new Error(`${name} is switched off on this computer: Settings › Trim Hearth turns it back on.`);
+    err.code = 'EFEATUREOFF';
+    // (said once in a while, and only right after a click or a key: a background ask stays quiet)
+    if (navigator.userActivation?.isActive && Date.now() - offToastAt > 4000) { offToastAt = Date.now(); try { toast(err.message, { timeout: 5000 }); } catch { /* no toasts yet */ } }
+    return err;
+  }
+  const names = new Map(); // group → { commands, actions, tools, apps, bridge } (what Trim Hearth matches usage with), kept after the manifest goes
+  function namesOf(name) {
+    if (names.has(name)) return names.get(name);
+    const m = (D.META || {})[name] || {};
+    return { commands: (m.commands || []).flatMap((c) => [c.name, ...(c.aliases || [])]), actions: (m.actions || []).map((a) => a.label || a), tools: (m.tools || []).map((t) => t.id), apps: (m.apps || []).map((a) => a.id), bridge: (m.bridge || []).slice() };
+  }
+
   // ---------- globals: touching one before its group loaded loads it (and is noted for the developer) ----------
   // A configurable accessor on window: `typeof Studio` reads it (undefined, as before the group loads) and asks for the
   // group; the group's own `const Studio = …` then shadows it, and the accessor is removed once the group is in.
@@ -200,6 +250,8 @@ const Lazy = (() => {
   // rail tool, keys-sheet lines, palette actions and app windows at DOMContentLoaded, in the old order of handlers
   const each = (g, list, fn) => { for (const x of list || []) { try { fn(x); } catch (err) { say(`${g.name}: ${err.message}`); } } };
   function stubNow(g) {
+    if (g.off) return;
+    g.stubbed = true;
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c));
     each(g, m.bridge, (p) => stubBridge(g, p));
@@ -210,7 +262,7 @@ const Lazy = (() => {
   // (what the palette / keys sheet already list, read once per moment: their lists are copied on every read)
   let seen = {};
   function stubLater(g) {
-    if (g.state !== 'stub') return;
+    if (g.state !== 'stub' || g.off) return;
     seen = {};
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
@@ -303,6 +355,7 @@ const Lazy = (() => {
       const pass = [];
       for (const e of entries.flat()) {
         if (!e?.keys) continue;
+        if (offKeys.has(e.area || 'General')) continue; // (round 153) a switched-off feature's lines (polish8's Board / Capture)
         rep.keys.push({ area: e.area || 'General', keys: e.keys, what: e.what, ...(e.sel ? { sel: e.sel } : {}) });
         const id = `${e.area || 'General'}|${e.keys}`;
         const s = stubKeys.get(id);
@@ -326,6 +379,9 @@ const Lazy = (() => {
       if (app) app.fallback = true;
       return app;
     });
+    // (round 153, trim153) the repeating timers a group starts while it loads (Trim Hearth's "background work")
+    rep.timers = 0;
+    swap(window, 'setInterval', (orig) => (...a) => { rep.timers += 1; return orig(...a); });
     if (typeof Tools !== 'undefined') swap(Tools, 'define', (orig) => (tool) => { if (tool && !tool.__lazy) rep.tools.push({ id: tool.id, name: tool.name, icon: tool.icon, color: tool.color, description: tool.description || '', ...(tool.offRail ? { offRail: true } : {}), commands: (tool.commands || []).map((c) => ({ label: c.label })) }); return orig(tool); });
     return { ready, restore: () => { for (const u of undo.reverse()) u(); } };
   }
@@ -381,11 +437,13 @@ const Lazy = (() => {
   function load(name, o) {
     const g = groups.get(name);
     if (!g) return Promise.reject(new Error(`No lazy group "${name}"`));
+    if (g.off) return Promise.reject(offError(g));
+    if (!g.promise && !o?.idle && !o?.auto && !o?.dep && navigator.userActivation?.isActive) used(g);
     if (!o?.idle) { for (const x of groups.values()) if (x.pace) { x.pace = null; x.wake?.(); } } else if (!g.promise) g.pace = 'idle';
     if (g.promise) return g.promise;
     g.by = (new Error().stack || '').split('\n').slice(2, 5).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < '); // (round 94) who asked first (Lazy.by(name))
     g.promise = (async () => {
-      for (const dep of g.after || []) await load(dep, o);
+      for (const dep of g.after || []) { if (groups.get(dep)?.off) continue; await load(dep, { ...o, dep: true }); } // (round 153: an off one only ordered it, HearthFeatures SOFT)
       const go = chain.then(text).then(async () => {
         g.state = 'loading';
         const t0 = performance.now();
@@ -403,7 +461,9 @@ const Lazy = (() => {
         }
         p.restore();
         dropLeftovers(g);
+        if (!names.has(g.name)) names.set(g.name, namesOf(g.name));
         if (D.META) delete D.META[g.name]; // its manifest isn't needed any more
+        g.timers = rep.timers || 0;
         unguardGlobals(g);
         // a tool already on screen with the stand-in: the rail keeps the stand-in object (it hands over to the real one)
         g.state = 'loaded';
@@ -427,7 +487,7 @@ const Lazy = (() => {
     const go = (k, shift) => load(g.name).then(() => k.run(shift)).catch((err) => say(`${g.name}: ${err.message}`));
     const typing = (t) => /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName || '') || t?.isContentEditable;
     document.addEventListener('keydown', (e) => {
-      if (g.state !== 'stub' || e.defaultPrevented || e.altKey) return; // (a press is a use: held groups load too)
+      if (g.state !== 'stub' || g.off || e.defaultPrevented || e.altKey) return; // (a press is a use: held groups load too)
       // (round 54, fixes54) the Mac's mod is ⌘ only (a real Control press is the text field's own: ⌃P moves the caret up),
       // and a key by the letter printed on it (AZERTY's M sits on QWERTY's ";": WinMac.layoutCode)
       const mac = /Mac/.test(navigator.platform || '');
@@ -440,7 +500,7 @@ const Lazy = (() => {
       e.preventDefault(); e.stopPropagation();
       go(k, e.shiftKey);
     }, true);
-    try { window.hub?.onShortcut?.((sc) => { if (g.state !== 'stub') return; const k = g.keys.find((x) => x.mod && x.key.toLowerCase() === String(sc?.key || '').toLowerCase() && (x.shift == null || Boolean(x.shift) === Boolean(sc.shift))); if (k) go(k, Boolean(sc.shift)); }); } catch { /* no hub */ }
+    try { window.hub?.onShortcut?.((sc) => { if (g.state !== 'stub' || g.off) return; const k = g.keys.find((x) => x.mod && x.key.toLowerCase() === String(sc?.key || '').toLowerCase() && (x.shift == null || Boolean(x.shift) === Boolean(sc.shift))); if (k) go(k, Boolean(sc.shift)); }); } catch { /* no hub */ }
   }
 
   // ---------- after the first screen: the 'soon' groups, one per idle moment ----------
@@ -473,7 +533,7 @@ const Lazy = (() => {
   }
   function openGate() { if (CALM.open) return; CALM.open = true; for (const w of CALM.waiters.splice(0)) w(); }
   function soon() {
-    const all = [...groups.values()].filter((g) => g.tier === 'soon');
+    const all = [...groups.values()].filter((g) => g.tier === 'soon' && !g.off);
     const early = (g) => g.asap || KEEPS.has(g.name);
     const queue = [...all.filter(early), ...all.filter((g) => !early(g))]; // (deps still load first: load() waits for g.after)
     let lastEnd = 0;
@@ -483,7 +543,7 @@ const Lazy = (() => {
       // (round 20) not mid-gesture: a load waits for typing / a drag / a scroll to end (≤ 4 s; jank.js)
       // (round 29, fastboot) g.asap (the Lab, what you open most): right after the first frame, without waiting for an idle
       // moment (with a busy start those come seconds later); still never mid-gesture
-      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => (g.state === 'stub' ? load(g.name) : null)).catch(() => {}).finally(() => { lastEnd = performance.now(); next(); });
+      const go = () => (window.Jank?.calm?.(4000, 'feature load') ?? Promise.resolve()).then(() => (g.state === 'stub' && !g.off ? load(g.name, { auto: true }) : null)).catch(() => {}).finally(() => { lastEnd = performance.now(); next(); });
       if (g.asap) { go(); return; }
       if (KEEPS.has(g.name)) { idle(go); return; }
       calmGate().then(() => setTimeout(() => idle(go), CALM.open && !CALM.fast ? Math.max(0, CALM.gap - (performance.now() - lastEnd)) : 0));
@@ -496,7 +556,7 @@ const Lazy = (() => {
   const wanted = new Set();
   let painted = false;
   function want(g) {
-    if (hold) return;
+    if (hold || g.off) return;
     if (painted) queueMicrotask(() => load(g.name).catch(() => {}));
     else wanted.add(g.name);
   }
@@ -523,7 +583,7 @@ const Lazy = (() => {
   try { hold = localStorage.getItem('lazy.hold') === '1'; } catch { /* no storage */ }
   // (round 94) a following group: once what it needs is in, after the calm start, in an idle moment
   addEventListener('hearth:lazy', () => {
-    for (const f of groups.values()) if (f.follow === true && f.state === 'stub' && !f.promise && !hold && f.after.every((d) => groups.get(d)?.state === 'loaded')) { f.follow = 'due'; calmGate().then(() => idle(() => (f.state === 'stub' && !f.promise ? load(f.name) : null)?.catch(() => {}))); }
+    for (const f of groups.values()) if (f.follow === true && f.state === 'stub' && !f.promise && !hold && !f.off && f.after.every((d) => groups.get(d)?.state === 'loaded')) { f.follow = 'due'; calmGate().then(() => idle(() => (f.state === 'stub' && !f.promise && !f.off ? load(f.name, { auto: true }) : null)?.catch(() => {}))); }
   });
   function start() {
     if (readyAt) return;
@@ -533,7 +593,7 @@ const Lazy = (() => {
     afterPaint(() => {
       painted = true;
       text();
-      for (const n of wanted) load(n).catch(() => {});
+      for (const n of wanted) if (!groups.get(n)?.off) load(n).catch(() => {});
       soon();
     });
   }
@@ -558,9 +618,42 @@ const Lazy = (() => {
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
-  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}) }));
+  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
+  // (round 153, trim153) a feature switched on or off from Trim Hearth: on is live (stand-ins back, a group that loads at
+  // the start loads now); off hides its entry points now (stand-in commands go, its buttons hide), and a group already
+  // loaded (or with Ctrl/⌘+K lines, rail tools or app windows) keeps them until the next start → { restart: true }
+  function setFeature(id, on) {
+    if (!HF || !HF.set(id, on)) return { ok: false, restart: false };
+    const was = new Map([...groups.values()].map((g) => [g.name, Boolean(g.off)]));
+    applyOff();
+    let restart = false;
+    for (const g of groups.values()) {
+      if (was.get(g.name) === Boolean(g.off)) continue;
+      if (g.off) {
+        if (g.state !== 'stub') { restart = true; continue; }
+        for (const [key, cmd] of [...stubCmds]) {
+          if (!key.startsWith(`${g.name}|`)) continue;
+          stubCmds.delete(key);
+          const self = stubSelf.get(key);
+          if (Commands.get(cmd) === self) unregs.get(key)?.(); else if (self) self.when = () => false;
+        }
+        const m = groupMeta(g.name);
+        if ((m.actions || []).length || (m.tools || []).length || (m.apps || []).length || (m.keys || []).length) restart = true;
+      } else if (g.state === 'stub') {
+        if (placed.has(g.name)) {
+          if (!g.stubbed) stubNow(g);
+          else { const m = groupMeta(g.name); each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c)); }
+          if (document.readyState !== 'loading') stubLater(g);
+        }
+        if (g.tier === 'soon' && readyAt && !hold) idle(() => (g.state === 'stub' && !g.off ? load(g.name, { auto: true }) : null)?.catch(() => {}));
+      }
+    }
+    try { Commands.addInfo?.({}); } catch { /* the search index rebuilds on its own */ }
+    return { ok: true, restart };
+  }
   return {
-    load, state, start, at, text,
+    load, state, start, at, text, setFeature,
+    off: (name) => Boolean(groups.get(name)?.off), names: namesOf, used: (name) => { const g = groups.get(name); if (g) used(g); },
     // (round 94, labload94) prefetch(name): load it in the background, paced (lab-intent.js decides when) · groupOfAction(label)
     prefetch: (name) => load(name, { idle: true }), groupOfAction: (label) => actOf.get(label) || null, by: (name) => groups.get(name)?.by || null,
     calmNow: () => { CALM.fast = true; openGate(); }, // (round 83) the rest of the 'soon' groups now, back to back (tests)
