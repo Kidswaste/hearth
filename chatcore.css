@@ -110,6 +110,9 @@
 /* (round 165, chat165) a chat over one plain opaque colour takes that same colour (native.js solidBack): an opaque scroll
    box the compositor scrolls, same pixels. Zero specificity: any look that paints the list itself wins */
 :where(.messages.solid-back) { background-color: var(--solid-back); }
+/* (round 166, audit166) over a ground of gradients (the Forgeheart looks) the list takes the ground's plain base and the
+   wrap draws the ground's see-through lights over it, fixed to the window as the ground is */
+.messages-wrap.tint-back::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; background-image: var(--solid-tint); background-attachment: fixed; }
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */

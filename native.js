@@ -71,6 +71,54 @@ const Native = (() => {
   const each = (v, ok) => String(v).split(/,\s*(?![^()]*\))/).every((x) => ok.test(x.trim()));
   const under = (e, p) => { const s = getComputedStyle(e, p); if (!s.content || s.content === 'none' || s.content === 'normal' || s.display === 'none') return false; return !(/^(absolute|fixed)$/.test(s.position) && parseInt(s.zIndex, 10) > 0); }; // (a positioned one with z-index ≥ 1 is drawn over the chat)
   const no = (list, why, e) => { list.backWhy = e ? `${why}: ${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${typeof e.className === 'string' && e.className ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}` : why; return null; };
+  // (round 166, audit166) a ground of gradients the Forgeheart looks paint on the window (look.css' deep black with a warm
+  // light from above and a violet ember, forge-skin's grid): faint see-through lights (the tints) over one nearly plain
+  // colour (a top-to-bottom gradient a few levels deep, or a plain colour). The list takes that colour where it sits
+  // (±1 level) and the tints are drawn by its wrap over it, fixed to the window as before (.messages-wrap.tint-back
+  // ::before, chatcore.css): the list is an opaque box the compositor scrolls by itself, with subpixel text kept. The
+  // tints now lie over the messages instead of under them: at most a few levels on light text (checked: ≤ 8).
+  // → { color, tint } or null (list.backWhy says why)
+  const COLORS = /rgba?\([^)]*\)|color\(srgb [^)]*\)|transparent/g;
+  const rgbOf = (x) => {
+    let m = /^rgba?\((\d+(?:\.\d+)?), (\d+(?:\.\d+)?), (\d+(?:\.\d+)?)(?:, ([\d.]+))?\)$/.exec(x);
+    if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] == null ? 1 : +m[4] };
+    m = /^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.]+))?\)$/.exec(x);
+    if (m) return { r: m[1] * 255, g: m[2] * 255, b: m[3] * 255, a: m[4] == null ? 1 : +m[4] };
+    return x === 'transparent' ? { r: 0, g: 0, b: 0, a: 0 } : null;
+  };
+  const split = (v) => { const out = []; let d = 0; let at = 0; const s = String(v); for (let i = 0; i < s.length; i++) { const ch = s[i]; if (ch === '(') d += 1; else if (ch === ')') d -= 1; else if (ch === ',' && !d) { out.push(s.slice(at, i).trim()); at = i + 1; } } out.push(s.slice(at).trim()); return out; }; // (top-level commas only)
+  const args = (fn) => split(fn.slice(fn.indexOf('(') + 1, -1));
+  function groundOf(list, e, s, lr) {
+    const why = (w) => { list.backWhy = w; return null; };
+    if (!list.parentElement?.classList.contains('messages-wrap')) return why('a gradient ground (no wrap to draw its lights)');
+    const r = e.getBoundingClientRect();
+    if (Math.abs(r.left) > 1 || Math.abs(r.top) > 1 || Math.abs(r.width - innerWidth) > 1 || Math.abs(r.height - innerHeight) > 1) return why('a gradient ground not the size of the window');
+    const layers = split(s.backgroundImage);
+    const n = layers.length;
+    const all = (v, ok) => { const xs = split(v); return xs.length >= 1 && xs.every(ok); };
+    if (!all(s.backgroundSize, (x) => x === 'auto' || x === 'auto auto') || !all(s.backgroundPosition, (x) => x === '0% 0%') || !all(s.backgroundAttachment, (x) => x === 'scroll' || x === 'fixed')
+      || !all(s.backgroundOrigin, (x) => x === 'padding-box') || !all(s.backgroundClip, (x) => /^(border|padding)-box$/.test(x))) return why('a gradient ground placed or sized its own way');
+    let base = null; let tints = layers;
+    const opaque = rgbOf(s.backgroundColor);
+    if (opaque && opaque.a === 1) base = { top: opaque, bottom: opaque };
+    else if (!clearBg(s.backgroundColor)) return why('a gradient ground over a translucent colour');
+    else if (/^linear-gradient\(/.test(layers[n - 1])) {
+      const a = args(layers[n - 1]);
+      if (/^(180deg|to bottom)$/.test(a[0])) a.shift();
+      const top = rgbOf(a[0]); const bottom = rgbOf(a[1]);
+      if (a.length !== 2 || !top || !bottom || top.a !== 1 || bottom.a !== 1) return why('a gradient ground with no plain base');
+      if (['r', 'g', 'b'].some((k) => Math.abs(top[k] - bottom[k]) > 4)) return why('a gradient ground whose base changes too much');
+      base = { top, bottom }; tints = layers.slice(0, -1);
+    } else return why('a gradient ground with no plain base');
+    for (const t of tints) {
+      if (!/^(repeating-)?(radial|linear|conic)-gradient\(/.test(t)) return why('a picture under it');
+      const cs = t.match(COLORS) || [];
+      if (!cs.length || cs.some((x) => { const q = rgbOf(x); return !q || q.a >= 1; })) return why('a gradient ground with an opaque light');
+    }
+    const f = Math.min(1, Math.max(0, (lr.top + lr.height / 2 - r.top) / (r.height || 1)));
+    const mix = (k) => Math.round(base.top[k] + (base.bottom[k] - base.top[k]) * f);
+    return { color: `rgb(${mix('r')}, ${mix('g')}, ${mix('b')})`, tint: tints.join(', ') };
+  }
   function backdropOf(list) {
     const cs = getComputedStyle(list);
     const mine = list.classList.contains('solid-back');
@@ -88,7 +136,7 @@ const Native = (() => {
         if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return no(list, 'something drawn under it', c);
       }
       const c = s.backgroundColor;
-      if (s.backgroundImage !== 'none') return no(list, 'a picture or gradient under it', e);
+      if (s.backgroundImage !== 'none') return groundOf(list, e, s, lr) || no(list, list.backWhy || 'a picture or gradient under it', e);
       if (clearBg(c)) continue;
       if (!OPAQUE.test(c)) return no(list, `a translucent ground (${c})`, e);
       if (!each(s.backgroundClip, /^(border|padding)-box$/)) return no(list, 'a ground not under its padding', e);
@@ -105,9 +153,17 @@ const Native = (() => {
     const k = backSeen.get(list);
     if (k && k[0] === backGen && k[1] === at) return;
     list.backWhy = '';
-    const c = backdropOf(list);
-    if (c === undefined) return; // (hidden: the next draw judges it)
+    const got = backdropOf(list);
+    if (got === undefined) return; // (hidden: the next draw judges it)
     backSeen.set(list, [backGen, at]);
+    const c = got && typeof got === 'object' ? got.color : got;
+    // (round 166, audit166) a gradient ground's lights, drawn by the wrap over the list (nothing written when the same)
+    const wrap = list.parentElement?.classList.contains('messages-wrap') ? list.parentElement : null;
+    if (wrap && !list.classList.contains('parked')) {
+      const tint = got?.tint || '';
+      if (wrap.style.getPropertyValue('--solid-tint') !== tint) { if (tint) wrap.style.setProperty('--solid-tint', tint); else wrap.style.removeProperty('--solid-tint'); }
+      if (wrap.classList.contains('tint-back') !== Boolean(tint)) wrap.classList.toggle('tint-back', Boolean(tint));
+    }
     if (c && list.style.getPropertyValue('--solid-back') !== c) list.style.setProperty('--solid-back', c);
     else if (!c && list.style.getPropertyValue('--solid-back')) list.style.removeProperty('--solid-back');
     if (list.classList.contains('solid-back') !== Boolean(c)) list.classList.toggle('solid-back', Boolean(c));
