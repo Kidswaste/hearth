@@ -94,7 +94,9 @@ sign-ins, cookies and local storage stay in "Sign-ins and window settings", unto
 that reply's after-effects were still happening (the progress bar's ✓ fading, juice's sparks, "This chat is in Earlier
 chats" leaving at 7 s: 3.3 wake-ups a second counted, over the 1.5 budget). The chat step now waits for them to settle
 (`settle`: no notification, progress bar or ✓ dot on screen, then 3 s without a DOM change; at most 30 s, and it says so
-when it doesn't settle) before counting. The budgets are unchanged. Every notification the run shows is listed with when
+when it doesn't settle) before counting; a notification that arrives during the count (here, twice in a row on both
+this branch and round 166: Lite mode's "Things are slow — turn on Lite mode?" at 90.7 s, right as the count began) makes
+it count once more after it has gone (`recounted`). The budgets are unchanged. Every notification the run shows is listed with when
 (`toastLog`), and each setup with its time span. Codex's app catalog (`codex-capabilities.js` `Catalog.fetch`, its
 5-minute close timer) is reported on its own line ("For Codex: …") and not counted against the main process' timer
 budget; in this run it didn't fire.
