@@ -78,7 +78,39 @@ switched automatically; Ctrl/⌘+K can stop it for good (`lite.noOffer`).
 
 ## Measured
 
-MEASURE_SECTION
+`node dev/smoke.js --fake-engines --check-timeout 900000 [--burn 3] --eval "localStorage.setItem('hub.lite', 'true')" --script dev/perf151-measure.js`
+(the evals run before the script and its reload keeps the switch). perf151-measure now also records the preview's own
+drawn fps (its stats messages), its frame cap and the window's composited layers. Same box as perf151: 4 shared CPUs,
+**software GL** (the "GPU process" is the CPU drawing the scene, so its ms are the scene's drawing; on the owner's RTX
+4080 that work is on the graphics card). realscene-lib's "real scene" (Beat burst demo, a glTF model, a raw rAF rig,
+**bloom**, a 124 BPM song) at 960 × 540, then the same at 256 × 144 ("light scene": a frame rate a real card gives).
+One run per setup, on the final merged code (round 157 base).
+
+Calm box (`--burn 0`), Lite off → on (ms of CPU a second; 1000 = one core):
+
+| Setup | All processes | GPU process (scene drawing) | Lab window | Preview page | Preview fps (cap) | Window layers | Window anims running |
+|---|---:|---:|---:|---:|---|---:|---:|
+| Chat open, idle | 4 → 3 | 0 → 0 | 0 → 0 | – | – | – | 0 → 0 |
+| Lab, heavy scene playing | 3,293 → 3,138 | 3,175 → 3,021 | 54 → 52 | 55 → 53 | 13.6 (60) → **18.0 (30)** | 20 → **15** | 5 → 2 |
+| Lab, scene stopped, nobody using Hearth | 3,266 → **2,185** | 3,193 → **2,073** | 17 → 32 | 45 → 65 | 14.2 (30) → 29.9 (30) | 21 → **15** | 0 → 0 |
+| Lab, light scene playing | 2,975 → 2,741 | 2,846 → 2,607 | 50 → 67 | 69 → 55 | 21.8 (60) → **29.8 (30)** | 20 → **15** | 3 → 2 |
+| Hearth hidden | 17 → 15 | 0 → 0 | 3 → 3 | 6 → 5 | 0 | – | 15 → 0 (unseen) |
+
+Busy box (`--burn 3`), Lite off: playing 1,758 all / 1,653 GPU, 7.7 fps; stopped 1,761 / 1,706, 8.6 fps; light scene
+1,664 / 1,558, 14.5 fps; hidden 10. (Lite on under `--burn 3`: BUSY_ON)
+
+What it says:
+- **The cap holds**: with Lite the preview never draws more than 30 a second, even in front (Auto allows 60).
+- **Half resolution + no bloom is the big win on a slow graphics path**: the heavy scene playing goes from 13.6 to 18
+  fps *while drawing less*, and a stopped (still moving) scene costs a third less drawing (3,193 → 2,073 ms/s). On this
+  box the drawing is CPU-bound; on an RTX 4080 the same cut is graphics-card time (half the pixels, no bloom mips, no
+  shadow passes, ≤ 30 frames instead of 60 – 240) — which is what frees the card for the owner's other apps.
+- **Composited layers in the Lab window 20–21 → 15** (no will-change, no animation layers); running animations in the
+  Lab 5 → 2 (the 2 left are the timeline playheads' Web Animations, transform-only, on the compositor).
+- The Lab window's own main thread doesn't drop (it follows the preview's frames: 30 a second now where software GL
+  managed 14 before, so it gets more stats / ticks to paint); per preview frame it is cheaper.
+- Chat idle and hidden were already near zero (perf151); Lite keeps them there (hidden: no animation left unseen).
+- Timers: Power.every timers at a third of their pace (`/power` lists them), not visible in a 10 s window.
 
 ## Check
 
@@ -89,7 +121,10 @@ tags, Settings' row), renders (a still and a 1 s MP4 with Lite on = with Lite of
 persist (reload: on before the first frame, preview 30 / half again), restore (the Lab bar tag turns it off, every
 setting as before), offer (a 70 ms-a-frame layer: the offer once, not switched on).
 
-CHECK_SECTION
+Final run on the merged code (`--exact lite153 trim153 labwin153 mem154 unit:boot-test unit:lazymanifest-test`):
+**6 / 6 passed** (lite153 162 s, trim153 74 s, labwin153 55 s, mem154 93 s, boot-test, lazymanifest-test 150 s).
+Earlier on the same branch (before the round 155 / 156 merges): smooth142, redux151, perf151, renderrange142 and
+unit:powerwise-test passed (perf151's "hidden ≤ 30 ms/s" missed once at 31 ms/s on a busy box and passed on its rerun).
 
 ## For Codex
 

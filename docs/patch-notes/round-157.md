@@ -51,4 +51,16 @@ once each time you open Hearth**, the **×** dismisses it, and Hearth **never tu
 
 ## How much it saves
 
-MEASURE_TABLE
+Measured on our slow test computer (it draws 3D with its processor instead of a graphics card, so the numbers are
+far bigger than yours; compare them with each other):
+
+| | Lite off | Lite on |
+|---|---|---|
+| A heavy music scene with glow, playing | 13.6 frames a second | **18 frames a second** (and it does less work for each) |
+| The same scene stopped but still moving | full cost | **about a third less** drawing work |
+| The Lab window's layers kept on the graphics card | 20–21 | **15** |
+| Animations running in the Lab | 5 | 2 (only the playheads) |
+| The preview's frame rate | up to 60 (or your screen's rate) | **never more than 30** |
+
+On your RTX 4080 the saving is graphics-card time: half the pixels, no glow passes, no shadow passes and at most 30
+frames a second instead of 60–240. That is what leaves room for your other apps.
