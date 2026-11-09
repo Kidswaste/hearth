@@ -25,8 +25,10 @@
 const { app, BrowserWindow, clipboard, desktopCapturer, nativeImage, screen, session, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const FR = require('./framereader');
-const WebmDuration = require('./webm-duration');
+// (round 162, main162) the frame reader (40 KB) and the WebM fixer load on the first capture call, not at every start
+const lazyMod = (file) => { let m = null; return new Proxy({}, { get: (_t, k) => (m ||= require(file))[k] }); };
+const FR = lazyMod('./framereader');
+const WebmDuration = lazyMod('./webm-duration');
 const { DATA_DIR } = require('./store');
 
 const SUBS = ['shots', 'recordings', 'frames', 'sheets', 'tours', 'made'];

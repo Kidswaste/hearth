@@ -171,7 +171,7 @@ step('… the window\'s background checks at half pace (updater every 60 min)', 
 const bg1 = await window.hub.bgState();
 step('… the main process\' listeners hear it (sync, now playing, app windows: bgmain battery)', bg1.battery === true, { battery: bg1.battery, sync: bg1.sync });
 const mt = (await T({ timers: true })).timers;
-step('… the main process\' own timers at half pace (the config safety net every 20 s)', mt.some((t) => /config-stat/.test(t.id) && t.every === 20000), mt);
+step('… the main process\' own timers at half pace (the config safety net every 60 s: round 162, 30 s on mains)', mt.some((t) => /config-stat/.test(t.id) && t.every === 60000), mt);
 Hints.flush?.();
 await until(() => [...document.querySelectorAll('#toasts .toast')].some((t) => /On battery/.test(t.textContent)), 5000);
 step('… one calm note through Hints, the first time', [...document.querySelectorAll('#toasts .toast')].some((t) => /On battery: Hearth goes lighter/.test(t.textContent)), Hints.state().log.slice(-3));
