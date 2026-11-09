@@ -141,7 +141,7 @@ the drawer reaches the scene's chat and the reply comes back; close → Hearth's
 "Hide Hearth" hides and restores. `dev/smoke.js` gained `{ cdnFor }` (another window's pages get the local three.js copy)
 and `pageEval` with `frame: true` (an out-of-process frame, e.g. the Lab window's preview).
 
-Final run: FINAL_RUN
+Final run (`--exact labwin153 perf151 redux151 smooth142 safeopen147 unit:lazymanifest-test unit:boot-test`): **7 / 7 passed** (labwin153 55 s, perf151 156 s, redux151 89 s, smooth142 137 s, safeopen147 80 s, lazymanifest 148 s, boot-test 1 s; first screen 1,540 KB of the 1,547 KB budget).
 
 ## For Codex
 
