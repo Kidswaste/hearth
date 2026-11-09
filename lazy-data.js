@@ -10,12 +10,12 @@ const LazyData = (() => {
     // (round 157, boot157) the chat's own parts that the first frame doesn't draw: right after it, first of all (asap), in
     // their old order. slots / redraw / send: lazy.js "chat parts that load right after the first frame" (docs/upgrades/boot157.md)
     { name: 'chatlive', asap: true, slots: true, redraw: true, send: true, at: 'native.js', files: ['chat-live.js'], globals: ['ChatLive'] },
-    { name: 'astra', asap: true, slots: true, redraw: 'mount', send: true, at: 'collab-eyes.js', files: ['astra.js'], css: ['astra.css'], cssBefore: 'forge-skin.css', globals: ['Astra'] },
+    { name: 'astra', asap: true, slots: true, redraw: 'mount', send: true, actionsNow: true, at: 'collab-eyes.js', files: ['astra.js'], css: ['astra.css'], cssBefore: 'forge-skin.css', globals: ['Astra'] },
     { name: 'smart', asap: true, slots: true, redraw: true, send: true, at: 'collab-eyes.js', files: ['router.js', 'routerlearn.js'], globals: ['Router', 'RouterLearn'] },
     { name: 'offline', asap: true, slots: true, redraw: true, send: true, at: 'routerlearn.js', files: ['offline-core.js', 'offline.js'], globals: ['OfflineCore', 'Offline'] },
     { name: 'chatkit', asap: true, slots: true, redraw: true, send: true, keysNow: true, at: 'habits.js', files: ['chat-things.js', 'chat-media.js', 'chat-reach.js', 'chat-context.js'], globals: ['ChatThings', 'ChatMedia', 'Reach', 'ChatContext'] },
     { name: 'chatattach', asap: true, slots: true, send: true, keysNow: true, at: 'chat-context.js', files: ['chat-attach.js'], globals: ['ChatAttach'] },
-    { name: 'access', asap: true, slots: true, redraw: true, send: true, at: 'chat-calm.js', files: ['access-rules.js', 'access.js'], css: ['access.css'], cssBefore: 'apps.css', globals: ['AccessRules', 'Access'] },
+    { name: 'access', asap: true, slots: true, redraw: true, send: true, keysNow: true, at: 'chat-calm.js', files: ['access-rules.js', 'access.js'], css: ['access.css'], cssBefore: 'apps.css', globals: ['AccessRules', 'Access'] },
     { name: 'progresshooks', asap: true, slots: true, send: true, at: 'cmdpage.js', files: ['progress-hooks.js'], globals: ['ProgressHooks'] },
     { name: 'creative', tier: 'use', at: 'astra.js', files: ['tools/creative-core.js', 'tools/workbench-core.js', 'tools/workbench-story.js', 'tools/workbench-ui.js', 'tools/creative-playground.js'], css: ['tools/creative-playground.css', 'tools/workbench.css'], globals: ['CreativeCore', 'WorkbenchCore', 'WorkbenchStory', 'WorkbenchUI', 'CreativePlayground'] }, // the Creative board (round 116, slim116: the Sound desk's files are gone) · docs/lazy-groups.md
     { name: 'astraconnect', tier: 'use', at: 'astra.js', files: ['astra-connect.js', 'astra-workspace.js'], css: ['astra-connect.css'], globals: ['AstraConnect', 'AstraWorkspace'] },

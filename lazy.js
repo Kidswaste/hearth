@@ -273,6 +273,8 @@ const Lazy = (() => {
     // (round 139, room139) keysNow: a group whose keys-sheet lines its file added as it loaded (keys-lines.js, once
     // part of keys-ui.js) gets their stand-ins right here too, so the sheet keeps its order
     if (g.keysNow) { seen = {}; each(g, m.keys, (k) => stubKey(g, k)); }
+    // (round 157, boot157) actionsNow: a group whose file added its Ctrl/⌘+K lines as it ran (astra.js) gets them here too
+    if (g.actionsNow) { seen = {}; each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys)); }
   }
   // (what the palette / keys sheet already list, read once per moment: their lists are copied on every read)
   let seen = {};
@@ -283,7 +285,7 @@ const Lazy = (() => {
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
     each(g, m.tools, (t) => stubTool(g, t));
     if (!g.keysNow) each(g, m.keys, (k) => stubKey(g, k));
-    each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
+    if (!g.actionsNow) each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
     each(g, m.apps, (a) => stubApp(g, a));
   }
   // ---------- (round 52, lazymeta) the stand-ins' words come right after the first frame ----------
