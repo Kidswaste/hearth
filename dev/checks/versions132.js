@@ -56,7 +56,7 @@ try {
   const txSig = async () => LabTxn._test.sigOf(await LabTxn.snap(sid));
 
   // ---------- 2 (way in) + 1a. the list from Sketch ▾ › History; Save a version… with a name, by clicks ----------
-  const hist = ThreeLab.search.menus().sketch.find((x) => Array.isArray(x) && x[0] === 'History');
+  const hist = (await ThreeLab.search.menus()).sketch.find((x) => Array.isArray(x) && x[0] === 'History');
   const vrow = hist?.[2]?.find((x) => Array.isArray(x) && /Scene versions/.test(x[0]));
   ok(vrow && typeof vrow[2] === 'function' && hist[2].some((x) => Array.isArray(x) && /^Save a version/.test(x[0])), 'Sketch ▾ › History has 🕘 Scene versions… and Save a version…');
   vrow[2]();

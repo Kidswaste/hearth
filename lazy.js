@@ -552,12 +552,17 @@ const Lazy = (() => {
     }
     return Promise.all(all);
   }
-  function css(href, before) {
+  function css(href, before, after) {
     if (document.querySelector(`link[rel=stylesheet][href="${href}"]`)) return Promise.resolve();
+    // (round 159, css159) `cssAfter`: rules moved out of an eager sheet go right after it (after the others moved there
+    // before them), where they used to be; a page without that sheet (the Lab window) never had them: not loaded
+    const from = after && document.querySelector(`link[rel=stylesheet][href="${after}"]`);
+    if (after && !from) return Promise.resolve();
     return new Promise((res) => {
       const l = document.createElement('link');
       l.rel = 'stylesheet'; l.href = href;
       l.onload = l.onerror = () => { l.onload = l.onerror = null; res(); };
+      if (from) { let at = from; while (at.nextElementSibling?.dataset?.after === after) at = at.nextElementSibling; l.dataset.after = after; at.after(l); return; }
       // after the eager sheets, before the user theme (<style id="user-theme"> keeps the last word); (round 19) a group's
       // `cssBefore` puts it back where index.html had it, so later sheets keep overriding it as before
       const at = (before && document.querySelector(`link[rel=stylesheet][href="${before}"]`)) || document.getElementById('user-theme');
@@ -588,7 +593,7 @@ const Lazy = (() => {
         const holds = [];
         holding = holds;
         try {
-          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files, g)]);
+          await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore, g.cssAfter?.[h])), injectAll(g.files, g)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
           holding = null;

@@ -26,22 +26,14 @@ html.p8-over-media #menu, html.p8-over-media #menu-fly { backdrop-filter: none !
 .bd-chip { height: 28px; display: inline-flex; align-items: center; gap: 6px; border-radius: var(--r-pill, 999px); border-color: var(--line-hi, var(--line));
   background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 94%, transparent); box-shadow: 0 4px 14px #0006; transition: border-color var(--t-fast, .12s), color var(--t-fast, .12s), transform var(--t-fast, .12s); }
 html[data-skin~="forge"] .bd-chip { border-radius: 0; clip-path: var(--cut-sm, none); }
-.bd-chip:hover { color: var(--fh-gold-text, var(--text)); }
-.bd-chip:active { transform: translateY(1px); }
-.bd-chip .p8-ico { width: 15px; height: 15px; flex: none; color: var(--fh-gold, var(--accent)); }
 .bd-zoom { justify-content: center; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
 /* + Add is the board's one primary action: the molten-gold chrome, like Run in the Lab */
 :root[data-look~=v2] .bd-add {
   color: var(--m-gold-ink, #1a1206); font-family: var(--font-head, inherit); letter-spacing: .06em; text-transform: uppercase; font-size: 12px; font-weight: 700; border: 0;
   background: var(--m-gold, linear-gradient(180deg, #ffe7a3, var(--fh-gold) 55%, #b9831b)); box-shadow: var(--m-bevel, none), 0 4px 14px #0006;
 }
-:root[data-look~=v2] .bd-add:hover { color: var(--m-gold-ink, #1a1206); filter: brightness(1.08); }
-:root[data-look~=v2][data-scheme=light] .bd-chip { box-shadow: 0 3px 10px #0002; }
 .bd-hud :is(button):focus-visible, .bd-root:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, var(--accent)), 0 0 0 3px color-mix(in srgb, var(--fh-gold, var(--accent)) 28%, transparent); }
-.bd-root:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent); }
 /* the empty board teaches in one line, under its icon */
-.bd-empty { gap: 10px; }
-.bd-empty .p8-ico { width: 44px; height: 44px; color: var(--fh-gold, var(--accent)); opacity: .55; filter: drop-shadow(0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent)); }
 .bd-empty b { font-family: var(--font-head, inherit); font-size: 15px; letter-spacing: .04em; color: var(--text); }
 .bd-empty span { font-size: 12.5px; }
 :root:not([data-motion=off]) .bd-empty { animation: hx-rise .4s var(--ease-out, ease-out) both; }
@@ -50,10 +42,8 @@ html[data-skin~="forge"] .bd-chip { border-radius: 0; clip-path: var(--cut-sm, n
 .bd-quick { border-radius: var(--r-md, 10px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
 html[data-skin~="forge"] .bd-quick { clip-path: var(--cut-sm, none); }
 .bd-quick button { font-size: 12px; min-height: 24px; }
-:root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) both; }
 .bd-search { border-radius: var(--r-pill, 999px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
 html[data-skin~="forge"] .bd-search { border-radius: 0; clip-path: var(--cut-sm, none); }
-.bd-search:focus-within { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); }
 :root:not([data-motion=off]) .bd-search { animation: hx-pop .16s var(--ease-out, ease-out) both; }
 .bd-selinfo { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; letter-spacing: .02em; }
 .bd-present-cap { font-family: var(--font-head, inherit); letter-spacing: .05em; }
@@ -61,40 +51,27 @@ html[data-skin~="forge"] .bd-search { border-radius: 0; clip-path: var(--cut-sm,
 .bd-cmp-head button { border-radius: var(--r-sm, 6px); }
 .bd-cmp-head b { font-family: var(--font-head, var(--font)); letter-spacing: .08em; text-transform: uppercase; font-size: 13px; color: var(--fh-gold-hi, #fff); }
 /* references can be picked up: the hand says so (not on locked ones, not while editing text) */
-.bd-root:not(.bd-hand) .bd-item:not(.bd-locked):not(.bd-t-link):hover { cursor: grab; }
-.bd-root .bd-item [contenteditable="true"] { cursor: text; }
 html[data-skin~="forge"] .bd-cmp-head button { clip-path: var(--cut-sm, none); }
 /* drop target: a calm dashed edge instead of a hard inset ring */
-.bd-dropping .bd-vp { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--bd-gold) 85%, transparent), inset 0 0 60px color-mix(in srgb, var(--bd-gold) 18%, transparent); }
 .bd-dropping .bd-vp::after { font-family: var(--font-head, inherit); letter-spacing: .04em; border-radius: var(--r-pill, 999px); }
-html[data-skin~="forge"] .bd-dropping .bd-vp::after { border-radius: 0; clip-path: var(--cut-sm, none); }
 /* light looks: the board's own shadows were made for dark grounds */
-:root[data-scheme=light] .bd-item[data-shadow="soft"] .bd-clip { box-shadow: 0 10px 26px #0003; }
 :root[data-scheme=light] :is(.bd-t-web, .bd-t-note, .bd-t-swatch, .bd-t-palette) { box-shadow: 0 6px 18px #0002; }
-:root[data-scheme=light] .bd-badge { background: #000a; }
 
 /* references on the board: the forge type on what the board writes itself (never on your own notes) */
 .bd-ftitle { font-family: var(--font-head, var(--font)); letter-spacing: .06em; text-transform: uppercase; }
 .bd-badge { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; letter-spacing: .03em; border-radius: var(--r-sm, 10px); }
-html[data-skin~="forge"] .bd-badge { clip-path: var(--cut-sm, none); }
 .bd-stamp { font-family: var(--font-head, var(--font)); background: var(--m-gold, var(--bd-gold)); color: var(--m-gold-ink, #1a1408); }
 .bd-webbar { font-family: var(--font-head, var(--font)); font-size: 12.5px; letter-spacing: .02em; border-top: 1px solid var(--line); }
 .bd-open { border-radius: var(--r-sm, 6px); }
-.bd-open:focus-visible { outline: none; opacity: 1; color: var(--bd-gold); box-shadow: inset 0 0 0 1px var(--bd-gold); }
 /* alignment guides in the look's hot color (they were a fixed pink) */
 .bd-guide { background: var(--fh-hot, #ff4fd8); }
 .bd-marquee { border-color: color-mix(in srgb, var(--bd-gold) 85%, transparent); }
 /* the vibe card (a reference's palette, light, motion…): the look's corners and meters */
-.bd-vibe-card .bd-pal { border-radius: var(--r-md, 8px); box-shadow: inset 0 0 0 1px #0004; }
-html[data-skin~="forge"] .bd-vibe-card .bd-pal { clip-path: var(--cut-sm, none); }
-.bd-vibe-card .bd-meter { border-radius: var(--r-pill, 3px); background: color-mix(in srgb, var(--text) 10%, transparent); }
 .bd-vibe-card .bd-meter i { background: linear-gradient(90deg, var(--fh-ember, var(--bd-gold)), var(--fh-gold, var(--bd-gold))); }
 .bd-vibe-card .bd-meters > span:nth-child(3n + 3) { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; color: var(--muted); }
 .bd-vibe-card pre { border-radius: var(--r-md, 8px); border: 1px solid var(--line); font-family: var(--mono, ui-monospace, monospace); }
 
 /* pointing at a reference: a quiet gold edge says it can be picked up (not while the board moves) */
-.bd-root:not(.bd-moving):not(.bd-presenting) .bd-item:not(.bd-t-frame):not(.bd-t-link):not(.bd-locked):hover { outline: 1px solid color-mix(in srgb, var(--bd-gold) 45%, transparent); outline-offset: 2px; }
-.bd-root:not(.bd-moving) .bd-t-frame:hover .bd-ftitle { color: var(--bd-gold); }
 .bd-selinfo { background: color-mix(in srgb, var(--fh-pop, var(--bg)) 92%, transparent); border: 1px solid var(--line); }
 /* a reference dragged over a chat box: the box says what will happen */
 form.bdd-drop-hint { position: relative; }
@@ -106,27 +83,16 @@ html[data-skin~="forge"] form.bdd-drop-hint::after { border-radius: 0; clip-path
 /* closed, it is out of the page's way: not focusable, not read out (it was only moved off screen) */
 .bdd { visibility: hidden; transition: transform .26s cubic-bezier(.3, .7, .2, 1), visibility 0s .26s; border-color: var(--line-hi, var(--line)); border-radius: var(--r-lg, 14px); }
 .bdd.open { visibility: visible; transition: transform .26s cubic-bezier(.3, .7, .2, 1), visibility 0s; }
-html[data-skin~="forge"] .bdd { clip-path: var(--cut, none); }
-:root[data-look~=v2] .bdd { background: var(--hairline) top / 100% 1px no-repeat, linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); }
-.bdd-head { padding-top: 12px; }
 .bdd-head::before { content: ''; flex: none; width: 15px; height: 15px; background: var(--fh-gold, var(--accent)); -webkit-mask: var(--p8-i-board) center / contain no-repeat; mask: var(--p8-i-board) center / contain no-repeat; }
 .bdd-head select, .bdd-search { height: 28px; border-radius: var(--r-sm, 8px); border-color: var(--line-hi, var(--line)); }
 .bdd-head button, .bdd-foot button { min-height: 26px; border-radius: var(--r-sm, 8px); border-color: var(--line-hi, var(--line)); color: var(--text); }
 html[data-skin~="forge"] :is(.bdd-head button, .bdd-foot button, .bdd-tile, .bdd-vibe, .bdd-head select, .bdd-search) { border-radius: 0; clip-path: var(--cut-sm, none); }
-.bdd-search:focus { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); outline: none; }
 .bdd-vibe { border: 1px solid var(--line); transition: border-color var(--t-fast, .12s); }
-.bdd-vibe:hover { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, var(--line)); color: var(--text); }
 .bdd-tile { transition: border-color var(--t-fast, .12s), transform var(--t-fast, .12s); }
-.bdd-tile:hover { transform: translateY(-1px); }
-.bdd-tile:focus-visible, .bdd-tile:focus-within { outline: none; border-color: var(--fh-gold, var(--accent)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 30%, transparent); }
-.bdd-tile .bdd-send { border-radius: var(--r-sm, 6px); background: color-mix(in srgb, var(--fh-gold, #e6b450) 92%, #000); color: var(--m-gold-ink, #1a1206); font-weight: 700; }
-.bdd-tile .bdd-k { font-family: var(--mono, ui-monospace, monospace); letter-spacing: .03em; }
 .bdd-grid:empty::after { content: 'Drop or paste references here — they give chats a vibe, never the footage.'; grid-column: 1 / -1; padding: 24px 10px; text-align: center; color: var(--muted); font-size: 12px; }
 .bdd-foot { border-top-color: var(--line-hi, var(--line)); min-height: 42px; }
 .bdd-foot > button:first-child { color: var(--fh-gold-text, var(--text)); }
-:root[data-scheme=light] .bdd { box-shadow: 0 18px 50px #0003; }
 @media (prefers-reduced-motion: reduce) { .bdd, .bdd.open { transition: visibility 0s; } }
-:root[data-motion=off] .bdd, :root[data-motion=off] .bdd.open { transition: visibility 0s; }
 
 /* ====================================================================================================== */
 /* ---------- the Lab scene editor's rows ---------- */
@@ -136,59 +102,28 @@ html[data-skin~="forge"] :is(.bdd-head button, .bdd-foot button, .bdd-tile, .bdd
 /* ====================================================================================================== */
 /* ---------- capture ---------- */
 /* segmented control in the captures library: the app's own (the gold "on" state had dark text on dark metal) */
-:root .cap-seg { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 8px); }
-html[data-skin~="forge"] .cap-seg { border-radius: 0; clip-path: var(--cut-sm, none); }
 :root .cap-seg button { min-height: 28px; color: var(--muted); background: transparent; box-shadow: none; }
-:root .cap-seg button:hover { color: var(--text); background: var(--hover); }
-:root .cap-seg button.on { color: var(--fh-gold-text, var(--text)); background: linear-gradient(180deg, color-mix(in srgb, var(--fh-gold, #ffc233) 26%, transparent), color-mix(in srgb, var(--fh-gold, #ffc233) 12%, transparent)); box-shadow: inset 0 -2px 0 var(--fh-gold, #ffc233); }
-:root .cap-ann-tool.on { color: var(--fh-gold-text, var(--text)); background: color-mix(in srgb, var(--fh-gold, #ffc233) 22%, transparent); box-shadow: inset 0 -2px 0 var(--fh-gold, #ffc233); }
 /* the dialogs' heads: the forge title with the capture icon, controls at one height */
 :is(.cap-view-head, .cap-lib-head) h2 { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-head, inherit); letter-spacing: .08em; }
-.cap-lib-head h2::before { content: ''; flex: none; width: 16px; height: 16px; background: currentColor; -webkit-mask: var(--p8-i-capture) center / contain no-repeat; mask: var(--p8-i-capture) center / contain no-repeat; }
 :is(.cap-view-foot, .cap-view-head, .cap-lib-head) button:not(.primary):not(.cap-ann-tool):not(.cap-ann-swatch) { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 8px); }
 html[data-skin~="forge"] :is(.cap-view-foot, .cap-view-head, .cap-lib-head) button:not(.primary):not(.cap-ann-swatch) { border-radius: 0; clip-path: var(--cut-sm, none); }
-.cap-lib-q { height: 30px; }
 /* captures: cards rise a little under the pointer, a ring for the keyboard */
 .cap-card { transition: border-color var(--t-fast, .12s), transform var(--t-fast, .12s); }
-.cap-card:hover { transform: translateY(-1px); }
-.cap-card:focus-visible { outline: none; border-color: var(--fh-gold, #ffc233); box-shadow: 0 0 0 2px color-mix(in srgb, var(--fh-gold, #ffc233) 30%, transparent); }
 html[data-skin~="forge"] :is(.cap-card, .cap-view-stage, .cap-read-cell img) { border-radius: 0; }
-.cap-card figcaption small { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; }
-/* empty library: one line under the capture icon */
-.cap-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--muted); }
-.cap-empty::before { content: ''; width: 40px; height: 40px; background: var(--fh-gold, var(--accent)); opacity: .5; -webkit-mask: var(--p8-i-capture) center / contain no-repeat; mask: var(--p8-i-capture) center / contain no-repeat; }
 /* the frame reader's results, pickers (tours, social frames, backgrounds), annotation tools */
 .cap-read-cell { transition: transform var(--t-fast, .12s); }
-.cap-read-cell:hover { transform: translateY(-1px); }
 .cap-read-cell:hover img { box-shadow: 0 0 0 1px var(--fh-gold, #ffc233); }
 .cap-read-text { font-family: var(--mono, ui-monospace, monospace); border: 1px solid var(--line); border-radius: var(--r-md, 8px); }
 html[data-skin~="forge"] :is(.cap-read-text, .cap-read-cell img, .cap-picker-row) { border-radius: 0; }
-.cap-picker-row b { font-family: var(--mono, ui-monospace, monospace); }
 .cap-picker-row:hover b { color: var(--fh-gold-text, var(--fh-gold, #ffc233)); }
 .cap-ann-tools { border: 1px solid var(--line); border-radius: var(--r-md, 10px); }
-html[data-skin~="forge"] .cap-ann-tools { border-radius: 0; clip-path: var(--cut-sm, none); }
-.cap-ann-tool:hover { background: var(--hover); }
-.cap-ann-swatch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fh-gold, #ffc233); }
 /* the player / viewer: the scrubber and timecode in the look's colors */
 .cap-scrub { border-radius: var(--r-pill, 7px); background: color-mix(in srgb, var(--text) 10%, transparent); }
-html[data-skin~="forge"] .cap-scrub { border-radius: 0; }
-.cap-scrub-fill { background: linear-gradient(90deg, var(--fh-gold, #ffc233), var(--fh-ember, #ff6a1a)); }
-.cap-tc { color: var(--fh-gold-text, var(--fh-gold, #ffc233)); }
-.cap-view-stage { box-shadow: inset 0 0 0 1px var(--line-hi, var(--line)); }
-/* a dialog that plays a video: its backdrop doesn't re-blur the app behind it every frame of the video */
-dialog.cap-view, dialog.cap-view::backdrop { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-:root[data-look~=v2] dialog.cap-view { background: var(--hairline) top / 100% 1px no-repeat, linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-3)); }
-:root[data-look~=v2] dialog.cap-view::backdrop { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fh-heat) calc(8% * var(--glow)), #000a), #000d); }
 /* the region picker's tip and size readout: the forge pill */
 .cap-pick-tip { font-family: var(--font-head, system-ui); letter-spacing: .04em; border: 1px solid color-mix(in srgb, var(--fh-gold, #ffc233) 45%, transparent); }
-:root:not([data-motion=off]) .cap-pick-tip { animation: hx-pop .18s var(--ease-out, ease-out) both; }
 .cap-picker-row { border-radius: var(--r-sm, 6px); }
-.cap-picker-row:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--fh-gold, #ffc233); background: color-mix(in srgb, var(--fh-gold, #ffc233) 10%, transparent); }
 
 /* ====================================================================================================== */
-/* ---------- Forgeheart Classic keeps its colors; the shapes above apply to it too ---------- */
-html[data-skin~="forge"]:not([data-look~=v2]) .bd-add { color: var(--r-rare, var(--accent)); }
-html[data-skin~="forge"]:not([data-look~=v2]) .bdd { background: var(--sidebar); }
 
 /* ---------- reduced motion (the system setting, like /motion off): the entrances above don't move ---------- */
 @media (prefers-reduced-motion: reduce) {

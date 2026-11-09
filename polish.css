@@ -217,7 +217,7 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   letter-spacing: .12em; text-transform: uppercase; min-height: 30px;
 }
 :root[data-look~=v2] .media-bar .ghost.mb-tap.on { color: var(--m-gold-ink); text-shadow: 0 1px 0 #fff6; background: var(--m-sheen) 160% 0 / 250% 100% no-repeat, var(--m-gold); border-color: var(--fh-gold-lo); }
-:root[data-look~=v2] .media-bar .ghost.mb-tap.flash { animation: none; } /* (round 17) the flash: .mb-tap::after (three-lab.css) */
+ /* (round 17) the flash: .mb-tap::after (three-lab.css) */
 /* Freeze: frosted glass with an ice edge; frozen it turns to ice chrome */
 :root[data-look~=v2] .stage-pill .freeze-btn {
   color: var(--fh-info); border: 1px solid color-mix(in srgb, var(--fh-info) 45%, transparent);
@@ -265,9 +265,6 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   .three-toolbar .tb-group { padding: 1px 2px; }
 }
 /* narrow Lab (sliders open beside a docked chat): the picture comes first, then the code, then the panels */
-@container (max-width: 760px) {
-  .three-split.with-tweaks .three-right { order: -1; }
-}
 /* the Tools ▾ drawer button reads as a button, not a label */
 .lab-tabs .lab-tools-btn, .lab-tabs.on-tool .lab-back { min-height: 28px; display: inline-flex; align-items: center; gap: 4px; transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast); }
 :root[data-look~=v2] .lab-tabs :is(.lab-tools-btn, .lab-back) {
@@ -281,7 +278,6 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 /* the preview's numbers move to the bottom-left, so they never hide under the frame-size pill */
 .three-preview .three-stats { top: auto; bottom: 8px; max-width: calc(100% - 16px); overflow: hidden; white-space: nowrap; flex-wrap: nowrap; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent); }
 /* a narrow preview (director docked): the frame-size pill keeps to one row; More… and the extras show on hover */
-.three-right { container-type: inline-size; }
 .stage-btn { white-space: nowrap; }
 @container (max-width: 520px) {
   .media-bar .mb-main .tb-group { flex-wrap: wrap; row-gap: 4px; }
@@ -290,15 +286,8 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
   .stage-pill { flex-wrap: nowrap; gap: 2px; padding: 2px; }
   .stage-pill .stage-seg .stage-btn { padding: 3px 5px; font-size: 10.5px; }
   .stage-pill .freeze-btn { padding: 3px 7px; }
-  .three-preview:not(:hover) .stage-pill :is(.stage-more, .stage-btn:not(.freeze-btn):not(.stage-size-btn)) { display: none; }
-  /* on hover the extras open on a second row: the size buttons never slide under the pointer (they used to move
-     left as More… / Safe / 📷 appeared, so a click aimed at 9:16 landed on 16:9) */
-  .three-preview:hover .stage-pill { flex-wrap: wrap; }
-  .three-preview:hover .stage-pill::after { content: ''; order: 5; flex-basis: 100%; height: 0; }
-  .three-preview:hover .stage-pill .stage-seg ~ :not(.stage-size) { order: 6; }
 }
 /* the size readout (hover only) gets its own row under the buttons instead of widening the pill leftwards */
-.three-preview:hover .stage-pill { flex-wrap: wrap; }
 .stage-pill .stage-size { flex-basis: 100%; text-align: right; white-space: nowrap; }
 :root[data-look~=v2] .three-stats { border: 1px solid var(--line); box-shadow: var(--m-glass-edge); }
 /* frame-size pill: tighter, one row as long as it fits, a calm size readout */
@@ -310,19 +299,10 @@ html[data-skin~="forge"] #menu button { padding: 6px 12px; }
 .tweaks > :not(.tw-body), .layers > .tw-head { flex-shrink: 0; }
 /* sliders head: Shuffle gets the room it needs, Save stays a solid block */
 .tweaks .tw-actions { gap: 6px; }
-.tweaks .tw-act:first-child { flex: 1 1 0; }
-.tweaks .tw-act:last-child { flex: 0 1 auto; }
 .tweaks .tw-act > .tw-step { padding-left: 6px; padding-right: 6px; min-width: 22px; }
 .tweaks .tw-act > .tw-split { padding-left: 6px; padding-right: 6px; min-width: 22px; }
 .tweaks .tw-act > button { min-height: 30px; }
 .tweaks .tw-act .tw-shuffle, .tweaks .tw-act .tw-save { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-html[data-skin~="forge"] .tweaks .tw-act > button { border-radius: 0 !important; }
-html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:first-child > button:first-child { clip-path: polygon(5px 0, 100% 0, 100% 100%, 0 100%, 0 5px); }
-html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button:last-child { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%); }
-:root[data-look~=v2] #app .tweaks .tw-act .primary.tw-split { border-left: 1px solid color-mix(in srgb, var(--fh-gold-lo) 70%, #000); }
-/* panel heads (Layers, Sliders): small primary buttons match the head height */
-:root[data-look~=v2] :is(.tweaks, .layers) .tw-head .primary.small:not(.tw-big) { padding: 3px 12px; min-height: 26px; font-size: 11px; }
-:is(.tweaks, .layers) .tw-head { min-height: 38px; }
 /* group chips: bevelled plates, the chosen one is gold chrome; the row fades at its edge when it scrolls */
 .tw-gchips { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 20px), transparent); padding-right: 18px; }
 .tw-gchip { border-radius: var(--r-pill); min-height: 24px; transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast); }
@@ -339,10 +319,8 @@ html[data-skin~="forge"]:not([data-corners]) .tweaks .tw-act:last-child > button
 :root[data-look~=v2] .tw-row.changed { background: linear-gradient(90deg, color-mix(in srgb, var(--fh-gold) 9%, transparent), transparent 70%); }
 :root[data-look~=v2] .tw-tip { border-color: var(--line-hi); border-radius: var(--r-md); background: color-mix(in srgb, var(--fh-gold) 3%, transparent); }
 /* timeline: the main row stays one line where it can, its groups share a height */
-.media-bar .mb-main .tb-group { min-height: 32px; }
 .media-bar .mb-main .ghost.small { min-height: 26px; }
 .media-bar .mb-name { min-width: 0; }
-:root[data-look~=v2] .media-bar .mb-handle { opacity: .85; }
 :root[data-look~=v2] .media-bar .mb-loopchip { border-radius: var(--r-md); clip-path: var(--cut-sm); }
 :root[data-look~=v2] .media-bar .mb-quant.on, :root[data-look~=v2] .media-bar .mb-size.on { color: var(--m-gold-ink); background: var(--m-gold); border-color: var(--fh-gold-lo); }
 /* console head: "Errors only" stays on one line, buttons wrap instead of running off the edge */
@@ -648,13 +626,8 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
    The waveform canvas redraws ~10×/s and the playheads move every frame; contained and promoted, they repaint only
    themselves instead of the styled (clip-masked, textured) timeline around them. */
 .media-bar .mb-tl-wrap, .media-bar .mb-mm-wrap { contain: layout paint style; isolation: isolate; }
-.media-bar canvas.mb-timeline, .media-bar canvas.mb-minimap { will-change: contents; transform: translateZ(0); }
 .media-bar .mb-playhead { contain: strict; }
 .media-bar .mb-bpmread { contain: layout paint; will-change: opacity; }
-
-/* the timeline's scrolling strip (three-media.js scroll): slides under the fixed playhead while a song plays */
-.media-bar .mb-strip-clip { position: absolute; left: 0; top: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 4px; }
-.media-bar .mb-strip { position: absolute; left: 0; top: 0; display: block; will-change: transform; }
 
 /* ---------- textures: a few tabs and headers, not the whole screen ----------
    The grain and brushed-metal textures (look.css --tx-*-src) only show on the rail, tab bars and the tool / chat

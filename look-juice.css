@@ -1,0 +1,23 @@
+/* (round 159, css159) from look.css: only "juice" code makes these match; loaded with it, right after look.css (lazy-data.js CSS_AFTER) */
+.juice-tip {
+  position: fixed; z-index: 10001; max-width: 320px; padding: 5px 9px; pointer-events: none;
+  font: 12px/1.4 var(--font); color: var(--text); white-space: pre-line;
+  background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 92%, transparent); backdrop-filter: blur(10px);
+  border: 1px solid var(--line-hi, var(--line)); clip-path: var(--cut-sm, none);
+  box-shadow: var(--m-glass-edge); animation: j-tip-in .14s ease-out both;
+}
+.juice-glint { position: fixed; pointer-events: none; overflow: hidden; z-index: 9998; clip-path: var(--cut-sm, none); }
+.juice-ring {
+  position: fixed; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--c, #ffc23d); box-shadow: 0 0 12px var(--c, #ffc23d), inset 0 0 8px var(--c, #ffc23d);
+  animation: j-ring .5s cubic-bezier(.2, .8, .3, 1) forwards;
+}
+.juice-ember { position: fixed; width: 5px; height: 5px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c), 0 0 2px #fff; animation: j-ember .9s cubic-bezier(.2, .6, .4, 1) both; }
+.j-pop { animation: j-pop .32s cubic-bezier(.3, 1.5, .5, 1) !important; }
+.j-shake { animation: v2-shake .42s ease !important; }
+.j-roll { animation: j-roll .45s cubic-bezier(.3, 1.4, .5, 1); display: inline-block; }
+:root[data-look~=v2] .toast.j-pop { border-color: color-mix(in srgb, var(--fh-gold) 45%, var(--line-hi)); }
+:root[data-motion=off] .juice-layer { display: none; }
+@media (prefers-reduced-motion: reduce) {
+.juice-glint, .juice-ring, .juice-ember { display: none; }
+}
