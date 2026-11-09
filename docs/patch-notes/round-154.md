@@ -1,4 +1,4 @@
-# Round 153: Trim Hearth — switch off what you don't use
+# Round 154: Trim Hearth — switch off what you don't use
 *November 2026*
 
 You asked to "remove features you don't use" so Hearth gets lighter. We can't see how you use Hearth from here, but
