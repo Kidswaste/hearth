@@ -133,6 +133,13 @@ steps. `dev/checks/chat165.js`'s ground step now knows the wrap's lights (it tak
 its "the old way" picture, and judges a ground of gradients by the pixels over 2 levels). `dev/smoke.js --serve-dir`
 answers `/__bytes/<KB>/<id>` (cacheable for a year) and `/__fill/<n>/<KB>`.
 
+Final run (`--exact audit166 playfix fastboot chat165 perf151 idlecpu mem154 main162 unit:boot-test
+unit:lazymanifest-test diskcalm`): 9 / 11, then perf151 passed on its rerun (its "hidden ≤ 30 ms/s" step read 31 the
+first time). idlecpu fails the same way on round 165 (e122bd74, run here through `--app`): its chat step counts the
+end of the test's own reply (the progress bar and a toast leaving: 0.7 mutation callbacks a second in its window), not
+idle work. `node dev/whatsnew-test.js`: 49 passed. origin/main and origin/claude/intelligent-galileo-yaiqem had nothing
+new to merge (both at e122bd74).
+
 ## For Codex
 
 No Codex-owned file was edited. Nothing in them depends on the website caches' size; `.messages-wrap` gains a
