@@ -99,10 +99,12 @@ async function measure(name, { trace = true, target = null } = {}) {
   const snap = await smoke({ loadwait: 'snap' });
   const m0 = await met(); const w0 = await perf(); const s0 = target ? await perf(target) : null;
   const pace0 = target ? await sbx('return window.__labPace ? window.__labPace.state() : null') : null;
+  const fpsSeen = []; const onStats = (e) => { if (e.data?.source === 'three-sandbox' && e.data.type === 'stats' && e.data.fps >= 0) fpsSeen.push(e.data.fps); }; addEventListener('message', onStats); // (round 153a) the preview's own drawn frames a second
   P.take(); await T({ probe: 'start' });
   const t0 = performance.now();
   await new Promise((r) => P.raw.setTimeout(r, MEASURE));
   const page = P.take(); const main = (await T({ probe: 'take' }))?.probe;
+  removeEventListener('message', onStats);
   const m1 = await met(); const w1 = await perf(); const s1 = target ? await perf(target) : null;
   const pace1 = target ? await sbx('return window.__labPace ? window.__labPace.state() : null') : null;
   const sec = (performance.now() - t0) / 1000;
@@ -122,7 +124,7 @@ async function measure(name, { trace = true, target = null } = {}) {
     window: { task: d(w0, w1, 'TaskDuration'), script: d(w0, w1, 'ScriptDuration'), style: d(w0, w1, 'RecalcStyleDuration'), layout: d(w0, w1, 'LayoutDuration'), heapMb: Math.round((w1.JSHeapUsedSize || 0) / 1048576), nodes: w1.Nodes, listeners: w1.JSEventListeners },
     wakeups: page, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 6) }, anims: anims(), suspects: suspects(), visibility: document.visibilityState,
     load: { loadavg: lw?.loadavg?.map((x) => Math.round(x * 100) / 100), cpus: lw?.cpus, cpuWait: lw?.waited?.cpuWait } };
-  if (target && s0 && s1) r.preview = { task: d(s0, s1, 'TaskDuration'), script: d(s0, s1, 'ScriptDuration'), drawnPerSec: pace0 && pace1 ? r1((pace1.drawn - pace0.drawn) / sec) : null, framesPerSec: pace0 && pace1 ? r1((pace1.frameTick - pace0.frameTick) / sec) : null };
+  if (target && s0 && s1) r.preview = { task: d(s0, s1, 'TaskDuration'), script: d(s0, s1, 'ScriptDuration'), drawnPerSec: pace0 && pace1 ? r1((pace1.drawn - pace0.drawn) / sec) : null, framesPerSec: pace0 && pace1 ? r1((pace1.frameTick - pace0.frameTick) / sec) : null, drawnFps: fpsSeen.length ? r1(fpsSeen.reduce((a, x) => a + x, 0) / fpsSeen.length) : null, cap: pace1?.cap ?? null };
   if (trace) {
     await smoke({ trace: 'start', detail: true }); await new Promise((res) => P.raw.setTimeout(res, 3000));
     const tr = await smoke({ trace: 'stop', detail: true });
