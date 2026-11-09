@@ -135,17 +135,60 @@ const Lazy = (() => {
 
   // ---------- stand-ins ----------
   // (round 25, diet) the manifest names a group's usual command / keys area once (area, karea): put it back on each entry
+  const putArea = (x, area) => { if (x.area === undefined) return { ...x, area }; if (x.area !== null) return x; const { area: _, ...r } = x; return r; }; // null: had none
   const groupMeta = (name) => {
     const m = (D.META || {})[name];
     if (!m) return {};
     if (m.area || m.karea) {
-      const put = (x, area) => { if (x.area === undefined) return { ...x, area }; if (x.area !== null) return x; const { area: _, ...r } = x; return r; }; // null: had none
-      if (m.area) m.commands = (m.commands || []).map((c) => put(c, m.area));
-      if (m.karea) m.keys = (m.keys || []).map((k) => put(k, m.karea));
+      if (m.area) m.commands = (m.commands || []).map((c) => putArea(c, m.area));
+      if (m.karea) m.keys = (m.keys || []).map((k) => putArea(k, m.karea));
       delete m.area; delete m.karea;
     }
     return m;
   };
+  // ---------- (round 160, boot160) the stand-ins' lines come right after the first frame ----------
+  // A lazy group's keys-sheet lines, Ctrl/⌘+K lines and app windows (LazyLines in lazy-meta.js, written by
+  // dev/lazy-manifest.js) are read with the commands' words, right after the first frame, before any group loads. Where
+  // they used to be added (a group's DOMContentLoaded moment, or its lazy-at.js tag for keysNow / actionsNow) a quiet
+  // slot is kept in each list (Keys.slot, AppUI.actionSlot, Apps.slot); when the lines arrive they fill their slots in
+  // the order the slots were made, so the keys sheet, the palette and the Apps list come out in the old order.
+  const linesIn = () => typeof LazyLines !== 'undefined';
+  const lineSlots = []; // [{ g, kind: 'now' | 'later', keys, actions, apps }] in the order they were made
+  function mergeLines() {
+    if (!linesIn() || mergeLines.done) return;
+    mergeLines.done = true;
+    for (const [name, l] of Object.entries(LazyLines)) {
+      const m = (D.META ||= {})[name];
+      if (!m) continue; // (a group loaded or gone meanwhile)
+      for (const k of ['keys', 'actions', 'apps']) if (l[k]) m[k] = k === 'keys' && l.karea ? l[k].map((x) => putArea(x, l.karea)) : l[k];
+    }
+  }
+  function makeLineSlots(g, kind) {
+    const s = { g, kind };
+    if (typeof Keys !== 'undefined' && Keys.slot) s.keys = Keys.slot();
+    if (typeof AppUI !== 'undefined' && AppUI.actionSlot) s.actions = AppUI.actionSlot();
+    if (kind === 'later' && typeof Apps !== 'undefined' && Apps.slot) s.apps = Apps.slot();
+    lineSlots.push(s);
+  }
+  function fillLineSlots() {
+    mergeLines();
+    // (a list that wasn't there when the slot was made got nothing then: it gets nothing now)
+    for (const s of lineSlots.splice(0)) {
+      const { g } = s;
+      const m = groupMeta(g.name);
+      const live = !g.off && (s.kind === 'now' || g.state === 'stub');
+      seen = {};
+      if (s.keys) Keys.fill(s.keys, () => { if (live && (s.kind === 'now' ? g.keysNow : !g.keysNow)) each(g, m.keys, (k) => stubKey(g, k, s.keys)); });
+      if (s.actions) {
+        AppUI.fillActions(s.actions, () => {
+          if (live && (s.kind === 'now' ? g.actionsNow : !g.actionsNow)) each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys, s.actions));
+          // (an app window's "App: …" palette line lands with the group's own lines, as it did)
+          if (live && s.apps) Apps.fill(s.apps, () => each(g, m.apps, (a) => stubApp(g, a)));
+        });
+      } else if (live && s.apps) Apps.fill(s.apps, () => each(g, m.apps, (a) => stubApp(g, a)));
+    }
+    seen = {};
+  }
   // A stand-in command is a def whose run / complete / when hand over to its own object once the real def has filled it
   // in (takeOver): a module that copied it meanwhile ({ ...Commands.get('director'), run: … }) reaches the real one too.
   // Its mark (__lazy) isn't enumerable, so copies and combined shared names don't carry it.
@@ -190,9 +233,9 @@ const Lazy = (() => {
       stubCmds.set(key, name);
     } catch (err) { say(`stub /${name}: ${err.message}`); }
   }
-  function stubAction(g, label, keys) {
+  function stubAction(g, label, keys, slot) {
     if (typeof AppUI === 'undefined' || !AppUI.addAction) return;
-    const have = (seen.actions ||= new Set((AppUI.actions?.() || []).map((a) => a.label)));
+    const have = (seen.actions ||= new Set(((slot && AppUI.actionsBefore ? AppUI.actionsBefore(slot) : AppUI.actions?.()) || []).map((a) => a.label)));
     if (have.has(label)) return;
     have.add(label);
     actOf.set(label, g.name);
@@ -202,15 +245,15 @@ const Lazy = (() => {
       if (fn) fn(); else say(`no action "${label}" after loading ${g.name}`);
     }, keys || '');
   }
-  function stubKey(g, k) {
+  function stubKey(g, k, slot) {
     if (typeof Keys === 'undefined' || offKeys.has(k.area)) return;
     const id = `${k.area}|${k.keys}`;
-    const have = (seen.keys ||= new Set(Keys.all().map((x) => `${x.area}|${x.keys}`)));
+    const have = (seen.keys ||= new Set((slot && Keys.before ? Keys.before(slot) : Keys.all()).map((x) => `${x.area}|${x.keys}`)));
     if (have.has(id)) return; // an eager line has these keys
     have.add(id);
     // (round 73) a line's words come with lazy-meta.js right after the first frame: '…' until then (Keys.add skips a line without words)
-    Keys.add({ area: k.area, keys: k.keys, what: k.what || '…', sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(id); if (e?.run && !e.run.__lazy) e.run(); }) });
-    const e = Keys.all().at(-1);
+    const added = Keys.add({ area: k.area, keys: k.keys, what: k.what || '…', sel: k.sel || null, run: () => load(g.name).then(() => { const e = stubKeys.get(id); if (e?.run && !e.run.__lazy) e.run(); }) });
+    const e = added !== undefined ? added : Keys.all().at(-1);
     if (e && `${e.area}|${e.keys}` === id) { e.run.__lazy = true; if (!k.what) e.wordsLater = true; stubKeys.set(id, e); }
   }
   function stubBridge(g, prefix) {
@@ -274,6 +317,8 @@ const Lazy = (() => {
     each(g, m.bridge, (p) => stubBridge(g, p));
     // (round 139, room139) keysNow: a group whose keys-sheet lines its file added as it loaded (keys-lines.js, once
     // part of keys-ui.js) gets their stand-ins right here too, so the sheet keeps its order
+    // (round 160, boot160) before the lines are in (lazy-meta.js, right after the first frame): a slot here instead
+    if ((g.keysNow || g.actionsNow) && !linesIn()) { makeLineSlots(g, 'now'); return; }
     if (g.keysNow) { seen = {}; each(g, m.keys, (k) => stubKey(g, k)); }
     // (round 157, boot157) actionsNow: a group whose file added its Ctrl/⌘+K lines as it ran (astra.js) gets them here too
     if (g.actionsNow) { seen = {}; each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys)); }
@@ -286,6 +331,7 @@ const Lazy = (() => {
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
     each(g, m.tools, (t) => stubTool(g, t));
+    if (!linesIn()) { makeLineSlots(g, 'later'); return; } // (round 160: its keys, Ctrl/⌘+K lines and app windows come right after the first frame)
     if (!g.keysNow) each(g, m.keys, (k) => stubKey(g, k));
     if (!g.actionsNow) each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
     each(g, m.apps, (a) => stubApp(g, a));
@@ -300,6 +346,8 @@ const Lazy = (() => {
   const textOf = (group, name) => (typeof LazyText !== 'undefined' && LazyText[group]?.[name]) || null;
   let textP = null;
   function fillText() {
+    try { fillLineSlots(); } catch (err) { say(`lines: ${err.message}`); }
+    try { AppUI.paletteRefresh?.(); } catch { /* no palette */ }
     let n = 0;
     for (const [key, name] of stubCmds) {
       const t = textOf(key.slice(0, key.indexOf('|')), name);
@@ -353,30 +401,32 @@ const Lazy = (() => {
   //   send:   a message sent before they're in waits for them (Lazy.sendReady(), native.js send): every hook, option and
   //           permission setting of a send is the same as before (null when all are in)
   const slotFn = () => {}; // (one shared shape; each placeholder is its own function so indexOf finds it)
+  // (round 160, boot160) slots: 'panel' also keeps places in the chats list's row and render hooks (Panel.hooks:
+  // chat-scenes.js' marks on the rows); scope / itemMenu get none (an empty scope list means something there)
+  const hookLists = (g) => {
+    const out = [];
+    if (typeof Native !== 'undefined' && Native.hooks) for (const [k, arr] of Object.entries(Native.hooks)) if (Array.isArray(arr)) out.push([k, arr]);
+    if (g.slots === 'panel' && typeof Panel !== 'undefined' && Panel.hooks) for (const k of ['row', 'render']) if (Array.isArray(Panel.hooks[k])) out.push([`panel.${k}`, Panel.hooks[k]]);
+    return out;
+  };
   function makeSlots(g) {
-    const hk = typeof Native !== 'undefined' && Native.hooks;
-    if (!hk || g.slotFns) return;
+    if (g.slotFns) return;
+    const lists = hookLists(g);
+    if (!lists.length) return;
     g.slotFns = {};
-    for (const [k, arr] of Object.entries(hk)) {
-      if (!Array.isArray(arr)) continue;
+    for (const [k, arr] of lists) {
       const f = slotFn.bind(null);
       Object.defineProperty(f, 'name', { value: `lazy:${g.name}` });
       arr.push(f);
-      g.slotFns[k] = f;
+      g.slotFns[k] = { f, arr };
     }
   }
   function slotPatch(g, swap) {
-    const hk = g.slotFns && typeof Native !== 'undefined' && Native.hooks;
-    if (!hk) return;
-    for (const [k, f] of Object.entries(g.slotFns)) {
-      const arr = hk[k];
-      if (!Array.isArray(arr)) continue;
-      swap(arr, 'push', (orig) => (...items) => { const i = arr.indexOf(f); if (i < 0) return orig(...items); arr.splice(i, 0, ...items); return arr.length; });
-    }
+    if (!g.slotFns) return;
+    for (const { f, arr } of Object.values(g.slotFns)) swap(arr, 'push', (orig) => (...items) => { const i = arr.indexOf(f); if (i < 0) return orig(...items); arr.splice(i, 0, ...items); return arr.length; });
   }
   function dropSlots(g) {
-    const hk = g.slotFns && typeof Native !== 'undefined' && Native.hooks;
-    if (hk) for (const [k, f] of Object.entries(g.slotFns)) { const arr = hk[k]; const i = Array.isArray(arr) ? arr.indexOf(f) : -1; if (i >= 0) arr.splice(i, 1); }
+    if (g.slotFns) for (const { f, arr } of Object.values(g.slotFns)) { const i = arr.indexOf(f); if (i >= 0) arr.splice(i, 1); }
     g.slotFns = null;
   }
   let redrawMount = false;
@@ -520,6 +570,7 @@ const Lazy = (() => {
     });
   }
 
+  let holding = null; // the loading group's holds (Lazy.holdLoad)
   function load(name, o) {
     const g = groups.get(name);
     if (!g) return Promise.reject(new Error(`No lazy group "${name}"`));
@@ -531,16 +582,21 @@ const Lazy = (() => {
     g.promise = (async () => {
       // (round 153) a switched-off group it needs only for order (HearthFeatures SOFT) is skipped
       for (const dep of g.after || []) { if (groups.get(dep)?.off) continue; await load(dep, { ...o, dep: true }); }
+      // (round 160, boot160) wait: groups it waits for where they exist (chat-scenes.js for the Lab: none in the Lab window)
+      for (const dep of g.wait || []) { const d = groups.get(dep); if (!d || d.off) continue; await load(dep, { ...o, dep: true }).catch(() => {}); }
       const go = chain.then(text).then(async () => {
         g.state = 'loading';
         const t0 = performance.now();
         const rep = { commands: [], actions: [], keys: [], bridge: [], apps: [], tools: [] };
         reports.set(g.name, rep);
         const p = patch(g, rep);
+        const holds = [];
+        holding = holds;
         try {
           await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore, g.cssAfter?.[h])), injectAll(g.files, g)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
+          holding = null;
           g.state = 'failed';
           p.restore();
           dropSlots(g);
@@ -549,6 +605,10 @@ const Lazy = (() => {
           throw err;
         }
         p.restore();
+        // (round 160, boot160) a file that reads its data first (chat-scenes.js: the chats' scene links) holds its group back
+        // until that's done (Lazy.holdLoad(promise), ≤ 3 s): the group counts as in then, as when the file ran before the first frame
+        holding = null;
+        if (holds.length) { try { await Promise.race([Promise.all(holds), new Promise((r) => setTimeout(r, 3000))]); } catch { /* as it is */ } }
         dropSlots(g);
         dropLeftovers(g);
         if (!names.has(g.name)) names.set(g.name, namesOf(g.name));
@@ -712,6 +772,8 @@ const Lazy = (() => {
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
   return {
     load, state, start, at, text, sendReady,
+    // (round 160, boot160) holdLoad(promise): called by a lazy file while it loads, its group counts as in once that's done (≤ 3 s)
+    holdLoad: (p) => { if (holding && p && typeof p.then === 'function') holding.push(p.catch(() => {})); },
     // (round 153, trim153) Trim Hearth: off(group), names(group) (what its usage is matched with), used(group), and
     // kit() — what trim.js's live switch (Trim.setFeature) needs of the stand-ins
     off: (name) => Boolean(groups.get(name)?.off), names: namesOf, used: (name) => { const g = groups.get(name); if (g) used(g); },

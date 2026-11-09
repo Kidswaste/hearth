@@ -18,7 +18,11 @@ const gate = Math.min(paint ?? Infinity, ready + 290);
 // (round 74, checkhealth74) since Codex's "Projects first" (Oct 19) the first screen IS the Projects home: its group is
 // the first screen's own (asked for right after hearth:ready), every other group still waits for the first frame
 const homeFirst = (() => { try { return H.surfaceIdFor(H.activeId) === 'tool:home' && document.getElementById('app')?.dataset.space === 'projects'; } catch { return false; } })();
-const early = Lazy.state().filter((g) => typeof g.at === 'number' && g.at - (g.ms || 0) < gate - 5 && !(homeFirst && g.name === 'projects'));
+// (round 160, boot160) + what the projects group needs first (after: chatscenes, which projects.js / project-workspace.js
+// read without asking): it was on the first screen itself until this round
+const homeGroups = new Set(['projects']);
+for (let more = true; more;) { more = false; for (const g of (typeof LazyData !== 'undefined' ? LazyData.GROUPS : [])) if (homeGroups.has(g.name)) for (const d of g.after || []) if (!homeGroups.has(d)) { homeGroups.add(d); more = true; } }
+const early = Lazy.state().filter((g) => typeof g.at === 'number' && g.at - (g.ms || 0) < gate - 5 && !(homeFirst && homeGroups.has(g.name)));
 check('every group starts loading after the first frame', Number.isFinite(gate) && !early.length, `ready ${Math.round(ready)} · first paint ${Math.round(paint)} ms · ${early.map((g) => `${g.name}@${g.at - g.ms}`).join(' ')}`);
 check('the command bar and Flows load after the first screen', ['cmdbar', 'flows'].every((n) => Lazy.loaded(n)) && typeof CmdBar !== 'undefined' && typeof FlowsUI !== 'undefined');
 const first = [...document.querySelectorAll('script[src]')].filter((s) => !/lazy-at\.js/.test(s.src) && s.defer).length;

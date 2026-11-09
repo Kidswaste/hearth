@@ -826,5 +826,8 @@ const Panel = (() => {
   }
   setTimeout(wireKeys, 0);
 
-  return { render, soon, flush, highlight, setFilter, setView, view: () => view, SORTS, hooks, _model: () => model(), whoWas, missing, waitingIn }; // whoWas / missing: (round 55, chatsafe55) an AI a chat waits for // _model: checks compare it with a fresh sort
+  // (round 160, boot160) every row built again (its row hooks run again): chat-scenes.js, read right after the first
+  // frame, paints its marks on the rows the first frame drew without them
+  const redrawRows = () => { rowEls.clear(); render(); };
+  return { render, redrawRows, soon, flush, highlight, setFilter, setView, view: () => view, SORTS, hooks, _model: () => model(), whoWas, missing, waitingIn }; // whoWas / missing: (round 55, chatsafe55) an AI a chat waits for // _model: checks compare it with a fresh sort
 })();
