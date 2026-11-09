@@ -87,25 +87,31 @@ function traceStats(file, pageRe) {
   for (const e of ev) if (pageRe.test(urlOf(e))) pids.add(e.pid);
   const key = [...cand.keys()].find((k) => pids.has(Number(k.split(':')[0]))) || [...cand.keys()][0];
   if (!key) return { error: 'no window thread' };
-  const mine = ev.filter((e) => `${e.pid}:${e.tid}` === key && e.ph === 'X');
+  const pid = Number(key.split(':')[0]);
   const r1 = (v) => Math.round(v * 10) / 10;
-  const out = { three: { compile: 0, run: 0 }, parts: { compile: 0, run: 0, files: 0 }, lab: { compile: 0, run: 0, files: new Set() }, lazyCompile: 0 };
-  const labFiles = new Set(LazyData.GROUPS.flatMap((g) => g.files));
-  for (const e of mine) {
-    const d = (e.dur || 0) / 1000; const u = urlOf(e).split(/[?#]/)[0];
-    const rel = u.replace(/^.*?\/(?=(tools\/)?[^/]+$)/, '');
-    const isCompile = /^(v8\.compile|v8\.parseOnBackground)$/.test(e.name);
+  const labFiles = new Set(LazyData.GROUPS.filter((g) => g.name === 'lab' || /^labpart/.test(g.name)).flatMap((g) => g.files));
+  const relOf = (u) => { const m = u.split(/[?#]/)[0].match(/((tools\/)?[^/]+\.js)$/); return m ? m[1] : ''; };
+  // every thread of the window's process (scripts stream-compile off the main thread): compile / parse and run per file,
+  // and the main thread's compile-like events (V8 compiling a function the first time it runs: the Lab's big sketch tab)
+  const out = { three: { compile: 0, run: 0 }, parts: { compile: 0, run: 0 }, lab: { compile: 0, run: 0 }, mainCompile: 0, names: {} };
+  for (const e of ev) {
+    if (e.pid !== pid || e.ph !== 'X') continue;
+    const d = (e.dur || 0) / 1000; const rel = relOf(urlOf(e));
+    const isCompile = /compile|parse/i.test(e.name);
     const isRun = e.name === 'EvaluateScript';
-    if (/(^|\/)V8\.(CompileLazy|LazyCompile)/.test(e.name) || e.name === 'V8.CompileLazy') out.lazyCompile += d;
+    if (`${e.pid}:${e.tid}` === key && isCompile) { out.mainCompile += d; out.names[e.name] = (out.names[e.name] || 0) + d; }
     if (!isCompile && !isRun) continue;
-    const f = rel.startsWith('tools/') || labFiles.has(rel) ? rel : `tools/${rel}`;
-    if (/tools\/three\.js$/.test(u)) out.three[isCompile ? 'compile' : 'run'] += d;
-    if (/tools\/three-lab-[a-z]+\.js$/.test(u)) { out.parts[isCompile ? 'compile' : 'run'] += d; }
-    if (labFiles.has(f) || labFiles.has(rel)) { out.lab[isCompile ? 'compile' : 'run'] += d; out.lab.files.add(rel); }
+    const k = isCompile ? 'compile' : 'run';
+    if (rel === 'tools/three.js') out.three[k] += d;
+    if (/^tools\/three-lab-[a-z]+\.js$/.test(rel)) out.parts[k] += d;
+    if (labFiles.has(rel)) out.lab[k] += d;
   }
-  return { three: { compile: r1(out.three.compile), run: r1(out.three.run) }, parts: { compile: r1(out.parts.compile), run: r1(out.parts.run) }, lab: { compile: r1(out.lab.compile), run: r1(out.lab.run), files: out.lab.files.size }, lazyCompile: r1(out.lazyCompile) };
+  const names = Object.fromEntries(Object.entries(out.names).sort((x, y) => y[1] - x[1]).slice(0, 6).map(([n, v]) => [n, r1(v)]));
+  return { three: { compile: r1(out.three.compile), run: r1(out.three.run) }, parts: { compile: r1(out.parts.compile), run: r1(out.parts.run) }, lab: { compile: r1(out.lab.compile), run: r1(out.lab.run) }, mainCompile: r1(out.mainCompile), names };
 }
-const kbOf = (groups) => Math.round(LazyData.GROUPS.filter((g) => groups.includes(g.name)).reduce((a, g) => a + g.files.reduce((b, f) => b + size(f), 0), 0) / 1024);
+// the Lab's own code that is in: the lab group and its cold parts (round 158) that loaded (other groups load in the
+// background on their own schedule, the same before and after)
+const kbOf = (groups) => Math.round(LazyData.GROUPS.filter((g) => groups.includes(g.name) && (g.name === 'lab' || /^labpart/.test(g.name))).reduce((a, g) => a + g.files.reduce((b, f) => b + size(f), 0), 0) / 1024);
 
 const all = [];
 const script = path.join(BASE, 'split158-run.js');
@@ -120,8 +126,8 @@ for (let run = 1; run <= RUNS; run += 1) {
   let R = null; try { R = JSON.parse(fs.readFileSync(path.join(tmp, 's158.json'), 'utf8')); } catch { console.log(`run ${run}: no result\n${text.slice(-2000)}`); continue; }
   const row = {
     run,
-    main: { labBefore: R.main.labBefore, first: R.main.first, labGroupMs: R.main.labGroupMs, kb: kbOf(R.main.groups), heapMB: R.main.heap?.usedSize ? Math.round(R.main.heap.usedSize / 1048576 * 10) / 10 : null, three158: R.main.groups.filter((g) => /^lab(part|p)-?/.test(g)), trace: traceStats(R.main.trace, /index\.html/) },
-    lw: { times: R.lw.times, codeMs: R.lw.times ? R.lw.times.code - R.lw.times.start : null, frameMs: R.lw.times ? R.lw.times.frame - R.lw.times.start : null, clickToFrame: R.lw.clickToFrame, kb: kbOf(R.lw.groups || []), heapMB: R.lw.heap?.usedSize ? Math.round(R.lw.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.lw.trace, /lab-window\.html/) },
+    main: { labBefore: R.main.labBefore, first: R.main.first, labGroupMs: R.main.labGroupMs, kb: kbOf(R.main.groups), heapMB: R.main.heap?.usedSize ? Math.round(R.main.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.main.trace, /index\.html/) },
+    lw: { times: R.lw.times, codeMs: R.lw.times ? R.lw.times.lab - R.lw.times.start : null, frameMs: R.lw.times ? R.lw.times.frame - R.lw.times.start : null, clickToFrame: R.lw.clickToFrame, kb: kbOf(R.lw.groups || []), heapMB: R.lw.heap?.usedSize ? Math.round(R.lw.heap.usedSize / 1048576 * 10) / 10 : null, trace: traceStats(R.lw.trace, /lab-window\.html/) },
   };
   console.log(`run ${run} (${Math.round((Date.now() - t0) / 1000)} s): ${JSON.stringify(row)}`);
   all.push(row);
@@ -129,7 +135,7 @@ for (let run = 1; run <= RUNS; run += 1) {
 const med = (xs) => { const v = xs.filter(Number.isFinite).sort((a, b) => a - b); return v.length ? v[v.length >> 1] : null; };
 const m = (f) => med(all.map((r) => { try { return f(r); } catch { return NaN; } }));
 console.log(`\n== medians of ${all.length} run(s) · ${APP} · tools/three.js ${Math.round(size('tools/three.js') / 1024)} KB ==`);
-console.log(`main window: first frame ${m((r) => r.main.first)} ms · lab group load ${m((r) => r.main.labGroupMs)} ms · three.js compile ${m((r) => r.main.trace.three.compile)} + run ${m((r) => r.main.trace.three.run)} ms · Lab files compile ${m((r) => r.main.trace.lab.compile)} + run ${m((r) => r.main.trace.lab.run)} ms · lazy compiles ${m((r) => r.main.trace.lazyCompile)} ms · code loaded ${m((r) => r.main.kb)} KB · heap ${m((r) => r.main.heapMB)} MB`);
-console.log(`Lab window:  first frame ${m((r) => r.lw.frameMs)} ms after its page started (click → frame ${m((r) => r.lw.clickToFrame)}) · code in ${m((r) => r.lw.codeMs)} ms · three.js compile ${m((r) => r.lw.trace.three.compile)} + run ${m((r) => r.lw.trace.three.run)} ms · Lab files compile ${m((r) => r.lw.trace.lab.compile)} + run ${m((r) => r.lw.trace.lab.run)} ms · lazy compiles ${m((r) => r.lw.trace.lazyCompile)} ms · code loaded ${m((r) => r.lw.kb)} KB · heap ${m((r) => r.lw.heapMB)} MB`);
+console.log(`main window: first frame ${m((r) => r.main.first)} ms · lab group load ${m((r) => r.main.labGroupMs)} ms · three.js compile ${m((r) => r.main.trace.three.compile)} + run ${m((r) => r.main.trace.three.run)} ms · Lab files compile ${m((r) => r.main.trace.lab.compile)} + run ${m((r) => r.main.trace.lab.run)} ms · main-thread compiles ${m((r) => r.main.trace.mainCompile)} ms · code loaded ${m((r) => r.main.kb)} KB · heap ${m((r) => r.main.heapMB)} MB`);
+console.log(`Lab window:  first frame ${m((r) => r.lw.frameMs)} ms after its page started (click → frame ${m((r) => r.lw.clickToFrame)}) · code in ${m((r) => r.lw.codeMs)} ms · three.js compile ${m((r) => r.lw.trace.three.compile)} + run ${m((r) => r.lw.trace.three.run)} ms · Lab files compile ${m((r) => r.lw.trace.lab.compile)} + run ${m((r) => r.lw.trace.lab.run)} ms · main-thread compiles ${m((r) => r.lw.trace.mainCompile)} ms · code loaded ${m((r) => r.lw.kb)} KB · heap ${m((r) => r.lw.heapMB)} MB`);
 if (opt('--json')) fs.writeFileSync(opt('--json'), JSON.stringify(all, null, 1));
-fs.rmSync(BASE, { recursive: true, force: true });
+if (argv.includes('--keep')) console.log(`kept: ${BASE}`); else fs.rmSync(BASE, { recursive: true, force: true });
