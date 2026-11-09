@@ -97,6 +97,7 @@ async function met() {
 // changed (a MutationObserver of the check's own, disconnected before the count; its own wake-ups are reset with
 // P.take). A reply the check sent ends with its own after-effects (the bar's ✓ fading, "This chat is in Earlier chats"
 // leaving at 7 s, juice's sparks): those are the test's, not idle work. Never longer than 30 s; said when it didn't settle.
+// A notification that arrives during that setup's count makes it count once more after it has gone (out.recounted).
 async function settle(name, { quietMs = 3000, maxMs = 30000 } = {}) {
   const t0 = performance.now(); let last = performance.now(); const seen = [];
   const mo = new MutationObserver((list) => { last = performance.now(); for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1 && n.classList?.contains('toast')) seen.push(String(n.textContent || '').slice(0, 80)); });
@@ -116,7 +117,7 @@ async function settle(name, { quietMs = 3000, maxMs = 30000 } = {}) {
 // (round 167) every notification the run shows, with when (s since the page started): one shown while idle is counted
 out.toastLog = [];
 { const box = document.getElementById('toasts'); if (box) new MutationObserver((l) => { for (const m of l) for (const n of m.addedNodes) if (n.nodeType === 1) out.toastLog.push(`${Math.round(performance.now() / 100) / 10}s ${String(n.textContent || '').slice(0, 70)}`); }).observe(box, { childList: true }); }
-async function measure(name, { settleFirst = false } = {}) {
+async function measure(name, { settleFirst = false, retried = false } = {}) {
   await sleep(6000); // (what the last step started lands first: software GL draws for a few seconds after a change)
   if (settleFirst) await settle(name);
   // (the Lab on screen: someone away for a while, the still picture past its first 10 s)
@@ -127,9 +128,13 @@ async function measure(name, { settleFirst = false } = {}) {
   const m0 = await met();
   const s0 = labUp() ? await sbx('return window.__labPace?.state()') : null;
   P.take(); await T({ probe: 'start' });
-  const t0 = performance.now();
+  const t0 = performance.now(); const toasts0 = out.toastLog.length;
   await sleep(MEASURE);
   const page = P.take(); const main = (await T({ probe: 'take' })).probe;
+  // (round 167) a notification that arrived during the count is an event, not idle work (e.g. "Things are slow — turn
+  // on Lite mode?" when this box was slow at the start): counted once more after it has gone, and listed
+  const arrived = out.toastLog.slice(toasts0);
+  if (settleFirst && arrived.length && !retried) { (out.recounted ||= {})[name] = arrived; return measure(name, { settleFirst, retried: true }); }
   const m1 = await met();
   const s1 = labUp() ? await sbx('return window.__labPace?.state()') : null;
   const sec = (performance.now() - t0) / 1000;
@@ -146,7 +151,7 @@ async function measure(name, { settleFirst = false } = {}) {
   for (const v of Object.values(procs)) { v.cpuPct = Math.round(v.cpuPct * 100) / 100; v.ctxPerSec = Math.round(v.ctxPerSec * 10) / 10; }
   const th = {};
   for (const [k, v] of Object.entries(m1.threads || {})) { const a = m0.threads?.[k]; th[k] = a ? `${Math.round((v.activeMs - a.activeMs) * 10) / 10} ms busy` : 'started'; }
-  const r = { at: `${Math.round(t0 / 100) / 10}–${Math.round(performance.now() / 100) / 10}s`, procs, threads: th, page: { perSec: page.perSec, top: page.top }, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 5) }, anims: anims(),
+  const r = { at: `${Math.round(t0 / 100) / 10}–${Math.round(performance.now() / 100) / 10}s`, ...(arrived.length ? { toasts: arrived } : {}), procs, threads: th, page: { perSec: page.perSec, top: page.top }, mainTimers: { perMin: main?.perMin, top: main?.top?.slice(0, 5) }, anims: anims(),
     schedule: window.Power?.timers?.().filter((x) => x.every != null).map((x) => `${x.id} ${Math.round(x.every / 100) / 10}s`) || [] };
   // the Lab preview's page: frames it woke for (its frame counter's ticks), drawn, the still check's skips, dozing
   if (s0 && s1) r.lab = { framesPerSec: Math.round(((s1.frameTick - s0.frameTick) / sec) * 10) / 10, drawnPerSec: Math.round(((s1.drawn - s0.drawn) / sec) * 10) / 10, still: s1.still, doze: s1.doze || null, parked: s1.parked };
