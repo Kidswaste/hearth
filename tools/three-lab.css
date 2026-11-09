@@ -359,6 +359,51 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
    preview (the ◐ in the corner says when it is lighter) */
 .three-stats .lab-q { pointer-events: auto; cursor: pointer; font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
 .three-stats .lab-q.warn { color: var(--warn, #ffb648); }
+/* (Nov 9) the Lab dock: a solid strip under the picture (tools/three.js labDock). The live stats on the left, always all
+   of them; QUALITY (Low · Med · High · Full) and FPS (30 · 60 · Max · Auto) as big segmented controls on the right. Out of
+   the picture: the scene never takes its clicks, nothing waits for a hover. Cool cyan instrument look, gold for "on". */
+.lab-dock {
+  --dk-bg: #070b12; --dk-edge: #1d2a3a; --dk-ink: #cfe8ff; --dk-dim: #6f86a0; --dk-cyan: #55e6ff; --dk-on: var(--fh-gold, #ffd75e);
+  position: relative; flex: none; display: flex; align-items: center; gap: 14px; min-height: 40px; padding: 6px 12px;
+  background: linear-gradient(180deg, #0c1420, var(--dk-bg)); border-top: 1px solid color-mix(in srgb, var(--dk-cyan) 30%, var(--dk-edge));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--dk-cyan) 18%, transparent), 0 -8px 24px -18px var(--dk-cyan);
+  color: var(--dk-ink); font: 600 11px/1 "JetBrains Mono", Consolas, ui-monospace, monospace; letter-spacing: .04em; user-select: none;
+}
+.lab-dock::before { /* a thin scan line along the top edge */
+  content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--dk-cyan) 30%, var(--dk-on) 50%, var(--dk-cyan) 70%, transparent); opacity: .55;
+}
+/* the stats line, moved into the dock: in the flow, every part shown, no hover rules */
+.three-right > .lab-dock > .three-stats {
+  position: static !important; display: flex !important; align-items: center; gap: 12px; flex-wrap: nowrap; min-width: 0; overflow: hidden;
+  padding: 0 !important; margin: 0; background: none !important; backdrop-filter: none !important; clip-path: none !important; border-radius: 0 !important;
+  border: 0 !important; outline: 0; box-shadow: none !important; flex: 1 1 auto;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+  color: var(--dk-dim); font: inherit; opacity: 1 !important; transform: none !important; pointer-events: auto; cursor: pointer;
+}
+.three-right > .lab-dock > .three-stats > * { display: inline-block !important; white-space: nowrap; }
+.three-right > .lab-dock > .three-stats.compact > :nth-child(n + 3) { display: none !important; }
+.three-right > .lab-dock > .three-stats > b { min-width: 58px; padding: 4px 8px; border: 1px solid var(--dk-edge); border-radius: 4px; text-align: center; font-size: 13px; color: var(--dk-cyan); background: color-mix(in srgb, var(--dk-cyan) 8%, transparent); text-shadow: 0 0 10px color-mix(in srgb, var(--dk-cyan) 60%, transparent); }
+.three-right > .lab-dock > .three-stats > b.warn { color: #ffcf5e; border-color: #5a4a1d; text-shadow: 0 0 10px #ffb64899; }
+.three-right > .lab-dock > .three-stats > b.bad { color: #ff6b6b; border-color: #5a1d1d; text-shadow: 0 0 10px #ff5b5b99; }
+.three-right > .lab-dock > .three-stats .lab-q { color: var(--dk-ink); text-decoration: none; padding: 4px 8px; border: 1px solid var(--dk-edge); border-radius: 4px; }
+.three-right > .lab-dock > .three-stats .lab-q:hover { border-color: var(--dk-cyan); color: #fff; }
+.lab-dock .dock-spacer { flex: 0 0 4px; }
+.lab-dock .dock-group { flex: none; display: flex; align-items: center; gap: 8px; }
+.lab-dock .dock-label { color: var(--dk-dim); font-size: 10px; letter-spacing: .14em; }
+.lab-dock .dock-seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--dk-edge); border-radius: 6px; background: #04070c; }
+.lab-dock .dock-seg-btn {
+  min-width: 44px; height: 26px; padding: 0 10px; border: 0; border-radius: 4px; cursor: pointer;
+  background: transparent; color: var(--dk-dim); font: inherit; letter-spacing: .08em; transition: background-color .12s, color .12s, box-shadow .12s;
+}
+.lab-dock .dock-seg-btn:hover { color: var(--dk-ink); background: color-mix(in srgb, var(--dk-cyan) 10%, transparent); }
+.lab-dock .dock-seg-btn.on { color: #120d00; background: var(--dk-on); box-shadow: 0 0 12px color-mix(in srgb, var(--dk-on) 55%, transparent), inset 0 -2px 0 #0004; }
+.lab-dock .dock-seg-btn:focus-visible { outline: 2px solid var(--dk-cyan); outline-offset: 1px; }
+.lab-dock .dock-group.overridden .dock-seg { opacity: .45; }
+/* a narrow Lab (the director docked): the labels go, the controls stay */
+@container (max-width: 640px) { .lab-dock .dock-label { display: none; } }
+@media (max-width: 900px) { .lab-dock .dock-label { display: none; } .lab-dock .dock-seg-btn { min-width: 36px; padding: 0 6px; } }
+:root:is([data-motion=calm], [data-motion=off]) .lab-dock .dock-seg-btn { transition: none; }
 /* (round 133, speed133) ⚡ the slow chip just above the stats line ("Slow: 21 fps · Why? · ✕"; or the graphics card's
    "Reopen in safe mode"): small, one line, gone in a show (tools/three-speed-hook.js; the card: tools/three-speed.css) */
 .lab-speedchip { position: absolute; left: 8px; bottom: 36px; z-index: 3; display: flex; align-items: center; gap: 5px; max-width: calc(100% - 16px); padding: 2px 4px 2px 9px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--panel, #15181b) 92%, transparent); color: var(--warn, #ffb648); font: 11.5px Consolas, monospace; box-shadow: 0 4px 14px #0006; }

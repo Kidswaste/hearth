@@ -171,6 +171,10 @@
       { label: K.Q_NAMES.high, hint: 'full resolution, antialias and shadows · frames may drop', checked: m === 'high' || K.adaptHeld, action: pick('high') },
       '-',
       own ? `Kept for this scene · the default: ${K.Q_NAMES[K.qGlobal()]}` : 'Your pick is kept for this scene and as the default',
+      // (Nov 9) the Quality slider's presets, here too (every scene's preview; renders and ▶ Play stay full)
+      '-',
+      'Preview quality, every scene',
+      ...(K.PREVIEW_LEVELS || []).slice().reverse().map((L) => ({ label: L.name, hint: L.hint, checked: K.PREVIEW_LEVELS[K.previewLevel()] === L, action: () => K.setPreviewLevel(K.PREVIEW_LEVELS.indexOf(L)) })),
     ]);
   }
   function historyDialog(read = false) {

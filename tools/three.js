@@ -568,7 +568,7 @@ const ThreeLab = (() => {
     const K = {
       get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
       get FPS_OPTS() { return FPS_OPTS; }, get GUIDES() { return GUIDES; }, get MIMES() { return MIMES; },
-      get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; },
+      get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; }, get PREVIEW_LEVELS() { return PREVIEW_LEVELS; }, get previewLevel() { return previewLevel; }, get setPreviewLevel() { return setPreviewLevel; },
       get REF_ICONS() { return REF_ICONS; }, get adaptHeld() { return adaptHeld; }, get adaptOn() { return adaptOn; },
       addLayer, addRef, get animatedProps() { return animatedProps; }, get api() { return api; }, applyPreset,
       applyTrigPreset, askAbout, askDirector, get assetCacheOn() { return assetCacheOn; },
@@ -666,7 +666,11 @@ const ThreeLab = (() => {
     const autoBox = el('input', { type: 'checkbox', checked: autoRun });
     const snippetSel = el('select', { title: 'Insert a snippet at the cursor' }, el('option', { value: '', text: 'Insert snippet…' }), ThreeData.SNIPPETS.map((s, i) => el('option', { value: i, text: s.name })));
     const editorHost = el('div', { class: 'three-editor' });
-    const previewHost = el('div', { class: 'three-preview' }, stats);
+    // (Nov 9) the Lab dock: a solid strip under the picture with the live stats and big Quality / FPS controls. Out of
+    // the picture, so the scene never takes its clicks and nothing waits for a hover (the stats used to sit over the
+    // picture, click-through until pointed at). Its controls are added with the presets (see PREVIEW_LEVELS).
+    const labDock = el('div', { class: 'lab-dock', attrs: { role: 'toolbar', 'aria-label': 'Preview' } }, stats);
+    const previewHost = el('div', { class: 'three-preview' });
     stats.title = 'Click: just fps (or everything again)';
     stats.classList.toggle('compact', store.get('three.statsCompact', false));
     stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
@@ -999,7 +1003,7 @@ const ThreeLab = (() => {
       } else if (!on && xpNote) { xpNote.remove(); xpNote = null; }
     }
     addEventListener('hearth:lab-export', (e) => { const on = Boolean(e.detail?.on); if (on === xpOn) return; xpOn = on; if (!on) xpWatch = false; if (fpsPref() < 0 && box.ready) box.send(capMsg()); paintXpRest(); syncPark(); });
-    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); });
+    fpsSel.addEventListener('change', () => { store.set('three.fpsCap', Number(fpsSel.value)); box.send(capMsg()); paintLevel(); }); // (Nov 9: the dock's FPS buttons follow)
     // the window in front or not (an iframe taking the focus is still this window: document.hasFocus() says so)
     let focusT = 0;
     const onFocusChange = () => { clearTimeout(focusT); focusT = setTimeout(() => { const f = document.hasFocus(); if (f === winFocused) return; winFocused = f; if (fpsPref() < 0 && box.ready) box.send(capMsg()); }, 250); };
@@ -2475,7 +2479,7 @@ const ThreeLab = (() => {
       sceneMedia(id, { playing: false });
     }
     addEventListener('beforeunload', () => { rememberMedia(); if (extrasLoaded && kvOk.has('three-lab-extras')) window.hub.kvSet('three-lab-extras', extras); });
-    split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, player.el, consoleWrap), column);
+    split = el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, previewHost, labDock, player.el, consoleWrap), column);
     previewHost.append(presentHint, presentHud, blackout, editPanel, stageNote);
     function setCodeVisible(show) {
       split.classList.toggle('no-code', !show);
@@ -2817,6 +2821,46 @@ const ThreeLab = (() => {
     const qChip = el('button', { type: 'button', class: 'lab-q', dataset: { feature: 'Preview quality' } });
     qChip.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
     qChip.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
+    // (Nov 9) the Quality slider: four presets for every scene's preview (see speedMsg). Default High: antialias costs
+    // the most for the least (Visualizer2: 21 → 41 fps with it off), and renders keep it (export pages force it on).
+    const PREVIEW_LEVELS = [
+      { id: 'low', name: 'Low', hint: 'no antialias, 1× pixels, filters at half size, no shadows', fix: { noAA: true, px1: true, fxHalf: true, sh: 0 } },
+      { id: 'medium', name: 'Medium', hint: 'no antialias, 1× pixels', fix: { noAA: true, px1: true } },
+      { id: 'high', name: 'High', hint: 'no antialias (the biggest saving, edges a little rougher)', fix: { noAA: true } },
+      { id: 'full', name: 'Full', hint: 'as each scene asks (antialias, its own pixel ratio, shadows, filters)', fix: {} },
+    ];
+    const previewLevel = () => { const i = PREVIEW_LEVELS.findIndex((x) => x.id === store.get('three.previewLevel', 'high')); return i >= 0 ? i : 2; };
+    function setPreviewLevel(i) {
+      const n = Math.max(0, Math.min(PREVIEW_LEVELS.length - 1, Math.round(Number(i))));
+      if (n === previewLevel()) return PREVIEW_LEVELS[n].id;
+      const aaWas = speedMsg().noAA;
+      store.set('three.previewLevel', PREVIEW_LEVELS[n].id);
+      paintLevel();
+      box.send(speedMsg());
+      if (speedMsg().noAA !== aaWas && current) run({ reload: true, quiet: true }); // (a context's antialias is fixed when it's made)
+      statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
+      return PREVIEW_LEVELS[n].id;
+    }
+    // (Nov 9) the dock's two segmented controls: QUALITY (the presets) and FPS (the Preview fps setting, as the menu)
+    const SHORT = { low: 'LOW', medium: 'MED', high: 'HIGH', full: 'FULL' };
+    const segBtn = (text, title, fn) => el('button', { type: 'button', class: 'dock-seg-btn', text, title, on: { click: fn } });
+    const qBtns = PREVIEW_LEVELS.map((L, i) => segBtn(SHORT[L.id], `${L.name}: ${L.hint}`, () => setPreviewLevel(i)));
+    const qWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview quality' } }, el('span', { class: 'dock-label', text: 'QUALITY' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview quality' } }, qBtns));
+    const FPS_SHORT = { '30': '30', '60': '60', '0': 'MAX', '-1': 'AUTO' };
+    const fpsOrder = ['30', '60', '0', '-1'];
+    const fBtns = fpsOrder.map((v) => segBtn(FPS_SHORT[v], (FPS_OPTS.find(([k]) => k === v) || [, v])[1], () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); paintLevel(); }));
+    const fWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview fps' } }, el('span', { class: 'dock-label', text: 'FPS' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview frame rate' } }, fBtns));
+    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap);
+    function paintLevel() {
+      const i = previewLevel(); const forced = qMode() === 'high';
+      qBtns.forEach((b, k) => { const on = k === i; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
+      qWrap.classList.toggle('overridden', forced);
+      const t = forced ? 'Force high quality is on (Quality chip): the preview draws full quality for now' : `Preview quality, every scene · renders and ▶ Play stay full quality`;
+      if (qWrap.title !== t) qWrap.title = t;
+      const f = String(fpsPref());
+      fBtns.forEach((b, k) => { const on = fpsOrder[k] === f; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
+    }
+    paintLevel();
     function qualityMenu(...a) { return labPart(K, 'dialogs', 'qualityMenu', a); } // tools/three-lab-dialogs.js
     // what Smooth lowered right now, in plain words (the chip's tooltip, the ⚡ Speed check card)
     function qualityWhy(a = adaptLast) {
@@ -2896,7 +2940,16 @@ const ThreeLab = (() => {
     const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
     // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
     // "no antialias" once the page asked for it on this scene (from its next run)
-    const speedMsg = (lite = liteOn()) => { if (lite) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    const speedMsg0 = (lite = liteOn()) => { if (lite) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    // (Nov 9) the Quality slider's preset, for every scene, on top of the scene's own ⚡ fixes (Force high quality,
+    // Light mode and Safe open keep their own say): Full = as the scene asks · High = no antialias · Medium = also 1×
+    // pixels · Low = also filters at half size and no shadows. Renders and ▶ Play never see it (their own pages).
+    const speedMsg = (lite = liteOn()) => {
+      const b = speedMsg0(lite);
+      if (lite || safeOn() || qMode() === 'high') return b;
+      const p = PREVIEW_LEVELS[previewLevel()].fix;
+      return { ...b, noAA: Boolean(b.noAA || p.noAA), px1: Boolean(b.px1 || p.px1), fxHalf: Boolean(b.fxHalf || p.fxHalf), sh: p.sh === 0 ? 0 : b.sh };
+    };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
@@ -2928,7 +2981,8 @@ const ThreeLab = (() => {
       if (speedMsg(!on).noAA !== speedMsg().noAA && current) run({ reload: true, quiet: true });
       paintLiteTag(); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
     });
-    api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip };
+    api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip,
+      levels: PREVIEW_LEVELS, level: () => PREVIEW_LEVELS[previewLevel()].id, setLevel: (id) => setPreviewLevel(typeof id === 'number' ? id : PREVIEW_LEVELS.findIndex((x) => x.id === id)), slider: () => qWrap, speed: () => speedMsg() };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
     let perfHudOn = Boolean(store.get('three.perfHud', false));
