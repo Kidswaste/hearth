@@ -87,7 +87,7 @@ const F = out.forge = { skin: document.documentElement.dataset.skin || null, loo
 F.composited = await composited();
 // the old way: the list transparent over the window's ground, no lights drawn by the wrap (as round 165 left it);
 // pictured back to back with this way, and this way once more (what changed by itself is left out)
-const oldWay = (on) => { L.classList.toggle('solid-back', !on); wrap.classList.toggle('tint-back', !on); };
+const oldWay = (on) => { L.classList.toggle('solid-back', !on && F.solid); wrap.classList.toggle('tint-back', !on && F.tint); };
 const A = await px(await shot()); oldWay(true); const Bp = await px(await shot()); oldWay(false); const A2 = await px(await shot());
 {
   let n = 0; let over2 = 0; let mx = 0; let noise = 0;

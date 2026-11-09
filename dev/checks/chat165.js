@@ -13,7 +13,7 @@
 //   jump      Native.jumpTo turn #31: drawn and on screen
 //   ground    (plain look) the chat over one plain colour takes that colour and scrolls on the compositor (its own layer),
 //             and its pixels are the same with and without it (≤ B.pixelShare of them off by ≤ B.pixelLevels levels);
-//             Forgeheart (a ground of gradients) is left transparent as it was; its scroll is measured and judged too
+//             Forgeheart (a ground of gradients): its base under the list, its lights over it (round 166): composited too; its scroll is measured and judged too
 //   copy      a turn's text (what Copy / Read aloud use) is the message's, and no message text sits in data-raw attributes
 //   images    every picture drawn in the chat is loading=lazy + decoding=async
 //   list      ~300 chats in the chats list: rows drawn ≤ B.listRows, a full redraw ≤ B.listMs
@@ -64,12 +64,13 @@ async function lookOf(L) {
   const out1 = { solid, why: L.backWhy || undefined, ground: L.style.getPropertyValue('--solid-back-img') ? 'gradients' : L.style.getPropertyValue('--solid-back') || null, composited, samePixels: null };
   if (!solid) return out1;
   // with its own ground, without it (transparent, as before this round), with it again (anything that moved by itself)
-  const a = await shot(); L.classList.remove('solid-back'); const b = await shot(); L.classList.add('solid-back'); const a2 = await shot();
+  const W = L.parentElement; const tinted = W?.classList.contains('tint-back'); // (round 166, audit166: a gradient ground's lights drawn by the wrap: off with it)
+  const a = await shot(); L.classList.remove('solid-back'); W?.classList.remove('tint-back'); const b = await shot(); L.classList.add('solid-back'); if (tinted) W.classList.add('tint-back'); const a2 = await shot();
   if (!a || !b || !a2) return out1;
   const [pa, pb, pa2] = await Promise.all([px(a), px(b), px(a2)]);
-  let n = 0; let mx = 0; let noise = 0;
-  for (let i = 0; i < pa.length; i += 4) { const d = Math.max(Math.abs(pa[i] - pb[i]), Math.abs(pa[i + 1] - pb[i + 1]), Math.abs(pa[i + 2] - pb[i + 2])); const d2 = Math.max(Math.abs(pa[i] - pa2[i]), Math.abs(pa[i + 1] - pa2[i + 1]), Math.abs(pa[i + 2] - pa2[i + 2])); if (d2) noise += 1; else if (d) { n += 1; mx = Math.max(mx, d); } }
-  return { ...out1, samePixels: n === 0, px: pa.length / 4, diffPx: n, maxDiff: mx, noisePx: noise };
+  let n = 0; let mx = 0; let noise = 0; let over2 = 0;
+  for (let i = 0; i < pa.length; i += 4) { const d = Math.max(Math.abs(pa[i] - pb[i]), Math.abs(pa[i + 1] - pb[i + 1]), Math.abs(pa[i + 2] - pb[i + 2])); const d2 = Math.max(Math.abs(pa[i] - pa2[i]), Math.abs(pa[i + 1] - pa2[i + 1]), Math.abs(pa[i + 2] - pa2[i + 2])); if (d2) noise += 1; else if (d) { n += 1; mx = Math.max(mx, d); if (d > 2) over2 += 1; } }
+  return { ...out1, tinted: Boolean(tinted), samePixels: n === 0, px: pa.length / 4, diffPx: n, over2Px: over2, maxDiff: mx, noisePx: noise };
 }
 // ---------- the wheel, up ~25 screens: the window's main-thread work, frames, long tasks (load-aware) ----------
 async function scrollOf(L, tag) {
@@ -286,8 +287,9 @@ for (const [N, R] of Object.entries(out.sizes)) {
   if (R.copy.dataRawChars) bad(`${N} turns: ${R.copy.dataRawChars} characters of message text copied into data-raw attributes`);
   for (const [what, lk] of [['plain look', R.look], ['Forgeheart', R.forge?.look]]) {
     if (!lk) continue;
-    if (what === 'plain look' ? !lk.solid || !lk.composited : lk.solid && !lk.composited) bad(`${N} turns (${what}): the chat does not scroll on the compositor: ${JSON.stringify(lk)}`); // (Forgeheart's ground is gradients: left as it was, list.backWhy says so)
-    if (lk.samePixels === false && (lk.diffPx > lk.px * B.pixelShare || lk.maxDiff > B.pixelLevels)) bad(`${N} turns (${what}): the chat looks different painting its own ground (${lk.diffPx} of ${lk.px} pixels, up to ${lk.maxDiff} levels)`);
+    if (what === 'plain look' ? !lk.solid || !lk.composited : lk.solid && !lk.composited) bad(`${N} turns (${what}): the chat does not scroll on the compositor: ${JSON.stringify(lk)}`); // (round 166: Forgeheart's ground of gradients is drawn as its plain base under the list + its lights over it: composited too)
+    // (round 166, audit166) a gradient ground (Forgeheart): its lights now drawn over the list, its gradients dithered in another layer: ±1–2 levels anywhere, ≤ 3 % of pixels past that, ≤ 8 levels
+    if (lk.samePixels === false && (lk.tinted ? lk.over2Px > lk.px * 0.03 || lk.maxDiff > B.pixelLevels : lk.diffPx > lk.px * B.pixelShare || lk.maxDiff > B.pixelLevels)) bad(`${N} turns (${what}): the chat looks different painting its own ground (${lk.diffPx} of ${lk.px} pixels, up to ${lk.maxDiff} levels)`);
   }
   if (R.stream.outside > B.outside) bad(`${N} turns: streaming touched the DOM outside the last turn: ${R.stream.outsideWhere.join(', ')}`);
   if (R.stream.liveWasLast === false) bad(`${N} turns: the live reply was not the last turn`);
