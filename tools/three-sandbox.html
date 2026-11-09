@@ -567,10 +567,10 @@ const XP_PAGE_EARLY = new URLSearchParams(location.search).get('xp') === '1'; //
 // (round 153a, lite153) ⚡ Lite mode: a composer draws only its scene (RenderPass) and its last colour step (OutputPass,
 // so the picture's colours stay right): bloom and every other pass step aside for that frame (their own `enabled` is
 // put back after it, so the scene's code never sees a change; EffectComposer hands the screen to its last enabled pass).
-// Never in a still / recording (fullRes), ▶ Play or a composer on its own render target.
+// Never in a still / recording (fullRes), a show (Present: RDY.lock), ▶ Play or a composer on its own render target.
 const CPX_KEEP = /^(RenderPass|OutputPass|ClearPass|MaskPass|ClearMaskPass)$/;
 function cpxLite(c, rnd, dt) {
-  if (fullRes() || GAME || c.__cpxRT || !Array.isArray(c.passes)) return rnd.call(c, dt);
+  if (fullRes() || GAME || RDY.lock || c.__cpxRT || !Array.isArray(c.passes)) return rnd.call(c, dt);
   const off = [];
   for (const p of c.passes) if (p && p.enabled && !p.isOutputPass && !CPX_KEEP.test(p.constructor?.name || '')) { p.enabled = false; off.push(p); }
   if (!off.length || off.length === c.passes.length) { for (const p of off) p.enabled = true; return rnd.call(c, dt); }
@@ -10193,7 +10193,7 @@ globalThis.filter = (type, P = {}) => {
   renderer.setAnimationLoop(() => {
     if (L.adCovered && L.drawnGen === L.gen && !adFull()) return; // (round 31: under an opaque layer: no merge, no pass)
     fxPlan();
-    const off = (idKey != null && (P[idKey] === 0 || (LITE.on && !fullRes()))) || Boolean(L.fxInto); // (round 153a, lite153: ⚡ Lite: bloom / blur / grain / vignette… step aside in the live preview)
+    const off = (idKey != null && (P[idKey] === 0 || (LITE.on && !fullRes() && !RDY.lock))) || Boolean(L.fxInto); // (round 153a, lite153: ⚡ Lite: bloom / blur / grain / vignette… step aside in the live preview)
     if (off && LITE.on && idKey != null && P[idKey] !== 0) LITE.fxOff += 1;
     if (off !== Boolean(L.fxSkip)) {
       L.fxSkip = off; renderer.domElement.__skip = off; renderer.domElement.style.visibility = off ? 'hidden' : ''; force = true;
