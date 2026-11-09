@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's live sound (🎧 Live ▾): capturing this computer's sound or a microphone, the input menu, what's playing and its cover.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartlive`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartlive`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).live = (K) => {
   const __labLiveStart = async (kind) => {
     try {

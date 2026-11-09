@@ -1,6 +1,6 @@
 // (round 158, split158) The rows of the Lab's menus: Sketch ▾, the toolbar's ⋯, the preview's right-click (also what 🔎 Lab search lists).
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartmenus`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartmenus`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).menus = (K) => {
   // (round 36, labsearch: the rows on their own, so 🔎 Lab search lists them too)
   function sketchMenuRows() {

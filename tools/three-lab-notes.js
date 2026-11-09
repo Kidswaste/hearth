@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's notes: a note with a screenshot (N), the notes list, a note's card.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartnotes`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartnotes`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).notes = (K) => {
   async function takeNote({ text: given, time } = {}) {
     if (!K.current) return null;

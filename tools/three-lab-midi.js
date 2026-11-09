@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's MIDI controllers: learn, the MIDI menu, incoming notes and knobs.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartmidi`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartmidi`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).midi = (K) => {
   async function midiInit() {
     if (K.midi) return true;

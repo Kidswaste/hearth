@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab timeline's lanes menu: pick, edit and show the animated properties.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartlanes`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartlanes`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).lanes = (K) => {
   // A: show every animated setting of every layer; again (when they all show): hide every lane.
   function toggleAllLanes() {

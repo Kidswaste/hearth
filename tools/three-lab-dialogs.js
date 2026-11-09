@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's dialogs and menus used now and then: keys, history, all your sketches, templates, web page export, ask about a layer, delete, cycle looks, the preview's ⋯, triggers presets, quality.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartdialogs`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartdialogs`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).dialogs = (K) => {
   // ?: the Lab's keys in one sheet
   function labKeys() {

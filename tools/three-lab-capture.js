@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's pictures: contact sheet, stills at the exact frame size, stills at the cues, frames to the director, compare (pin a frame).
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartcapture`, tools/three.js labPart). K is
-// what it reaches inside the Lab (the sketch tab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartcapture`, tools/three.js labPart): the names
+// it reads inside the Lab (the sketch tab: its state, helpers, the other parts' stand-ins) go through K.
 (window.LabParts ||= {}).capture = (K) => {
   async function contactSheet({ times = null, count = 8 } = {}) {
     if (K.sheetBusy) throw new Error('A contact sheet is already being made');

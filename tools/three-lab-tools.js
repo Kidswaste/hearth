@@ -1,6 +1,6 @@
 // (round 158, split158) The Lab's other tools (Tools drawer): model viewer, shader playground, textures, docs.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labparttools`, tools/three.js labPart). K0 is
-// what it reaches inside the Lab (ThreeLab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labparttools`, tools/three.js labPart): the names
+// it reads inside the Lab (ThreeLab: its state, helpers, the other parts' stand-ins) go through K0.
 (window.LabParts ||= {}).tools = (K0) => {
   // ---------- Model viewer tab ----------
   function modelTab(pane) {

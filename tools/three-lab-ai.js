@@ -1,6 +1,6 @@
 // (round 158, split158) The director's rarer Lab tools: triggers, eval and input in the scene, the timeline and keyframes, notes, the contact sheet, references.
-// Moved out of tools/three.js, unchanged: loaded on first use (lazy group `labpartai`, tools/three.js labPart). K0 is
-// what it reaches inside the Lab (ThreeLab: its state, helpers and the other parts' stand-ins).
+// Moved out of tools/three.js as it was, loaded on first use (lazy group `labpartai`, tools/three.js labPart): the names
+// it reads inside the Lab (ThreeLab: its state, helpers, the other parts' stand-ins) go through K0.
 (window.LabParts ||= {}).ai = (K0) => {
   // the director's rarer Lab tools (triggers, eval, input, the timeline and keyframes, notes, contact sheet, references)
   async function labCallMore(tool, args, d) {
