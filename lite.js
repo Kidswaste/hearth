@@ -50,7 +50,7 @@ const LiteUI = (() => {
   function stats(msg) {
     if (S.offered || L()?.on) return;
     const fps = Number(msg?.fps) || 0;
-    const moving = fps > 0 && !msg?.pace?.still && !document.hidden && document.hasFocus();
+    const moving = fps > 0 && !msg?.pace?.still && !document.hidden;
     if (!moving || fps >= SLOW_FPS) { S.slowSince = 0; return; }
     const now = Date.now();
     if (!S.slowSince) { S.slowSince = now; return; }
