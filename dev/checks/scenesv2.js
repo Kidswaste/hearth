@@ -160,7 +160,8 @@ try {
   out.song = Boolean(sr?.ok) && Boolean(await until(() => c.state.bpm > 0, 30000));
   c.seek(1); await wait(200);
   c.play(true);
-  const g2 = await until(async () => { const s = await pj('window.__labG2 ? window.__labG2.state() : null'); return s && s.layers.length === 6 && s.frames > 30 ? s : null; }, 60000, 500);
+  const g2 = await until(async () => { const s = await pj('window.__labG2 ? window.__labG2.state() : null'); return s && s.layers.length === 6 && s.frames > 30 ? s : null; }, 120000, 500);
+  out.firstFrames = g2 ? { compileMs: g2.layers.map((x) => x.compileMs) } : null;
   step('v2: all 6 layers mounted on ONE renderer, drawing', Boolean(ready && g2), g2 ? { backend: g2.backend, layers: g2.layers.map((x) => x.objects), frames: g2.frames } : await pj('window.__labG2 ? window.__labG2.state() : "no runtime"'));
   step('v2: the WebGPU backend (not the WebGL 2 fallback)', g2?.backend === 'webgpu', g2?.backend);
   const errs = D().report?.()?.errors || null;

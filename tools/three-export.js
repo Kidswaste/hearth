@@ -44,7 +44,7 @@ const LabExport = (() => {
       const x = { test, resolve }; waits.add(x);
       setTimeout(() => { if (waits.delete(x)) reject(new Error(`The export page stopped answering (${what})`)); }, ms);
     });
-    const box = ThreeLab._sandbox(host, onMsg, () => `&dpr=${pg.dpr}&xp=1${alpha ? '&alpha=1' : ''}&seed=${seed}`, { gpuStuck: 'owner' }); // (round 43: a render picks up itself)
+    const box = ThreeLab._sandbox(host, onMsg, () => `&dpr=${pg.dpr}&xp=1${alpha ? '&alpha=1' : ''}&seed=${seed}${LAB()?.scenes?.get?.(LAB()?.sketchId?.())?.format === 'gpu' ? '&gpu=1' : ''}`, { gpuStuck: 'owner' }); // (Nov 9, Scenes v2: a v2 scene's export page fetches the WebGPU build while it loads) // (round 43: a render picks up itself)
     box.frame.style.cssText = 'width:100%;height:100%;border:0;display:block';
     const page = { pg, box, host, errors: [], send: (m) => box.send(m), wait, close() { waits.clear(); try { box.frame.src = 'about:blank'; } catch { /* gone */ } host.remove(); },
       // (round 43, glrecover) the GPU gave the page's contexts back and its layers ran again (true), or not within ms

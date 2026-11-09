@@ -300,7 +300,7 @@ function makeBackstage(opts = {}) {
     refsSig = null; await sendRefs(s, { fresh: true });
     if (song) song.coreSent = false; // (a fresh page has no analysis core yet)
     await syncClock(s, { fresh: true });
-    box.send({ type: 'run-layers', layers: Ls.map((L, z) => ({ ...specOf(L, z), ...(L.precomp ? { precomp: pcSpec(L, s) } : {}) })) });
+    box.send({ type: 'run-layers', layers: Ls.map((L, z) => ({ ...specOf(L, z), ...(L.precomp ? { precomp: pcSpec(L, s) } : {}), ...(s.format === 'gpu' ? { gpu: true } : {}) })) }); // (Nov 9, Scenes v2: a v2 scene's layers on the page's one WebGPU renderer)
     loaded = { id: s.id, sig, codes: new Map(Ls.map((L) => [L.id, codeKey(L, s)])) };
     return true;
   }

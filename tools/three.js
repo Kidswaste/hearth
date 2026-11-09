@@ -3656,12 +3656,23 @@ const ThreeLab = (() => {
       // ★ pinned ones (pin them in the sketch browser) first, then the most recent
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt);
+      // (Nov 9, Scenes v2) v2 scenes first; the old format's under "Old version" (each project's under its own name there)
+      const isOld = (x) => x.format !== 'gpu';
+      const olds = list.filter(isOld);
+      if (olds.length && olds.length < list.length) { const v2 = list.filter((x) => !isOld(x)); list.length = 0; list.push(...v2, ...olds); }
       const mark = (id) => (typeof ChatScenes !== 'undefined' ? ChatScenes.glyphFor(id) : ''); // the chat that owns it (chat-scenes.js)
       const texts = list.map((s) => `${pins.has(s.id) ? '★ ' : ''}${mark(s.id) ? `${mark(s.id)} ` : ''}${s.name}`);
       // (round 21) the same list as last time (a scene switch): only the selection moves, no new options
       // (round 23) scenes of a project under its name (projects.js), the others after
       const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
-      const groups = pj?.sketchGroups?.(list.map((s) => s.id)) || null;
+      const groupsOf = (ids) => pj?.sketchGroups?.(ids) || null;
+      const groups = (() => {
+        const newIds = list.filter((x) => !isOld(x)).map((x) => x.id); const oldIds = olds.map((x) => x.id);
+        if (!oldIds.length) return groupsOf(newIds);
+        const gNew = newIds.length ? groupsOf(newIds) || [{ label: 'Scenes', ids: newIds }] : [];
+        const gOld = (groupsOf(oldIds) || [{ label: '', ids: oldIds }]).map((g) => ({ label: g.label && g.label !== 'Other sketches' ? `Old version · ${g.label}` : 'Old version', ids: g.ids }));
+        return [...gNew, ...gOld];
+      })();
       const sig = list.map((s, i) => `${s.id}\u0001${texts[i]}`).join('\u0002') + (groups ? JSON.stringify(groups) : '');
       const opt = (i) => el('option', { value: list[i].id, text: texts[i], selected: list[i].id === current?.id });
       const at = groups && new Map(list.map((s, i) => [s.id, i]));
