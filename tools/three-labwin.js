@@ -140,6 +140,8 @@ const LabWinHost = (() => {
       });
     } catch { /* no chats here */ }
     addEventListener('hearth:view', () => { if (away) paintCover(); });
+    // Hearth's window reloaded while the Lab window is open: the scene is still away
+    HUB.state().then((s) => { if (s?.open && s.scene && !away) { away = s.scene; release(); paintCover(); } }).catch(() => {});
     addEventListener('hearth:lab-ran', () => { if (away) paintCover(); });
   }
 

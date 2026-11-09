@@ -114,7 +114,9 @@ function open({ scene: id, hideMain = false, bounds = null } = {}, ctx) {
     if (input.type !== 'keyDown' || !(input.control || (process.platform === 'darwin' && input.meta)) || input.alt) return;
     if (input.key === ';' || input.code === 'Semicolon' || input.code === 'Period') { e.preventDefault(); toLab('shortcut', { key: input.code === 'Period' ? '.' : ';', shift: input.shift }); }
   });
-  w.webContents.on('render-process-gone', () => dropCalls('crashed'));
+  // its page gone (a crash, out of memory): the scene goes back to Hearth's Lab (Safe open takes it from there), not a
+  // dead window holding it
+  w.webContents.on('render-process-gone', () => { dropCalls('crashed'); setTimeout(() => { if (!w.isDestroyed()) w.close(); }, 0); });
   w.on('closed', () => {
     if (labWin === w) labWin = null;
     const was = scene; scene = null;

@@ -101,8 +101,8 @@ const LabWin = (() => {
     t.open = Math.round(performance.now());
     document.title = `${ThreeLab.scenes?.get?.(scene)?.name || 'Scene'} · Hearth Lab`;
   }
-  // Ctrl/⌘+; and Ctrl/⌘+. from the Lab's preview frame (labwinmain.js before-input-event)
-  window.hub.onShortcut?.((sc) => { if (sc?.key === ';' && typeof CmdBar !== 'undefined') CmdBar.open?.(); });
+  // (Ctrl/⌘+; from the Lab's preview frame reaches the command bar as in Hearth: labwinmain.js sends 'shortcut', cmdbar.js
+  // listens for it)
   addEventListener('DOMContentLoaded', () => { boot().catch((err) => { console.error(err); showError(`The Lab window could not start: ${err.message}`); }); });
   return {
     scene, times: () => ({ ...t }), stats: () => stats && { ...stats, ago: Date.now() - stats.at },
