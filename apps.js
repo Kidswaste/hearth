@@ -46,15 +46,20 @@ const Apps = (() => {
   }
   // (round 160, boot160) slot() / fill(slot, fn): the apps fn registers take the place they had when the slot was made
   // (lazy.js: a lazy group's stand-in app windows, read right after the first frame), so Apps.list() keeps its old order
-  const slot = () => ({ ids: new Set(reg.keys()) });
+  // (an app another slot made before this one filled in counts as there before it, as it was registered first then)
+  let slots = 0;
+  const filledBy = new Map(); // app id → the slot that put it in
+  const slot = () => ({ ids: new Set(reg.keys()), n: ++slots });
   function fill(s, fn) {
     const had = new Set(reg.keys());
     try { fn(); } finally {
       const all = [...reg];
       const added = all.filter(([id]) => !had.has(id));
+      for (const [id] of added) filledBy.set(id, s.n);
+      const first = ([id]) => had.has(id) && (s.ids.has(id) || (filledBy.get(id) ?? Infinity) < s.n);
       if (added.length) {
         reg.clear();
-        for (const e of [...all.filter(([id]) => s.ids.has(id)), ...added, ...all.filter(([id]) => had.has(id) && !s.ids.has(id))]) reg.set(e[0], e[1]);
+        for (const e of [...all.filter(first), ...added, ...all.filter((x) => had.has(x[0]) && !first(x))]) reg.set(e[0], e[1]);
       }
     }
   }
