@@ -99,6 +99,13 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   const drawing = un?.stats && un2 && un2.fps > 0 && un2.ago < 3000 && un.visible === 'visible';
   step(`unfocused: the Lab window keeps drawing while Hearth's window is in front${lite ? ' (Lite mode on: its 30 fps cap)' : ' at full rate (no 30 fps background cap)'}`, Boolean(drawing) && (lite ? un2.cap === 30 : un2.cap !== 30), out.measure.unfocused);
 
+  // ---------- the drawer: what you type there goes to the scene's director chat in Hearth ----------
+  const dr = await lw(`(async () => { const has = Boolean(document.querySelector('.lw-drawer .lw-ask')); await LabWinDrawer.send(null, 'Make the knot gold (from the Lab window)'); return has; })()`);
+  const asked = await until(() => LabWinHost.state().asks >= 1, 10000);
+  const heard = await until(async () => { const n = await lw('LabWinDrawer.notes().map((x) => x.text)'); const after = n ? n.slice(n.findIndex((t) => t.startsWith('→ Make the knot gold')) + 1) : []; return after.some((t) => /working on it/.test(t)) && after.some((t) => /^✦ /.test(t)) ? n : null; }, 40000);
+  step('drawer: the Lab window\'s slim drawer (where the chat sits) sends to the scene\'s director chat in Hearth, and its reply comes back as a line', dr === true && Boolean(asked) && Boolean(heard), { drawer: dr, asks: LabWinHost.state().asks, notes: heard?.slice(-3) });
+  await until(() => !Native.isAgentBusy?.(Tools.dockedAgent?.('three')?.id || ''), 30000);
+
   // ---------- close: back to Hearth on that scene ----------
   await lw('(window.LabWinHost.rows()[0][2](), true)'); // ↩ Back to Hearth
   await until(() => !LabWinHost.away(), 15000);

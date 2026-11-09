@@ -38,8 +38,8 @@ var Manager = LabWinQuiet.make({ open() {} });
 // the native chat view: its place in the Lab (the dock) holds the Lab window's slim drawer (lab-window.js), and a
 // message the Lab sends to its director goes to that chat in Hearth's window
 var Native = LabWinQuiet.make({
-  mount: (agentId, host) => window.LabWinDrawer?.mount(agentId, host),
-  refresh() {}, focus() {}, newChat() {}, setDraft: (agentId, text) => window.LabWinDrawer?.draft(text),
-  send: (agentId, text, o) => (window.LabWinDrawer ? LabWinDrawer.send(agentId, text, o) : Promise.reject(new Error('Hearth is not open'))),
+  mount: (agentId, host) => (typeof LabWinDrawer !== 'undefined' ? LabWinDrawer.mount(agentId, host) : undefined),
+  refresh() {}, focus() {}, newChat() {}, setDraft: (agentId, text) => (typeof LabWinDrawer !== 'undefined' ? LabWinDrawer.draft(text) : undefined),
+  send: (agentId, text, o) => (typeof LabWinDrawer !== 'undefined' ? LabWinDrawer.send(agentId, text, o) : Promise.reject(new Error('Hearth is not open'))),
   busy: () => false, current: () => null, chatOf: () => null,
 });

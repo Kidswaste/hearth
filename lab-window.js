@@ -74,6 +74,15 @@ const LabWin = (() => {
     const cfg = await window.hub.getConfig();
     if (cfg?.error || !cfg?.config) { showError(`Couldn't read settings — ${cfg?.error || 'no settings'}`); return; }
     H.config = cfg.config;
+    // the drawer sits where the Lab's chat would: the Lab's own director, else the first native Claude (as "Ask Claude"
+    // does in Hearth); only in this window's view of the agents, never saved (Hearth's window owns the settings)
+    const agents0 = H.agents;
+    H.agents = () => {
+      const list = agents0();
+      if (list.some((a) => a.dock === 'three' && a.mode === 'native')) return list;
+      const c = list.find((a) => a.mode === 'native' && a.engine === 'claude' && !a.dock) || list.find((a) => a.mode === 'native' && !a.dock);
+      return c ? list.map((a) => (a === c ? { ...a, dock: 'three' } : a)) : list;
+    };
     applyTheme(cfg.themeCss || '');
     try { Look.apply?.(); } catch (err) { console.warn('look', err); }
     t.config = Math.round(performance.now());

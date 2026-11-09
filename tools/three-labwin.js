@@ -111,6 +111,7 @@ const LabWinHost = (() => {
   }
 
   // ---------- the drawer's messages → the scene's chat here ----------
+  const asked = new Set(); // the chats the drawer's messages went to: their replies go back to it
   const director = () => (typeof Tools !== 'undefined' ? Tools.dockedAgent?.('three') : null) || H.claudeAgent?.();
   async function ask({ agentId, text, images, scene } = {}) {
     if (!text || typeof Native === 'undefined') return;
@@ -120,7 +121,10 @@ const LabWinHost = (() => {
     const aid = chat?.agentId || (H.agent?.(agentId) ? agentId : director()?.id);
     if (!aid) { HUB.note({ text: 'No director in Hearth to send this to (add a Claude agent in Hearth first).', kind: 'err' }); return; }
     try {
-      await Native.send(aid, text, chatId ? { chatId, images: images || [] } : {});
+      const sending = Native.send(aid, text, chatId ? { chatId, images: images || [] } : {});
+      asked.add(chatId || H.activeChat?.[aid]); // (a new chat gets its id as it is sent)
+      await sending;
+      asked.add(chatId || H.activeChat?.[aid]);
       HUB.note({ text: `${H.agent?.(aid)?.name || 'The director'} is working on it…`, kind: 'ai' });
     } catch (err) { HUB.note({ text: err.message, kind: 'err' }); }
   }
@@ -131,7 +135,7 @@ const LabWinHost = (() => {
     // the scene's chat answered: its first words for the drawer
     try {
       Native.hooks?.finish?.push((event, chat) => {
-        if (!away || !chat?.id || typeof ChatScenes === 'undefined' || ChatScenes.linkOf?.(chat.id)?.sketch !== away) return;
+        if (!away || !chat?.id || !(asked.has(chat.id) || (typeof ChatScenes !== 'undefined' && ChatScenes.linkOf?.(chat.id) === away))) return;
         setTimeout(() => { const m = chat.messages?.at?.(-1); if (m?.role === 'assistant' && m.text) HUB.note({ text: `✦ ${String(m.text).replace(/\s+/g, ' ').slice(0, 300)}`, kind: 'ai' }); }, 0);
       });
     } catch { /* no chats here */ }
