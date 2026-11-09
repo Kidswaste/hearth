@@ -38,7 +38,6 @@
 }
 :root[data-tex="off"] { --tx-noise: none; --tx-brushed: none; --tx-brushed-v: none; }
 
-@keyframes m-sweep { from { background-position: 160% 0; } to { background-position: -60% 0; } } /* (kept for other streams; the app's own sweeps are juice.js glints since round 17) */
 @keyframes m-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 
 /* utility classes: add one to any element (other streams' new UI can use these directly) */
