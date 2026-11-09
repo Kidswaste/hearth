@@ -1011,6 +1011,10 @@ const ThreeLab = (() => {
       parkedNow = on;
       api.parkTweaks?.(on);
       restArm(); // (round 154, mem154)
+      // (round 160, playfix) the Lab rested while Hearth's window was hidden, minimised or covered (Windows reports a
+      // covered window as hidden) and is on screen again: its page comes back here, as when the Lab tool is shown
+      // (onShow). Nothing else brought it back: the preview stayed black / frozen and ▶ did nothing on every scene.
+      if (!on && REST.by && workspaceReleased && !REST.closing && window.ProjectWorkspace?.state?.().phase !== 'opening') { REST.by = false; REST.woke += 1; api.workspace?.resume?.(); }
       stallArm?.(on);
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
