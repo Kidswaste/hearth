@@ -78,6 +78,7 @@ const ProjectMenu = (() => {
       S('Open'),
       { id: 'desk', label: 'Open the Desk', icon: 'home', tip: 'The project’s page: its scene, chats, moodboard and files', action: go(() => ProjectWorkspace.open(p.id, 'overview')) },
       sc ? { id: 'lab', label: 'Open in the Lab', icon: 'three', hint: sceneName(sc), tip: 'Its main scene in the Three.js Lab', action: go(() => openLab(p)) } : null,
+      sc && window.hub?.labwin && !window.hub.labwin.scene ? { id: 'labwin', label: '⧉ Open in its own window', icon: 'three', hint: 'the Lab only', tip: 'Its main scene in a lighter window just for the Lab: full speed, nothing else loaded (Hearth goes quiet meanwhile)', action: go(() => openLabWin(p)) } : null, // (round 153c, labwin153)
       { id: 'chats', label: 'Open its chats', icon: 'panel', hint: C.plural(chatsOf(p).length, 'chat'), tip: 'The chats list on the left shows this project’s chats', action: go(() => openChats(p)) },
       { id: 'continue', label: 'Continue where you left off', icon: 'recent', action: go(() => P.continueIn(p)) },
       mk ? { id: 'make', label: `Its make (${mk.name})`, items: () => Makes.makeMenu(mk) } : null,
@@ -134,6 +135,14 @@ const ProjectMenu = (() => {
     if (!sc) throw Error('This project has no scene yet.');
     if (p.workspace?.sceneId === sc) return ProjectWorkspace.open(p.id, 'scene');
     return P.openScene(sc);
+  }
+  // (round 153c, labwin153) its main scene in the Lab window (tools/three-labwin.js)
+  async function openLabWin(p) {
+    const sc = mainScene(p);
+    if (!sc) throw Error('This project has no scene yet.');
+    if (window.Lazy && !Lazy.loaded('lab')) await Lazy.load('lab');
+    await ThreeLab.cmd({ show: false });
+    return LabWinHost.open(sc);
   }
   function openChats(p) {
     window.ProjChats?.setScope(p.id);

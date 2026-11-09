@@ -30,7 +30,19 @@ const Lazy = (() => {
 
   const say = (msg) => { try { console.warn(`Lazy: ${msg}`); } catch { /* no console */ } };
   const ofGlobal = new Map(); // global name → group
-  for (const g of D.GROUPS || []) {
+  // (round 153c, labwin153) the Lab window (lab-window.html) knows only the groups the Lab needs (HearthLabWindow.groups:
+  // name → tier there): no stand-ins, globals or loads for the chat app's groups; what a "Trim Hearth" switch turned off
+  // (window.HearthFeatures, when there is one) stays out too
+  const LW = window.HearthLabWindow?.groups || null;
+  const featOff = (n) => { try { const F = window.HearthFeatures; return Boolean(F && (typeof F.isOff === 'function' ? F.isOff(n) : typeof F.enabled === 'function' ? F.enabled(n) === false : false)); } catch { return false; } };
+  const lwGroups = (list) => {
+    if (!LW) return list;
+    const ok = new Set(list.filter((g) => g.name in LW && !featOff(g.name)).map((g) => g.name));
+    let dropped = true; // a group whose dependency isn't here can't load here either
+    while (dropped) { dropped = false; for (const g of list) if (ok.has(g.name) && (g.after || []).some((d) => !ok.has(d))) { ok.delete(g.name); dropped = true; } }
+    return list.filter((g) => ok.has(g.name)).map((g) => ({ ...g, tier: LW[g.name] === 'soon' ? 'soon' : 'use', asap: LW[g.name] === 'soon' ? g.asap : false }));
+  };
+  for (const g of lwGroups(D.GROUPS || [])) {
     groups.set(g.name, { tier: 'soon', after: [], css: [], ...g, state: 'stub', promise: null });
     for (const n of g.globals || []) ofGlobal.set(n, g.name);
   }

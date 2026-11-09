@@ -470,10 +470,35 @@ async function cdpConnect(dir) {
           const d = await new Promise((r) => { k.wait.set(i, r); k.ws.send(JSON.stringify({ id: i, method: req.cdp, params: req.params || {} })); });
           result = d.error ? { error: d.error.message } : d.result || {};
         }
+      } else if (req.cdnFor) {
+        // (round 153c, labwin153) { cdnFor: 'lab-window\\.html' }: another window's pages (and their frames) whose URL
+        // matches get the same local CDN copy as the main window (three.js from jsdelivr): watched from now on, every
+        // 100 ms, attached as soon as they appear (the Lab window's preview frame loads three.js through it)
+        const re = new RegExp(req.cdnFor); const seen = new Set();
+        const hook = async () => {
+          let list = []; try { list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json(); } catch { return; }
+          for (const t of list.filter((x) => x.type === 'page' && re.test(x.url) && !seen.has(x.id))) {
+            seen.add(t.id);
+            const w = new WebSocket(t.webSocketDebuggerUrl); let n = 0;
+            const snd = (method, params = {}, sessionId) => w.send(JSON.stringify({ id: ++n, method, params, ...(sessionId ? { sessionId } : {}) }));
+            w.onopen = () => { snd('Fetch.enable', { patterns: CDN_PATTERNS }); snd('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }); };
+            w.onmessage = (m) => {
+              const d = JSON.parse(m.data);
+              if (d.method === 'Target.attachedToTarget') { const sid = d.params.sessionId; snd('Fetch.enable', { patterns: CDN_PATTERNS }, sid); snd('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sid); snd('Runtime.runIfWaitingForDebugger', {}, sid); return; }
+              if (d.method !== 'Fetch.requestPaused') return;
+              const pp = d.params; const file = cdnFile(pp.request.url);
+              if (!file) { snd('Fetch.continueRequest', { requestId: pp.requestId }, d.sessionId); return; }
+              const type = /\.m?js$/.test(file) ? 'text/javascript' : /\.json$/.test(file) ? 'application/json' : /\.wasm$/.test(file) ? 'application/wasm' : 'application/octet-stream';
+              snd('Fetch.fulfillRequest', { requestId: pp.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: type }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: fs.readFileSync(file).toString('base64') }, d.sessionId);
+            };
+          }
+        };
+        setInterval(hook, 100).unref?.(); await hook();
+        result = { watching: req.cdnFor };
       } else if (req.pageEval) {
         // (round 30) an expression in another window's page (an app window's chrome): the newest page whose URL matches
         const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-        const t = list.filter((x) => x.type === 'page' && new RegExp(req.pageEval).test(x.url)).pop();
+        const t = list.filter((x) => x.type === (req.frame ? 'iframe' : 'page') && new RegExp(req.pageEval).test(x.url)).pop(); // (round 153c: frame: true, an out-of-process frame, e.g. the Lab window's preview)
         if (!t) result = { error: `no page ${req.pageEval}` };
         else {
           const w = new WebSocket(t.webSocketDebuggerUrl);
