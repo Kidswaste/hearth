@@ -1,10 +1,12 @@
 // (round 150, stage150) the scene view as a clean, mono, futuristic stage (docs/upgrades/stage150.md), ONE check on a
 // fixture scene it makes (a wireframe globe in points, its background and hue as sliders) and realscene-lib's 124 BPM
 // song (a kick on every beat); the check's own temp data, never an owner's scene:
-//   idle      the pointer still over the picture for 2 s: the view controls (.stage-pill), the stats line and the 01
-//             PREVIEW header's readouts are transparent and not hit by the pointer; the stage frame stays
+//   (round 164) the Lab dock (the owner's Nov 9 design, tools/three.js labDock): the stats line lives in a solid strip
+//             under the picture with the QUALITY / FPS controls, always fully shown; the view controls stay on the picture
+//   idle      the pointer still over the picture for 2 s: the view controls (.stage-pill) and the 01 PREVIEW header's
+//             readouts are transparent and not hit by the pointer; the stage frame stays; the dock's stats stay in sight
 //   zones     real pointer moves (CDP): the top-right corner reveals the view controls (and a real click on 9:16 works),
-//             the bottom edge the stats / quality line, the header its readouts
+//             the bottom edge is zone b (the view controls stay away), the header its readouts
 //   pin       I (a real key) pins everything through an idle wait, I again: a clean stage; /stage show and the command
 //             bar's plain words "clean stage" / "show scene controls" do the same
 //   warnings  a new Slow chip (the real one: this scene is slow on software GL) shows by itself while idle, then tucks
@@ -40,7 +42,7 @@ pts.setAttribute('position', new THREE.BufferAttribute(a, 3)); const pm = new TH
 const bg = new THREE.Color(); const col = new THREE.Color();
 r.setAnimationLoop((t) => { s.background = bg.set(P.bg); col.setHSL(P.hue, 0.85, 0.62); ico.material.color = col; pm.color = col; g.rotation.y = t / 4000; g.rotation.x = t / 9000; r.render(s, cam); });`;
 
-let c = null; let D = null; let pv = null; let pill = null; let stats = null; let head = null;
+let c = null; let D = null; let pv = null; let pill = null; let stats = null; let head = null; let dock = null;
 const op = (n) => (n ? Number(getComputedStyle(n).opacity) : -1);
 const hit = (n) => (n ? getComputedStyle(n).pointerEvents !== 'none' : false);
 const S = () => LabHudStage.state();
@@ -66,8 +68,12 @@ try {
   const f = await RS.files(); await c.loadSong(f.song); await until(() => c.state.bpm > 0, 30000);
   await wait(1500);
   pv = [...document.querySelectorAll('.surface.active .three-preview')].find((n) => n.getBoundingClientRect().width > 100);
-  pill = pv.querySelector(':scope > .stage-pill'); stats = pv.querySelector(':scope > .three-stats'); head = pv.previousElementSibling?.classList.contains('ih-pv') ? pv.previousElementSibling : null;
-  step('the stage is on the preview: its frame, the controls kept in place (same elements)', pv.classList.contains('st-on') && LabHudStage.el?.parentElement === pv && pill && stats && head?.classList.contains('st-head') && getComputedStyle(LabHudStage.el).display === 'block', { look: LabRegroup.look(), fx: S().fx });
+  pill = pv.querySelector(':scope > .stage-pill'); head = pv.previousElementSibling?.classList.contains('ih-pv') ? pv.previousElementSibling : null;
+  // (round 164) the Lab dock: the stats line (the same element the Lab paints) in the strip right under the picture
+  dock = pv.parentElement?.querySelector(':scope > .lab-dock'); stats = dock?.querySelector(':scope > .three-stats') || null;
+  const pr = pv.getBoundingClientRect(); const dr = dock?.getBoundingClientRect();
+  const dockInfo = dock && { next: pv.nextElementSibling === dock, gap: Math.round(dr.top - pr.bottom), h: Math.round(dr.height), quality: Boolean(dock.querySelector('[data-feature="Preview quality"] .dock-seg-btn.on')), fps: Boolean(dock.querySelector('[data-feature="Preview fps"] .dock-seg-btn.on')), inPicture: Boolean(pv.querySelector('.three-stats')) };
+  step('the stage is on the preview: its frame, the view controls kept in place on the picture, the stats line in the dock under it (same elements; QUALITY and FPS beside it)', pv.classList.contains('st-on') && LabHudStage.el?.parentElement === pv && pill && stats && dockInfo?.next && dockInfo.gap >= -1 && dockInfo.h >= 30 && dockInfo.quality && dockInfo.fps && !dockInfo.inPicture && head?.classList.contains('st-head') && getComputedStyle(LabHudStage.el).display === 'block', { look: LabRegroup.look(), fx: S().fx, dock: dockInfo });
 
   // ---------- idle ----------
   await safe('idle', async () => {
@@ -76,7 +82,7 @@ try {
     await wait(2700);
     const idle = view();
     out.measure.idle = { awake, idle };
-    step('idle: 2 s without the pointer moving: the view controls, the stats line and the header\'s readouts fade out and are not hit by the pointer', !awake.idle && idle.idle && idle.pill[0] < 0.05 && !idle.pill[1] && idle.stats[0] < 0.05 && !idle.stats[1] && idle.head < 0.05, out.measure.idle);
+    step('idle: 2 s without the pointer moving: the view controls and the header\'s readouts fade out and are not hit by the pointer; the dock\'s stats stay in sight under the picture', !awake.idle && idle.idle && idle.pill[0] < 0.05 && !idle.pill[1] && idle.stats[0] > 0.9 && idle.stats[1] && idle.head < 0.05, out.measure.idle);
     const fr = LabHudStage.el.querySelector('.st-frame');
     step('idle: the stage frame stays (brackets and rulers, quiet), the labels and reticle go', op(fr) > 0.3 && op(LabHudStage.el.querySelector('.st-lb-bl')) < 0.05 && op(LabHudStage.el.querySelector('.st-x')) < 0.05, { frame: op(fr) });
     await shot('stage150-idle');
@@ -87,7 +93,7 @@ try {
     const r = R();
     await move(r.right - 90, r.top + 40); await wait(500);
     const tr = view();
-    step('top-right corner: the view controls come back (and only they)', tr.zone === 'tr' && tr.pill[0] > 0.9 && tr.pill[1] && tr.stats[0] < 0.05, tr);
+    step('top-right corner: the view controls come back (the dock under the picture as it was)', tr.zone === 'tr' && tr.pill[0] > 0.9 && tr.pill[1] && tr.stats[0] > 0.9, tr);
     // a real click on 9:16 while revealed, then back to Fit
     const b916 = [...pill.querySelectorAll('.stage-size-btn')].find((b) => b.textContent.trim() === '9:16');
     const bb = b916.getBoundingClientRect();
@@ -102,7 +108,7 @@ try {
     const r2 = R();
     await move(r2.left + r2.width * 0.5, r2.bottom - 18); await wait(900);
     const bot = view();
-    step('bottom edge: the stats / quality line comes back (and the view controls stay away)', bot.zone === 'b' && bot.stats[0] > 0.9 && bot.stats[1] && bot.pill[0] < 0.05, bot);
+    step('bottom edge: zone b (its notes come back there; the view controls stay away); the stats line in the dock just under it', bot.zone === 'b' && bot.stats[0] > 0.9 && bot.stats[1] && bot.pill[0] < 0.05, bot);
     const hr = head.getBoundingClientRect();
     await move(hr.left + hr.width * 0.5, hr.top + hr.height / 2); await wait(500);
     const hd = view();
@@ -127,7 +133,7 @@ try {
     await key('i', 'KeyI', 73);
     await until(() => !S().pinned, 3000); await wait(2700);
     const clean = view();
-    step('I again: a clean stage (hidden after the idle wait)', !clean.pinned && clean.pill[0] < 0.05 && clean.stats[0] < 0.05, clean);
+    step('I again: a clean stage (hidden after the idle wait; the dock\'s stats stay)', !clean.pinned && clean.pill[0] < 0.05 && clean.stats[0] > 0.9, clean);
     const agent = H.claudeAgent().id;
     await Commands.tryRun('/stage show', agent);
     const cmdOn = S().pinned;
@@ -225,7 +231,7 @@ try {
     const p = { hud: getComputedStyle(LabHudStage.el).display, tintOn: S().tintOn, live: LabHudStage.live, ...view() };
     LabRegroup.setLook('forge'); await wait(300);
     out.measure.plain = p;
-    step('Plain: no stage frame and no colour reading or pulse, but the controls still hide on idle', p.hud === 'none' && !p.tintOn && !p.live && p.pill[0] < 0.05 && p.stats[0] < 0.05, p);
+    step('Plain: no stage frame and no colour reading or pulse, but the controls still hide on idle (the dock stays)', p.hud === 'none' && !p.tintOn && !p.live && p.pill[0] < 0.05 && p.stats[0] > 0.9, p);
   });
 
   // ---------- cost ----------
@@ -251,7 +257,7 @@ try {
         pageStageMsPerSec: sb ? Math.round((sb.ms / secs) * 100) / 100 : null, samplesPerSec: sb ? Math.round((sb.samples / secs) * 10) / 10 : null, sampleAvgMs: sb?.avgMs ?? null, sampleMaxMs: sb?.maxMs ?? null,
         winStageMsPerSec: Math.round(winOwn * 100) / 100, feeds: st.counts.feed, kicks: st.counts.kick, fps, load: lw && { judge: lw.judge, loadavg: lw.loadavg?.map((x) => Math.round(x * 100) / 100), cpus: lw.cpus } };
     };
-    const lastFpsOf = () => (pv.querySelector('.three-stats > b')?.textContent || '').match(/\d+/)?.[0];
+    const lastFpsOf = () => (stats?.querySelector(':scope > b')?.textContent || '').match(/\d+/)?.[0];
     const rows = [];
     for (const m of ['off', 'reactive', 'off', 'reactive']) rows.push(await run(m));
     store.set('three.stageFx', 'reactive'); LabHudStage.setMode('reactive');

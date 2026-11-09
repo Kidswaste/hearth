@@ -78,11 +78,12 @@ const ownFiles = (g) => g.files.filter((f) => !(g.places || {})[f]);
 // now the lazy group 'chatscenes') goes in once that group's files are in
 const later = [];
 const inHtml = (f) => { let at = f; while (tail.has(at)) at = tail.get(at); return html.includes(tag(at)); };
+// (round 164, groups164) the same for a group's own `at` (prompt-library.js after memory.js, now in the merged group 'addons')
 for (const g of ordered) {
-  put(g.at, ownFiles(g));
-  for (const [f, at] of Object.entries(g.places || {})) if (inHtml(at)) put(at, [f]); else later.push([f, at]);
+  if (inHtml(g.at)) put(g.at, ownFiles(g)); else later.push([ownFiles(g), g.at]);
+  for (const [f, at] of Object.entries(g.places || {})) if (inHtml(at)) put(at, [f]); else later.push([[f], at]);
 }
-for (const [f, at] of later) put(at, [f]);
+for (const [fs, at] of later) put(at, fs);
 const byName = new Map(LazyData.GROUPS.map((g) => [g.name, g]));
 const posOf = () => { const p = new Map(); [...html.matchAll(/<script defer src="([^"]+)"><\/script>/g)].forEach((m, i) => p.set(m[1], i)); return p; };
 const moved = [];

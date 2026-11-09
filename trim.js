@@ -33,7 +33,9 @@ const Trim = (() => {
       if (keys.has(k) || (tool && bridge.some((p) => tool.startsWith(p))) || (!tool && !k.startsWith('Open › ') && re && re.test(k))) { n += it.n; last = Math.max(last, it.last || 0); }
     }
     const own = ownUse();
-    for (const g of f.groups) if (own[g]) { n += own[g].n || 0; last = Math.max(last, own[g].last || 0); }
+    // (round 164, groups164) a merged group's count + what was counted under the names it took in (LazyData.GROUPS[].also)
+    const also = (g) => (typeof LazyData !== 'undefined' ? LazyData.GROUPS.find((x) => x.name === g)?.also : null) || [];
+    for (const g of f.groups) for (const k of [g, ...also(g)]) if (own[k]) { n += own[k].n || 0; last = Math.max(last, own[k].last || 0); }
     return { n, last };
   }
   function weightOf(f) {

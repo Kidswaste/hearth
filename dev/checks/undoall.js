@@ -23,7 +23,8 @@ const focusOn = (n) => { for (let d = n.closest('details'); d; d = d.parentEleme
 const top = () => UndoAll.list().at(-1);
 
 try {
-  step('loaded after the first screen (its own lazy group)', Lazy.state().some((g) => g.name === 'undoall'), Lazy.state().find((g) => g.name === 'undoall')?.state);
+  const ug = (g) => g.name === 'undoall' || g.also?.includes('undoall'); // (round 164: with AI changes, one group)
+  step('loaded after the first screen (a lazy group)', Lazy.state().some(ug), Lazy.state().find(ug)?.state);
   await Lazy.load('undoall');
   await until(() => typeof UndoAll !== 'undefined');
   await UndoAll.ready();

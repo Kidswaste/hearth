@@ -127,12 +127,15 @@ try {
   const ESS = {
     picker: tb.querySelector('.three-sketch-select'), run: tb.querySelector('.tb-group[data-cat="Sketch"] > button.primary'), play: tb.querySelector('[data-feature="Play"]'), more: tb.querySelector('[data-feature="Lab more"]'),
     tlPlay: mb.querySelector('.mb-play'), tlTime: mb.querySelector('.mb-time'), tlTitle: mb.querySelector('.ih-tl .ih-name'), lyTitle: ly.querySelector('.tw-head > b'), selEye: selRow?.querySelector('.ly-eye'), pvTitle: one('.ih-pv .ih-name'),
+    // (round 164) the Lab dock (the owner's Nov 9 design): the preview's stats line, now in a solid strip under the picture
+    // with the QUALITY and FPS controls, always in sight (same stats element, moved out of the picture)
+    dockStats: one('.three-right > .lab-dock > .three-stats'), dockQuality: one('.lab-dock [data-feature="Preview quality"]'), dockFps: one('.lab-dock [data-feature="Preview fps"]'),
   };
   const SEC = {
     toolbar: { finish: tb.querySelector('[data-feature="Finish line"]'), direction: tb.querySelector('[data-feature="Direction"]'), sketch: [...tb.querySelectorAll('button')].find((b) => /^Sketch/.test(b.textContent.trim())), sliders: tb.querySelector('[data-feature="Layers & sliders"]'), inspect: tb.querySelector('[data-feature="Inspect"]'), present: tb.querySelector('[data-feature="Present"]'), search: tb.querySelector('[data-feature="Lab search"]') },
     timeline: { song: mb.querySelector('[data-feature="Load audio video…"]'), map: mb.querySelector('.mb-songmap'), beat: mb.querySelector('[data-feature="Beat"]'), sync: mb.querySelector('[data-feature="Sync"]'), sections: mb.querySelector('[data-feature="Sections"]'), view: mb.querySelector('[data-feature="Timeline view"]'), more: mb.querySelector('.mb-more'), sequence: mb.querySelector('[data-feature="Sequence"]'), render: mb.querySelector('[data-feature="Scene render"]'), meta: mb.querySelector('.ih-tl .ih-meta') },
     layers: { add: [...ly.querySelectorAll(':scope > .tw-head > button')].find((b) => /Layer/.test(b.textContent)), more: ly.querySelector(':scope > .tw-head > .ly-more'), eye: otherRow?.querySelector('.ly-eye') },
-    stage: { pill: one('.three-preview > .stage-pill'), stats: one('.three-preview > .three-stats') },
+    stage: { pill: one('.three-preview > .stage-pill') }, // (round 164: the stats line is in the dock, an essential above)
   };
   const missing = Object.entries(SEC).flatMap(([a, o]) => Object.entries(o).filter(([, n]) => !n).map(([k]) => `${a}.${k}`)).concat(Object.entries(ESS).filter(([, n]) => !n).map(([k]) => k));
   step('every control is still in the Lab (same elements, data-feature hooks kept)', !missing.length, missing);
@@ -143,7 +146,7 @@ try {
   const ess = ops(ESS);
   const rest = Object.fromEntries(Object.entries(SEC).map(([a, o]) => [a, ops(o)]));
   out.measure.rest = { ess, rest };
-  step('at rest: the essentials are in sight (picker, ▶ Run, ▶ Play, ⋯ · ▶ and the time · the panels\' titles · the selected layer\'s eye)', Object.values(ess).every((v) => v > 0.9), ess);
+  step('at rest: the essentials are in sight (picker, ▶ Run, ▶ Play, ⋯ · ▶ and the time · the panels\' titles · the selected layer\'s eye · the dock under the picture: stats, QUALITY, FPS)', Object.values(ess).every((v) => v > 0.9), ess);
   const restLit = Object.entries(rest).flatMap(([a, o]) => Object.entries(o).filter(([, v]) => v > 0.05).map(([k, v]) => `${a}.${k}=${v}`));
   step('at rest: every secondary control is out of sight (transparent, in place)', !restLit.length, restLit.length ? restLit : `${Object.values(rest).reduce((n, o) => n + Object.keys(o).length, 0)} hidden`);
   const clickable = Object.values(SEC.toolbar).concat(Object.values(SEC.timeline)).filter((n) => n && n.tagName === 'BUTTON').every((n) => getComputedStyle(n).pointerEvents !== 'none' && drawn(n));
