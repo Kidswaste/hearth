@@ -4217,7 +4217,7 @@ const ThreeLab = (() => {
     // is on, on the Stage window, ▶ Play or a baked show, a project opening, an AI turn on this scene, or while the Lab
     // window holds it (it is released then anyway). Tests: localStorage 'lab.restMs' (ms; '0' = never).
     const restMs = () => { let v = null; try { v = localStorage.getItem('lab.restMs'); } catch { /* none */ } const n = v == null || v === '' ? 300000 : Number(v); return Number.isFinite(n) && n >= 0 ? n : 300000; };
-    const restUnseen = () => !box.onStage && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
+    const restUnseen = () => !box.onStage && !previewHost.checkVisibility?.({ visibilityProperty: true }); // (round 160, playfix: only when another tool covers the Lab; a hidden, minimised or covered window (Windows reports covered as hidden) no longer counts, so the Lab never rests while it is the tool on screen)
     const restBlock = () => (workspaceReleased ? 'released' : !current ? 'no scene' : !restUnseen() ? 'seen' : REST.closing ? 'closing'
       : workspacePreparing || pagePrimed || box.loading ? 'preparing' : player.playing ? 'playing' : player.recording ? 'recording' : liveKind ? 'live'
       : xpOn ? 'rendering' : previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing') ? 'show'

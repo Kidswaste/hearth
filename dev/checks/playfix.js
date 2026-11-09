@@ -107,18 +107,18 @@ try {
   await until(async () => (await ev('return window.__pf || 0')) > 3, 20000, 300);
   await window.hub.power.test({ window: 'hide' });
   await until(() => document.visibilityState === 'hidden', 5000);
-  const rested = await until(() => ThreeLab.workspace.state().released && ThreeLab.rest.state().rested >= 1, 20000, 250);
-  step('window: hidden with the Lab on screen, past lab.restMs, the preview rests (mem154)', Boolean(rested), ThreeLab.rest.state());
+  await new Promise((r) => setTimeout(r, 6000));
+  step('window: hidden with the Lab on screen past lab.restMs, the preview does NOT rest (round 160: only another tool covering the Lab counts)', !ThreeLab.workspace.state().released && !(ThreeLab.rest.state().rested >= 1), ThreeLab.rest.state());
   await window.hub.power.test({ window: 'show' });
   await until(() => document.visibilityState === 'visible', 5000);
   const back = await until(() => ThreeLab.workspace.state().ready && !ThreeLab.workspace.state().released, 30000, 200);
-  step('window: shown again, the preview comes back by itself (it stayed released, black, before round 160)', Boolean(back), { ws: ThreeLab.workspace.state(), rest: ThreeLab.rest.state() });
+  step('window: shown again, the preview is there and plays (it stayed released, black, before round 160)', Boolean(back), { ws: ThreeLab.workspace.state(), rest: ThreeLab.rest.state() });
   await until(async () => (await ev('return window.__pf || 0')) > 3, 20000, 300);
   await playCheck('window: after the rest');
 
   // ---------- tool: left for a chat past the rest, shown again ----------
   activate(H.claudeAgent().id);
-  await until(() => ThreeLab.workspace.state().released && ThreeLab.rest.state().rested >= 2, 20000, 250);
+  await until(() => ThreeLab.workspace.state().released && ThreeLab.rest.state().rested >= 1, 20000, 250);
   activate('tool:three');
   const back2 = await until(() => ThreeLab.workspace.state().ready && !ThreeLab.workspace.state().released, 30000, 200);
   step('tool: the Lab shown again after a rest, its preview comes back', Boolean(back2), ThreeLab.rest.state());
