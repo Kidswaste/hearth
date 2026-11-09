@@ -289,13 +289,25 @@ const ProjectsHome = (() => {
       painted=true;
       const long=limit>60;results.classList.toggle('pj-long',long); // (round 74) past the first 60 rows: drawn as they come on screen
       const q=query.value.trim().toLowerCase(),hits=p.items.filter(x=>(!kind.value||x.type===kind.value)&&(!q||P.nameOf(x).toLowerCase().includes(q)||String(x.ref).toLowerCase().includes(q))).sort((a,b)=>(P.timeOf(b)||b.at)-(P.timeOf(a)||a.at)),shown=hits.slice(0,limit);
-      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),el('div',{class:'pj-items'},...xs.map(x=>itemRow(p,x,{lazy:long}))))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[])); // (round 74) lazy: a long shelf's row picture loads once the row is drawn
+      results.replaceChildren(...ORDER.flatMap(t=>{const xs=shown.filter(x=>x.type===t);return xs.length?[el('section',{class:'pj-sec'},el('h4',{text:C.TYPES[t].icon+' '+C.TYPES[t].label}),...sceneRows(p,t,xs,long))]:[];}),...(!hits.length?[el('p',{class:'hint',text:q||kind.value?'No matching files.':'Add a scene, chat, or file to see it here.'})]:[])); // (round 74) lazy: a long shelf's row picture loads once the row is drawn
       count.textContent=`${shown.length} of ${hits.length}`;more.hidden=shown.length>=hits.length;
       const saved=desks.get(p.id)||state;saved.fileLimit=limit;desks.set(p.id,saved);
     };
     query.oninput=kind.onchange=()=>{limit=60;paint();};more.onclick=()=>{limit+=60;paint();};d.addEventListener('toggle',()=>{if(d.open&&!painted)paint();});
     if((state.open||[]).includes('pw-project-files')){d.open=true;paint();}
     return d;
+  }
+  // (Nov 9, Scenes v2) a project's scenes: v2 (WebGPU) ones first, the old format's folded under "Old version" (they open,
+  // edit and render as before); a scene's format is known once the Lab is loaded, else the list stays as it was
+  function sceneRows(p,t,xs,long){
+    const rows=(list)=>el('div',{class:'pj-items'},...list.map(x=>itemRow(p,x,{lazy:long})));
+    const L=t==='scene'&&Lazy.loaded('lab')&&typeof ThreeLab!=='undefined'?ThreeLab.scenes:null;
+    if(!L?.get)return [rows(xs)];
+    const old=xs.filter(x=>L.get(x.ref)&&L.get(x.ref).format!=='gpu'),fresh=xs.filter(x=>!old.includes(x));
+    if(!old.length)return [rows(xs)];
+    const fold=el('details',{class:'pj-old-scenes'},el('summary',{text:`Old version · ${old.length}`,title:'Scenes made before v2: open, edit and render them as always'}),rows(old));
+    fold.open=!fresh.length;
+    return [...(fresh.length?[rows(fresh)]:[]),fold];
   }
   // (round 74, projdesk74) lazy (a long files shelf, past "Show more"): its rows skip layout and paint while out of sight
   // (content-visibility, project-workspace.css .pj-long); a row's picture (a full-size capture / render file) is asked

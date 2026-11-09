@@ -99,11 +99,17 @@
       }
     } catch { /* the plain ones */ }
   }
-  im.textContent = JSON.stringify({ imports: { three: threeUrl, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/`, ...orbits } });
+  // (Nov 9, Scenes v2) the WebGPU build for v2 scenes (format 'gpu'): 'three/webgpu' and 'three/tsl' always resolve (a
+  // name in the map costs nothing until a v2 layer imports it: old scenes never load them); three.webgpu.js and
+  // three.module.js share one three.core.js (r176+), so both builds live in this page. ?gpu=1 (a v2 scene's page, the
+  // export page of a v2 scene) fetches them while the page is parsed. See "Scenes v2" in the module below.
+  const G2V = Number(/^0\.(\d+)\./.exec(V)?.[1]) >= 176;
+  const g2map = G2V ? { 'three/webgpu': `${base}/build/three.webgpu.js`, 'three/tsl': `${base}/build/three.tsl.js` } : {};
+  im.textContent = JSON.stringify({ imports: { three: threeUrl, ...g2map, 'three/addons/': `${base}/examples/jsm/`, 'three/examples/jsm/': `${base}/examples/jsm/`, ...orbits } });
   document.currentScript.after(im);
   // three.js starts downloading while the page is still parsed (the module graph is fetched once per page; re-runs and
   // scene switches in this page reuse it)
-  for (const u of [real, `${base}/build/three.core.js`]) {
+  for (const u of [real, `${base}/build/three.core.js`, ...(params.get('gpu') === '1' && G2V ? Object.values(g2map) : [])]) {
     if (u.endsWith('core.js') && !(Number(/^0\.(\d+)\./.exec(V)?.[1]) >= 176)) continue; // (three.core.js exists from r176)
     const l = document.createElement('link'); l.rel = 'modulepreload'; l.href = u; l.crossOrigin = 'anonymous'; document.head.append(l);
   }
@@ -1550,6 +1556,7 @@ function lcFresh(opts) {
 const glValid = (cv) => cv.__dE === FR.E && cv.__dR === FR.inRaf;
 // before reading a layer's canvas: its pixels as it shows them (→ the canvas)
 function glFresh(cv) {
+  if (cv?.__g2) { g2Fresh(); return cv; } // (Nov 9, Scenes v2: the one WebGPU canvas, drawn again when asked between frames)
   if (cv?.__gmFast) { gmFresh(cv); return cv; } // (round 56, playlatency: ▶ Play's one canvas draws its stack again)
   if (!cv?.__lcf) return cv;
   FR.reads += 1;
@@ -3275,9 +3282,9 @@ function statsTick() {
   for (let k = 0; k < wn; k += 1) { const x = wr(wrN - wn + k); let j = k - 1; while (j >= 0 && w[j] > x) { w[j + 1] = w[j]; j -= 1; } w[j + 1] = x; }
   // (round 76, labframe76) the message made once: no closure per read, percentiles without text (toFixed), perfNote sent
   // as it is and the message not spread again by post() (both ways of sending copy it there and then)
-  const msg = { source: 'three-sandbox', type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.calls, triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
+  const msg = { source: 'three-sandbox', type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.drawCalls ?? i.render.calls, /* (Nov 9, Scenes v2: WebGPU's calls count forever, drawCalls is the frame's) */ triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
     p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, lite: LITE.on, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
-    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null }; // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
+    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null, ...(G2.R && G2.list.size ? { gpuMs: G2.gpuMs, gpuApi: G2.backend } : {}) }; // (Nov 9, Scenes v2: the one renderer's GPU time a frame) // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
   if (window.__stageHost) window.__stageHost.post(msg); else parent.postMessage(msg, '*');
 }
 // (round 80, laberrors80) a layer's camera whose numbers became NaN / Infinity (a division by zero in the code that
@@ -8012,6 +8019,7 @@ function composite(target, k = 1, size = null, only = null, clear = false) {
   g.globalCompositeOperation = 'source-over';
   g.fillStyle = '#000';
   if (clear) g.clearRect(0, 0, W, H); else g.fillRect(0, 0, W, H); // (round 25, interop: clear keeps the layers' alpha for OBS)
+  if (G2.R && G2.list.size && !only) g.drawImage(glFresh(G2.canvas), 0, 0, W, H); // (Nov 9, Scenes v2) a v2 scene's layers, all in its one canvas
   for (const L of ordered()) {
     if (L.props.pcOf) continue; // (a precomp's layers are drawn inside it)
     if (only ? !only.has(L.id) : L.seqHide) continue; // (a sequence transition merges its two sides itself)
@@ -14651,6 +14659,7 @@ function teardownLayer(L, { keepSlots = false } = {}) {
   try { ownDispose(L); } catch { /* gone */ } // (round 75, labload75)
   if (L.url) ownRetire(L.url); // (round 39, labmemory)
   if (L.pc) pcUnmount(L);
+  if (L.g2) g2Unmount(L); // (Nov 9, Scenes v2) its scene leaves the one WebGPU renderer
   L.gen += 1;
   for (const c of LV.orbits) if (c.__lab?.L === L) { LV.orbits.delete(c); c.__lab.L = null; } // (round 48, memory48) its run's controls go with it, and let go of the layer (the run's module keeps its controls for the page's life)
   // (round 16: what the sandbox made for the layer itself, e.g. a filter's merged picture: its canvas memory goes now,
@@ -14888,7 +14897,8 @@ async function runLayer(spec, hot = false) {
   const code = /__tv\(/.test(spec.code) ? `const __tv = (i, d) => globalThis.__tvRun(${JSON.stringify(L.id)}, ${rid}, i, d);${spec.code}` : spec.code;
   await sandboxLibs(spec.code); // (round 25, diet) motion.<kind>() / lab3d.model() load with the first layer that uses them
   if (L.gen !== g) return;
-  const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  const v2 = g2Is(spec); L.v2 = v2; // (Nov 9, Scenes v2) a v2 layer: its 'three' is the WebGPU build (same line count)
+  const url = URL.createObjectURL(new Blob([v2 ? g2Code(code) : code], { type: 'text/javascript' }));
   L.url = url;
   urlLayer.set(url, L.id);
   OWN.mods.add(url); if (OWN.mods.size > 4000) OWN.mods.delete(OWN.mods.values().next().value); // (round 39, labmemory: its own things are noted)
@@ -14901,6 +14911,8 @@ async function runLayer(spec, hot = false) {
     try { ns = await import(url); } finally { if (inPc) PC.importing -= 1; LOOPC.importing -= 1; }
     if (L.gen !== g) return;
     L.mod = ns; L.hotHeld = null; // (round 53, playloop) its exports: saveState / restoreState / checkpoint
+    if (v2 && typeof ns.default === 'function') { await g2Mount(L, ns.default, g); if (L.gen !== g) return; } // (Nov 9, Scenes v2) its scene, on the page's one WebGPU renderer
+    else if (!v2 && (spec.gpu === true || GPU_PAGE) && !inPc && !spec.precomp && !spec.card) post({ type: 'console', level: 'warn', layer: L.id, text: 'This layer is written the old way (no `export default ({ THREE, scene, camera, onFrame }) => { … }`): in a v2 scene a layer fills the scene it is given and never makes a renderer.' });
     if (kept) hotRestore(L, kept);
     if (!inPc) post({ type: 'ran', hot, swap: Boolean(spec.swap), layer: L.id });
     realRAF(() => realRAF(() => { if (L.gen === g) slotPast[L.slot || 0] = true; }));
@@ -14924,6 +14936,376 @@ async function runLayer(spec, hot = false) {
     if (L.gen === g) layerDrew(L);
   }
 }
+// ======== (Nov 9) Scenes v2: the WebGPU scene format (docs/upgrades/scenes-v2-webgpu.md) ========
+// A v2 scene (format 'gpu': the Lab sends its layers with gpu: true; or this whole page with ?gpu=1, a v2 scene's export
+// page) draws with ONE WebGPURenderer on ONE canvas (#gpu-stage) for the whole scene, not a WebGL context and a
+// full-window canvas per layer. A v2 layer's code is a module whose default export gets its own THREE.Scene and a default
+// camera and fills them; it never makes a renderer:
+//   export default ({ THREE, tsl, scene, camera, tweak, audio, time, size, onFrame }) => { … onFrame((t, dt) => { … }); }
+//   THREE    three.webgpu.js (node materials, WebGPURenderer's classes; `import … from 'three'` in it is the same build)
+//   tsl      three.tsl.js (Fn, uniform, uv, sin, mix, color, …: shaders as node graphs; GLSL ShaderMaterial is WebGL-only)
+//   tweak / audio   the page's own (sliders, the song's features), as in every layer
+//   time     { t, dt, frame } of this layer's clock (seconds) · size { width, height, aspect, pixelRatio } of the frame
+//   onFrame(fn)     fn(t, dt) every drawn frame, before the scene is drawn; returns a function that removes it
+//   a function returned by the default export runs when the layer goes (a re-run, a removal)
+// Each frame (one frame callback, first in the page's layer frame: see lqFlush) the visible v2 layers draw bottom first
+// into the one canvas: the first clears it, each next one clears only the depth and draws over it. Layer opacity, blend
+// modes and timing: Phase 2. Old scenes (no format) never come here: their layers run exactly as before.
+const GPU_PAGE = new URLSearchParams(location.search).get('gpu') === '1';
+const G2 = { W: null, tsl: null, R: null, canvas: null, init: null, list: new Set(), running: false, w: 0, h: 0, pr: 0, size: { width: 1, height: 1, aspect: 1, pixelRatio: 1 },
+  gpuMs: null, tsN: 0, tsBusy: false, frames: 0, cpuMs: 0, backend: '', lost: 0, drewE: -1, ts: false, C: null, cc: null, path: '' };
+// (a layer says it is v2 with gpu: true; ?gpu=1 makes every layer of the page v2 unless it says gpu: false. Only code
+// with a default export is a v2 layer: an old layer in a v2 page (a sequence mixing both) runs the old way)
+const G2_DEF = /\bexport\s+default\b/;
+const g2Is = (spec) => (spec.gpu === true || (GPU_PAGE && spec.gpu !== false)) && mode === 'sketch' && !spec.precomp && !spec.card && G2_DEF.test(String(spec.code || ''));
+// its `three` imports read the WebGPU build (the same line count: errors keep their lines)
+const g2Code = (code) => String(code).replace(/(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])three\2/g, '$1$2three/webgpu$2');
+function g2Init() {
+  if (G2.init) return G2.init;
+  G2.init = (async () => {
+    if (!navigator.gpu) throw new Error('WebGPU isn’t available in this preview, and v2 scenes draw with it.');
+    if (!(Number(THREE.REVISION) >= 176)) throw new Error(`v2 (WebGPU) scenes need three.js r176 or newer (this preview runs r${THREE.REVISION}): pick it in the version menu.`);
+    const [W, tsl] = await Promise.all([import('three/webgpu'), import('three/tsl')]);
+    G2.W = W; G2.tsl = tsl; G2.cc = new W.Color();
+    const stage = document.createElement('div');
+    stage.id = 'gpu-stage';
+    stage.style.cssText = 'position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:0';
+    const alpha = XP_PAGE && new URLSearchParams(location.search).get('alpha') === '1';
+    const R = new W.WebGPURenderer({ antialias: true, alpha: true, powerPreference: GPU_PREF, trackTimestamp: true });
+    R.__g2 = true;
+    await R.init();
+    R.info.autoReset = false; // (one frame's every layer counted together: reset by hand each frame)
+    R.setClearColor(0x000000, alpha ? 0 : 1);
+    R.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+    R.domElement.className = 'gpu-canvas'; R.domElement.__g2 = true;
+    G2.ts = Boolean(R.backend?.trackTimestamp);
+    stage.append(R.domElement);
+    document.body.prepend(stage);
+    G2.backend = R.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2';
+    G2.R = R; G2.canvas = R.domElement;
+    try { R.backend?.device?.lost?.then((info) => { if (G2.R !== R) return; G2.lost += 1; post({ type: 'console', level: 'warn', text: `The graphics card let go of the v2 scene's drawing (${info?.reason || 'lost'}): ⟲ Restart the preview brings it back.` }); }); } catch { /* no device (WebGL 2 backend) */ }
+    return G2;
+  })();
+  G2.init.catch(() => { G2.init = null; });
+  return G2.init;
+}
+async function g2Mount(L, fn, g) {
+  await g2Init();
+  if (L.gen !== g) return;
+  const { W, tsl } = G2;
+  g2Size();
+  const scene = new W.Scene();
+  const camera = new W.PerspectiveCamera(50, G2.size.aspect, 0.1, 1000);
+  camera.position.set(0, 0, 5);
+  const S = { L, g, scene, camera, frames: [], last: -1, time: { t: 0, dt: 0, frame: 0 }, dispose: null, ready: false };
+  const onFrame = (f) => { if (typeof f === 'function') S.frames.push(f); return () => { const i = S.frames.indexOf(f); if (i >= 0) S.frames.splice(i, 1); }; };
+  L.g2 = S;
+  let out;
+  const prev = ctxLayer; ctxLayer = L.id; // (its tweak() / timers are its own, as a layer's top-level code)
+  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame }); } finally { ctxLayer = prev; }
+  if (out && typeof out.then === 'function') out = await out;
+  if (L.gen !== g || L.g2 !== S) { if (typeof out === 'function') { try { out(); } catch { /* its own */ } } return; }
+  if (typeof out === 'function') S.dispose = out;
+  // its pipelines made in the background before it joins the frame (made by its first draw, a big node material held
+  // the whole page for seconds while the graphics driver compiled it); the layers already on screen keep moving
+  const c0 = realNow();
+  try { await G2.R.compileAsync(scene, camera); } catch { /* its first draw compiles what's left */ }
+  S.compileMs = Math.round(realNow() - c0);
+  if (L.gen !== g || L.g2 !== S) return;
+  S.ready = true;
+  G2.list.add(S);
+  G2.canvas.parentNode.hidden = false;
+  g2Start();
+}
+function g2Unmount(L) {
+  const S = L.g2; L.g2 = null;
+  if (!S) return;
+  G2.list.delete(S);
+  if (!G2.list.size && G2.canvas) G2.canvas.parentNode.hidden = true; // (an old scene next in this page: no v2 picture left under it)
+  if (S.dispose) { const prev = ctxLayer; ctxLayer = L.id; try { S.dispose(); } catch { /* its own */ } finally { ctxLayer = prev; } }
+  S.frames.length = 0;
+  // what it made goes from the graphics card now (geometries, materials, their textures), not whenever it's collected
+  const seen = new Set();
+  S.scene.traverse((o) => {
+    if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); try { o.geometry.dispose(); } catch { /* gone */ } }
+    for (const m of [].concat(o.material || [])) {
+      if (seen.has(m)) continue; seen.add(m);
+      for (const v of Object.values(m)) if (v?.isTexture && !seen.has(v)) { seen.add(v); try { v.dispose(); } catch { /* gone */ } }
+      try { m.dispose(); } catch { /* gone */ }
+    }
+  });
+  S.scene.clear();
+}
+function g2Size() {
+  const R = G2.R; if (!R) return false;
+  const w = Math.max(1, innerWidth); const h = Math.max(1, innerHeight);
+  // the scene's own pixel ratio (at most 2 in the preview; an export's own), × the preview's quality now (the dock's
+  // QUALITY, Smooth's steps, Light / Lite: prQ, as for every layer's renderer)
+  const base = XP_PAGE || GAME ? devicePixelRatio : Math.min(devicePixelRatio, 2);
+  R.__basePR = base;
+  const pr = Math.max(0.25, base * prQ(R, null));
+  if (w === G2.w && h === G2.h && Math.abs(pr - G2.pr) < 1e-3) return false;
+  G2.w = w; G2.h = h; G2.pr = pr;
+  R.setPixelRatio(pr); R.setSize(w, h, false);
+  Object.assign(G2.size, { width: w, height: h, aspect: w / h, pixelRatio: pr });
+  for (const S of G2.list) if (S.camera.isPerspectiveCamera) { S.camera.aspect = w / h; S.camera.updateProjectionMatrix(); }
+  return true;
+}
+function g2Start() { if (G2.running || !G2.R) return; G2.running = true; sched(g2Tick); }
+function g2Tick(t) {
+  if (!G2.list.size || !G2.R) { G2.running = false; return; }
+  let first = false; for (const S of G2.list) if (S.L.drawnGen !== S.L.gen) first = true;
+  if (frozen && !stepping && !SQ.off && !first) { sched(g2Tick); return; } // ❚❚ freeze: the picture holds
+  if (parked && !SQ.off && !fullRes()) { parkQ.push(g2Tick); return; } // the Lab isn't on screen: nothing draws
+  if (!SQ.off && !capOk(t)) { sched(g2Tick); return; }
+  sched(g2Tick);
+  try { g2Frame(t); } catch (err) { // (a frame that couldn't be drawn: said once, the next frame tries again)
+    const m = String(err?.message || err); if (G2.err !== m) { G2.err = m; post({ type: 'console', level: 'error', text: `v2 scene: ${m}` }); }
+  }
+}
+// a layer's clock (ms), as its frame callbacks get it in an old scene (rafStep): a sequence clip's own, a precomp's,
+// the song's loop, else the frame's time
+const g2Clock = (L, t) => (L.props.seqT0 != null && SQ.on ? sqLocal(L) * 1000 : L.props.pcOf ? keyTime(L) * 1000 : LOOPC.on && !SQ.on && mediaEl && !liveKind ? loopFold(songNow()) * 1000 : t);
+function g2Frame(t) {
+  const R = G2.R;
+  const t0 = realNow();
+  g2Draw(t, true);
+  const ms = realNow() - t0;
+  FT60[0] = ms; FT60[1] += ms; frameCalls += R.info.render.drawCalls || 0;
+  G2.cpuMs = G2.cpuMs * 0.9 + ms * 0.1; G2.frames += 1; G2.tsN += 1;
+  if (paceSleeping.size) paceWake();
+  PACE.drawn += 1; PACE.lastDraw = frameTick;
+  if (PACE.refreshAt !== frameTick) { PACE.drawPrev = frameTick; if (DOZE.on) dozeWake('drew'); }
+  lastRenderer = R;
+  if (frameSeen !== frameTick) { frameSeen = frameTick; frames += 1; }
+  if (shotPending) { shotPending = false; postShot(G2.canvas, shotTag); } // (read in this frame's task: its pixels are still there)
+  // the frames' GPU time (timestamp queries: every pass since the last read, per frame here)
+  if (R.backend?.trackTimestamp && !G2.tsBusy && !G2.tsOff) {
+    G2.tsBusy = true; const n = G2.tsN; G2.tsN = 0;
+    R.resolveTimestampsAsync('render').then((v) => { if (Number.isFinite(v) && v > 0 && n > 0) { const per = v / n; G2.gpuMs = G2.gpuMs == null ? per : G2.gpuMs * 0.8 + per * 0.2; } }, () => {}).finally(() => { G2.tsBusy = false; });
+  }
+}
+// ---- (Nov 9, Scenes v2 phase 2) layers as pictures: opacity, blend modes, moves, masks ----
+// A v2 layer drawn plainly (full opacity, normal blend, not moved, no mask) goes straight onto the scene's picture. One
+// that isn't is drawn into its own render target, then merged onto the picture below it by a TSL pass: its opacity (the
+// Lab's opacity, keyframes, in / out fades: layerMix), its blend mode (every mode of the Layers panel, the W3C
+// compositing formulas, in the renderer's linear colour), its move / scale / turn around the frame's centre (as the old
+// layers' boxes: translate(x%, y%) rotate(r) scale(s)) and its polygon mask. The scene's picture (C.A) is a half-float
+// linear target, as three.js's own screen buffer, copied to the canvas once at the end: two or more layers cost one
+// copy, where drawing each straight to the screen cost one full-screen copy per layer (three.js r186 draws a screen
+// render into its own buffer, then copies it out). A single plain layer still draws straight to the screen.
+const g2Plain = (L) => {
+  const p = L.props;
+  if (layerMix(L) < 0.999 || (p.blend && p.blend !== 'normal') || p.mask?.points?.length) return false;
+  const t = xform(L);
+  return !t.x && !t.y && t.scale === 1 && !t.rotate;
+};
+function g2CompInit() {
+  if (G2.C) return G2.C;
+  const { W, tsl } = G2;
+  const { texture, uniform, vec2, vec3, vec4, float, screenUV, mix, max, min, abs, step, sqrt, dot, cos, sin } = tsl;
+  // half-float linear targets, as three.js's own screen buffer (measured Nov 9, 6 layers, RTX 4080: 8-bit sRGB ones were
+  // slower at 1080p, 6 vs 3 ms a frame, and no faster at 4K). (checks: __labG2.rt('8' | '16' | '16n' (no MSAA)))
+  const want = G2.rtWant || new URLSearchParams(location.search).get('g2rt') || '16';
+  const rt8 = want === '8'; const noAA = want === '16n';
+  const rt = () => { const t = new W.RenderTarget(1, 1, { type: rt8 ? W.UnsignedByteType : W.HalfFloatType, samples: noAA ? 0 : G2.R.samples || 0, depthBuffer: true, generateMipmaps: false }); if (rt8) t.texture.colorSpace = W.SRGBColorSpace; return t; };
+  G2.rtKind = rt8 ? 'srgb8' : noAA ? 'half-float, no MSAA' : 'half-float';
+  const white = new W.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1); white.needsUpdate = true;
+  const C = { A: rt(), B: rt(), Ly: rt(), w: 0, h: 0, white, quad: new W.QuadMesh(), mats: new Map(), nodes: { A: [], L: [], M: [] },
+    u: { mix: uniform(1), off: uniform(new W.Vector2()), rot: uniform(0), scale: uniform(1), aspect: uniform(1) }, merges: 0 };
+  const tex = (kind, t, uv) => { const n = texture(t, uv); C.nodes[kind].push(n); return n; };
+  const quadMat = (node) => { const m = new W.NodeMaterial(); m.fragmentNode = node; m.depthTest = false; m.depthWrite = false; m.blending = W.NoBlending; m.transparent = false; return m; };
+  // ---- the W3C blend formulas (B(Cb, Cs), colours not premultiplied) ----
+  const lum = (c) => dot(c, vec3(0.3, 0.59, 0.11));
+  const clipColor = (c) => {
+    const l = lum(c); const n = min(c.x, min(c.y, c.z)); const x = max(c.x, max(c.y, c.z));
+    const lo = mix(c, l.add(c.sub(l).mul(l).div(max(l.sub(n), 1e-5))), float(1).sub(step(0, n)));
+    return mix(lo, l.add(lo.sub(l).mul(float(1).sub(l)).div(max(x.sub(l), 1e-5))), step(1.00001, x));
+  };
+  const setLum = (c, l) => clipColor(c.add(l.sub(lum(c))));
+  const sat = (c) => max(c.x, max(c.y, c.z)).sub(min(c.x, min(c.y, c.z)));
+  const setSat = (c, s) => { const n = min(c.x, min(c.y, c.z)); const x = max(c.x, max(c.y, c.z)); return c.sub(n).mul(s).div(max(x.sub(n), 1e-5)).mul(step(1e-5, x.sub(n))); };
+  const screen = (b, s) => b.add(s).sub(b.mul(s));
+  const hard = (b, s) => mix(b.mul(s.mul(2)), screen(b, s.mul(2).sub(1)), step(0.5, s));
+  const softD = (b) => mix(b.mul(16).sub(12).mul(b).add(4).mul(b), sqrt(b), step(0.25, b));
+  const B = {
+    normal: (b, s) => s, add: null,
+    multiply: (b, s) => b.mul(s), screen,
+    overlay: (b, s) => hard(s, b),
+    darken: (b, s) => min(b, s), lighten: (b, s) => max(b, s),
+    'color-dodge': (b, s) => mix(min(float(1), b.div(max(float(1).sub(s), 1e-5))), vec3(1), step(1, s)).mul(step(1e-5, b)),
+    'color-burn': (b, s) => float(1).sub(min(float(1), float(1).sub(b).div(max(s, 1e-5)))),
+    'hard-light': hard,
+    'soft-light': (b, s) => mix(b.sub(float(1).sub(s.mul(2)).mul(b).mul(float(1).sub(b))), b.add(s.mul(2).sub(1).mul(softD(b).sub(b))), step(0.5, s)),
+    difference: (b, s) => abs(b.sub(s)), exclusion: (b, s) => b.add(s).sub(b.mul(s).mul(2)),
+    hue: (b, s) => setLum(setSat(s, sat(b)), lum(b)), saturation: (b, s) => setLum(setSat(b, sat(s)), lum(b)),
+    color: (b, s) => setLum(s, lum(b)), luminosity: (b, s) => setLum(b, lum(s)),
+  };
+  C.mat = (mode) => {
+    const key = B[mode] !== undefined ? mode : 'normal';
+    let m = C.mats.get(key);
+    if (m) return m;
+    const u = C.u;
+    // where this pixel of the frame comes from in the layer's own picture (its box's transform, undone)
+    const p = screenUV.sub(0.5).sub(u.off).mul(vec2(u.aspect, 1));
+    const c = cos(u.rot); const s = sin(u.rot);
+    const q = vec2(p.x.mul(c).add(p.y.mul(s)), p.y.mul(c).sub(p.x.mul(s))).div(u.scale).div(vec2(u.aspect, 1)).add(0.5);
+    const inside = step(0, q.x).mul(step(q.x, 1)).mul(step(0, q.y)).mul(step(q.y, 1));
+    const dst = tex('A', C.A.texture, screenUV);
+    const src = tex('L', C.Ly.texture, q);
+    const mk = tex('M', white, screenUV).x;
+    const as = src.a.mul(inside).mul(mk).mul(u.mix); const ab = dst.a;
+    const cs = src.rgb.mul(inside).mul(mk).mul(u.mix); // (premultiplied)
+    let out;
+    if (key === 'add') out = vec4(cs.add(dst.rgb), min(float(1), as.add(ab)));
+    else if (key === 'normal') out = vec4(cs.add(dst.rgb.mul(float(1).sub(as))), as.add(ab.mul(float(1).sub(as))));
+    else {
+      const Cs = src.rgb.div(max(src.a, 1e-5)); const Cb = dst.rgb.div(max(ab, 1e-5));
+      const mixed = B[key](Cb, Cs);
+      // co = cs·(1 − αb) + cb·(1 − αs) + αs·αb·B(Cb, Cs)
+      out = vec4(cs.mul(float(1).sub(ab)).add(dst.rgb.mul(float(1).sub(as))).add(mixed.mul(as).mul(ab)), as.add(ab.mul(float(1).sub(as))));
+    }
+    m = quadMat(out);
+    C.mats.set(key, m);
+    return m;
+  };
+  C.copy = quadMat(tex('A', C.A.texture, screenUV));
+  G2.C = C;
+  return C;
+}
+function g2CompSize(C) {
+  const R = G2.R; const v = R.getDrawingBufferSize(new G2.W.Vector2());
+  if (v.x === C.w && v.y === C.h) return;
+  C.w = v.x; C.h = v.y;
+  for (const t of [C.A, C.B, C.Ly]) t.setSize(v.x, v.y);
+}
+// a layer's polygon mask (% of the frame) as a small picture, made again only when it changes
+function g2Mask(S, mask) {
+  const pts = mask?.points;
+  if (!pts?.length) return null;
+  const sig = JSON.stringify(pts);
+  if (S.maskSig === sig && S.maskTex) return S.maskTex;
+  const cv = S.maskCv || (S.maskCv = document.createElement('canvas'));
+  cv.width = 512; cv.height = 512;
+  const g = cv.getContext('2d'); g.clearRect(0, 0, 512, 512); g.fillStyle = '#fff'; g.beginPath();
+  pts.forEach(([x, y], i) => g[i ? 'lineTo' : 'moveTo']((x / 100) * 512, (y / 100) * 512)); g.closePath(); g.fill();
+  if (!S.maskTex) { S.maskTex = new G2.W.CanvasTexture(cv); S.maskTex.flipY = false; } else S.maskTex.needsUpdate = true;
+  S.maskSig = sig;
+  return S.maskTex;
+}
+// merge the layer (drawn into C.Ly) onto the picture C.A, into C.B; then they swap
+function g2Merge(C, L, S) {
+  const R = G2.R; const u = C.u; const t = xform(L);
+  u.mix.value = layerMix(L);
+  u.off.value.set(t.x / 100, t.y / 100);
+  u.rot.value = (t.rotate * Math.PI) / 180;
+  u.scale.value = Math.abs(t.scale) > 1e-4 ? t.scale : 1e-4;
+  u.aspect.value = C.w / Math.max(1, C.h);
+  const mt = g2Mask(S, L.props.mask) || C.white;
+  for (const n of C.nodes.A) n.value = C.A.texture;
+  for (const n of C.nodes.L) n.value = C.Ly.texture;
+  for (const n of C.nodes.M) n.value = mt;
+  C.quad.material = C.mat(L.props.blend || 'normal');
+  R.setRenderTarget(C.B); C.quad.render(R);
+  const a = C.A; C.A = C.B; C.B = a;
+  C.merges += 1;
+}
+// the visible v2 layers into the one canvas, bottom first; run: their onFrame callbacks first (a frame), else the
+// scenes as they are now (a picture asked for between frames, see g2Fresh). One plain layer draws straight to the
+// screen; anything more goes through the scene's picture (C.A, see "layers as pictures") and one copy to the screen.
+const G2VIS = [];
+function g2Draw(t, run) {
+  const R = G2.R;
+  g2Size();
+  R.info.reset();
+  const vis = G2VIS; vis.length = 0;
+  for (const L of ordered()) {
+    const S = L.g2;
+    if (!S || !S.ready || L.props.pcOf) continue;
+    if (layerMix(L) <= 0) continue;
+    vis.push(L);
+    if (run && L.errPaused !== L.gen) {
+      const lt = g2Clock(L, t) / 1000;
+      const dt = S.last < 0 ? 0 : Math.max(0, Math.min(0.25, lt - S.last));
+      S.last = lt; S.time.t = lt; S.time.dt = dt; S.time.frame += 1;
+      const prev = ctxLayer; ctxLayer = L.id;
+      try { for (let i = 0; i < S.frames.length; i += 1) S.frames[i](lt, dt); } catch (err) { g2Threw(L, err); } finally { ctxLayer = prev; }
+    }
+  }
+  R.autoClear = true; R.autoClearDepth = true; R.autoClearStencil = true;
+  if (vis.length === 1 && g2Plain(vis[0])) {
+    R.setRenderTarget(null); R.autoClearColor = true;
+    try { R.render(vis[0].g2.scene, vis[0].g2.camera); } catch (err) { g2Threw(vis[0], err); }
+    G2.path = 'direct';
+  } else if (!vis.length) {
+    R.setRenderTarget(null); R.autoClearColor = true; R.clear(); // (every layer hidden: an empty frame)
+    G2.path = 'empty';
+  } else {
+    const C = g2CompInit(); g2CompSize(C);
+    let fresh = true;
+    for (const L of vis) {
+      const S = L.g2;
+      if (g2Plain(L)) {
+        R.setRenderTarget(C.A); R.autoClearColor = fresh || Boolean(S.scene.background?.isColor); fresh = false; // (a plain layer with a colour background covers what's under it: it clears with its colour)
+        try { R.render(S.scene, S.camera); } catch (err) { g2Threw(L, err); }
+        continue;
+      }
+      if (fresh) { R.setRenderTarget(C.A); R.clear(); fresh = false; }
+      R.getClearColor(G2.cc); const ca = R.getClearAlpha();
+      R.setRenderTarget(C.Ly); R.setClearColor(0x000000, 0); R.autoClearColor = true;
+      try { R.render(S.scene, S.camera); } catch (err) { g2Threw(L, err); } finally { R.setClearColor(G2.cc, ca); }
+      g2Merge(C, L, S);
+    }
+    R.setRenderTarget(null);
+    for (const n of C.nodes.A) n.value = C.A.texture;
+    C.quad.material = C.copy; C.quad.render(R);
+    G2.path = 'merged';
+  }
+  if (run) for (const L of vis) { L.drewTick = frameTick; if (L.drawnGen !== L.gen) layerDrew(L, true); }
+  G2.drewE = FR.inRaf ? FR.E : -1;
+}
+// (a WebGPU canvas keeps its picture only until the browser shows it: read outside the frame that drew it, it is
+// black) a picture of the one canvas wanted now (a still, the cover, a cross-fade's picture, a merge): drawn again as
+// the scenes are, unless this frame's task already drew it. glFresh calls it for the v2 canvas (canvas.__g2).
+function g2Fresh() {
+  if (!G2.R || !G2.list.size) return;
+  if (FR.inRaf && G2.drewE === FR.E) return;
+  try { g2Draw(0, false); } catch { /* the picture as it is */ }
+}
+// a v2 layer's frame threw: said once (then counted), paused after PAUSE_N frames in ½ s like any layer (▶ Resume)
+function g2Threw(L, err) {
+  let stack = ''; try { stack = String(err?.stack || ''); } catch { /* not an Error */ }
+  const message = err instanceof Error ? `${err.name}: ${err.message}` : `Uncaught ${String(err)}`;
+  const line = Number(/blob:[^\s)]*?:(\d+):\d+/.exec(stack)?.[1]) || null;
+  const r = { kind: 'runtime', layer: L.id, line, message, frame: true };
+  if (window.__labProblems.note(r)) post({ type: 'error', layer: L.id, line, message });
+  const now = realNow();
+  if (L.errG !== L.gen || now - (L.errAt || 0) > 250) { L.errG = L.gen; L.errN = 0; L.errT0 = now; }
+  L.errN += 1; L.errAt = now;
+  if (L.errN >= PAUSE_N && now - L.errT0 >= 500 && L.errPaused !== L.gen) {
+    L.errPaused = L.gen;
+    window.__labProblems.flush();
+    post({ type: 'layer-paused', layer: L.id, message, line, frames: L.errN, ms: Math.round(now - L.errT0) });
+  }
+}
+// checks / the Lab: the v2 runtime now
+window.__labG2 = {
+  // (checks) the one renderer's ceiling: n frames of the scenes as they are, back to back, until the graphics card has
+  // finished them → ms a frame (CPU submit + GPU work, nothing else of the page in it)
+  rt: (k) => { G2.rtWant = String(k); const C = G2.C; if (C) { for (const t of [C.A, C.B, C.Ly]) t.dispose(); for (const m of C.mats.values()) m.dispose(); C.copy.dispose(); G2.C = null; } return G2.rtWant; },
+  bench: async (n = 60) => {
+    const dev = G2.R?.backend?.device; if (!dev || !G2.list.size) return null;
+    g2Draw(0, false); await dev.queue.onSubmittedWorkDone();
+    const t0 = realNow(); for (let i = 0; i < n; i += 1) g2Draw(0, false); await dev.queue.onSubmittedWorkDone();
+    return { msPerFrame: Math.round(((realNow() - t0) / n) * 100) / 100, path: G2.path, rt: G2.rtKind || null, px: [G2.R.domElement.width, G2.R.domElement.height] };
+  },
+  // (checks) the GPU time readings on / off: each one is a query read back from the graphics card
+  timing: (on) => { G2.tsOff = !on; return !G2.tsOff; },
+  // one pixel of that merged picture (fx, fy: 0..1 from the top left) → [r, g, b] 0..255
+  pixel: (fx, fy) => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(Math.min(63, Math.floor(fx * 64)), Math.min(35, Math.floor(fy * 36)), 1, 1).data; return [d[0], d[1], d[2]]; },
+  // the merged picture as a still would read it now (composite), small: how much of it is lit
+  lit: () => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(0, 0, 64, 36).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 30) n += 1; return { lit: n, of: 64 * 36 }; },
+  state: () => ({ on: Boolean(G2.R), page: GPU_PAGE, backend: G2.backend, layers: [...G2.list].map((S) => ({ id: S.L.id, compileMs: S.compileMs, objects: S.scene.children.length, frames: S.frames.length, t: Math.round(S.time.t * 100) / 100 })), frames: G2.frames, cpuMs: Math.round(G2.cpuMs * 100) / 100, gpuMs: G2.gpuMs == null ? null : Math.round(G2.gpuMs * 100) / 100, w: G2.w, h: G2.h, pr: G2.pr, calls: G2.R?.info.render.drawCalls ?? null, ts: Boolean(G2.ts), triangles: G2.R?.info.render.triangles ?? null, contexts: glAlive(), lost: G2.lost, path: G2.path, rt: G2.rtKind || null, err: G2.err || null, merges: G2.C?.merges ?? 0 }) };
 // All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
   swapDrop(0); // (round 89: an old stack still fading out goes now)
@@ -16237,6 +16619,7 @@ function xpMerge(c, W, H, y0 = 0, sh = H, alpha = false) {
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   if (alpha) g.clearRect(0, y0, W, sh); else { g.fillStyle = '#000'; g.fillRect(0, y0, W, sh); }
+  if (G2.R && G2.list.size) g.drawImage(glFresh(G2.canvas), 0, 0, W, H); // (Nov 9, Scenes v2) a v2 scene's layers: its one canvas, drawn this step
   for (const L of ordered()) { if (L.props.pcOf || L.seqHide) continue; drawLayer2D(g, L, W, H); }
   g.setTransform(1, 0, 0, 1, 0, 0);
   return c;

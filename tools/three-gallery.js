@@ -62,7 +62,7 @@ const LabGallery = (() => {
     ensureBox();
     const Ls = (await item.layers()).filter((L) => L.code);
     seq += 1;
-    const specs = Ls.map((L, z) => ({ id: `gal${seq}_${z}`, code: L.code, z, slot: z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: 0, y: 0, scale: 1, rotate: 0, overrides: null }));
+    const specs = Ls.map((L, z) => ({ id: `gal${seq}_${z}`, code: L.code, z, slot: z, name: L.name, visible: L.visible !== false, opacity: L.opacity ?? 1, blend: L.blend || 'normal', x: 0, y: 0, scale: 1, rotate: 0, overrides: null, ...(item.format === 'gpu' || (item.kind === 'scene' && S()?.get(item.id)?.format === 'gpu') ? { gpu: true } : {}) })); // (Nov 9, Scenes v2)
     const mine = { id: item.key, drawn: false, errors: [], ids: new Set(specs.map((s) => s.id)), got: new Set(), names: new Map(specs.map((s) => [s.id, s.name])), layers: specs.length };
     run = mine;
     box.send({ type: 'tweak-init', values: {}, keys: {}, mods: {} });
@@ -114,6 +114,12 @@ const LabGallery = (() => {
       out.push({ key: `k:${t.name}`, kind: 'lib', id: t.name, group: 'lib:sketches', groupLabel: 'Code sketches', name: t.name, desc: t.desc || '', tags: 'sketch code three.js example', layers: async () => [{ name: t.name, code: t.code }], sig: once(`k:${t.name}`, () => sig(t.code)), sketch: true });
     }
     return out;
+  }
+  // (Nov 9, Scenes v2) new scenes: the v2 (WebGPU) starting points, first in the window; a scene made from one has
+  // format 'gpu' (one renderer for the whole scene, docs/upgrades/scenes-v2-webgpu.md)
+  function v2Items() {
+    return (ThreeData.V2_TEMPLATES || []).map((t) => ({ key: `v2:${t.id}`, kind: 'start', format: 'gpu', id: t.id, group: 'v2', groupLabel: '⚡ New scene (v2 · WebGPU)', name: t.name, desc: t.desc, tags: 'v2 webgpu new fast tsl',
+      layers: async () => ThreeData.v2Layers(t).map((L) => ({ name: L.name, code: L.code })), sig: once(`v2:${t.id}`, () => sig(ThreeData.v2Layers(t).map((L) => L.code).join('|'))) }));
   }
   function sceneItems() {
     const sc = S();
@@ -187,7 +193,7 @@ const LabGallery = (() => {
     }
     const frame = sc.frameOf(sc.currentId());
     const layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}), ...(L.visible === false ? { visible: false } : {}) }));
-    const x = sc.create({ name: uniqueName(item.name), code: layers[0].code, layers, frame });
+    const x = sc.create({ name: uniqueName(item.name), code: layers[0].code, layers, frame, ...(item.format === 'gpu' ? { format: 'gpu' } : {}) }); // (Nov 9, Scenes v2)
     d.openSketch(x.id);
     return { scene: x.name, id: x.id };
   }
@@ -198,6 +204,7 @@ const LabGallery = (() => {
   const cards = new Map(); // key → { card, img, item }
   const groupsOf = () => [
     { id: 'all', label: 'All' },
+    { id: 'v2', label: '⚡ New scene (v2)' }, // (Nov 9, Scenes v2)
     { id: 'starts', label: '✦ Starting points' },
     ...D.MOODS.map((m) => ({ id: m.id, label: `${m.icon} ${m.label}` })),
     { id: 'yours', label: 'Your scenes' },
@@ -244,12 +251,12 @@ const LabGallery = (() => {
     let searchT = 0;
     search.addEventListener('input', () => { clearTimeout(searchT); searchT = setTimeout(() => { query = search.value.trim(); paint(); body.scrollTop = 0; }, 120); });
     body.addEventListener('scroll', () => hidePreview(), { passive: true });
-    all = [...startItems(), ...sceneItems()];
+    all = [...v2Items(), ...startItems(), ...sceneItems()];
     paintChips(); paint();
     // the slower lists after the first paint (history reads the disk; the library is long)
     const more = [...libItems(), ...(await historyItems())];
     if (!dlg) return;
-    all = [...startItems(), ...sceneItems(), ...more.filter((x) => x.kind === 'history'), ...more.filter((x) => x.kind === 'lib')];
+    all = [...v2Items(), ...startItems(), ...sceneItems(), ...more.filter((x) => x.kind === 'history'), ...more.filter((x) => x.kind === 'lib')];
     paintChips(); paint();
 
     function paint() {
@@ -478,5 +485,5 @@ const LabGallery = (() => {
     });
   }
 
-  return { open, close, use, check, show, shot, parkSoon, items: () => [...startItems(), ...libItems(), ...sceneItems()], historyItems, get isOpen() { return Boolean(dlg); }, get previewing() { return hover?.key || null; }, cacheSize: () => Object.keys(cache || {}).length };
+  return { open, close, use, check, show, shot, parkSoon, items: () => [...v2Items(), ...startItems(), ...libItems(), ...sceneItems()], historyItems, get isOpen() { return Boolean(dlg); }, get previewing() { return hover?.key || null; }, cacheSize: () => Object.keys(cache || {}).length };
 })();
