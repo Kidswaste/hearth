@@ -54,6 +54,82 @@ const Native = (() => {
     });
   }
 
+  // (round 165, chat165) A chat's list scrolls on the compositor when what shows through it is one plain, opaque colour.
+  // Chromium keeps a scroll box whose background isn't opaque on the main thread (so its text keeps subpixel
+  // antialiasing): every scrolled frame, and every streamed piece that scrolls the chat to its end, repainted the whole
+  // visible chat on the window's thread, and the wheel waited for that thread (a busy moment — a block of older
+  // messages waking, a reply streaming — held the scroll). When the list itself is transparent and the first thing
+  // painted under it is an ancestor's opaque plain colour, the list takes that exact colour: the same pixels, but an
+  // opaque box the compositor scrolls by itself (only what changed is painted). Not when anything else could show
+  // through: a picture or gradient (the Forgeheart looks' ground: Chromium can't paint a gradient that stays put into a
+  // scrolled layer, so text there would lose its subpixel antialiasing; left exactly as it was), a filter or blend, an
+  // inset shadow, a pseudo-element or an earlier sibling drawn under it, a rounded corner it could spill past. Judged
+  // again when the look changes (the root's look / skin attributes, the theme sheet, a style sheet arriving) and when the
+  // view moves (a project's tools). list.backWhy says why a list was left transparent.
+  const clearBg = (c) => c === 'transparent' || /^rgba\([^)]*,\s*0\)$/.test(c);
+  const OPAQUE = /^rgb\(\d+, \d+, \d+\)$/;
+  const each = (v, ok) => String(v).split(/,\s*(?![^()]*\))/).every((x) => ok.test(x.trim()));
+  const under = (e, p) => { const s = getComputedStyle(e, p); if (!s.content || s.content === 'none' || s.content === 'normal' || s.display === 'none') return false; return !(/^(absolute|fixed)$/.test(s.position) && parseInt(s.zIndex, 10) > 0); }; // (a positioned one with z-index ≥ 1 is drawn over the chat)
+  const no = (list, why, e) => { list.backWhy = e ? `${why}: ${e.tagName.toLowerCase()}${e.id ? `#${e.id}` : ''}${typeof e.className === 'string' && e.className ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}` : why; return null; };
+  function backdropOf(list) {
+    const cs = getComputedStyle(list);
+    const mine = list.classList.contains('solid-back');
+    if (!mine && (cs.backgroundImage !== 'none' || !clearBg(cs.backgroundColor))) return no(list, 'the look paints the list');
+    if (mine && list.style.getPropertyValue('--solid-back') !== cs.backgroundColor) return no(list, 'the look paints the list'); // (chatcore.css' zero-specificity rule gave way to the look's)
+    const lr = list.getBoundingClientRect();
+    if (!lr.width || !lr.height) return undefined; // (not laid out: judged later)
+    let child = list;
+    for (let e = list.parentElement; e; child = e, e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (s.filter !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none') || s.mixBlendMode !== 'normal' || /inset/.test(s.boxShadow)) return no(list, 'a filter, blend or inset shadow', e);
+      if (under(e, '::before') || under(e, '::after')) return no(list, 'a pseudo-element under it', e);
+      for (let c = e.firstElementChild; c && c !== child; c = c.nextElementSibling) { // drawn before the list's branch: under it
+        const r = c.getBoundingClientRect();
+        if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return no(list, 'something drawn under it', c);
+      }
+      const c = s.backgroundColor;
+      if (s.backgroundImage !== 'none') return no(list, 'a picture or gradient under it', e);
+      if (clearBg(c)) continue;
+      if (!OPAQUE.test(c)) return no(list, `a translucent ground (${c})`, e);
+      if (!each(s.backgroundClip, /^(border|padding)-box$/)) return no(list, 'a ground not under its padding', e);
+      if (s.overflow === 'visible' && ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'].some((k) => parseFloat(s[`border${k}Radius`]) > 0)) return no(list, 'a rounded ground', e);
+      return c;
+    }
+    return no(list, 'no ground');
+  }
+  let backGen = 0; let backRaf = 0; const backWant = new Set(); const backSeen = new WeakMap();
+  // (the colour goes in --solid-back, read by chatcore.css' zero-specificity rule: nothing is written when it is the same)
+  function solidBack(list) {
+    if (!list?.isConnected) return;
+    const at = list.parentElement?.parentElement;
+    const k = backSeen.get(list);
+    if (k && k[0] === backGen && k[1] === at) return;
+    list.backWhy = '';
+    const c = backdropOf(list);
+    if (c === undefined) return; // (hidden: the next draw judges it)
+    backSeen.set(list, [backGen, at]);
+    if (c && list.style.getPropertyValue('--solid-back') !== c) list.style.setProperty('--solid-back', c);
+    else if (!c && list.style.getPropertyValue('--solid-back')) list.style.removeProperty('--solid-back');
+    if (list.classList.contains('solid-back') !== Boolean(c)) list.classList.toggle('solid-back', Boolean(c));
+  }
+  function backSoon(list) {
+    if (list) backWant.add(list);
+    if (backRaf) return;
+    backRaf = requestAnimationFrame(() => { backRaf = 0; const ls = [...backWant]; backWant.clear(); for (const l of ls) solidBack(l); });
+  }
+  function backAll() {
+    backGen += 1;
+    for (const v of views.values()) { backWant.add(v.list); for (const p of v.panes?.values() || []) backWant.add(p.list); }
+    backSoon();
+  }
+  {
+    const again = () => { backAll(); clearTimeout(again.t); again.t = setTimeout(backAll, 1000); }; // (and once the look has settled)
+    const mo = new MutationObserver(again);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'] }); // (style: a look's colours are variables on the root)
+    if (document.head) mo.observe(document.head, { childList: true, subtree: true });
+    document.addEventListener('load', (e) => { if (e.target?.tagName === 'LINK') again(); }, true);
+  }
+
   function mount(agentId, root) {
     // A project's chat follows its tools. Move the same live view, preserving drafts,
     // streaming state, attachments and listeners instead of mounting a second composer.
@@ -74,6 +150,7 @@ const Native = (() => {
         // at the next frame, before the "Show earlier" watcher looks (a dock is often shown just after the move, in the same
         // task; and no layout is forced in the middle of the move)
         requestAnimationFrame(place);
+        backSoon(existing.list); // (round 165, chat165) another place: what shows behind it judged again
       }
       root.classList.toggle('dock-chat', root.classList.contains('tool-dock'));
       return existing;
@@ -540,7 +617,7 @@ const Native = (() => {
     const t = e.target;
     const copy = t.closest('.copy-code, .copy-msg');
     if (copy) {
-      const text = copy.classList.contains('copy-code') ? copy.closest('pre').querySelector('code').textContent : copy.closest('.msg').dataset.raw;
+      const text = copy.classList.contains('copy-code') ? copy.closest('pre').querySelector('code').textContent : rawOf(copy.closest('.msg'));
       await navigator.clipboard.writeText(text);
       copy.textContent = 'Copied';
       setTimeout(() => { copy.textContent = 'Copy'; }, 1200);
@@ -597,11 +674,11 @@ const Native = (() => {
       const what = act.dataset.msgAct;
       if (what === 'menu') { messageMenu(agentId, idx, act); return; }
       if (what === 'continue') { send(agentId, 'Continue exactly where you stopped.').catch((err) => toast(err.message, { type: 'error' })); return; }
-      if (what === 'copy-error') { copyText(act.closest('.msg').dataset.raw, 'Error copied'); return; }
+      if (what === 'copy-error') { copyText(rawOf(act.closest('.msg')), 'Error copied'); return; }
       if (what === 'engines') { Commands.exec('/engines', agentId); return; }
       if (what === 'fold') { const node = act.closest('.msg'); unfolded.delete(`${H.activeChat[agentId]}:${idx}`); node.classList.add('collapsed'); act.remove(); node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); node.scrollIntoView({ block: 'nearest' }); return; }
       if (what === 'branch') branchFrom(agentId, idx);
-      if (what === 'speak') speak(act.closest('.msg').dataset.raw, act);
+      if (what === 'speak') speak(rawOf(act.closest('.msg')), act);
       if (what === 'savemd') { const m = chats.get(H.activeChat[agentId])?.messages[idx]; if (m) saveReply(m); }
       if (what === 'review') send(agentId, REVIEW_PROMPT).catch((err) => toast(err.message, { type: 'error' }));
       if (what === 'opinion') secondOpinion(agentId);
@@ -694,6 +771,11 @@ const Native = (() => {
     }
   }
 
+  // (round 165, chat165) a message's own text (Copy, Read aloud, the fold's word count) is kept on its node as a plain
+  // reference to the chat's string (node.rawText), not copied into a data-raw attribute: every drawn turn held a
+  // second copy of its whole text in the page's DOM (atomized, hashed), and a long reply's paste of a log or a file
+  // was copied again on each redraw
+  const rawOf = (node) => (node ? node.rawText ?? node.dataset.raw ?? '' : '');
   function messageEl(m, agent, index, isLast, live = null) {
     // Claude × Astra collaborations (duo, relay, debate…) draw their own card (astra.js)
     if (m.role === 'collab' && typeof Astra !== 'undefined') return Astra.collabEl(m, agent, index, isLast);
@@ -726,10 +808,10 @@ const Native = (() => {
       for (const c of [...node.childNodes]) if (c !== body) c.remove();
       for (const a of [...node.attributes]) if (a.name !== 'class') node.removeAttribute(a.name);
       // (the class only loses "streaming": only what depends on it is styled again)
-      node.className = `msg ${m.role}`; node.dataset.raw = m.text; node.dataset.index = index; node.title = m.at ? fmtDate(m.at) : '';
+      node.className = `msg ${m.role}`; node.rawText = m.text; node.dataset.index = index; node.title = m.at ? fmtDate(m.at) : '';
       decorateCode(body); sizeImages(body);
     } else {
-      node = el('div', { class: `msg ${m.role}`, dataset: { raw: m.text, index }, title: m.at ? fmtDate(m.at) : '' });
+      node = el('div', { class: `msg ${m.role}`, dataset: { index }, title: m.at ? fmtDate(m.at) : '' }); node.rawText = m.text;
       body = el('div', { class: 'body' });
       if (m.role === 'assistant' || m.role === 'opinion') { body.innerHTML = renderMarkdown(m.text); decorateCode(body); sizeImages(body); } else body.textContent = m.text;
     }
@@ -994,7 +1076,7 @@ const Native = (() => {
     nodes.forEach((node, i) => {
       if (heights[i] <= COLLAPSE_PX || node.classList.contains('collapsed') || node.querySelector('.show-more-msg')) return;
       node.classList.add('collapsed');
-      const words = (node.dataset.raw.match(/\S+/g) || []).length;
+      const words = (rawOf(node).match(/\S+/g) || []).length;
       node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
     });
   }
@@ -1241,6 +1323,7 @@ const Native = (() => {
     if (warm && !tailFirst) await warm;
     if (stale()) return;
     if (usePane(v, chatId && chat ? chatId : '')) keepScroll = false; // (round 45) another chat's list: no place to keep
+    backSoon(v.list); // (round 165, chat165) scrolled on the compositor over a solid colour (judged once per look and place)
     if (!keepScroll) v.placeDue = chatId || null; // (round 73) placed at this draw's frame (below)
     if (v.enterNext) { v.enterNext = false; enterAnim(agentId); }
     // (round 45) read only when kept: reading the list's size here laid out the chat before it changed (twice per switch)
@@ -2976,6 +3059,7 @@ const Native = (() => {
     },
     unreadFrom, rememberFacts, forgetFacts, fmt, clearNotes,
     _rest: { views, chats, hooks, planOf, topAnchor, keepAnchor, foldFresh, shownFrom, unreadFrom, nextSlice, SLICE_MS, BLOCK, restLine, fillFold, W, sv: { shapes, shapeOf, sameShape, newVer, saveWhole } }, // (round 72) chat-rest.js
+    rawOf, // (round 165, chat165) a drawn message's text (errorcalm.js, checks)
     mediaSize: (src) => imgSizes.get(src), noteSize, // (round 73, chatsteady73) [w, h] of a picture / video seen before (chat-media.js, chat-rest.js)
     prefetch, // (round 45, chatswitch) a chat you rest on in the chats list is made ready before the click (panel.js)
     // (round 9) a card in a reply that is still streaming (chat-things.js); null when no reply runs in that chat

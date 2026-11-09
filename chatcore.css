@@ -107,6 +107,9 @@
 .messages > .day-sep:nth-last-child(n+9) { content-visibility: auto; contain-intrinsic-size: auto 24px; }
 /* the chats list: in a long group, rows past the first dozen skip layout and paint while scrolled out of view */
 #chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
+/* (round 165, chat165) a chat over one plain opaque colour takes that same colour (native.js solidBack): an opaque scroll
+   box the compositor scrolls, same pixels. Zero specificity: any look that paints the list itself wins */
+:where(.messages.solid-back) { background-color: var(--solid-back); }
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */
