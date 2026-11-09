@@ -36,6 +36,11 @@ app.commandLine.appendSwitch('gpu-program-cache-size-kb', '32768');
 // Lab layer has its own context, so a 12-layer scene in the preview plus the same scene in the offline render page
 // (24) lost its contexts at frame 1, read as "the graphics card restarted", every time. 64 leaves room for both.
 app.commandLine.appendSwitch('max-active-webgl-contexts', '64');
+// (round 166, audit166) each website session's HTTP cache at most 80 MB. Every persistent session keeps its own (each web
+// chat, app window, Hearth's Chrome, the docs and Miro panes, board pins) and Chromium sized each from the free disk:
+// ≈ 1 GB apiece, measured (dev/checks/audit166.js). Pages and code come back by themselves; a bigger cache from before
+// is trimmed to the cap the next time that site is used. Hearth's own window (files on disk) has no HTTP cache.
+if (!app.commandLine.hasSwitch('disk-cache-size')) app.commandLine.appendSwitch('disk-cache-size', String(80 * 1048576));
 // (round 19, splash) modules the first screen doesn't need are required on their first use instead of before the window
 // opens (Electron's 'ready' waits for everything main.js does at load): the same object to every caller, made on demand
 function later(file, onLoad) {

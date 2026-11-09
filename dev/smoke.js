@@ -242,6 +242,12 @@ async function cdpConnect(dir) {
   if (opt('--serve-dir')) {
     const root = path.resolve(opt('--serve-dir'));
     const srv = require('http').createServer((q, r) => {
+      // (round 166, audit166) /__bytes/<KB>/<id>: that many KB, cacheable for a year (a website's code and pictures);
+      // /__fill/<n>/<KB>: a page that fetches n of them one by one, then titles itself "filled"
+      let m = /^\/__bytes\/(\d+)\/([\w-]+)$/.exec(q.url);
+      if (m) { r.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000' }); r.end(Buffer.concat([Buffer.from(m[2]), Buffer.alloc(Number(m[1]) * 1024, 120)])); return; }
+      m = /^\/__fill\/(\d+)\/(\d+)$/.exec(q.url);
+      if (m) { r.writeHead(200, { 'Content-Type': 'text/html' }); r.end(`<!doctype html><title>filling</title><script>(async () => { for (let i = 0; i < ${m[1]}; i++) await (await fetch('/__bytes/${m[2]}/f' + i)).arrayBuffer(); document.title = 'filled'; })();</script>`); return; }
       const f = path.join(root, decodeURIComponent(q.url.split('?')[0]));
       if (!f.startsWith(root) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { r.writeHead(404); r.end(); return; }
       const ext = path.extname(f).toLowerCase();
