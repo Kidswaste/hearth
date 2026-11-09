@@ -109,6 +109,7 @@ const Native = (() => {
     if (c === undefined) return; // (hidden: the next draw judges it)
     backSeen.set(list, [backGen, at]);
     if (c && list.style.getPropertyValue('--solid-back') !== c) list.style.setProperty('--solid-back', c);
+    else if (!c && list.style.getPropertyValue('--solid-back')) list.style.removeProperty('--solid-back');
     if (list.classList.contains('solid-back') !== Boolean(c)) list.classList.toggle('solid-back', Boolean(c));
   }
   function backSoon(list) {
@@ -124,7 +125,7 @@ const Native = (() => {
   {
     const again = () => { backAll(); clearTimeout(again.t); again.t = setTimeout(backAll, 1000); }; // (and once the look has settled)
     const mo = new MutationObserver(again);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'] });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'] }); // (style: a look's colours are variables on the root)
     if (document.head) mo.observe(document.head, { childList: true, subtree: true });
     document.addEventListener('load', (e) => { if (e.target?.tagName === 'LINK') again(); }, true);
   }
