@@ -5,6 +5,13 @@ const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
 // (round 38, bigscreen) the size of everything for this screen, before the page's first frame (main.js picks it)
 const startZoom = Number((process.argv.find((a) => a.startsWith('--hearth-zoom=')) || '').slice(14)) || 1;
 if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the page re-applies it */ } }
+// (round 154, mem154) the window has been hidden or minimised a while (memtrimmain.js): Blink's caches emptied and a
+// full garbage collection under "memory pressure" (webFrame.clearCache), then the page drops its own caches
+// ('hearth:mem-trim'). Asked by the main process only; nothing the page can call.
+ipcRenderer.on('mem:trim', () => {
+  try { window.dispatchEvent(new Event('hearth:mem-trim')); } catch { /* no page yet */ }
+  try { webFrame.clearCache(); } catch { /* old Electron */ }
+});
 
 contextBridge.exposeInMainWorld('hub', {
   // (round 72, longrun72) how many IPC listeners this window holds (in all, and per channel with more than one): the

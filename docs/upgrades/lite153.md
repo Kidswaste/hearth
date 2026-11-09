@@ -95,4 +95,4 @@ CHECK_SECTION
 
 Nothing: no Codex-owned file was touched.
 
-Release: round 155 (owner notes `docs/patch-notes/round-155.md`), merged on top of labwin153 (round 153) and trim153 (round 154).
+Release: round 156 (owner notes `docs/patch-notes/round-156.md`), merged on top of labwin153 (round 153), trim153 (round 154) and the memory round (round 155).
