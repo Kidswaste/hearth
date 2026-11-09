@@ -10,13 +10,15 @@ await until(() => window.hub && performance.getEntriesByName('hearth:ready').len
 activate('tool:three');
 await until(() => typeof ThreeLab !== 'undefined' && ThreeLab.director && window.LabWinHost, 60000);
 await ThreeLab.cmd();
-await ThreeLab.director.newSketch('Leak fixture (fix161)', "import * as THREE from 'three';\nconst r = new THREE.WebGLRenderer(); r.setSize(innerWidth, innerHeight); document.body.append(r.domElement);\nconst s = new THREE.Scene(); const c = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100); c.position.z = 4; s.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial()));\nr.setAnimationLoop(() => r.render(s, c));", 1);
-await until(() => ThreeLab.workspace.state().ready, 30000);
-await wait(1500);
+// realscene-lib's heavy scene (a model, particles, bloom, a song), played, as dev/fix161-measure.js does
+await RS.open({ size: [960, 540], particles: 12 });
+await wait(4000);
+await RS.close(); await wait(1500);
 const ref = new WeakRef(ThreeLab.director);
 const id = ThreeLab.scenes.currentId();
 const r = await LabWinHost.open(id, { hideMain: false });
 await until(async () => lw('typeof LabWin !== "undefined" && LabWin.times().frame ? true : null'), 60000);
+activate(H.claudeAgent().id);
 await wait(1500);
 for (let i = 0; i < 3; i += 1) { await smoke({ cdp: 'HeapProfiler.collectGarbage' }); await wait(300); }
 const info = { open: r, dropped: ThreeLab.dropped?.(), host: LabWinHost.state(), collected: ref.deref() === undefined };
