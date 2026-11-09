@@ -169,6 +169,8 @@ try {
     HearthLite.set(true);
   });
 
+  localStorage.setItem('lite153.fix', fixId);
+  localStorage.setItem('lite153.before', JSON.stringify({ chosen: before.chosen, shown: before.shown, lite: before.lite, r: glowR(before.smooth) }));
   // ---------- labwin: the Lab in its own window follows Lite ----------
   await safe('labwin', async () => {
     if (!window.LabWinHost || !window.hub?.labwin) { step('labwin: the Lab window is there (labwin153)', false); return; }
@@ -186,13 +188,12 @@ try {
     out.measure.labwin = { on, page, r, off, page2 };
     step('labwin: in the Lab window Lite is on too (data-lite, Motion: off, its LITE tag), its preview at 30 fps with Hearth\'s window in front, half resolution', Boolean(on) && page?.on === true && page.attr && page.motion === 'off' && page.host === true && page.tag && r && r.q <= 0.5, out.measure.labwin);
     step('labwin: off from Hearth\'s window → off in the Lab window too (its full rate back)', Boolean(off) && page2?.on === false && !page2.attr, { off, page2 });
-    await lw('(window.LabWinHost.rows()[0][2](), true)'); // ↩ Back to Hearth
-    await until(() => !LabWinHost.away(), 15000);
+    await Promise.race([window.hub.labwin.close(), wait(10000)]); // (closed from Hearth's side: an eval in a page that is closing can wait forever)
+    await until(() => !LabWinHost.away(), 20000);
     await wait(1500);
-    HearthLite.set(true);
-    localStorage.setItem('lite153.fix', fixId);
-    localStorage.setItem('lite153.before', JSON.stringify({ chosen: before.chosen, shown: before.shown, lite: before.lite, r: glowR(before.smooth) }));
   });
+  if (ThreeLab.scenes.currentId() !== fixId) { try { ThreeLab.scenes.open(fixId); } catch { /* the next part opens it */ } }
+  HearthLite.set(true);
 } catch (err) { step(`threw: ${String(err?.stack || err).slice(0, 500)}`, false); }
 localStorage.setItem('lite153.out', JSON.stringify(out));
 return JSON.stringify({ part: 1, steps: out.steps });
