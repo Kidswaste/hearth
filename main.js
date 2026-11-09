@@ -267,6 +267,7 @@ function createWindow() {
 
   appshell.setupCloseToTray(win, settings);
   bgmain.attach(win);
+  require('./memtrimmain').attach(win, 'hearth'); // (round 154, mem154) out of sight 30 s: caches emptied, one full GC
 }
 
 app.on('web-contents-created', (_event, contents) => {

@@ -104,6 +104,7 @@ function open({ scene: id, hideMain = false, bounds = null } = {}, ctx) {
     },
   });
   const w = labWin;
+  require('./memtrimmain').attach(w, 'lab window'); // (round 154, mem154) minimised 30 s: caches emptied, one full GC
   w.loadFile(path.join(__dirname, 'lab-window.html'), { query: { scene: id } });
   w.once('ready-to-show', () => { if (!w.isDestroyed()) { w.show(); w.focus(); } });
   setTimeout(() => { if (!w.isDestroyed() && !w.isVisible()) w.show(); }, 1500);

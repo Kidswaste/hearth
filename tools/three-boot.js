@@ -6,14 +6,16 @@
 // first run takes that page over in place (moveBefore keeps it running) and swaps its own run in over the warm
 // picture, with the contexts and programs already made (tools/three.js sandboxFrame `warmed`, run()).
 //   · only for someone who opened the Lab in the last 14 days (localStorage 'labboot.used'); once per start
-//   · let go after 15 minutes unused (its process and GPU memory go); never while the Lab is already up
+//   · let go after 5 minutes unused (its process and GPU memory go; round 154: was 15); never while the Lab is already up
 //   · the page is loaded for the query the Lab will ask (three.js version, exact-size pixels): a different one is a
 //     normal load, as before
 //   · tests: localStorage 'labboot.warm' = '1' warms whatever was used, '0' never warms
 const LabBoot = (() => {
   const SANDBOX = 'tools/three-sandbox.html';
   const USED_DAYS = 14;
-  const LET_GO_MS = 15 * 60000;
+  // (round 154, mem154) 5 minutes, not 15: an unused warm page held ≈ 250 MB (its process + its GPU memory) for a
+  // quarter of an hour of every start; the Lab's own rest (tools/three.js restArm) lets go after 5 minutes unseen too
+  const LET_GO_MS = 5 * 60000;
   let w = null; // { host, frame, n, query, sketch, ready, ran, drawn, taken, t0, times }
   let started = false;
   const st = { warmed: 0, taken: 0, dropped: 0, skipped: null, times: null, mounted: false };
@@ -119,7 +121,7 @@ const LabBoot = (() => {
       if (labUp() || window.ProjectWorkspace?.current?.() || typeof Tools === 'undefined') return;
       Tools.warm('tool:three'); st.mounted = true; // (asked: a stand-in tool hands over to the Lab a moment later)
       for (const g of ['board', 'creative']) window.Lazy?.load?.(g).catch(() => {});
-      // never shown in 15 minutes (no project opened, the Lab never visited): its page is let go, as this warm page
+      // never shown in 5 minutes (no project opened, the Lab never visited): its page is let go, as this warm page
       // would have been (the Lab starts it again when it's shown)
       let seen = false; const look = (e) => { if (e.detail?.surfaceId === 'tool:three') seen = true; };
       document.addEventListener('hearth:activate', look);
