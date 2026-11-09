@@ -5,12 +5,13 @@ window.HearthLabWindow = (() => {
   const scene = window.hub?.labwin?.scene || new URLSearchParams(location.search).get('scene') || null;
   // name → 'soon' (loads right after the window is up) or 'use' (only when the Lab asks for it). Everything else (chats,
   // boards, projects, usage, sync panels, memory, routines, budget…) does not exist in this window.
-  const SOON = ['kit', 'nodes', 'labintent', 'cmdbar', 'glrecover', 'keyslines', 'dragdrop'];
+  // (round 164, groups164) 'kit' holds the node view and lab-intent.js too; 'gamemode' holds gameready (docs/upgrades/groups164.md)
+  const SOON = ['kit', 'cmdbar', 'glrecover', 'keyslines', 'dragdrop'];
   const USE = ['lab', 'lookpicker', 'keyssheet', 'codeflow', 'blocks', 'labsay', 'gallery', 'packs', 'labvar', 'framebar', 'scenedoctor', 'critique',
     'multiformat', 'labtemplates', 'kinetictype', 'labvis', 'labshapes', 'presentready', 'labmaterials', 'projlook', 'takes',
     'scenevers', 'speedcheck', 'refmatch', 'matchscore', 'renderpre', 'preflight', 'perform', 'explain', 'campath', 'audiomap',
     'outline', 'dials', 'favs', 'songmap', 'sectionmood', 'lyrics', 'dropmedia', 'labrecipes', 'labkeys', 'labdirection',
-    'labfinish', 'labbatch', 'labsearch', 'searchcore', 'renders', 'gamemode', 'gameready', 'gameperf', 'interop', 'remote',
+    'labfinish', 'labbatch', 'labsearch', 'searchcore', 'renders', 'gamemode', 'gameperf', 'interop', 'remote',
     'phoneview',
     // (round 158, split158) the Lab's cold parts (tools/three-lab-*.js), loaded on first use
     'labparttools', 'labpartrefs', 'labpartnotes', 'labpartmidi', 'labpartlive', 'labpartcapture', 'labpartdialogs', 'labpartmenus', 'labpartedit', 'labpartlanes', 'labpartai'];

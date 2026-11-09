@@ -15,6 +15,14 @@
 const Lazy = (() => {
   const D = typeof LazyData !== 'undefined' ? LazyData : { GROUPS: [], META: {} };
   const groups = new Map(); // name → { name, files, css, tier, after, state: 'stub' | 'loading' | 'loaded' | 'failed', promise, at, ms }
+  // (round 164, groups164) small groups that always load together are one group now; a merged group keeps the names it
+  // took in (`also`): Lazy.load / when / isIn / loaded / off… and `after` lists still answer to them (docs/upgrades/groups164.md)
+  const alias = new Map(); // old name → the group it is part of now
+  const ownGet = groups.get.bind(groups);
+  const ownHas = groups.has.bind(groups);
+  groups.get = (n) => ownGet(n) ?? ownGet(alias.get(n));
+  groups.has = (n) => ownHas(n) || alias.has(n);
+  const real = (n) => (ownHas(n) ? n : alias.get(n) ?? n);
   const stubCmds = new Map(); // 'group|name' → command name (stand-ins not taken over yet)
   const realActions = new Map(); // palette label → the real run (the stand-in action calls it)
   const realBridge = new Map(); // tool prefix → the real handler
@@ -45,7 +53,9 @@ const Lazy = (() => {
   for (const g of lwGroups(D.GROUPS || [])) {
     groups.set(g.name, { tier: 'soon', after: [], css: [], ...g, state: 'stub', promise: null });
     for (const n of g.globals || []) ofGlobal.set(n, g.name);
+    for (const n of g.also || []) alias.set(n, g.name);
   }
+  for (const g of groups.values()) for (const k of ['after', 'wait']) if (g[k]) g[k] = [...new Set(g[k].map(real))].filter((d) => d !== g.name);
   // (round 94, labload94) a 'soon' group that needs a 'use' one (the Lab's direction / finish lines need the Lab) follows
   // it: it loads once that one is in (and the start is calm), never pulling it in itself
   for (const g of groups.values()) if (g.tier === 'soon' && g.after.some((d) => groups.get(d)?.tier === 'use')) { g.tier = 'use'; g.follow = true; }
@@ -97,6 +107,7 @@ const Lazy = (() => {
   // group → { commands, actions, tools, apps, bridge } (what Trim Hearth matches usage with), kept after the manifest goes
   const names = new Map();
   function namesOf(name) {
+    name = real(name);
     if (names.has(name)) return names.get(name);
     const m = (D.META || {})[name] || {};
     return { commands: (m.commands || []).flatMap((c) => [c.name, ...(c.aliases || [])]), actions: (m.actions || []).map((a) => a.label || a), tools: (m.tools || []).map((t) => t.id), apps: (m.apps || []).map((a) => a.id), bridge: (m.bridge || []).slice() };
@@ -769,7 +780,7 @@ const Lazy = (() => {
   addEventListener('hearth:ready', start, { once: true });
   // start.js never got there (an error during startup): don't leave the features unloaded
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
-  const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
+  const state = () => [...groups.values()].map((g) => ({ name: g.name, ...(g.also ? { also: g.also.slice() } : {}), tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
   return {
     load, state, start, at, text, sendReady,
     // (round 160, boot160) holdLoad(promise): called by a lazy file while it loads, its group counts as in once that's done (≤ 3 s)
@@ -791,13 +802,14 @@ const Lazy = (() => {
     when(name, fn) {
       const g = groups.get(name);
       if (!g || g.state === 'loaded') { fn(); return; }
-      const on = (e) => { if (e.detail?.group !== name) return; removeEventListener('hearth:lazy', on); try { fn(); } catch (err) { console.error(err); } };
+      const on = (e) => { if (e.detail?.group !== g.name) return; removeEventListener('hearth:lazy', on); try { fn(); } catch (err) { console.error(err); } };
       addEventListener('hearth:lazy', on);
     },
     groupOf: (cmd) => { const n = String(cmd || '').toLowerCase(); for (const [k, v] of stubCmds) if (v === n) return k.split('|')[0]; return null; },
     misses: () => missLog.slice(),
     namesAtReady: () => namesAtReady && namesAtReady.slice(),
-    report: (name) => (name ? reports.get(name) : Object.fromEntries(reports)),
+    report: (name) => (name ? reports.get(real(name)) : Object.fromEntries(reports)),
+    real, // (round 164) the group a name is part of now (itself for a group of its own)
     loadAll: () => Promise.all([...groups.keys()].map((n) => load(n).catch((err) => ({ name: n, error: err.message })))),
     groups: () => [...groups.values()].map((g) => ({ name: g.name, files: g.files.slice(), css: (g.css || []).slice(), tier: g.tier })),
   };
