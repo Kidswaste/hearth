@@ -69,7 +69,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000, step = 100) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(step); } return null; };
 const R = JSON.parse(localStorage.getItem('lc102.out')); const DIR = localStorage.getItem('lc102.dir');
 const ok = (c, m) => { (c ? R.ok : R.fails).push(`held: ${m}`); return Boolean(c); };
-const grp = (n) => Lazy.state().find((g) => g.name === n)?.state;
+const grp = (n) => Lazy.state().find((g) => g.name === n || g.also?.includes(n))?.state; // (round 164: a name taken into a merged group answers for it)
 await until(() => typeof H !== 'undefined' && H.agents().length && performance.getEntriesByName('hearth:ready').length, 60000);
 await wait(2500);
 R.info.heldAtStart = { lab: grp('lab'), directortask: grp('directortask'), directordock: grp('directordock') };
@@ -125,7 +125,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 20000, step = 100) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(step); } return null; };
 const R = JSON.parse(localStorage.getItem('lc102.out'));
 const ok = (c, m) => { (c ? R.ok : R.fails).push(`apply: ${m}`); return Boolean(c); };
-const grp = (n) => Lazy.state().find((g) => g.name === n)?.state;
+const grp = (n) => Lazy.state().find((g) => g.name === n || g.also?.includes(n))?.state; // (round 164: a name taken into a merged group answers for it)
 const menuButtons = () => [...document.querySelectorAll('#menu button, #menu-fly button, .lab-pop button.menu-item')].filter((b) => b.offsetParent && !b.disabled);
 const clickMenu = async (re) => { const b = await until(() => menuButtons().find((x) => re.test(x.textContent)), 20000); b?.click(); await wait(250); return Boolean(b); };
 const noteOf = (agentId) => Native.view(agentId)?.list.querySelector('.msg.note[data-note-id="lab-apply"]') || null;

@@ -11,7 +11,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const out = []; const bad = [];
 const ok = (c, m) => { (c ? out : bad).push(m); };
 const closeAll = async () => { for (const d of document.querySelectorAll('dialog[open]')) d.close(); await sleep(80); };
-const state = (g) => Lazy.state().find((x) => x.name === g)?.state;
+const state = (g) => Lazy.state().find((x) => x.name === g || x.also?.includes(g))?.state; // (round 164: a name taken into a merged group answers for it)
 async function round(label) {
   const until = async (fn, ms = 4000) => { const t0 = Date.now(); for (;;) { let v; try { v = fn(); } catch { v = null; } if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(50); } };
   const before = { memorytidycore: state('memorytidycore'), updater: state('updater'), compdispatch: state('compdispatch') };
@@ -121,7 +121,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const { out, bad } = JSON.parse(localStorage.getItem('fs87.part1'));
 const ok = (c, m) => { (c ? out : bad).push(m); };
 const closeAll = async () => { for (const d of document.querySelectorAll('dialog[open]')) d.close(); await sleep(80); };
-const state = (g) => Lazy.state().find((x) => x.name === g)?.state;
+const state = (g) => Lazy.state().find((x) => x.name === g || x.also?.includes(g))?.state; // (round 164: a name taken into a merged group answers for it)
 const round = eval(`(${localStorage.getItem('fs87.round')})`); // eslint-disable-line no-eval
 const card = eval(`(${localStorage.getItem('fs87.card')})`); // eslint-disable-line no-eval
 localStorage.removeItem('lazy.hold');

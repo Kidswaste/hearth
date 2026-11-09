@@ -811,7 +811,7 @@ const Lazy = (() => {
     report: (name) => (name ? reports.get(real(name)) : Object.fromEntries(reports)),
     real, // (round 164) the group a name is part of now (itself for a group of its own)
     loadAll: () => Promise.all([...groups.keys()].map((n) => load(n).catch((err) => ({ name: n, error: err.message })))),
-    groups: () => [...groups.values()].map((g) => ({ name: g.name, files: g.files.slice(), css: (g.css || []).slice(), tier: g.tier })),
+    groups: () => [...groups.values()].map((g) => ({ name: g.name, ...(g.also ? { also: g.also.slice() } : {}), files: g.files.slice(), css: (g.css || []).slice(), tier: g.tier })),
   };
 })();
 window.Lazy = Lazy; // window.Lazy?.… works from anywhere, even if this file never loaded

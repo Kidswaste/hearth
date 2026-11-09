@@ -13,7 +13,7 @@
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const out = []; const bad = [];
 const ok = (c, m) => { (c ? out : bad).push(m); };
-const state = (g) => Lazy.state().find((x) => x.name === g)?.state;
+const state = (g) => Lazy.state().find((x) => x.name === g || x.also?.includes(g))?.state; // (round 164: a name taken into a merged group answers for it)
 const GROUPS = ['directordock', 'directortask', 'progressui', 'assist'];
 async function round(label) {
   const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { let v; try { v = await fn(); } catch { v = null; } if (v) return v; if (Date.now() - t0 > ms) return null; await sleep(60); } };
@@ -106,7 +106,7 @@ return `part 1: ${bad.length ? `FAIL ${bad.length}` : 'PASS'} ${out.length} ok`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const { out, bad } = JSON.parse(localStorage.getItem('fs96.part1'));
 const ok = (c, m) => { (c ? out : bad).push(m); };
-const state = (g) => Lazy.state().find((x) => x.name === g)?.state;
+const state = (g) => Lazy.state().find((x) => x.name === g || x.also?.includes(g))?.state; // (round 164: a name taken into a merged group answers for it)
 const GROUPS = ['directordock', 'directortask', 'progressui', 'assist'];
 const round = eval(`(${localStorage.getItem('fs96.round')})`); // eslint-disable-line no-eval
 localStorage.removeItem('lazy.hold');

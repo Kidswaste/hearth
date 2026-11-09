@@ -14,7 +14,7 @@ const toasts = () => [...document.querySelectorAll('#toasts > *')].map((t) => t.
 const sw = (o) => window.hub.kvSet('fake-switches', o);
 store.set('hints.test', { gap: 0, start: 0, startNotice: 0 }); Hints.config({ gap: 0, start: 0, startNotice: 0, quiet: 0, idle: 0 });
 
-ok(Lazy.state().some((g) => g.name === 'usagelimits'), 'its own lazy group');
+ok(Lazy.state().some((g) => g.name === 'usagelimits' || g.also?.includes('usagelimits')), 'a lazy group (round 164: with the cost coach, one group)');
 await Lazy.load('budget'); await Lazy.load('undoall'); await Lazy.load('costcoach'); await Lazy.load('usagelimits');
 await until(() => typeof UsageLimits !== 'undefined' && typeof CostCoach !== 'undefined');
 ok(Commands.get('usage-left') && !Commands.duplicates().some((d) => d.name === 'usage-left' || d.name === 'limits'), '/usage-left exists once');

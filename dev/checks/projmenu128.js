@@ -93,7 +93,7 @@ await section('2. every row runs or is hidden', async () => {
   step('a bare project: no Open in the Lab / moodboard / song / render / folder / AI description / personality / files rows', !missing.length, { shown: missing });
   step('…and its always-there rows are', ['desk', 'chats', 'newchat', 'newscene', 'rename', 'look', 'cover', 'export', 'duplicate', 'ai', 'frame', 'archive', 'delete'].every((id) => bare.includes(id)), bare);
   const briefRows = ids(pa).filter((id) => id === 'brief' || id === 'next');
-  const briefThere = typeof ProjectBrief !== 'undefined' || Lazy.groups().some((g) => g.name === 'projectbrief');
+  const briefThere = typeof ProjectBrief !== 'undefined' || Lazy.groups().some((g) => g.name === 'projectbrief' || g.also?.includes('projectbrief')); // (round 164: in 'projects')
   step(`the brief rows ${briefThere ? 'show (ProjectBrief is there)' : 'are hidden (no ProjectBrief this round yet)'}`, briefThere ? briefRows.length === 2 : !briefRows.length, briefRows);
   // each leaf row of Menu Alpha, with what it calls stood in for
   await Lazy.load('versions');
