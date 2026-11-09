@@ -1,0 +1,23 @@
+/* (round 159, css159) moved out of comp.css: its rules only the "compdispatch" group's code can make match. Loaded with that
+   group, right after comp.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+.comp-sum { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-row { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 8px; min-width: 0; }
+.comp-row:hover { background: color-mix(in srgb, var(--text, #fff) 5%, transparent); }
+.comp-still { width: 30px; height: 30px; flex: none; border-radius: 6px; object-fit: cover; background: #0b0b12; }
+.comp-still.none { display: grid; place-items: center; color: var(--pc, var(--muted)); font-size: 14px; }
+.comp-main { flex: 1; min-width: 0; }
+.comp-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.comp-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.comp-mark { color: var(--pc, var(--fh-gold)); flex: none; }
+.comp-who { width: 14px; height: 14px; flex: none; display: inline-grid; place-items: center; }
+.comp-who svg { width: 13px; height: 13px; }
+.comp-st { flex: none; font-size: 11px; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, var(--text, #fff) 7%, transparent); color: var(--muted); }
+.comp-row.st-working .comp-st, .comp-row.st-sent .comp-st { color: var(--fh-ai, #bd8bff); }
+.comp-row.st-waiting .comp-st { color: var(--fh-orange, #ff8c42); }
+.comp-row.st-done .comp-st { color: var(--ok, #7cd992); }
+.comp-row.st-stuck .comp-st { color: var(--danger, #ff6b6b); }
+.comp-q { flex: none; font-size: 11px; color: var(--muted); }
+.comp-said { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.comp-acts { display: flex; gap: 2px; flex: none; opacity: .55; }
+.comp-row:hover .comp-acts, .comp-acts:focus-within { opacity: 1; }
+.comp-acts button { padding: 0 6px; min-width: 0; }

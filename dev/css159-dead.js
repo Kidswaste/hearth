@@ -89,7 +89,7 @@ function parse(text) {
     if (c === '/' && text[i + 1] === '*') {
       const e = text.indexOf('*/', i + 2); const end = e < 0 ? text.length : e + 2;
       const top = stack[stack.length - 1];
-      if (start == null && (top.kind === 'root' || top.kind === 'group')) { const n = { kind: 'comment', start: i, end }; nodes.push(n); top.children.push(n); }
+      if (start == null && (top.kind === 'root' || top.kind === 'group')) { const n = { kind: 'comment', start: i, end, parent: top }; nodes.push(n); top.children.push(n); }
       i = end - 1; continue;
     }
     if (c === '"' || c === "'") { q = c; if (start == null) start = i; continue; }
@@ -218,14 +218,32 @@ if (args.includes('--movable')) {
       plan[k] = { f, g, out: NAMES[k] || `${f.replace(/\.css$/, '')}-${g}.css`, items: list.filter((x) => x.file === f && x.group === g) };
     }
     const cutsBy = {};
+    // a comment heading a run of rules that all move to the same group goes with them (it describes them)
+    const carried = {}; // file → Map(comment start → group)
+    for (const f of new Set(Object.values(plan).map((p) => p.f))) {
+      const gOf = new Map(list.filter((x) => x.file === f && go.includes(`${f} → ${x.group}`)).map((x) => [x.n.start, x.group]));
+      const m = new Map(); carried[f] = m;
+      const walk = (node) => {
+        const kids = node.children || [];
+        for (let i = 0; i < kids.length; i++) {
+          if (kids[i].kind === 'group') walk(kids[i]);
+          if (kids[i].kind !== 'comment') continue;
+          const run = []; for (let j = i + 1; j < kids.length && kids[j].kind !== 'comment'; j++) run.push(kids[j]);
+          const gs = new Set(run.map((r) => (r.kind === 'rule' ? gOf.get(r.start) : null)));
+          if (run.length && gs.size === 1 && !gs.has(undefined) && !gs.has(null)) m.set(kids[i].start, [...gs][0]);
+        }
+      };
+      walk(parse(fs.readFileSync(path.join(ROOT, f), 'utf8')).root);
+    }
     for (const { f, g, out, items } of Object.values(plan)) {
       const text = items[0].text;
+      const nodes = parse(text).nodes.filter((n) => (n.kind === 'rule' && items.some((x) => x.n.start === n.start)) || (n.kind === 'comment' && carried[f].get(n.start) === g));
       let css = `/* (round 159, css159) moved out of ${f}: its rules only the "${g}" group's code can make match. Loaded with that\n   group, right after ${f} (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */\n`;
       let open = null;
-      for (const { n } of items) {
+      for (const n of nodes) {
         const wrap = []; for (let p = n.parent; p && p.kind === 'group'; p = p.parent) wrap.unshift(p.prelude);
         const key = wrap.join(' | ');
-        if (open !== key) { if (open) css += '}\n'.repeat(open.split(' | ').length); if (key) css += wrap.map((w) => `${w} {\n`).join(''); open = key || null; }
+        if ((open || '') !== key) { if (open) css += '}\n'.repeat(open.split(' | ').length); if (key) css += wrap.map((w) => `${w} {\n`).join(''); open = key || null; }
         css += `${text.slice(n.start, n.end)}\n`;
         (cutsBy[f] ||= []).push(n.start);
       }
@@ -238,7 +256,7 @@ if (args.includes('--movable')) {
       const { root } = parse(text); const killNodes = new Set();
       const walk = (node) => {
         const kids = node.children || [];
-        for (const k of kids) { if (k.kind === 'group') { walk(k); if (k.children.filter((c) => c.kind !== 'comment').every((c) => killNodes.has(c))) killNodes.add(k); } else if (k.kind === 'rule' && starts.has(k.start)) killNodes.add(k); }
+        for (const k of kids) { if (k.kind === 'group') { walk(k); if (k.children.filter((c) => c.kind !== 'comment').every((c) => killNodes.has(c))) killNodes.add(k); } else if ((k.kind === 'rule' || k.kind === 'comment') && starts.has(k.start)) killNodes.add(k); }
       };
       walk(root);
       const ranges = [...killNodes].map((n) => { let a = n.start; let b = n.end; while (a > 0 && /[ \t]/.test(text[a - 1])) a--; if (text[b] === '\n') b++; return [a, b]; });

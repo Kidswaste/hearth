@@ -1,0 +1,34 @@
+/* (round 159, css159) moved out of makes.css: its rules only the "progressui" group's code can make match. Loaded with that
+   group, right after makes.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* an estimate: softer, hatched */
+.pg-bar.pg-est > i { opacity: .62; background: repeating-linear-gradient(115deg, var(--fh-ai, #a98bff) 0 5px, color-mix(in srgb, var(--fh-ai, #a98bff) 55%, transparent) 5px 9px); }
+.pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: pg-breathe 1.8s ease-in-out infinite; }
+.pg-bar.pg-wait > i { opacity: .45; }
+.pg-bar.pg-hung > i { background: var(--fh-ember, #ff8a3d); opacity: .85; }
+.pg-bar.pg-done > i { background: var(--fh-ok, #5fc98a); opacity: 1; animation: none; }
+.pg-bar.pg-done { opacity: 0; transition-delay: .6s; }
+.pg-bar.pg-failed > i { background: var(--fh-red, #ff5a5a); }
+.pg-bar.pg-indet > i { right: auto; width: 34%; transform: none !important; animation: pg-sweep 1.4s cubic-bezier(.4, 0, .2, 1) infinite; }
+.msg.streaming > .pg-note { position: absolute; top: 5px; right: 8px; font-size: 10.5px; line-height: 1.2; color: var(--muted, #8a8f98); opacity: .85; pointer-events: none; white-space: nowrap; max-width: 60%; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+#pg-dot .pg-dot-bar { position: relative; height: 3px; border-radius: 2px; overflow: hidden; background: color-mix(in srgb, var(--fh-ai, #a98bff) 22%, transparent); margin-left: 4px; }
+#pg-dot .pg-dot-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+#pg-dot[data-state="est"] .pg-dot-bar > i { opacity: .65; }
+#pg-dot[data-state="hung"] .pg-dot-bar > i { background: var(--fh-ember, #ff8a3d); }
+#pg-dot[data-state="done"] .pg-dot-bar > i { background: var(--fh-ok, #5fc98a); }
+.pg-pop { position: fixed; z-index: 9000; width: 320px; max-height: min(60vh, 460px); overflow: auto; padding: 8px; border-radius: 10px;
+  background: var(--surface, #1b1d22); border: 1px solid var(--line, #2c2f36); box-shadow: 0 10px 32px rgba(0, 0, 0, .35); font-size: 12px; }
+.pg-pop-head { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted, #8a8f98); padding: 2px 4px 6px; }
+.pg-row { position: relative; padding: 6px 6px 8px; border-radius: 7px; cursor: default; }
+.pg-row[title^="Click"] { cursor: pointer; }
+.pg-row:hover { background: color-mix(in srgb, var(--fh-ai, #a98bff) 8%, transparent); }
+.pg-row.pg-child { margin-left: 14px; padding-top: 3px; }
+.pg-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pg-row-head .pg-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pg-row-head .pg-w { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.pg-row-head button { flex: none; padding: 0 6px; height: 20px; font-size: 11px; }
+.pg-row > .pg-bar { left: 6px; right: 6px; bottom: 3px; }
+.pg-ic { flex: none; width: 14px; text-align: center; opacity: .8; }
+@media (prefers-reduced-motion: reduce) {
+.pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: none; }
+.pg-bar.pg-indet > i { animation: none; width: 100%; opacity: .4; }
+}
