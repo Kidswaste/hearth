@@ -189,7 +189,7 @@ const Lazy = (() => {
     }, keys || '');
   }
   function stubKey(g, k) {
-    if (typeof Keys === 'undefined') return;
+    if (typeof Keys === 'undefined' || offKeys.has(k.area)) return;
     const id = `${k.area}|${k.keys}`;
     const have = (seen.keys ||= new Set(Keys.all().map((x) => `${x.area}|${x.keys}`)));
     if (have.has(id)) return; // an eager line has these keys
