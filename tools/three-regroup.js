@@ -15,6 +15,8 @@ const LabRegroup = (() => {
   const LOOK_KEY = 'three.labLook';
   const folds = [];
   let wired = false;
+  // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): its folds go with it (a new Lab makes its own)
+  addEventListener('hearth:lab-drop', (e) => { if (!e.detail?.dropped) return; folds.length = 0; try { hud.obs?.disconnect(); } catch { /* gone */ } clearTimeout(hud.tlT); Object.assign(hud, { pv: null, tl: null, media: null, fpsN: [], obs: null, tlT: 0 }); });
   // (round 151, redux151) two looks: Forgeheart ("Hearth Redux": gold / ember on graphite, mono, few controls in sight,
   // the rest where you point) and Plain (flat, every control in sight, no motion, no headers). Round 148's Plate (light
   // lavender plates) is gone: a "plate" kept in the store opens as Forgeheart.
