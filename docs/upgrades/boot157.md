@@ -118,4 +118,17 @@ the rest → Chats), so trim153's registry check holds:
 
 ## Checks
 
-@@CHECKS@@
+No new check: boot-test's lowered budget holds the line (scripts 51, 1,207 KB of code, 24 sheets, 410 KB CSS).
+
+- Final run (`flock /tmp/hearth-run.lock timeout 2900 node dev/run-checks.js --exact unit:boot-test unit:lazymanifest-test
+  lazy trim153 labwin153 perf151 qa-keys cmdbar141 settingscalm appcalm fastboot firstscreen96 liveness-ui progress
+  chat-stream calmstart`): **16 / 16 passed**. `node dev/whatsnew-test.js`: 49 passed.
+- Feature checks for what moved (`access-chat access-astra astra-collab astra-ui offline chatcore chatcore-count
+  chat-media chat-stream router routerlearn progress reach-open chatcalm calmstart storeack77 chat-menus attachlean` +
+  `unit:access-test unit:offline-test unit:router-test unit:routerlearn-test unit:liveness-test unit:progress-test
+  unit:lazy-groups-test`): all passed. That run also found the two things fixed above (liveness-ui: the extra await in
+  send; fastboot / firstscreen96: the first-draw peeks and progress-hooks.js); both pass in the final run.
+- `astra-quick-controls` fails under run-checks the same way on the untouched round-154 copy (its `__ASTRA_FIXTURE__`
+  is only filled in by `node dev/astra-quick-controls-smoke.js`), which passes.
+- Order probe (a smoke script, both builds): the 13 Native.hooks lists, 957 commands and 1,414 Ctrl/⌘+K lines in the
+  same order; the keys sheet the same per area.
