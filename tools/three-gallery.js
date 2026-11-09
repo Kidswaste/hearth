@@ -485,5 +485,5 @@ const LabGallery = (() => {
     });
   }
 
-  return { open, close, use, check, show, shot, parkSoon, items: () => [...startItems(), ...libItems(), ...sceneItems()], historyItems, get isOpen() { return Boolean(dlg); }, get previewing() { return hover?.key || null; }, cacheSize: () => Object.keys(cache || {}).length };
+  return { open, close, use, check, show, shot, parkSoon, items: () => [...v2Items(), ...startItems(), ...libItems(), ...sceneItems()], historyItems, get isOpen() { return Boolean(dlg); }, get previewing() { return hover?.key || null; }, cacheSize: () => Object.keys(cache || {}).length };
 })();

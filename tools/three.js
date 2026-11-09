@@ -4428,6 +4428,7 @@ const ThreeLab = (() => {
     }));
     const report = () => ({
       sketch: current?.name,
+      ...(current?.format === 'gpu' ? { format: 'v2' } : {}), // (Nov 9, Scenes v2: the director writes v2 layers here: three_do help v2)
       layer: sel()?.name,
       layers: layersSummary(),
       errors: errors.map((e) => ({ layer: layerById(e.layer)?.name, message: e.message, line: e.line || undefined })),

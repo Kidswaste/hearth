@@ -14,9 +14,29 @@ TIME FIRST (like After Effects): motion from time, easing, keyframes (three_do k
 WORK LOOP: build, fix the errors results report (three_do undo reverts yours), refine. A change that shows comes with a small picture (more: three_screenshot; song: three_do contact_sheet). State and code come once, then changes: no extra checks; batch steps.
 Broad asks (a whole visual, a new scene): read three_do brief and the moodboard / refs, say a 2–4 line plan, then build.
 Don't paste code into the chat unless asked; say what you made.
-Help: three_do help {topic}: any cmd or tool, audio, sliders, layers, filters, timeline, refs, frame, footage, bigcode…`;
+V2 SCENES (reports say format: "v2"): different layer code (one WebGPU renderer, TSL shaders): read three_do help v2 before writing one.
+Help: three_do help {topic}: any cmd or tool, v2, audio, sliders, layers, filters, timeline, refs, frame, footage, bigcode…`;
 
 const TOPICS = {
+  // (Nov 9, Scenes v2: docs/upgrades/scenes-v2-webgpu.md, tools/three-sandbox.html "Scenes v2")
+  v2: `V2 SCENES (format "v2", WebGPU; every NEW scene is one; older scenes are "Old version" and keep the rules above). The whole scene draws with ONE WebGPURenderer the Lab owns. A v2 layer is a module whose default export fills the scene and camera it is given:
+  export default ({ THREE, tsl, scene, camera, tweak, audio, time, size, onFrame }) => {
+    const { color, mix, uniform, sin, time: t, positionLocal, normalLocal, uv, screenUV, vec3, float, hash, instanceIndex } = tsl;
+    const P = tweak({ speed: { value: 1, min: 0, max: 4, label: 'Spin', group: 'Motion' }, tint: { value: '#7c5cff', label: 'Colour', group: 'Look' } });
+    const tint = uniform(new THREE.Color(P.tint)); const bass = uniform(0);
+    const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.4 });
+    mat.colorNode = tint; mat.emissiveNode = tint.mul(bass);                        // shaders = TSL nodes
+    mat.positionNode = positionLocal.add(normalLocal.mul(bass.mul(0.1)));
+    const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.3, 256, 48), mat); scene.add(knot, new THREE.HemisphereLight());
+    camera.position.set(0, 0, 5);
+    onFrame((s, dt) => { tint.value.set(P.tint); bass.value = audio.bass; knot.rotation.y += dt * P.speed; }); // s, dt in seconds
+    return () => { /* optional: undo anything outside the scene when the layer goes */ };
+  };
+  NEVER in a v2 layer: new WebGLRenderer / WebGPURenderer, a canvas, document.body.append, setAnimationLoop, requestAnimationFrame, addEventListener('resize') (the Lab sizes the frame and the default camera's aspect; size = { width, height, aspect, pixelRatio }), EffectComposer, GLSL ShaderMaterial / RawShaderMaterial / onBeforeCompile (WebGL only).
+  THREE is three.webgpu.js: the node materials (MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial, PointsNodeMaterial, SpriteNodeMaterial, LineBasicNodeMaterial, NodeMaterial) with colorNode, opacityNode, emissiveNode, positionNode, normalNode, roughnessNode, scaleNode; plain MeshStandardMaterial etc. still work. Uniforms: uniform(v) → set .value in onFrame (numbers, THREE.Color, Vector2/3). Fn(([a, b]) => …) for reusable shader functions; If / Loop inside Fn. tsl.time is seconds; texture(tex, uv()) samples.
+  Backgrounds: scene.background = new THREE.Color(…) or scene.backgroundNode = mix(color('#05060c'), color('#2a0f3a'), screenUV.y) for a gradient / shader backdrop. Many particles: one Sprite / Mesh with .count = N and SpriteNodeMaterial positionNode from instanceIndex + hash(…) (GPU), or InstancedMesh; compute shaders (Fn(…)().compute(N)) are available for simulations.
+  Layers stack bottom first on the one renderer: each upper layer draws over the ones below (only a layer with scene.background covers them); opacity, blend modes, x/y/scale/rotate, masks and in/out fades from update_layer work as before (the Lab merges them on the GPU). No glow pass per layer: glow comes from emissive / additive materials (blending: THREE.AdditiveBlending, depthWrite: false).
+  tweak(), audio.*, onHit, refs / refTexture, keyframes, looks, cues, renders and stills work as in old scenes. Templates, filter layers (three_add_layer template) and three_nodes make OLD-format code: in a v2 scene write the layer yourself.`,
   audio: `MUSIC (when the owner wants it to react; until then animate on the timeline): the user loads an mp3/mp4 in the Lab (or you: three_do load_media). Sketch globals:
   audio.bass / mid / treble / level — 0..1 now. audio.beat — 1 on each beat (Lab beat tracker), fading ~150 ms.
   audio.spectrum — Uint8Array(1024) FFT (0..255); audio.waveform — Float32Array(2048) -1..1; audio.band(lowHz, highHz) — 0..1 (e.g. band(40, 90) for kicks).
@@ -86,6 +106,7 @@ function help(topic) {
   const t = String(topic || '').toLowerCase().replace(/[^a-z]/g, '');
   if (CAMERA_WORDS.has(t)) return CAMERA;
   const alias = { frames: 'footage', cuts: 'footage', pacing: 'footage', timecode: 'footage', music: 'audio', sound: 'audio', slider: 'sliders', tweak: 'sliders', layer: 'layers', filter: 'filters', keys: 'keyframes', animate: 'keyframes', lanes: 'keyframes', cues: 'timeline', grid: 'timeline', markers: 'timeline', references: 'refs', palette: 'refs', note: 'notes', placements: 'scene', game: 'games', eval: 'games', input: 'games', size: 'frame', code: 'bigcode', edits: 'bigcode', edit: 'bigcode', diff: 'bigcode', look: 'looks', variations: 'looks', perfectloop: 'loop', loops: 'loop', seamless: 'loop', looping: 'loop', clink: 'games' };
+  if (/^(v2|webgpu|tsl|scenesv2|newformat|gpu|v2scene|v2scenes)$/.test(String(topic || '').toLowerCase().replace(/[^a-z0-9]/g, ''))) return TOPICS.v2; // (Nov 9, Scenes v2: its name keeps its digit)
   const key = TOPICS[t] ? t : alias[t];
   if (key) return TOPICS[key];
   const map = MAP.topic(t);
