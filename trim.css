@@ -1,0 +1,50 @@
+/* (round 153, trim153) Trim Hearth: Forgeheart Redux — gold / ember on graphite, one hairline, no shadows or textures
+   (docs/upgrades/redux151.md). Compact rows: name + area, one line, use · weight, a switch. */
+dialog.trim-dlg {
+  --tr-bg: #111113; --tr-room: #0b0b0c; --tr-line: #ffffff10; --tr-text: #e9e6df; --tr-dim: #9a968e;
+  --tr-gold: #f4b63f; --tr-ember: #ff7a1a;
+  width: min(760px, calc(100vw - 48px)); max-height: min(86vh, 880px); padding: 0; display: flex; flex-direction: column;
+  background: var(--tr-bg); color: var(--tr-text); border: 1px solid var(--tr-line); border-radius: 10px; overflow: hidden;
+}
+dialog.trim-dlg:not([open]) { display: none; }
+dialog.trim-dlg::backdrop { background: #000a; }
+.trim-dlg .tr-head { position: relative; padding: 18px 20px 10px; border-bottom: 1px solid var(--tr-line); }
+.trim-dlg .tr-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px; background: linear-gradient(90deg, var(--tr-gold), var(--tr-ember)); }
+.trim-dlg h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; letter-spacing: .02em; color: var(--tr-gold); }
+.trim-dlg .tr-lead { margin: 0 0 8px; color: var(--tr-text); font-size: 13px; }
+.trim-dlg .tr-sum { margin: 0; font: 600 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--tr-gold); }
+.trim-dlg .tr-since { margin: 2px 0 8px; font-size: 12px; color: var(--tr-dim); }
+.trim-dlg .tr-tools { display: flex; gap: 6px; align-items: center; }
+.trim-dlg .tr-tools .spacer, .trim-dlg .dialog-actions .spacer { flex: 1; }
+.trim-dlg button.ghost { background: transparent; color: var(--tr-text); border: 1px solid transparent; border-radius: 6px; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; padding: 5px 10px; cursor: pointer; }
+.trim-dlg button.ghost:hover, .trim-dlg button.ghost:focus-visible { border-color: var(--tr-line); color: var(--tr-gold); }
+.trim-dlg .tr-suggest { color: var(--tr-gold); }
+.trim-dlg .tr-list { overflow-y: auto; flex: 1 1 auto; min-height: 120px; padding: 4px 0; background: var(--tr-room); }
+.trim-dlg .tr-row { display: flex; align-items: center; gap: 12px; padding: 8px 20px; border-bottom: 1px solid var(--tr-line); }
+.trim-dlg .tr-row:last-child { border-bottom: 0; }
+.trim-dlg .tr-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 2px; }
+.trim-dlg .tr-name { font-size: 13px; font-weight: 600; }
+.trim-dlg .tr-area { font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--tr-dim); text-transform: uppercase; letter-spacing: .06em; justify-self: end; }
+.trim-dlg .tr-desc { grid-column: 1 / -1; font-size: 12px; color: var(--tr-dim); }
+.trim-dlg .tr-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--tr-dim); }
+.trim-dlg .tr-use { color: var(--tr-text); }
+.trim-dlg .tr-use.tr-never { color: var(--tr-ember); }
+.trim-dlg .tr-row.tr-off .tr-name, .trim-dlg .tr-row.tr-off .tr-desc { opacity: .55; }
+.trim-dlg .tr-row.tr-changed { box-shadow: inset 2px 0 0 var(--tr-ember); }
+.trim-dlg .tr-switch { flex: none; display: inline-flex; align-items: center; gap: 8px; min-width: 74px; padding: 4px 8px; background: transparent; border: 1px solid var(--tr-line); border-radius: 999px; color: var(--tr-dim); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; cursor: pointer; }
+.trim-dlg .tr-switch i { position: relative; width: 26px; height: 14px; border-radius: 7px; background: #2a2a2e; transition: background .15s; }
+.trim-dlg .tr-switch i::after { content: ''; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--tr-dim); transition: transform .15s, background .15s; }
+.trim-dlg .tr-switch.on { color: var(--tr-gold); border-color: #f4b63f55; }
+.trim-dlg .tr-switch.on i { background: #f4b63f33; }
+.trim-dlg .tr-switch.on i::after { transform: translateX(12px); background: var(--tr-gold); }
+.trim-dlg .tr-switch:focus-visible { outline: 1px solid var(--tr-gold); outline-offset: 2px; }
+.trim-dlg .tr-note { margin: 0; padding: 0 20px; min-height: 0; font-size: 12px; color: var(--tr-ember); }
+.trim-dlg .tr-note:not(:empty) { padding: 8px 20px; border-top: 1px solid var(--tr-line); }
+.trim-dlg .tr-core { padding: 8px 20px; border-top: 1px solid var(--tr-line); font-size: 12px; }
+.trim-dlg .tr-core summary { cursor: pointer; color: var(--tr-dim); font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.trim-dlg .tr-core[open] summary { color: var(--tr-gold); }
+.trim-dlg .tr-core-row { display: grid; grid-template-columns: 220px 1fr; gap: 10px; padding: 3px 0; }
+.trim-dlg .dialog-actions { display: flex; gap: 8px; padding: 10px 20px 14px; border-top: 1px solid var(--tr-line); }
+.trim-dlg button.primary { background: var(--tr-gold); color: #17130a; border: 0; border-radius: 6px; padding: 6px 14px; font-weight: 600; cursor: pointer; }
+.trim-dlg button.primary:disabled { opacity: .4; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .trim-dlg .tr-switch i, .trim-dlg .tr-switch i::after { transition: none; } }

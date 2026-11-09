@@ -498,8 +498,8 @@ const AppUI = (() => {
     setTimeout(() => { lastError = ''; }, 5000);
     toast(`Something went wrong: ${message}`, { type: 'error', action: { label: 'Copy details', fn: () => copyText(message, 'Error') }, timeout: 8000 });
   }
-  // (round 86) a long chat's older messages still loading isn't a fault: a calm note, not "Something went wrong"
-  const calmMiss = (r) => r?.code === 'ENOTLOADED' && (toast(r.message, { timeout: 3500 }), true);
+  // (round 86) a long chat's older messages still loading isn't a fault: a calm note, not "Something went wrong" · (round 153, trim153) a switched-off feature asked for (EFEATUREOFF): lazy.js already said so after a click
+  const calmMiss = (r) => r?.code === 'EFEATUREOFF' || (r?.code === 'ENOTLOADED' && (toast(r.message, { timeout: 3500 }), true));
   window.addEventListener('error', (e) => calmMiss(e.error) || reportError(e.message));
   window.addEventListener('unhandledrejection', (e) => calmMiss(e.reason) || reportError(e.reason?.message || String(e.reason)));
 
