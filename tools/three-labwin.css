@@ -1,0 +1,10 @@
+/* (round 153c, labwin153) Hearth's window while the scene is open in the Lab window (tools/three-labwin.js): the card over its Lab */
+.labwin-away { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; background: #0b0b0ce6; color: #ebe5d9; font: 13px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.labwin-away .lwa-box { display: grid; justify-items: center; gap: 10px; max-width: 420px; text-align: center; padding: 24px; border-top: 1px solid #f4b63f; background: #111113; }
+.labwin-away .lwa-k { font: 600 11px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .16em; text-transform: uppercase; color: #f4b63f; }
+.labwin-away .lwa-name { font-size: 16px; font-weight: 600; }
+.labwin-away .lwa-hint { color: #8c867b; font-size: 12px; }
+.labwin-away .lwa-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.labwin-away .lwa-go { background: #f4b63f; color: #17130b; border: 0; }
+@media (prefers-reduced-motion: no-preference) { .labwin-away .lwa-box { animation: lwa-in .2s cubic-bezier(.2, .8, .2, 1) backwards; } }
+@keyframes lwa-in { from { opacity: 0; transform: translateY(4px); } }

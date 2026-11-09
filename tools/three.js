@@ -671,6 +671,7 @@ const ThreeLab = (() => {
           'The console shows',
           ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])]],
         ['View & help', 'Focus, frame pace, keys', [
+          ...(window.LabWinHost ? LabWinHost.rows() : []), // (round 153c, labwin153) ⧉ Open in its own window · Hide Hearth meanwhile (tools/three-labwin.js)
           ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
           ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
           ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
@@ -1079,7 +1080,10 @@ const ThreeLab = (() => {
     // went still it stays off until the next input (no flip-flop: each change is a message that wakes the page).
     const RST = { on: false, moving: 0, out: false };
     const idleRest = () => document.documentElement.hasAttribute('data-hush') && !player.playing && !player.recording && !liveKind && !xpOn && RST.moving >= 3 && !RST.out;
-    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording) && !RST.on), modal: modalUp && !box.onStage && !player.recording, lite: liteOn() }; }; // (round 153a, lite153: Lite rides on every cap message too, a warmed page included)
+    // (round 153c, labwin153) the Lab window draws at full rate behind other apps (that is what it is for), as the Stage
+    // window does; with Lite mode on (window.HearthLite / the 'lite' setting, when there is one) its 30 fps cap applies
+    const lwFull = () => Boolean(window.hub?.labwin?.scene) && !(window.LabWinHost?.lite?.());
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || lwFull() || (winFocused && !(xpOn && !player.recording) && !RST.on), modal: modalUp && !box.onStage && !player.recording, lite: liteOn() }; }; // (round 153a, lite153: Lite rides on every cap message too, a warmed page included)
     // (round 72, labfps72) a modal over the Lab (a <dialog> opened with showModal(), the ⌘K Find anything palette): the
     // preview behind it draws 30 frames a second at most, whatever the fps setting (it still moves under the dim; at
     // 240 Hz the graphics card does an eighth of the work while you read or type in the dialog). Never on the Stage
@@ -3664,7 +3668,7 @@ const ThreeLab = (() => {
     // (round 153a, lite153) Lite on / off: the page told at once; antialias changes from a fresh page (fixed when made)
     addEventListener('hearth:lite', () => {
       const on = liteOn();
-      box.send({ type: 'lite', on }); box.send(speedMsg());
+      box.send({ type: 'lite', on }); box.send(speedMsg()); if (box.ready) box.send(capMsg()); // (the Lab window's full rate behind other apps comes back with Lite off: labwin153)
       if (speedMsg(!on).noAA !== speedMsg().noAA && current) run({ reload: true, quiet: true });
       paintLiteTag(); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
     });
@@ -4045,6 +4049,7 @@ const ThreeLab = (() => {
           { label: '▣ Present', key: 'P', action: () => togglePresent() },
           { label: '▶ Play', hint: 'as a game, its own window', action: () => playGame() },
           { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
+          ...(window.LabWinHost ? LabWinHost.rows().map(([label, hint, fn, on]) => ({ label, hint, checked: on || undefined, action: fn })) : []), // (round 153c, labwin153)
           { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
           { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setQuality(adaptOn ? 'high' : 'smooth', { scene: false, quiet: true }); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } }, // (round 142: Smooth ⇄ Force high quality, as the default)
           { label: 'Quality', hint: Q_NAMES[adaptHeld ? 'high' : qMode()], tip: 'How the preview draws while it plays (renders are always full quality)', items: () => [['smooth', 'steady frame rate · lighter before frames drop'], ['balanced', 'lighter only while frames keep dropping'], ['high', 'full resolution, antialias and shadows']].map(([k, hint]) => ({ label: Q_NAMES[k], hint, checked: k === 'high' ? qMode() === 'high' || adaptHeld : qMode() === k && !adaptHeld, action: () => setQuality(k) })) }, // (round 143, lab143) the Quality chip's three choices
@@ -4332,6 +4337,7 @@ const ThreeLab = (() => {
     // machine version, no thumbnail, no "ran" event (nothing changed, nothing is saved)
     function run({ hot = false, layer = null, sync = false, reload = false, again = false, quiet = false } = {}) {
       if (!current || workspaceReleased) return false;
+      if (window.LabWinHost?.holds(current.id)) return false; // (round 153c, labwin153) open in the Lab window: never a second preview of it here
       workspaceDrawn = null;
       // (round 37, labboot) only the pixel ratio changed (a fit scene ⇄ one with its own frame size): the page switches
       // in place and every layer runs again in it, over the old picture, instead of a new page
@@ -5054,6 +5060,22 @@ ${code}
       // deleted here (it's in History's trash), as opposed to not arrived yet from the other computer
       wasDeleted: (id) => trash.some((t) => t.id === id),
       refresh: () => refreshFromDisk(),
+      // (round 153c, labwin153) the scene on disk now (one never saved yet too: the Lab window reads it from there), and
+      // read back from disk after the Lab window closed (its settings, notes and references too: changed there)
+      async saveNow(id) {
+        if (current && current.id === id && !workspaceReleased && (sel()?.code !== editor.value || current.code !== (layersOf()[0]?.code ?? editor.value))) persist();
+        save(); for (const ctl of controllers.values()) if (ctl.pending?.()) ctl.save?.();
+        const r = await Promise.all([save.flush(), saveExtras.flush(), saveNotes.flush?.(), saveRefs.flush?.()]);
+        for (const x of r) if (x?.error) throw Error(x.error);
+        return true;
+      },
+      async refreshOne(id) {
+        const [ex, no, rf] = await Promise.all(['three-lab-extras', 'three-notes', 'three-refs'].map((k) => window.hub.kvGet(k, null).catch(() => null)));
+        if (ex && typeof ex === 'object' && id in ex) extras[id] = ex[id];
+        if (no && typeof no === 'object' && id in no) notesAll[id] = no[id];
+        if (rf && typeof rf === 'object' && id in rf) { refsAll[id] = rf[id]; dispatchEvent(new Event('hearth:lab-refs')); }
+        return refreshFromDisk();
+      },
       currentId: () => current?.id || null,
       // switch to a chat's sketch (the one you leave is saved first; unsaved sliders get the usual toast)
       open(id) {
@@ -5227,7 +5249,7 @@ ${code}
     // and shaders; releasing the sandbox document also releases WebGL, audio, game timers and decoded textures.
     api.workspace = {
       state: () => ({ released: workspaceReleased, preparing: workspacePreparing, ready: box.ready, parked: parkedNow, kept: pageKept, primed: pagePrimed, abandoned: workspaceAbandoned }),
-      resume() { if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); },
+      resume() { if (window.LabWinHost?.away?.() && window.LabWinHost.away() === current?.id) return; if(workspaceReleased && current)openSketch(current.id,{by:'workspace-resume'}); }, // (round 153c, labwin153: not while the Lab window has it)
       // a page kept for a switch that didn't happen (cancelled, back to Projects): released now
       releaseKept() { unprime(); if (workspaceReleased && pageKept) { pageKept = false; box.release(); ranOnce = false; } },
       // (round 74, projdesk74) a project opened from Projects found no page (released there: nothing stays loaded behind

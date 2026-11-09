@@ -55,6 +55,7 @@ const fsapi = later('./fsapi');
 const portable = later('./portable');
 const nowplaying = later('./nowplaying', (m) => m.pace?.(bgmain.state())); // (Lab → live sound: "what's playing")
 const gamebridge = later('./gamebridge');
+const labwin = require('./labwinmain'); // (round 153c, labwin153) the Lab in its own lean window
 const syncmain = later('./syncmain');
 const appsmain = later('./appsmain');
 const bgmain = require('./bgmain'); // (round 16) is anybody looking / on battery / asleep, and the steady idle cursor
@@ -342,7 +343,8 @@ function holdConfig(config) {
   };
   setTimeout(later, updating() ? 300 : 1000);
 }
-ipcMain.handle('config:save', afterSync((_e, config) => {
+ipcMain.handle('config:save', afterSync((e, config) => {
+  if (labwin.isLab(e.sender)) return { ok: true, skipped: 'lab window' }; // (round 153c, labwin153) the Lab window never writes settings (it has no agents' editor)
   if (updating()) { holdConfig(config); return { ok: true, held: true }; }
   // a config that just arrived from another computer is merged, not undone · (round 104, emptyread104) the settings file
   // can't be read just now (EHELD): the save waits and is tried again, never saved unmerged over what arrived
@@ -390,7 +392,9 @@ ipcMain.handle('kv:get', (_e, name, fallback, o) => {
   return syncGate.then(() => { waiting.delete(k); return kvRead(name, fallback, o); });
 });
 ipcMain.handle('kv:pick', (_e, name, fields) => (syncGate ? syncGate.then(() => store.getKVPick(name, fields)) : store.getKVPick(name, fields))); // (round 73) a big list's rows, a few fields each
-ipcMain.handle('kv:set', afterSync((_e, name, value, o) => store.setKV(name, value, o)));
+// (round 153c, labwin153) the Lab window's scene is its own: a save of the scenes file (or a store keyed by scene) from
+// either window keeps the other window's scenes as they are on disk (labwinmain.js mergeScenes; nothing changes while no Lab window is open)
+ipcMain.handle('kv:set', afterSync((e, name, value, o) => (labwin.scene() && labwin.merges(name) ? labwin.mergeScenes(e.sender, name, value).then((v) => store.setKV(name, v, o)) : store.setKV(name, value, o))));
 ipcMain.handle('kv:merge', afterSync((_e, name, ops) => store.mergeKV(name, ops))); // (round 73, chatsteady73) only what changed (usage.js)
 // (round 20, offmain) how long the main process's thread was blocked since the last ask (event-loop delay: max / p99 in
 // ms, and the store thread's writes): dev/checks/offmain.js measures flows with it; started on the first ask
@@ -581,8 +585,11 @@ ipcMain.handle('app:platform', () => process.platform);
 // Messages between the Lab and the sandbox page are relayed here (stage-preload.js on the other side).
 let stageWin = null;
 ipcMain.handle('stage:onTop', () => { if (!stageWin || stageWin.isDestroyed()) return null; const on = !stageWin.isAlwaysOnTop(); stageWin.setAlwaysOnTop(on); return on; });
+let stageOwner = null; // (round 153c, labwin153) the window whose Lab opened the Stage (Hearth's, or the Lab window)
+const stageHost = () => (stageOwner && !stageOwner.isDestroyed() ? stageOwner : win && !win.isDestroyed() ? win.webContents : null);
 ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
   const { screen } = require('electron');
+  stageOwner = _e.sender;
   // ⟲ Restart from scratch: a new window (and renderer process), without telling the Lab the Stage closed
   if (fresh && stageWin && !stageWin.isDestroyed()) { stageWin.__silent = true; stageWin.destroy(); stageWin = null; }
   const url = `${require('url').pathToFileURL(path.join(__dirname, 'tools', 'three-sandbox.html')).href}${query}`;
@@ -599,7 +606,7 @@ ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
     w.on('minimize', () => { try { w.webContents.setBackgroundThrottling(true); } catch { /* closing */ } });
     w.on('restore', () => { try { w.webContents.setBackgroundThrottling(false); } catch { /* closing */ } });
     const awake = powerwise.hold('present', { label: 'the Stage window is showing' }); // (round 39) a second screen: the screen stays on
-    w.on('closed', () => { awake(); if (stageWin === w) stageWin = null; if (!w.__silent && !win.isDestroyed()) win.webContents.send('stage:closed'); });
+    w.on('closed', () => { awake(); if (stageWin === w) stageWin = null; if (!w.__silent) stageHost()?.send('stage:closed'); });
     stageWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   }
   // a new frame size: reshape the window to it (re-runs with the same size leave your window alone)
@@ -620,7 +627,7 @@ ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
 ipcMain.handle('stage:close', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.close(); });
 ipcMain.handle('stage:focus', () => { if (stageWin && !stageWin.isDestroyed()) { stageWin.show(); stageWin.focus(); } });
 ipcMain.on('stage:to', (_e, msg) => { if (stageWin && !stageWin.isDestroyed()) stageWin.webContents.send('stage:to', msg); });
-ipcMain.on('stage:from', (_e, msg) => { if (win && !win.isDestroyed()) win.webContents.send('stage:from', msg); });
+ipcMain.on('stage:from', (_e, msg) => { stageHost()?.send('stage:from', msg); });
 // ---------- live sound for the Lab (Spotify, YouTube… or a mic) and what's playing ----------
 // Screen-capture APIs need a click inside the page that asks; the Lab's click happens in the hub window, so the
 // capture is started here in the sketch's frame (the Stage window when it's open) with a user gesture.
@@ -628,7 +635,7 @@ ipcMain.handle('live:start', async (_e, kind) => {
   try {
     if (stageWin && !stageWin.isDestroyed()) return await stageWin.webContents.mainFrame.executeJavaScript(`window.__startLive ? window.__startLive(${JSON.stringify(kind)}) : false`, true);
     // the Lab's own preview: the hub page captures and forwards the analysis
-    return await win.webContents.executeJavaScript(`window.__labLiveStart ? window.__labLiveStart(${JSON.stringify(kind)}) : false`, true);
+    return await (labwin.isLab(_e.sender) ? _e.sender : win.webContents).executeJavaScript(`window.__labLiveStart ? window.__labLiveStart(${JSON.stringify(kind)}) : false`, true);
   } catch { return false; }
 });
 ipcMain.handle('np:start', () => nowplaying.start((info) => { if (win && !win.isDestroyed()) win.webContents.send('np:update', info); }));
@@ -741,6 +748,7 @@ function registerAfterWindow() {
   });
   fsapi.registerIpc(ipcMain, () => win);
   gamebridge.start(() => win);
+  labwin.register(ipcMain, { getWin: () => win, store, icon: () => appshell.ensureIcon(), openExternal }); // (round 153c, labwin153)
   // (round 118, startup118) After Effects / video tools and the mood board's main side: required on their first call
   lazyIpc('aemain.js', (m, ipc) => m.register(ipc, () => win, () => settings().aePath)); // After Effects scripting, ffmpeg probes / transcodes
   lazyIpc('boardmain.js', (m, ipc) => m.register(ipc)); // mood board: file import, website snapshots
