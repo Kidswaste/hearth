@@ -529,10 +529,12 @@ async function cdpConnect(dir) {
     if (coverage) {
       await send('DOM.enable'); await send('CSS.enable'); await send('CSS.startRuleUsageTracking');
     }
+    // (round 157, boot157) the page before the reload already has its 'hearth:ready' mark: wait for the new document's (timeOrigin)
+    const origin0 = (await send('Runtime.evaluate', { expression: 'performance.timeOrigin', returnByValue: true })).result?.result?.value;
     await send('Page.reload', { ignoreCache: true });
     if (coverageReady) {
       for (let i = 0; i < 1500; i++) {
-        const r = await send('Runtime.evaluate', { expression: "performance.getEntriesByName('hearth:ready').length > 0 && /index\\.html/.test(location.href)", returnByValue: true });
+        const r = await send('Runtime.evaluate', { expression: `performance.timeOrigin !== ${JSON.stringify(origin0)} && performance.getEntriesByName('hearth:ready').length > 0 && /index\\.html/.test(location.href)`, returnByValue: true });
         if (r.result?.result?.value === true) break;
         await new Promise((res) => setTimeout(res, 10));
       }

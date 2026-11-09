@@ -820,7 +820,9 @@ const Panel = (() => {
     });
     search.after(btn);
     search.placeholder = 'Search this project’s chats (#tag)'; // (round 116, projchats116)
-    if (typeof Keys !== 'undefined') Keys.add({ area: 'Chats panel', keys: 'Drag a chat onto a 📁 folder', what: 'Move it into that folder (onto its AI’s name: out of the folder); Ctrl/⌘+Z puts it back', sel: '#panel .item' });
+    // (round 157, boot157) after the page's own lines (a shorter first screen let this timer run before keys-ui.js)
+    const dragKey = () => { if (typeof Keys !== 'undefined') Keys.add({ area: 'Chats panel', keys: 'Drag a chat onto a 📁 folder', what: 'Move it into that folder (onto its AI’s name: out of the folder); Ctrl/⌘+Z puts it back', sel: '#panel .item' }); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', dragKey, { once: true }); else dragKey();
   }
   setTimeout(wireKeys, 0);
 

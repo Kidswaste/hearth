@@ -95,4 +95,4 @@ CHECK_SECTION
 
 Nothing: no Codex-owned file was touched.
 
-Release: round 156 (owner notes `docs/patch-notes/round-156.md`), merged on top of labwin153 (round 153), trim153 (round 154) and the memory round (round 155).
+Release: round 157 (owner notes `docs/patch-notes/round-157.md`), merged on top of labwin153 (round 153), trim153 (round 154), the memory round (155) and the faster-start round (156). After round 156's cut the first screen is 49 scripts, 1,168 KB of 1,207 (Lite's eager part included).
