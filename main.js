@@ -537,7 +537,10 @@ ipcMain.handle('engine:fix', (_e, engine, action) => { engines.setEnginePaths(se
 const macpolish = require('./macpolish');
 macpolish.register(ipcMain, { locate: (e) => { engines.setEnginePaths(settings().enginePaths); return engines.locate(e); }, chrome: () => require('./chrome-cdp').find().catch(() => null), openExternal: (u) => shell.openExternal(u) });
 macpolish.adoptShellPath({ cacheFile: path.join(store.DATA_DIR, 'shell-path.json'), probe: () => new Promise((r) => setTimeout(r, 3000)).then(() => macpolish.shellPath()) }).catch(() => {}); // (last time's answer at once; the shell asked after the window opened)
-ipcMain.handle('engine:status', () => { engines.setEnginePaths(settings().enginePaths); return engines.status(); });
+// (round 162, main162) answered one turn later: the first screen asks for it with the chats list and history, and waits for
+// those, not for this (≤ 0.4 s, a new chat's hint); loading the engines module and looking for both programs (≈ 15 ms)
+// no longer go in front of the chats list's answer
+ipcMain.handle('engine:status', () => new Promise((r) => setTimeout(r, 0)).then(() => { engines.setEnginePaths(settings().enginePaths); return engines.status(); }));
 
 // ---------- window & desktop ----------
 ipcMain.handle('window:show', () => { win.show(); win.focus(); });
