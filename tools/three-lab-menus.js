@@ -56,6 +56,7 @@
     const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
     const speed = easy.filter((r) => /Speed check/.test(r[0])); // (round 133, speed133)
     return ['Make',
+      K.liteRow(), // (round 153a, lite153) ⚡ Lite mode, the menu's top row
       ...easy.filter((r) => !fix.includes(r) && !speed.includes(r)),
       'This Lab',
       ...fix,

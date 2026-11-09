@@ -3,3 +3,14 @@
 #pw-awake[hidden] { display: none; }
 #pw-awake:hover { opacity: 1; filter: none; }
 #pw-awake[data-kind="display"] { opacity: .85; filter: none; }
+/* (round 153a, lite153) ⚡ Lite mode (<html data-lite>, read before the first paint by powerwise.js): nothing moves, no
+   backdrop blur, no layer kept on the graphics card for an animation that won't come (Motion: off plus these overrides,
+   whatever a look or a panel asks for). The Lab preview's own savings are tools/three-sandbox.html's ("lite153").
+   The LITE tags (lite.js in the rail, tools/three.js in the Lab bar): small and quiet, a click turns Lite off. */
+html[data-lite] *, html[data-lite] *::before, html[data-lite] *::after { animation: none !important; transition: none !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; will-change: auto !important; }
+html[data-lite] :is(.juice-layer, .st-glow, .st-flash, .st-rflash) { display: none !important; }
+.lite-tag { font: 600 9px/1 ui-monospace, 'Cascadia Mono', Consolas, monospace; letter-spacing: .14em; color: var(--rx-gold, #f4b63f); background: none; border: 1px solid color-mix(in srgb, currentColor 40%, transparent); border-radius: 2px; padding: 2px 4px; margin: 0 4px; cursor: pointer; opacity: .75; box-shadow: none; }
+.lite-tag:hover, .lite-tag:focus-visible { opacity: 1; }
+html:not([data-lite]) .lite-tag, .lite-tag[hidden] { display: none !important; }
+html[data-lite]:not(#lt-none) .three-toolbar .lite-tag { opacity: .75; transform: none; }
+#lite-rail { width: 32px; margin: 2px 0 0; padding: 2px 0; font-size: 8px; text-align: center; letter-spacing: .08em; }
