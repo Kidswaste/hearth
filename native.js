@@ -472,10 +472,8 @@ const Native = (() => {
   }
   // (report #61) a project's chat builds in the Lab every turn (project-workspace.js asDirector), so files dropped
   // in it are handled like the Three Director's
-  const labChat = (agentId) => {
-    if (H.agent(agentId)?.threeTools) return true;
-    try { return Boolean(typeof Projects !== 'undefined' && Projects.isLoaded?.() && Projects.projectOfChat(H.activeChat[agentId])?.workspace); } catch { return false; }
-  };
+  const projectLab = (agentId) => { try { return Boolean(typeof Projects !== 'undefined' && Projects.isLoaded?.() && Projects.projectOfChat(H.activeChat[agentId])?.workspace); } catch { return false; } };
+  const labChat = (agentId) => Boolean(H.agent(agentId)?.threeTools) || projectLab(agentId);
   // Media dropped in the Three Director's chat (videos, models, sounds…) are added to the open sketch's
   // references, with a note telling the director their names. Throws when the Lab can't take it.
   async function labReference(agentId, path) {
@@ -483,7 +481,9 @@ const Native = (() => {
     // linked yet keeps the file as an attachment (three_do references add puts it in its scene once linked)
     const chatId = H.activeChat[agentId] || null;
     const sk = chatId && typeof ChatScenes !== 'undefined' ? ChatScenes.linkOf(chatId) : null;
-    if (!sk && H.agent(agentId)?.dock !== 'three') throw new Error('This chat isn\'t linked to a Lab scene yet');
+    // (round 161, fix161) a project's chat counts as the director's (engines.js asDirector gives its turns dock 'three'):
+    // round 72's "not linked yet" rule had sent its drops to the attachment copy instead of the open sketch (labdrop61)
+    if (!sk && H.agent(agentId)?.dock !== 'three' && !projectLab(agentId)) throw new Error('This chat isn\'t linked to a Lab scene yet');
     await window.Lazy?.load?.('lab'); // (round 94, labload94) the Lab may not be in yet
     const r = await ThreeLab.addReference(path, sk ? { sketchId: sk } : {});
     const use = r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`;
