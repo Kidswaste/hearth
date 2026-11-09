@@ -565,6 +565,7 @@ const Lazy = (() => {
     });
   }
 
+  let holding = null; // the loading group's holds (Lazy.holdLoad)
   function load(name, o) {
     const g = groups.get(name);
     if (!g) return Promise.reject(new Error(`No lazy group "${name}"`));
@@ -584,10 +585,13 @@ const Lazy = (() => {
         const rep = { commands: [], actions: [], keys: [], bridge: [], apps: [], tools: [] };
         reports.set(g.name, rep);
         const p = patch(g, rep);
+        const holds = [];
+        holding = holds;
         try {
           await Promise.all([...(g.css || []).map((h) => css(h, g.cssBefore)), injectAll(g.files, g)]);
           for (const fn of p.ready) { try { fn.call(window, new Event('DOMContentLoaded')); } catch (err) { console.error(err); } }
         } catch (err) {
+          holding = null;
           g.state = 'failed';
           p.restore();
           dropSlots(g);
@@ -596,6 +600,10 @@ const Lazy = (() => {
           throw err;
         }
         p.restore();
+        // (round 160, boot160) a file that reads its data first (chat-scenes.js: the chats' scene links) holds its group back
+        // until that's done (Lazy.holdLoad(promise), ≤ 3 s): the group counts as in then, as when the file ran before the first frame
+        holding = null;
+        if (holds.length) { try { await Promise.race([Promise.all(holds), new Promise((r) => setTimeout(r, 3000))]); } catch { /* as it is */ } }
         dropSlots(g);
         dropLeftovers(g);
         if (!names.has(g.name)) names.set(g.name, namesOf(g.name));
@@ -759,6 +767,8 @@ const Lazy = (() => {
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
   return {
     load, state, start, at, text, sendReady,
+    // (round 160, boot160) holdLoad(promise): called by a lazy file while it loads, its group counts as in once that's done (≤ 3 s)
+    holdLoad: (p) => { if (holding && p && typeof p.then === 'function') holding.push(p.catch(() => {})); },
     // (round 153, trim153) Trim Hearth: off(group), names(group) (what its usage is matched with), used(group), and
     // kit() — what trim.js's live switch (Trim.setFeature) needs of the stand-ins
     off: (name) => Boolean(groups.get(name)?.off), names: namesOf, used: (name) => { const g = groups.get(name); if (g) used(g); },

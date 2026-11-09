@@ -740,6 +740,8 @@ renderer.setAnimationLoop((now) => {
     // (round 160, boot160) read right after the first frame: the rows drawn without their marks are built again
     if (Panel.redrawRows) Panel.redrawRows(); else Panel.render();
   })();
+  // (round 160, boot160) a lazy group now: it counts as in once the links are read (the Lab's start, a send wait for it)
+  window.Lazy?.holdLoad?.(readyP);
 
   // (round 139, room139) /scene and /scene-timeline are chat-scenes-cmds.js (lazy group 'scenecmds')
 
