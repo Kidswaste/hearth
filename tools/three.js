@@ -1,10 +1,29 @@
 // Three.js Lab: live sketch sandbox, model viewer/auditor, shader playground, texture inspector,
 // docs browser and the shared color/easing kits.
 const ThreeLab = (() => {
+  // (round 158, split158) what the Lab's cold parts (tools/three-lab-*.js, loaded on first use: labPart) reach in here
+  const K0 = {
+    get TOOL_TABS() { return TOOL_TABS; }, get api() { return api; }, parseColors, sandboxFrame, saveDataUrl,
+    get tabs() { return tabs; },
+  };
   const SANDBOX = 'tools/three-sandbox.html';
   let tabs = null;
   let startHint = null; // (round 73, coldopen73) the scene the Lab's first mount opens with (a project opening: cmd({ sketch }))
   const api = {}; // filled by each tab as it mounts
+  // (round 158, split158) The Lab's cold parts: what opening the Lab, playing a scene, selecting a layer, moving its
+  // knobs and the director's everyday calls never run (dialogs, menus, references, notes, MIDI, the other tools…) lives
+  // in tools/three-lab-*.js, lazy groups loaded on first use (docs/upgrades/split158.md). A stand-in left here
+  // (`function x(...a) { return labPart(K, part, 'x', a); }`) loads its part, then calls it: in the same task once the
+  // part's file is in, after the load the first time. K is what a part reaches in here (state, helpers, stand-ins).
+  const PARTS = { tools: 'labparttools', refs: 'labpartrefs', notes: 'labpartnotes', midi: 'labpartmidi', live: 'labpartlive', capture: 'labpartcapture', dialogs: 'labpartdialogs', edit: 'labpartedit', lanes: 'labpartlanes', ai: 'labpartai' };
+  const partMods = new WeakMap();
+  function labPart(K, part, fn, args) {
+    let mods = partMods.get(K);
+    if (!mods) partMods.set(K, (mods = {}));
+    const call = () => { mods[part] ||= window.LabParts[part](K); return mods[part][fn](...args); };
+    if (window.LabParts?.[part]) return call();
+    return Lazy.load(PARTS[part]).then(call);
+  }
   // "  12| code" for lines a..b (1-based) of a list of lines.
   const numbered = (lines, a, b) => lines.slice(a - 1, b).map((ln, k) => `${String(a + k).padStart(4)}| ${ln}`).join('\n');
   // Small layers: their whole code. Big ones: an outline (functions, classes, top-level names, section comments,
@@ -526,6 +545,76 @@ const ThreeLab = (() => {
   // code is sketch.code. The editor, sliders and history always show the selected layer.
   const SLOT = 10000; // each layer's slider values live from slot × SLOT in the sandbox
   function sketchTab(pane) {
+    // (round 158, split158) what the Lab's cold parts (tools/three-lab-*.js, loaded on first use: labPart) reach in here
+    const K = {
+      get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
+      get FPS_OPTS() { return FPS_OPTS; }, get GUIDES() { return GUIDES; }, get MIMES() { return MIMES; },
+      get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; },
+      get REF_ICONS() { return REF_ICONS; }, get adaptHeld() { return adaptHeld; }, addLayer, addRef,
+      get animatedProps() { return animatedProps; }, get api() { return api; }, applyPreset, applyTrigPreset,
+      askDirector, get assetCacheOn() { return assetCacheOn; }, get box() { return box; }, get btn() { return btn; },
+      get clockPath() { return clockPath; }, get consoleBox() { return consoleBox; },
+      get consoleLines() { return consoleLines; }, set consoleLines(x) { consoleLines = x; },
+      get consoleMode() { return consoleMode; }, get consoleWrap() { return consoleWrap; },
+      get controllers() { return controllers; }, create, get current() { return current; }, cycleGuides,
+      get director() { return director; }, duplicate, get editBtn() { return editBtn; }, editLayer,
+      get editOn() { return editOn; }, set editOn(x) { editOn = x; }, get editPanel() { return editPanel; },
+      get editSel() { return editSel; }, set editSel(x) { editSel = x; }, get editUndo() { return editUndo; },
+      get editor() { return editor; }, get errors() { return errors; }, get extras() { return extras; },
+      get fileBytes() { return fileBytes; }, get fileUrl() { return fileUrl; }, get fmtClock() { return fmtClock; },
+      get fmtMs() { return fmtMs; }, get fmtSize() { return fmtSize; }, get footBox() { return footBox; },
+      get fpsPref() { return fpsPref; }, get fpsSel() { return fpsSel; }, framesToDirector, freezeOn,
+      get frozenNow() { return frozenNow; }, get guides() { return guides; }, get histKey() { return histKey; },
+      get histRead() { return histRead; }, get history() { return history; }, get hubLive() { return hubLive; },
+      hubLiveStop, get hudTimer() { return hudTimer; }, set hudTimer(x) { hudTimer = x; },
+      get keysOf() { return keysOf; }, get kvOk() { return kvOk; }, get labMoreBtn() { return labMoreBtn; },
+      laneProps, get lanesOf() { return lanesOf; }, get lastStats() { return lastStats; },
+      get layerById() { return layerById; }, get layersOf() { return layersOf; },
+      get layersPanel() { return layersPanel; }, get lightOn() { return lightOn; }, listRefFiles,
+      get liveBpm() { return liveBpm; }, get liveIo() { return liveIo; }, get liveKind() { return liveKind; },
+      get liveOpts() { return liveOpts; }, loadHist, loadRefBytes,
+      get lookBar() { return lookBar; }, set lookBar(x) { lookBar = x; },
+      get lookCycle() { return lookCycle; }, set lookCycle(x) { lookCycle = x; },
+      get lookTimer() { return lookTimer; }, set lookTimer(x) { lookTimer = x; },
+      get midi() { return midi; }, set midi(x) { midi = x; }, get midiBtn() { return midiBtn; },
+      get midiDevices() { return midiDevices; },
+      get midiLearn() { return midiLearn; }, set midiLearn(x) { midiLearn = x; }, get midiMap() { return midiMap; },
+      get midiPads() { return midiPads; }, get midiRelease() { return midiRelease; },
+      get midiSeen() { return midiSeen; }, set midiSeen(x) { midiSeen = x; }, get notesAll() { return notesAll; },
+      get notesOf() { return notesOf; }, get np() { return np; }, set np(x) { np = x; },
+      get npBox() { return npBox; }, openLight, openSketch, get outlinerBtn() { return outlinerBtn; },
+      get paintMode() { return paintMode; }, paintOnion, paletteFrom, parseColors,
+      get perfHudOn() { return perfHudOn; }, persist, pinFrame, get pinned() { return pinned; },
+      get placements() { return placements; }, get playGame() { return playGame; }, get player() { return player; },
+      pngBlob, get pngBytes() { return pngBytes; }, popup, get presentHud() { return presentHud; },
+      get previewHost() { return previewHost; }, pushEditUndo, get qGlobal() { return qGlobal; },
+      get qMode() { return qMode; }, recolor, get refAdded() { return refAdded; }, set refAdded(x) { refAdded = x; },
+      get refBytes() { return refBytes; }, get refFiles() { return refFiles; }, refKey,
+      get refKindOf() { return refKindOf; }, get refReady() { return refReady; }, get refSigs() { return refSigs; },
+      get refUse() { return refUse; }, get refsAll() { return refsAll; },
+      get refsDlg() { return refsDlg; }, set refsDlg(x) { refsDlg = x; },
+      get refsGrid() { return refsGrid; }, set refsGrid(x) { refsGrid = x; }, get refsOf() { return refsOf; },
+      get refsSig() { return refsSig; }, set refsSig(x) { refsSig = x; }, get refsSigOf() { return refsSigOf; },
+      removeLayers, removeRef, get removedIds() { return removedIds; }, renameRef, renderNotes, renderPicker,
+      renderRefsBtn, renderTracksOnly, reorderLayers, run, get safeName() { return safeName; },
+      get save() { return save; }, saveDataUrl, get saveExtras() { return saveExtras; }, saveHistory,
+      get saveNotes() { return saveNotes; }, savePalette, get saveRefs() { return saveRefs; },
+      get saveTriggers() { return saveTriggers; }, get savedPalettes() { return savedPalettes; },
+      get sel() { return sel; }, get selBox() { return selBox; }, get selId() { return selId; }, selectLayer,
+      sendKeys, sendRefs, get sendTriggers() { return sendTriggers; }, setCodeVisible, setCompare, setConsoleMode,
+      setFreeze, setLanes, setLight, setLive, setLiveIo, get setLiveOpt() { return setLiveOpt; }, setPalette,
+      setPerfHud, setQuality, setSlidersVisible, setSolo, setStage, setWrite,
+      get sheetBusy() { return sheetBusy; }, set sheetBusy(x) { sheetBusy = x; },
+      get sketches() { return sketches; }, set sketches(x) { sketches = x; }, get sleep() { return sleep; }, snapshot,
+      get soloNow() { return soloNow; }, get spaceBtn() { return spaceBtn; }, get stage() { return stage; },
+      startNowPlaying, still, stillsAt, stillsFolder, stopNowPlaying, syncKeyUI, takeNote,
+      get thumbs() { return thumbs; }, togglePresent, toggleTriggers, touch,
+      get trash() { return trash; }, set trash(x) { trash = x; },
+      get trigCfg() { return trigCfg; }, set trigCfg(x) { trigCfg = x; }, get trigPanel() { return trigPanel; },
+      get trigPresets() { return trigPresets; },
+      get trigTuned() { return trigTuned; }, set trigTuned(x) { trigTuned = x; }, get version() { return version; },
+      get withFiles() { return withFiles; }, get writeArmed() { return writeArmed; },
+    };
     let sketches = [];
     // (round 43, scenesafe) a store is written only once it was read for sure: a read that failed (Windows: a file held
     // by an antivirus / OneDrive / iCloud for a moment) used to look like "no scenes", and the starter scene was saved
@@ -552,23 +641,7 @@ const ThreeLab = (() => {
     stats.title = 'Click: just fps (or everything again)';
     stats.classList.toggle('compact', store.get('three.statsCompact', false));
     stats.addEventListener('click', () => { const c = !stats.classList.contains('compact'); stats.classList.toggle('compact', c); store.set('three.statsCompact', c); });
-    // ?: the Lab's keys in one sheet
-    function labKeys() {
-      const rows = [['Space', 'Play / pause'], ['T · Shift+T', 'Tap tempo (locks to the song\'s grid) · this tap is the 1 · with live sound: sets the latency'], [', · .', 'Nudge the grid 5 ms earlier / later by ear (Shift 1 ms, Alt 20 ms)'], ['K · S · H', 'Kick / snare / hit marker at the playhead'], ['Q', 'Quantize taps to the grid on / off'], ['C', 'Cue here'], ['1–9', 'Jump to cue'],
-        ['R · Shift+R', 'Shuffle the sliders · the shuffle before'], ['Ctrl+S · Ctrl+Shift+S', 'Save the sliders · as a look'], ['/', 'Lab search: actions, effects, layers, sliders, templates…'],
-        ['F · \\', 'Freeze the picture'], ['Z · Shift+Z', 'Frame the subject · back to the scene\'s own camera'], ['Two fingers · pinch · right-drag', 'Turn around the scene · zoom · turn (Shift: pan)'], ['.', 'One frame (while frozen)'], ['|', 'Pin this frame to compare (onion / wipe)'], ['Shift+1–5', 'Fit · 9:16 · 16:9 · 4:5 · 1:1'],
-        ['Shift+L', 'Live sound on / off'], ['O', 'Your sketches'], ['`', 'Console'], ['P · Shift+F', 'Present · Focus'], ['I · PgUp / PgDn', 'In Present: info · other sketches'],
-        ['Shift+drag the waveform', 'Draw a loop'], ['= · - · 0', 'Zoom in · out · whole song'], ['[ · ]', 'Loop start / end'], ['Home · End', 'Start / end (of the loop)'], ['M', 'Mute the music (the sketch still reacts)'], ['A', 'Show every automation curve'], ['L', 'Loop this bar'], ['G', 'Next snap setting'],
-        ['N', 'Note with a screenshot'], ['W', 'Write mode'], ['E', 'Edit the scene'],
-        ['Alt+1–9', 'Hide / show a layer'], ['Alt+Shift+1–9', 'Only that layer'], ['Ctrl+R · Ctrl+Shift+Enter', 'Restart the simulation'], ['Ctrl+Z', 'Undo (timeline)'], ['Esc', 'Deselect, forget taps, leave Present']];
-      // with video footage on the timeline its frame keys come first (tools/three-frames.js)
-      if (typeof ThreeFrames !== 'undefined' && ThreeFrames.on) rows.unshift(...ThreeFrames.KEYS.map(([k, v]) => [k, `Footage: ${v}`]));
-      const d = el('dialog', { class: 'lab-keys' }, el('h2', { text: 'Lab keys' }), el('div', { class: 'lab-keys-grid' }, rows.flatMap(([k, v]) => [el('kbd', { text: k }), el('span', { text: v })])),
-        el('div', { class: 'dialog-actions' }, el('button', { class: 'primary', text: 'Got it', on: { click: () => d.close() } })));
-      d.addEventListener('close', () => d.remove());
-      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
-      document.body.append(d); openLight(d);
-    }
+    function labKeys(...a) { return labPart(K, 'dialogs', 'labKeys', a); } // tools/three-lab-dialogs.js
     let split = null;
     const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
     // (round 48, labcalm) the View buttons: an icon and a label (one name each: ⚡ Sliders, </> Code, ›_ Console, ✥ Edit,
@@ -588,7 +661,7 @@ const ThreeLab = (() => {
     const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
     const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
     newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); newMenu(e); });
-    function newMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); }
+    function newMenu(...a) { return labPart(K, 'dialogs', 'newMenu', a); } // tools/three-lab-dialogs.js
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
     const sketchMenuBtn = btn('Sketch ▾', 'Start a new one, or rename, copy, share, export or delete this one, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -679,15 +752,8 @@ const ThreeLab = (() => {
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
       // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
     }
-    function snippetMenu() {
-      const r = labMoreBtn.getBoundingClientRect();
-      setCodeVisible(true);
-      ThreeTweaks.menu(r.right - 290, r.bottom + 4, ['Insert a snippet at the cursor', ...ThreeData.SNIPPETS.map((sn) => [sn.name, '', () => editor.insertAtCursor(sn.code)])]);
-    }
-    function versionMenu() {
-      const r = labMoreBtn.getBoundingClientRect();
-      ThreeTweaks.menu(r.right - 290, r.bottom + 4, ['three.js version', ...ThreeData.VERSIONS.map((vv) => [`r${vv.split('.')[1]}`, vv, () => { version.value = vv; version.dispatchEvent(new Event('change')); }, vv === store.get('three.version', ThreeData.VERSIONS[0])])]);
-    }
+    function snippetMenu(...a) { return labPart(K, 'dialogs', 'snippetMenu', a); } // tools/three-lab-dialogs.js
+    function versionMenu(...a) { return labPart(K, 'dialogs', 'versionMenu', a); } // tools/three-lab-dialogs.js
     document.body.classList.toggle('lab-nohints', store.get('three.keyHints', true) === false);
     // Key hints: hover a main button for a moment and its key shows in a small badge under it.
     const keyHint = el('div', { class: 'lab-keyhint', hidden: true });
@@ -727,7 +793,7 @@ const ThreeLab = (() => {
     const consoleBtn = btn('Console', 'Shows or hides the scene\'s errors and messages', () => { consolePeek = !consoleShown(); syncConsole(); });
     consoleBtn.dataset.feature = 'Console';
     consoleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); consoleMenu(e); });
-    function consoleMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['Console shows', ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m]), ['Errors only', 'Hide console.log lines', () => { const on = !store.get('three.consoleErrors', false); store.set('three.consoleErrors', on); consoleWrap.classList.toggle('errors-only', on); }, store.get('three.consoleErrors', false)], ['Clear', '', () => { consoleBox.replaceChildren(); consoleLines = []; }], ['Copy', '', () => api.cmd.console('copy')]]); }
+    function consoleMenu(...a) { return labPart(K, 'dialogs', 'consoleMenu', a); } // tools/three-lab-dialogs.js
     consoleBtn.dataset.key = '`';
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
@@ -741,12 +807,7 @@ const ThreeLab = (() => {
         btn('✕', 'Hide the console (its button in the toolbar opens it again)', () => { consolePeek = false; syncConsole(); })),
       consoleBox);
     queueMicrotask(() => consoleWrap.classList.toggle('errors-only', store.get('three.consoleErrors', false)));
-    function fixErrors() {
-      const errs = consoleLines.filter((l) => l.level === 'error' || l.level === 'warn');
-      if (!errs.length) { toast('No errors in the console', { timeout: 1200 }); return false; }
-      askDirector(`The Lab console shows these ${errs.length === 1 ? 'problems' : `${errs.length} problems`} in "${current?.name}". Find the cause (three_read_code / three_search_code) and fix it with three_edit_code:\n${errs.slice(-12).map((l) => `- ${l.layer ? `[${l.layer}] ` : ''}${l.line ? `line ${l.line}: ` : ''}${l.text}`).join('\n')}`, { send: false });
-      return true;
-    }
+    function fixErrors(...a) { return labPart(K, 'dialogs', 'fixErrors', a); } // tools/three-lab-dialogs.js
     function consoleShown() { return consolePeek ?? (consoleMode === 'always' || (consoleMode === 'code' && !split?.classList.contains('no-code'))); }
     function setConsoleMode(m) {
       consoleMode = CONSOLE_MODES.some(([v]) => v === m) ? m : 'code';
@@ -776,7 +837,7 @@ const ThreeLab = (() => {
     const presentBtn = btn('▣ Present', 'Shows the preview full screen with nothing else, for showing it off (P · Esc leaves)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
     presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); presentMenu(e); }); // (round 131, perform131) ◉ Perform: tools/three-perform.js · (round 136, phone136) 📱 Live on my phone: phoneview.js
-    function presentMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)], ['◉ Perform', 'Live: 1–9 cues and Q W E looks on the beat or bar, the other screen at full speed', () => (window.Lazy ? Lazy.load('perform') : Promise.resolve()).then(() => ThreePerform.start()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))], ['📱 Live on my phone', 'The preview on your phone over your Wi-Fi: scan a QR code (the song plays here)', () => (window.Lazy ? Lazy.load('phoneview') : Promise.resolve()).then(() => PhoneView.live()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))]]); }
+    function presentMenu(...a) { return labPart(K, 'dialogs', 'presentMenu', a); } // tools/three-lab-dialogs.js
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
     // (round 52, gamemode) ▶ Play: the scene as a game, in its own full-screen window at max fidelity, its layers on one
@@ -793,13 +854,7 @@ const ThreeLab = (() => {
     const blackout = el('div', { class: 'lab-blackout' });
     const setBlackout = (on) => { blackout.classList.toggle('on', on ?? !blackout.classList.contains('on')); return blackout.classList.contains('on'); };
     let hudTimer = 0;
-    function setHud(on) {
-      presentHud.hidden = !on; store.set('three.presentHud', on);
-      clearInterval(hudTimer);
-      if (!on) return;
-      const paint = () => { const z = stage.size; const sec = player.loaded ? player.sectionAt() : null; presentHud.textContent = `${sec?.cue ? `${sec.cue} · ` : ''}${current?.name || ''} · ${z.id === 'fit' ? `${z.width}×${z.height}` : `${z.id} ${z.width}×${z.height}`}${typeof ThreeFrames !== 'undefined' && ThreeFrames.on ? ` · ${ThreeFrames._pure.tc(ThreeFrames.clock, ThreeFrames.frame)} · f${ThreeFrames.frame}` : player.loaded ? ` · ${fmtClock(player.time)} / ${fmtClock(player.duration)}${player.isClock ? ` · f${player.clock.frame}` : ` · ${Math.round(player.bpm)} BPM`}` : ''}${liveKind ? ` · live ${liveBpm?.bpm ? `${Math.round(liveBpm.bpm)} BPM` : ''}` : ''}${lastStats ? ` · ${lastStats.fps} fps` : ''}${frozenNow ? ' · ❚❚' : ''}`; };
-      paint(); hudTimer = setInterval(paint, 250);
-    }
+    function setHud(...a) { return labPart(K, 'dialogs', 'setHud', a); } // tools/three-lab-dialogs.js
     // PgUp / PgDn in Present: the previous / next sketch (most recent first, like the picker)
     function stepSketch(d) {
       const list = [...sketches].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -851,27 +906,8 @@ const ThreeLab = (() => {
       if (!quiet) toast(`Triggers: ${key} (bars kept · Auto bars fits them to the sound)`, { timeout: 2000 });
       return key;
     }
-    function trigPresetMenu(anchor) {
-      const r = anchor.getBoundingClientRect();
-      const saved = store.get('three.trigPresets', []);
-      const songs = Object.entries(store.get('three.triggersBySong', {})).filter(([p0]) => p0 !== player.path).slice(0, 8);
-      const mp = typeof ThreeMusic !== 'undefined' ? ThreeMusic.presetInfo() : null; // the pick from the song (tools/three-music.js)
-      ThreeTweaks.menu(r.left, r.bottom + 4, ['Trigger presets', mp?.guess ? [`✦ From the song: ${mp.guess.preset}`, mp.guess.why, () => ThreeMusic.autoPreset({ force: true })] : null, ...Object.keys(trigPresets()).map((n) => [`${mp?.current === n ? '● ' : ''}${n}`, 'Bands and timing · your bars stay', () => applyTrigPreset(n)]),
-        saved.length ? 'Yours' : null, ...saved.map((x) => [`★ ${x.name}`, 'Bands and bars', () => applyTrigPreset(x.name)]),
-        songs.length ? 'From another song' : null, ...songs.map(([p0, c]) => [`♪ ${p0.split(/[\\/]/).pop()}`, '', () => { trigCfg = ThreeTriggers.merge(c); trigTuned = true; sendTriggers(); saveTriggers(); trigPanel?.set(trigCfg); }]),
-        ['Auto bars', 'Fit the bars to the sound', () => autoBars()], ['⚡ Open the triggers', 'Bands, bars, fade, sensitivity', () => toggleTriggers(true)]]);
-    }
-    async function autoBars() {
-      if (trigPanel?.autoBars) { const n = trigPanel.autoBars(); toast(n ? `Auto bars: ${n} bars fitted to the sound` : 'Play some sound first (a few seconds), then Auto bars', { timeout: 1800 }); return n; }
-      const wasOpen = Boolean(trigPanel);
-      toggleTriggers(true);
-      toast('Listening for 3 s to fit the bars…', { timeout: 2600 });
-      await new Promise((r) => setTimeout(r, 3200));
-      const n = trigPanel?.autoBars?.() || 0;
-      toast(n ? `Auto bars: ${n} bars fitted` : 'No sound came in: play the song (or live sound) and try again', { timeout: 2000 });
-      if (!wasOpen) setTimeout(() => toggleTriggers(false), 600);
-      return n;
-    }
+    function trigPresetMenu(...a) { return labPart(K, 'dialogs', 'trigPresetMenu', a); } // tools/three-lab-dialogs.js
+    function autoBars(...a) { return labPart(K, 'dialogs', 'autoBars', a); } // tools/three-lab-dialogs.js
     function toggleTriggers(on = !trigPanel) {
       trigPanel?.destroy(); trigPanel = null;
       trigBtn.classList.toggle('on', on);
@@ -916,49 +952,7 @@ const ThreeLab = (() => {
       if (patch.device != null && liveKind === 'mic') setLive('mic');
       return liveIo();
     }
-    window.__labLiveStart = async (kind) => {
-      try {
-        hubLiveStop();
-        const io = liveIo();
-        const stream = kind === 'system'
-          ? await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
-          : await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, ...(io.device ? { deviceId: { exact: io.device } } : {}) } });
-        for (const tr of stream.getVideoTracks()) tr.stop();
-        if (!stream.getAudioTracks().length) throw new Error(kind === 'system' ? 'No system sound was shared' : 'No microphone');
-        const ctx = new AudioContext();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.6;
-        const gain = ctx.createGain(); gain.gain.value = typeof io.gain === 'number' ? io.gain : 1;
-        const src = ctx.createMediaStreamSource(stream);
-        src.connect(gain).connect(analyser);
-        Object.assign(hubLive, { stream, ctx, analyser, gain, queue: [], lvl: 0, agcAt: 0, auto: 1 });
-        box.send({ type: 'live-remote', on: true, kind });
-        // (round 23, labaudio) the analysis in an AudioWorklet, off the main thread: one compact buffer per ~10 ms
-        // (features + spectrum + waveform) instead of the timer below (tools/three-audio.js)
-        if (typeof ThreeAudio !== 'undefined' && await ThreeAudio.attachLive({ ctx, source: src, input: gain, hubLive, io: liveIo })) return true;
-        const f = new Uint8Array(1024); const w = new Float32Array(2048);
-        hubLive.timer = setInterval(() => {
-          analyser.getByteFrequencyData(f); analyser.getFloatTimeDomainData(w);
-          // auto gain (the default): quiet or loud playback reaches the sketch and the triggers at about the same
-          // level; it follows a louder part fast and a quieter one slowly, and holds through silence
-          if (liveIo().gain === 'auto') {
-            let ss = 0; for (let i = 0; i < w.length; i += 4) ss += w[i] * w[i];
-            const rms = Math.sqrt(ss / (w.length / 4)) / (gain.gain.value || 1);
-            hubLive.lvl += (rms - hubLive.lvl) * (rms > hubLive.lvl ? 0.2 : 0.01);
-            const tA = performance.now();
-            if (tA - hubLive.agcAt > 250 && hubLive.lvl > 0.002) { hubLive.agcAt = tA; hubLive.auto = Math.max(0.5, Math.min(8, 0.12 / hubLive.lvl)); gain.gain.setTargetAtTime(hubLive.auto, ctx.currentTime, 0.6); }
-          }
-          const frame = { type: 'live-frame', freq: f.slice(), wave: w.slice(), rate: ctx.sampleRate };
-          const lat = liveIo().latency || 0;
-          if (!lat) { box.send(frame); return; }
-          const tNow = performance.now();
-          hubLive.queue.push([tNow, frame]);
-          while (hubLive.queue.length && tNow - hubLive.queue[0][0] >= lat) box.send(hubLive.queue.shift()[1]);
-          if (hubLive.queue.length > 120) hubLive.queue.splice(0, hubLive.queue.length - 120);
-        }, 16);
-        return true;
-      } catch (err) { toast(`Live sound: ${err.message}`, { type: 'error', timeout: 5000 }); return false; }
-    };
+    window.__labLiveStart = (...a) => labPart(K, 'live', '__labLiveStart', a); // tools/three-lab-live.js
     function hubLiveStop() {
       if (typeof ThreeAudio !== 'undefined') ThreeAudio.detachLive();
       clearInterval(hubLive.timer);
@@ -971,34 +965,7 @@ const ThreeLab = (() => {
     liveBtn.dataset.key = 'Shift+L';
     liveBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); setLive(liveKind ? null : store.get('three.lastLive', /Mac/.test(navigator.platform) ? 'mic' : 'system')); }); // right-click: straight on / off
     const npBox = el('span', { class: 'np-box', hidden: true });
-    function liveMenu(anchor) {
-      const r = anchor.getBoundingClientRect();
-      const isWin = !/Mac/.test(navigator.platform);
-      const o = liveOpts();
-      popup(r.left, r.bottom + 4, [
-        'Make the sketch react to',
-        isWin ? ['System sound', 'Whatever plays on this PC: Spotify, YouTube, Suno…', () => setLive('system'), liveKind === 'system'] : null,
-        ['Microphone', 'A mic or line-in', () => setLive('mic'), liveKind === 'mic'],
-        liveKind ? ['Off: back to the loaded song', '', () => setLive(null)] : null,
-        ['⚡ Triggers & sensitivity…', 'What fires kick / bass / snare / hats / hit, and how strongly the sketch reacts', () => toggleTriggers(true)],
-        'Input',
-        ['Microphone / line-in…', liveIo().device ? 'A chosen input' : 'The default input · interfaces, loopback', () => (typeof ThreeAudio !== 'undefined' ? ThreeAudio.inputMenu(anchor) : inputMenu(anchor))],
-        ['Gain', `${liveIo().gain === 'auto' ? `Auto${hubLive.gain ? ` (×${Math.round((hubLive.auto || 1) * 10) / 10} now)` : ''}` : `×${liveIo().gain}`} · how loud the sketch hears it (in the Lab preview)`, () => popup(r.left, r.bottom + 4, ['Gain', ['Auto', 'Keeps the level steady, quiet or loud', () => setLiveIo({ gain: 'auto' }), liveIo().gain === 'auto'], ...[0.5, 1, 1.5, 2, 3, 4].map((g) => [`×${g}`, g === 1 ? 'as it comes' : g < 1 ? 'quieter' : 'louder', () => setLiveIo({ gain: g }), liveIo().gain === g])])],
-        ['Latency offset', `${liveIo().latency} ms · the sketch reacts later, to line up with what you hear`, () => popup(r.left, r.bottom + 4, ['Latency offset', ...[0, 20, 40, 60, 80, 120, 160, 200, 300].map((ms) => [`${ms} ms`, ms ? `for a speaker / Bluetooth delay` : 'none', () => setLiveIo({ latency: ms }), liveIo().latency === ms])])],
-        liveKind ? ['Restart live sound', 'Capture again (after changing devices)', () => setLive(liveKind)] : null,
-        'Now playing',
-        [np ? 'Hide what\'s playing' : 'Show what Spotify plays', 'Title, cover and ⏮ ⏯ ⏭ here, no Spotify login (also works with other players)', () => (np ? stopNowPlaying() : startNowPlaying())],
-        ['Palette follows the cover', 'Each new song sets the sketch palette from its album cover', () => { setLiveOpt({ followCover: !o.followCover }); if (!o.followCover && np?.cover) coverTo('palette'); }, o.followCover],
-      ]);
-    }
-    async function inputMenu(anchor) {
-      const r = anchor.getBoundingClientRect();
-      let devs = [];
-      try { devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch { /* none */ }
-      const cur = liveIo().device;
-      popup(r.left, r.bottom + 4, ['Microphone / line-in', ['Default input', 'What the system uses', () => setLiveIo({ device: '' }), !cur],
-        ...devs.filter((d) => d.deviceId && d.deviceId !== 'default').map((d, k) => [d.label || `Input ${k + 1}`, d.label ? '' : 'names show after the first capture', () => setLiveIo({ device: d.deviceId }), d.deviceId === cur])]);
-    }
+    function liveMenu(...a) { return labPart(K, 'live', 'liveMenu', a); } // tools/three-lab-live.js
     async function setLive(kind) {
       if (!kind) { liveKind = null; hubLiveStop(); box.send({ type: 'live-stop' }); paintLive(); trigPanel?.refreshSense(); if (typeof ThreeMusic !== 'undefined') ThreeMusic.liveTempo(null); return; }
       liveKind = kind; liveBpm = null;
@@ -1024,36 +991,7 @@ const ThreeLab = (() => {
     function stopNowPlaying() { np = null; window.hub.npStop(); npBox.hidden = true; }
     const fmtClock = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
     let npStarted = false;
-    function onNowPlaying(info) {
-      if (!np) return;
-      np = info;
-      if (!info.app || !info.title) { npBox.replaceChildren(el('span', { class: 'np-wait', text: 'Nothing playing in Spotify (or another player)' })); return; }
-      if (info.coverAt && liveOpts().followCover) setTimeout(() => coverTo('palette', true), 300); // a new song
-      if (info.cover) np.coverSrc = /^https?:/.test(info.cover) ? info.cover : `${fileUrl(info.cover)}?t=${info.coverAt || Date.now()}`;
-      else np.coverSrc = npBox.querySelector('img')?.src;
-      const ctl = (text, title, cmd) => btn(text, title, () => window.hub.npControl(cmd), 'ghost small np-ctl');
-      npBox.replaceChildren(
-        np.coverSrc ? el('img', { class: 'np-cover', src: np.coverSrc, alt: '' }) : null,
-        el('span', { class: 'np-text', title: `${info.title} — ${info.artist}${info.album ? ` (${info.album})` : ''} · ${info.app} · click to copy`, on: { click: () => { navigator.clipboard.writeText(`${info.title} — ${info.artist || ''}`); toast('Copied the song name', { timeout: 1000 }); } } }, el('b', { text: info.title }), ` — ${info.artist || ''}`),
-        el('span', { class: 'np-time', text: info.duration ? `${fmtClock(info.position || 0)} / ${fmtClock(info.duration)}` : '' }),
-        ctl('⏮', 'Previous', 'prev'), ctl(info.playing ? '⏸' : '▶', 'Play / pause', 'toggle'), ctl('⏭', 'Next', 'next'),
-        btn('🎨', 'Palette from the cover', () => coverTo('palette'), 'ghost small np-extra'), btn('🖼', 'Add the cover to this sketch\'s references', () => coverTo('ref'), 'ghost small np-extra'));
-    }
-    async function coverFile() {
-      const src = np?.cover;
-      if (!src) throw new Error('No cover yet');
-      if (!/^https?:/.test(src)) return src;
-      const buf = new Uint8Array(await (await fetch(src)).arrayBuffer());
-      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-      return window.hub.saveAttachment('cover.jpg', btoa(bin));
-    }
-    async function coverTo(what, quiet) {
-      try {
-        const f = await coverFile();
-        if (what === 'palette') { const cols = await paletteFrom(f); setPalette(cols); toast(`Palette from "${np.title}": ${cols.join(' ')}`, { timeout: quiet ? 1400 : 2500 }); }
-        else { const r = await addRef(f, { key: `${np.title || 'cover'} cover` }); toast(`Cover added to references as "${r.key}"`, { timeout: 2500 }); }
-      } catch (err) { toast(err.message, { type: 'error' }); }
-    }
+    function onNowPlaying(...a) { return labPart(K, 'live', 'onNowPlaying', a); } // tools/three-lab-live.js
     if (!npStarted) { npStarted = true; window.hub.onNowPlaying((info) => onNowPlaying(info)); }
 
     // ---------- Stage window: the sketch in its own window (own process, own GPU context) for smooth frames ----------
@@ -1290,90 +1228,11 @@ const ThreeLab = (() => {
       el('div', { class: 'ed-row' }, ...modeBtns, spaceBtn, snapBtn, outlinerBtn, camBtn, el('span', { class: 'spacer' }), btn('Done', 'Leave the scene editor (E)', () => setEdit(false), 'primary small')),
       selBox, footBox);
     const paintMode = (m) => modeBtns.forEach((b, k) => b.classList.toggle('on', ['translate', 'rotate', 'scale'][k] === m));
-    function setEdit(on) {
-      const L = sel();
-      if (on && !L) return;
-      editOn = on;
-      editBtn.classList.toggle('on', on);
-      editPanel.hidden = !on;
-      previewHost.classList.toggle('editing', on);
-      box.send({ type: 'edit', cmd: on ? 'on' : 'off', layer: L?.id });
-      if (on) { paintMode('translate'); editSel = null; paintEditSel(); toast(`Editing "${L.name}": drag to orbit, right-drag to pan, wheel to zoom, click an object to move it`, { timeout: 3500 }); }
-    }
+    function setEdit(...a) { return labPart(K, 'edit', 'setEdit', a); } // tools/three-lab-edit.js
     const placements = () => Object.keys(sel()?.overrides || {}).filter((k) => k !== '@camera' && k !== '@look'); // (round 50: '@look' = ◉ looks, not a placement)
-    function paintEditSel() {
-      const info = editSel;
-      if (!info) {
-        selBox.replaceChildren(el('div', { class: 'ed-hint', text: 'Click an object to select it · drag to orbit · right-drag to pan · wheel to zoom · W / E / R move / rotate / scale · F focus · Alt+click picks its group · Esc deselects' }));
-      } else {
-        const num = (prop, axis, val) => {
-          const name = ['X', 'Y', 'Z'][axis];
-          const step = prop === 'r' ? 1 : 0.05;
-          const inp = el('input', { type: 'number', class: 'ed-num', value: val, step, title: `${name}: type an exact value or use the arrows`, attrs: { 'aria-label': `${prop === 'p' ? 'Position' : prop === 'r' ? 'Rotation' : 'Scale'} ${name}` } });
-          const set = (value) => { if (!Number.isFinite(value)) return; pushEditUndo(); box.send({ type: 'edit', cmd: 'set', prop, axis, value }); };
-          inp.addEventListener('change', () => { if (inp.value.trim()) set(Number(inp.value)); });
-          const nudge = (sign) => btn(sign < 0 ? '−' : '+', `${name}: ${sign < 0 ? 'decrease' : 'increase'} · Shift: ×10 · Alt: fine`, e => set(Number(inp.value) + sign * step * (e.shiftKey ? 10 : e.altKey ? 0.1 : 1)));
-          return el('label', { class: `ed-axis ed-axis-${name.toLowerCase()}` }, el('span', { text: name }), nudge(-1), inp, nudge(1));
-        };
-        const trio = (label, prop, arr) => el('div', { class: 'ed-trio' }, el('span', { class: 'ed-lab', text: label }), ...arr.map((v, k) => num(prop, k, v)));
-        const placed = Boolean(sel()?.overrides?.[info.path]);
-        selBox.replaceChildren(
-          el('div', { class: 'ed-row' }, el('b', { text: info.name || info.type }), el('span', { class: 'ed-type', text: `${info.type}${info.children ? ` · ${info.children} inside` : ''}${placed ? ' · placed' : ''}` }), el('span', { class: 'spacer' }),
-            info.hasParent ? btn('Parent', 'Select the group it belongs to', () => box.send({ type: 'edit', cmd: 'parent' })) : null,
-            btn('Focus', 'Fly the view to it (F)', () => box.send({ type: 'edit', cmd: 'focus' })),
-            window.LabMatHook ? btn('◉ Look ›', 'Its look: chrome, glass, gold, plastic, velvet, neon… (the material)', (e) => LabMatHook.open({ layer: sel()?.id, path: info.path, anchor: e?.currentTarget })) : null, // (round 50, labmaterials)
-            btn(info.v ? '👁 Hide' : '👁 Show', 'Hide or show it', () => { pushEditUndo(); box.send({ type: 'edit', cmd: 'visible' }); }),
-            placed ? btn('↺ Reset', 'Back to where the code puts it', () => resetPlacement(info.path)) : null),
-          (() => {
-            // the arrows are the main tool; exact numbers fold away (remembered)
-            const d = el('details', { class: 'ed-nums', on: { toggle: (e) => store.set('three.edNums', e.currentTarget.open) } },
-              el('summary', { text: 'Exact values' }), trio('Position', 'p', info.p), trio('Rotation°', 'r', info.r), trio('Scale', 's', info.s));
-            d.open = store.get('three.edNums', false);
-            return d;
-          })());
-      }
-      const n = placements().length; const cam = Boolean(sel()?.overrides?.['@camera']);
-      footBox.replaceChildren(el('span', { text: n || cam ? `${n} object${n === 1 ? '' : 's'} placed${cam ? ' · camera set' : ''} in "${sel()?.name}"` : 'Nothing placed yet' }), el('span', { class: 'spacer' }),
-        editUndo.length ? btn('↶', 'Undo the last placement', () => undoEdit()) : null,
-        n || cam ? btn('Bake into code…', 'Ask the Three Director to write these placements into the code', () => bakePlacements()) : null,
-        cam ? btn('Reset camera', 'The sketch\'s own camera again', () => resetPlacement('@camera')) : null,
-        n || cam ? btn('Clear all', 'Remove every placement in this layer', () => { pushEditUndo(); const lk = sel()?.overrides?.['@look']; setOverrides(sel(), lk ? { '@look': lk } : null); }) : null);
-    }
+    function paintEditSel(...a) { return labPart(K, 'edit', 'paintEditSel', a); } // tools/three-lab-edit.js
     function pushEditUndo() { const L = sel(); if (L) { editUndo.push({ id: L.id, ov: JSON.stringify(L.overrides || null) }); if (editUndo.length > 50) editUndo.shift(); } }
-    function setOverrides(L, ov) {
-      L.overrides = ov && Object.keys(ov).length ? ov : undefined;
-      box.send({ type: 'layer-props', id: L.id, props: { overrides: L.overrides || null } });
-      touch();
-      run({ hot: true, layer: L.id }); // objects the code doesn't move every frame go back to where it puts them
-      paintEditSel();
-    }
-    function resetPlacement(path) { const L = sel(); if (!L?.overrides) return; pushEditUndo(); const ov = { ...L.overrides }; delete ov[path]; setOverrides(L, ov); }
-    function undoEdit() { const u = editUndo.pop(); const L = u && layerById(u.id); if (L) setOverrides(L, JSON.parse(u.ov)); }
-    function bakePlacements() {
-      const L = sel();
-      const lines = Object.entries(L.overrides || {}).map(([path, o]) => (path === '@camera'
-        ? `- the camera: position [${o.p.join(', ')}], quaternion [${o.q.join(', ')}], fov ${Math.round(o.fov)}`
-        : `- ${o.name || path} (${path.startsWith('#') ? `named "${path.slice(1)}"` : `scene child path ${path}`}): ${o.p ? `position [${o.p.join(', ')}], ` : ''}${o.rd ? `rotation [${o.rd.join(', ')}] degrees, ` : ''}${o.s ? `scale [${o.s.join(', ')}]` : ''}${o.v === false ? ', hidden' : ''}`));
-      askDirector(`In the layer "${L.name}" I placed things with the scene editor. Write these placements into the code so they start there (use three_edit_code, keep everything else as it is):\n${lines.join('\n')}\nWhen it's done, tell me, and I'll clear the placements in the editor.`, { send: false });
-    }
-    function onEditMessage(msg) {
-      if (msg.type === 'edit-select') { editSel = msg.info; paintEditSel(); }
-      if (msg.type === 'edit-change') {
-        const L = layerById(msg.layer);
-        if (!L) return;
-        if (msg.final && JSON.stringify(L.overrides || null) !== JSON.stringify(msg.overrides)) { editUndo.push({ id: L.id, ov: JSON.stringify(L.overrides || null) }); }
-        L.overrides = msg.overrides;
-        editSel = msg.info || editSel;
-        if (msg.final) touch();
-        paintEditSel();
-      }
-      if (msg.type === 'edit-mode') { if (msg.mode) paintMode(msg.mode); if (msg.space) spaceBtn.textContent = msg.space === 'world' ? 'World' : 'Local'; }
-      if (msg.type === 'edit-tree') {
-        const r = outlinerBtn.getBoundingClientRect();
-        const ov = sel()?.overrides || {};
-        popup(r.left, r.bottom + 4, ['Objects in the scene', ...msg.tree.slice(0, 200).map((n) => [`${'  '.repeat(n.depth)}${n.name || n.type}${ov[n.path] ? ' ●' : ''}${n.v ? '' : ' (hidden)'}`, n.name ? n.type : '', () => box.send({ type: 'edit', cmd: 'select', path: n.path }), editSel?.path === n.path])]);
-      }
-    }
+    function onEditMessage(...a) { return labPart(K, 'edit', 'onEditMessage', a); } // tools/three-lab-edit.js
     // (round 52, presentready) ▣ Present gets the scene ready on the big screen first (tools/three-ready.js, lazy group
     // "presentready"): everything loaded and compiled, frames warmed across the timeline, then 100 % quality held, or a
     // baked video when this computer can't hold it live. mode: null (it decides) · 'bake' · 'live'
@@ -1667,53 +1526,9 @@ const ThreeLab = (() => {
       api.groupsHost.commit();
     }
     function setLanes(L, list) { L.lanes = [...new Set(list.filter(Boolean))]; delete L.lane; touch(); renderTracksOnly(); }
-    // A: show every animated setting of every layer; again (when they all show): hide every lane.
-    function toggleAllLanes() {
-      const all = layersOf();
-      const missing = all.some((L) => animatedProps(L).some((p) => !lanesOf(L).includes(p)));
-      for (const L of all) { L.lanes = missing ? [...new Set([...lanesOf(L), ...animatedProps(L)])] : []; delete L.lane; }
-      touch();
-      renderTracksOnly();
-      toast(missing ? 'Showing every animated setting (A hides them)' : 'Lanes hidden (A shows every animated setting)', { timeout: 1600 });
-    }
-    // The ▾ chooser: tick several settings to see their curves at once. With { prop }: switch that lane to another setting.
-    function lanePick(id, x, y, { prop: swap = null } = {}) {
-      const L = layerById(id);
-      if (!L) return;
-      const shown = lanesOf(L);
-      const count = (p) => keysOf(L, p).length;
-      const again = () => lanePick(id, x, y, { prop: swap });
-      const items = [];
-      const props = laneProps(L);
-      const row = ({ prop, label }) => {
-        const on = shown.includes(prop);
-        const hint = count(prop) ? `${count(prop)} points` : '';
-        if (swap) return [`${label}${count(prop) ? ' ●' : ''}`, prop === swap ? 'this lane' : on ? `already shown${hint ? ` · ${hint}` : ''}` : hint, () => { if (prop !== swap) setLanes(L, on ? shown.filter((p) => p !== swap) : shown.map((p) => (p === swap ? prop : p))); }, prop === swap];
-        return [`${on ? '☑' : '☐'} ${label}${count(prop) ? ' ●' : ''}`, hint, () => { setLanes(L, on ? shown.filter((p) => p !== prop) : [...shown, prop]); again(); }, on];
-      };
-      items.push(swap ? 'Switch this lane to' : 'Curves to show (tick several)');
-      for (const p of props.filter((q) => !q.prop.startsWith('s:'))) items.push(row(p));
-      if (props.some((q) => q.prop.startsWith('s:'))) { items.push('Sliders'); for (const p of props.filter((q) => q.prop.startsWith('s:'))) items.push(row(p)); }
-      items.push('Lanes');
-      const anim = animatedProps(L);
-      if (anim.some((p) => !shown.includes(p))) items.push(['Show every animated one', `${anim.length} with points`, () => setLanes(L, [...shown, ...anim])]);
-      if (swap) items.push(['Hide this lane', 'The animation stays', () => setLanes(L, shown.filter((p) => p !== swap))]);
-      if (shown.length) items.push(['Hide all of this layer\'s lanes', 'The animation stays', () => setLanes(L, [])]);
-      items.push(['Every layer: show / hide animated', 'A', () => toggleAllLanes()]);
-      if (!swap) {
-        items.push('Animate (adds points)');
-        for (const pr of ThreeLayers.PRESETS) items.push([pr.name, pr.desc, () => applyPreset(id, pr.id)]);
-      }
-      popup(x ?? innerWidth / 2, y ?? innerHeight / 2, items);
-    }
-    function laneEdit(id, prop, keys, { final }) {
-      const L = layerById(id);
-      if (!L) return;
-      L.keys ||= {};
-      if (keys.length) L.keys[prop] = [...keys].sort((a, b) => a.t - b.t); else delete L.keys[prop];
-      sendKeys(L);
-      if (final) { touch(); renderTracksOnly(); syncKeyUI(true); }
-    }
+    function toggleAllLanes(...a) { return labPart(K, 'lanes', 'toggleAllLanes', a); } // tools/three-lab-lanes.js
+    function lanePick(...a) { return labPart(K, 'lanes', 'lanePick', a); } // tools/three-lab-lanes.js
+    function laneEdit(...a) { return labPart(K, 'lanes', 'laneEdit', a); } // tools/three-lab-lanes.js
     // One-click animations over the layer's time (or the loop, or the whole song).
     function applyPreset(id, presetId) {
       const L = layerById(id);
@@ -1755,82 +1570,10 @@ const ThreeLab = (() => {
     // One picture of the whole piece: a frame at each cue (or evenly over the loop / song), labeled with
     // its time, for you, the director's self-review or Astra.
     let sheetBusy = false;
-    async function contactSheet({ times = null, count = 8 } = {}) {
-      if (sheetBusy) throw new Error('A contact sheet is already being made');
-      // No song: frames a moment apart, as it runs.
-      if (!player.loaded) return sheetFromFrames(await liveFrames(Math.min(count, 8)));
-      sheetBusy = true;
-      const wasPlaying = player.playing; const wasAt = player.time;
-      try {
-        if (wasPlaying) player.toggle(false);
-        const cues = player.cues;
-        let picks = times ? times.map((t) => ({ t: Number(t), label: '' })) : cues.length >= 2 ? cues.map((c) => ({ t: c.time + 0.05, label: c.name })) : null;
-        if (!picks) {
-          const lp = player.loop; const a = lp?.a ?? 0; const b = lp?.b ?? player.duration;
-          picks = Array.from({ length: count }, (_, i) => ({ t: a + ((b - a) * (i + 0.5)) / count, label: '' }));
-        }
-        picks = picks.filter((x) => Number.isFinite(x.t)).slice(0, 16);
-        const frames = [];
-        for (const pk of picks) {
-          player.seek(pk.t);
-          await new Promise((r) => setTimeout(r, 450));
-          const url = await director.shot();
-          if (url) frames.push({ ...pk, url });
-        }
-        return await sheetFromFrames(frames);
-      } finally {
-        player.seek(wasAt);
-        if (wasPlaying) player.toggle(true);
-        sheetBusy = false;
-      }
-    }
-    async function liveFrames(n) {
-      const frames = [];
-      for (let i = 0; i < n; i += 1) { const url = await director.shot(); if (url) frames.push({ t: i * 0.6, label: `+${(i * 0.6).toFixed(1)} s`, url }); await new Promise((r) => setTimeout(r, 600)); }
-      return frames;
-    }
-    async function sheetFromFrames(frames) {
-      if (!frames.length) throw new Error('Nothing is rendering');
-      const imgs = await Promise.all(frames.map((f) => new Promise((res) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = f.url; })));
-      const cols = frames.length <= 4 ? frames.length : frames.length <= 9 ? 3 : 4;
-      const first = imgs.find(Boolean);
-      const tw = 420; const th = Math.round(tw * (first.height / first.width)); const pad = 6; const lab = 22;
-      const rows = Math.ceil(frames.length / cols);
-      const cv = document.createElement('canvas');
-      cv.width = cols * (tw + pad) + pad; cv.height = rows * (th + lab + pad) + pad;
-      const g = cv.getContext('2d');
-      g.fillStyle = '#0b0e10'; g.fillRect(0, 0, cv.width, cv.height);
-      g.font = '14px Consolas, monospace';
-      frames.forEach((f, i) => {
-        const x = pad + (i % cols) * (tw + pad); const y = pad + Math.floor(i / cols) * (th + lab + pad);
-        if (imgs[i]) g.drawImage(imgs[i], x, y, tw, th);
-        g.fillStyle = '#ffd75e'; g.fillText(`${i + 1}  ${f.label?.startsWith('+') ? f.label : `${fmtMs(f.t).replace(/^0:/, '')}${f.label ? `  ${f.label}` : ''}`}`, x + 2, y + th + 16);
-      });
-      return { dataUrl: await canvasDataUrl(cv, 'image/jpeg', 0.86), frames: frames.map((f, i) => ({ n: i + 1, time: Math.round(f.t * 100) / 100, cue: f.label || undefined })) }; // (round 20) encoded off this thread
-    }
+    function contactSheet(...a) { return labPart(K, 'capture', 'contactSheet', a); } // tools/three-lab-capture.js
     const sheetBtn = btn('🎞 Sheet', 'Contact sheet: a frame at every cue (or across the loop / song) in one picture, to check the whole piece or send to the director / Astra', () => showSheet(), 'ghost small imp-capture');
     sheetBtn.dataset.feature = 'Contact sheet';
-    async function showSheet() {
-      let sheet;
-      const t = toast('Making the contact sheet…', { timeout: 30000 });
-      try { sheet = await contactSheet(); } catch (err) { t.remove(); toast(err.message, { type: 'error' }); return; }
-      t.remove();
-      const path = await window.hub.saveAttachment(`contact-sheet-${Date.now()}.jpg`, sheet.dataUrl.split(',')[1]);
-      const agent = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
-      const dlg = el('dialog', { class: 'ui-modal sb-dialog' },
-        el('div', { class: 'refs-head' }, el('h3', { text: `Contact sheet · ${sheet.frames.length} frames` }), el('span', { class: 'spacer' }),
-          agent ? btn('Send to the director', 'Attach it to the Three Director\'s chat with a starter message', () => {
-            dlg.close();
-            Native.attachPaths(agent.id, [path]);
-            Native.setDraft(agent.id, `Here's a contact sheet of "${current?.name}" (frames ${sheet.frames.map((f) => `${f.n} = ${fmtMs(f.time)}${f.cue ? ` ${f.cue}` : ''}`).join(', ')}). Look at the whole piece: `);
-          }, 'primary small') : null,
-          btn('Save…', 'Save the picture', async () => { const p = await window.hub.saveFile({ defaultPath: `${current?.name || 'sketch'} contact sheet.jpg`, filters: [{ name: 'JPEG', extensions: ['jpg'] }], content: sheet.dataUrl.split(',')[1], base64: true }); if (p) toast('Saved', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }); }),
-          btn('Close', '', () => dlg.close())),
-        el('img', { class: 'sheet-img', src: sheet.dataUrl, alt: 'Contact sheet' }));
-      dlg.addEventListener('close', () => dlg.remove());
-      document.body.append(dlg);
-      openLight(dlg);
-    }
+    function showSheet(...a) { return labPart(K, 'capture', 'showSheet', a); } // tools/three-lab-capture.js
 
     // ---------- write button ----------
     const writeBtn = btn('⏺ Write', 'Write: while the song plays, moving a slider, a layer setting or a MIDI knob records it as a curve (replacing what was there). W', () => setWrite(!writeArmed), 'ghost small mb-write imp-live');
@@ -1854,23 +1597,8 @@ const ThreeLab = (() => {
     const midiMap = () => (current ? ((extras[current.id] ||= {}).midi ||= {}) : {});
     const midiPads = () => store.get('three.midiPads', {});
     const PAD_ACTIONS = [['kick', 'Kick marker'], ['snare', 'Snare marker'], ['hit', 'Hit marker'], ['play', 'Play / pause'], ['write', 'Write on / off'], ['note', 'Note on this moment']];
-    async function midiInit() {
-      if (midi) return true;
-      if (!navigator.requestMIDIAccess) { toast('MIDI is not available here', { type: 'error' }); return false; }
-      try { midi = await navigator.requestMIDIAccess(); } catch (err) { toast(`Couldn't open MIDI: ${err.message}`, { type: 'error' }); return false; }
-      const hook = () => { for (const inp of midi.inputs.values()) inp.onmidimessage = onMidi; renderMidiBtn(); };
-      midi.onstatechange = hook;
-      hook();
-      store.set('three.midiOn', true);
-      return true;
-    }
+    function midiInit(...a) { return labPart(K, 'midi', 'midiInit', a); } // tools/three-lab-midi.js
     const midiDevices = () => (midi ? [...midi.inputs.values()].filter((i) => i.state === 'connected').map((i) => i.name) : []);
-    function renderMidiBtn() {
-      const n = midiDevices().length;
-      midiBtn.textContent = n ? '🎛 MIDI ●' : '🎛 MIDI';
-      midiBtn.classList.toggle('on', Boolean(n));
-      midiBtn.title = n ? `MIDI: ${midiDevices().join(', ')}` : 'Use a MIDI controller: knobs move sliders, pads drop kick / snare / hit markers';
-    }
     const midiRelease = {};
     let lastTouched = null; // (round 141, cmdbar141) the slider moved last ({ layer, key, label, at }): stageHooks.lastSlider
     function midiTouched(layer, key, label) {
@@ -1878,81 +1606,8 @@ const ThreeLab = (() => {
       midiLearn = { stage: 'control', layer, key, label };
       toast(`Now turn the knob or fader for "${label}"`, { timeout: 4000 });
     }
-    function onMidi(e) {
-      const [st, d1, d2 = 0] = e.data;
-      const type = st & 0xf0; const ch = (st & 0x0f) + 1;
-      if (type === 0xB0) {
-        const id = `${ch}:cc${d1}`;
-        midiSeen = `CC ${d1} (channel ${ch})`;
-        if (midiLearn?.stage === 'control') {
-          midiMap()[id] = { layer: midiLearn.layer, key: midiLearn.key, label: midiLearn.label };
-          saveExtras();
-          toast(`${midiSeen} → ${midiLearn.label}`, { timeout: 2200 });
-          midiLearn = null;
-          return;
-        }
-        const m = midiMap()[id];
-        if (m) midiApply(m, d2 / 127);
-      } else if (type === 0x90 && d2 > 0) {
-        const id = `${ch}:n${d1}`;
-        if (midiLearn?.stage === 'pad') {
-          store.set('three.midiPads', { ...midiPads(), [id]: midiLearn.action });
-          toast(`Pad (note ${d1}) → ${PAD_ACTIONS.find((a) => a[0] === midiLearn.action)[1]}`, { timeout: 2200 });
-          midiLearn = null;
-          return;
-        }
-        const act = midiPads()[id];
-        if (act === 'kick' || act === 'snare' || act === 'hit') player.tapHit(act);
-        else if (act === 'play') player.toggle();
-        else if (act === 'write') setWrite(!writeArmed);
-        else if (act === 'note') takeNote();
-      }
-    }
-    // A knob position (0..1) → the control's range; the gesture "releases" 300 ms after the knob stops.
-    function midiApply(m, u) {
-      const L = layerById(m.layer);
-      if (!L) return;
-      const rel = `${m.layer}|${m.key}`;
-      if (m.key.startsWith('p:')) {
-        const prop = m.key.slice(2); const meta = ThreeLayers.ANIM_META[prop];
-        const v = Math.round((meta.min + u * (meta.max - meta.min)) / meta.step) * meta.step;
-        editLayer(L.id, { [prop]: v }, { live: true });
-        clearTimeout(midiRelease[rel]);
-        midiRelease[rel] = setTimeout(() => editLayer(L.id, { [prop]: v }), 300);
-        return;
-      }
-      const c = controllers.get(L.id);
-      const info = c?.controls().find((x) => x.key === m.key);
-      if (!info) return;
-      let v;
-      if (info.options) v = info.options[Math.min(info.options.length - 1, Math.floor(u * info.options.length))];
-      else if (typeof info.value === 'boolean') v = u >= 0.5;
-      else if (info.min != null) { v = info.min + u * (info.max - info.min); v = info.step ? Math.round(v / info.step) * info.step : Math.round(v * 1000) / 1000; }
-      else return;
-      c.setByKey(m.key, v);
-      clearTimeout(midiRelease[rel]);
-      midiRelease[rel] = setTimeout(() => c.setByKey(m.key, v, { release: true }), 300);
-    }
-    async function midiMenu(anchor) {
-      const ok = await midiInit();
-      const r = anchor.getBoundingClientRect();
-      const devs = midiDevices();
-      const maps = Object.entries(midiMap());
-      const pads = Object.entries(midiPads());
-      popup(r.left, r.bottom + 4, [
-        !ok ? 'MIDI is not available' : devs.length ? `Connected: ${devs.join(', ')}` : 'No MIDI device found: plug one in (it shows up by itself)',
-        ['Learn a knob for a slider', 'Move a slider, then turn a knob or fader', () => { midiLearn = { stage: 'slider' }; setSlidersVisible(true); toast('Move the slider you want, then turn a knob', { timeout: 4000 }); }],
-        sel() ? ['Learn a knob for the layer\'s opacity', `"${sel().name}"`, () => { midiLearn = { stage: 'control', layer: sel().id, key: 'p:opacity', label: `${sel().name} opacity` }; toast('Turn a knob or fader', { timeout: 4000 }); }] : null,
-        'Pads',
-        ...PAD_ACTIONS.map(([a, label]) => [`Learn a pad: ${label}`, Object.entries(midiPads()).filter(([, v]) => v === a).map(([k]) => `note ${k.split(':n')[1]}`).join(', ') || 'not set', () => { midiLearn = { stage: 'pad', action: a }; toast('Hit the pad', { timeout: 4000 }); }]),
-        maps.length || pads.length ? 'Your mappings (click to remove)' : null,
-        ...maps.map(([k, m]) => [`${m.label}`, `CC ${k.split(':cc')[1]} · ch ${k.split(':')[0]}`, () => { delete midiMap()[k]; saveExtras(); }]),
-        ...pads.map(([k, a]) => [`Pad → ${PAD_ACTIONS.find((x) => x[0] === a)?.[1] || a}`, `note ${k.split(':n')[1]}`, () => { const p = midiPads(); delete p[k]; store.set('three.midiPads', p); }]),
-        typeof ThreeStage !== 'undefined' ? ['🎚 Live performance (VJ)…', 'Learn with soft takeover, pads, set list, crossfader, output, show mode', () => ThreeStage.menu(r.left, r.bottom + 4)] : null,
-        midiSeen ? 'Last control moved' : null,
-        midiSeen ? [midiSeen, 'Learn mode maps the next one you move', () => {}] : null,
-      ]);
-    }
+    function onMidi(...a) { return labPart(K, 'midi', 'onMidi', a); } // tools/three-lab-midi.js
+    function midiMenu(...a) { return labPart(K, 'midi', 'midiMenu', a); } // tools/three-lab-midi.js
     if (store.get('three.midiOn', false)) midiInit();
 
     // ---------- palette ----------
@@ -1966,41 +1621,7 @@ const ThreeLab = (() => {
       store.set('three.palettes', [{ name, colors }, ...list].slice(0, 60));
       window.LabPresets?.changed(); // (round 87, labsync87) to the other computer too
     }
-    async function importPalette() {
-      let clip = '';
-      try { clip = await navigator.clipboard.readText(); } catch { /* no clipboard text */ }
-      const text = await Modal.prompt('Import a palette', {
-        value: parseColors(clip).length >= 2 ? clip.trim().slice(0, 2000) : '',
-        multiline: true,
-        label: 'Paste a Coolors link (coolors.co/palette/…), a Coolors export (CSS, array, JSON) or any hex codes.',
-        placeholder: 'https://coolors.co/palette/264653-2a9d8f-e9c46a-f4a261-e76f51',
-      });
-      if (text == null) return;
-      const cols = parseColors(text);
-      if (cols.length < 2) { toast('No colors found in that', { type: 'error' }); return; }
-      setPalette(cols);
-      savePalette(/coolors/i.test(text) ? `Coolors ${cols.map((c) => c.slice(1, 4)).join('')}` : `Imported ${new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })} ${cols[0]}`, cols);
-      toast(`Palette set: ${cols.length} colors (also saved in 🎨 → Saved)`, { timeout: 2400 });
-    }
-    function paletteMenu(anchor) {
-      const r = anchor.getBoundingClientRect();
-      const pal = current?.palette || [];
-      const saved = savedPalettes();
-      popup(r.left, r.bottom + 4, [
-        'Palette',
-        ['Import from Coolors…', 'Paste a coolors.co link or export, or hex codes (reads your clipboard)', () => importPalette()],
-        ['Open coolors.co', 'Make one there (space bar = new colors), then copy the link and import it', () => window.open('https://coolors.co/generate')],
-        ['From a reference picture…', 'Open References and press 🎨 Palette on a picture', () => openRefs()],
-        pal.length ? ['Save this palette…', pal.join(' '), async () => { const n = await Modal.prompt('Palette name', { value: current?.name || 'My palette' }); if (n) { savePalette(n.trim(), pal); toast('Saved', { timeout: 1200 }); } }] : null,
-        pal.length ? ['Recolor the selected layer', 'Put these colors into its color sliders', () => recolor()] : null,
-        pal.length ? ['Remove the palette', 'From this sketch', () => setPalette([])] : null,
-        saved.length ? 'Saved (click to use)' : null,
-        ...saved.map((p) => [p.name, p.colors.join(' '), () => setPalette(p.colors), pal.join() === p.colors.join()]),
-        saved.length ? ['Delete a saved palette…', '', () => {
-          popup(r.left, r.bottom + 4, ['Delete which one?', ...savedPalettes().map((p) => [p.name, p.colors.join(' '), () => { store.set('three.palettes', savedPalettes().filter((x) => x.name !== p.name)); window.LabPresets?.changed(); toast(`Deleted "${p.name}"`, { timeout: 1500 }); }])]);
-        }] : null,
-      ]);
-    }
+    function paletteMenu(...a) { return labPart(K, 'refs', 'paletteMenu', a); } // tools/three-lab-refs.js
     function renderPalette() {
       const pal = current?.palette || [];
       paletteBox.classList.toggle('empty', !pal.length);
@@ -2030,32 +1651,7 @@ const ThreeLab = (() => {
       colorKeys.forEach((x, i) => c.setByKey(x.key, pal[i % pal.length], { release: true }));
       toast(`Recolored ${colorKeys.length} color slider${colorKeys.length === 1 ? '' : 's'} (↶ in Sliders to undo, Save to keep)`, { timeout: 2600 });
     }
-    // Dominant colors of a picture: a coarse color histogram, then the most common buckets that differ enough.
-    async function paletteFrom(path, n = 6) {
-      const img = new Image(); img.src = fileUrl(path); await img.decode();
-      const cv = document.createElement('canvas'); const sc = Math.min(1, 160 / Math.max(img.width, img.height));
-      cv.width = Math.max(1, Math.round(img.width * sc)); cv.height = Math.max(1, Math.round(img.height * sc));
-      const g = cv.getContext('2d'); g.drawImage(img, 0, 0, cv.width, cv.height);
-      const d = g.getImageData(0, 0, cv.width, cv.height).data;
-      const buckets = new Map();
-      for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] < 128) continue;
-        const key = ((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4);
-        const b = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 };
-        b.n += 1; b.r += d[i]; b.g += d[i + 1]; b.b += d[i + 2];
-        buckets.set(key, b);
-      }
-      const cands = [...buckets.values()].map((b) => ({ n: b.n, r: b.r / b.n, g: b.g / b.n, b: b.b / b.n }))
-        .map((c) => { const mx = Math.max(c.r, c.g, c.b); const mn = Math.min(c.r, c.g, c.b); return { ...c, score: c.n * (0.35 + (mx - mn) / 255) }; })
-        .sort((a, b) => b.score - a.score);
-      const out = [];
-      for (const c of cands) {
-        if (out.every((o) => Math.hypot(o.r - c.r, o.g - c.g, o.b - c.b) > 48)) out.push(c);
-        if (out.length >= n) break;
-      }
-      const hex = (v) => Math.round(v).toString(16).padStart(2, '0');
-      return out.map((c) => `#${hex(c.r)}${hex(c.g)}${hex(c.b)}`);
-    }
+    function paletteFrom(...a) { return labPart(K, 'refs', 'paletteFrom', a); } // tools/three-lab-refs.js
 
     // ---------- references ----------
     // { sketchId: [{ id, key, name, kind, path, size, at }] } in kv 'three-refs'. Files are copied into data/refs;
@@ -2128,73 +1724,9 @@ const ThreeLab = (() => {
       }
       return fl.list.map((x) => ({ rel: x.rel, path: x.path, ...(top && !/^hearth-files\//.test(x.rel) ? { src: `${top}${sep}${x.rel.split('/').join(sep)}` } : {}) }));
     }
-    // (round 100, modeltex100) one of a model's other files changed on disk (its picture saved again in Photoshop, its .bin
-    // exported again; from: its original, copied over Hearth's copy first): read again. A picture goes into the model's
-    // textures in place (three-sandbox.html rmodFileUpdate: decoded off the page's thread, in slices, the old picture shown
-    // until the new one is up); anything else runs the scene again (the model parsed again with it).
-    async function reloadRefFile(id, rel, { from = null } = {}) {
-      const r = Object.values(refsAll).flat().find((x) => x.id === id);
-      if (!r) return { ok: false, error: 'No such reference' };
-      const f = typeof LabModelsCore !== 'undefined' ? LabModelsCore.folderOf(r.path) : null;
-      rel = String(rel || '');
-      if (!f || !rel || rel.split(/[\\/]/).some((s) => s === '..' || s === '')) return { ok: false, error: 'Not one of this model\'s files' };
-      const sep = /\\/.test(f.dir) && !/\//.test(f.dir) ? '\\' : '/';
-      const p = `${f.dir}${sep}${rel.split('/').join(sep)}`;
-      if (from) { try { await window.hub.fs.copy(from, p); } catch (err) { return { ok: false, error: err.message }; } }
-      if (!refsOf().includes(r)) return { ok: true, later: true };
-      const old = refFiles.get(r.id)?.list.find((x) => x.rel === rel)?.sig || null;
-      const fl = await listRefFiles(r);
-      const x = fl?.list.find((y) => y.rel === rel);
-      if (!x) return { ok: false, missing: true };
-      if (x.sig === old) return { ok: true, same: true }; // (the copy over Hearth's copy, seen a second time)
-      let u8; try { u8 = await window.hub.fs.read(x.path, { encoding: 'buffer', maxBytes: FILES_MAX }); } catch (err) { return { ok: false, error: err.message, missing: true }; }
-      if (!refsOf().includes(r)) return { ok: true, later: true };
-      const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-      if (old) fileBytes.delete(old);
-      fileBytes.set(x.sig, buf);
-      // the model's sig covers its files
-      const ms = refSigs.get(r.id); const msig = ms ? withFiles(r, ms.replace(/\+\d+-[0-9a-z]+$/, '')) : null;
-      if (msig) refSigs.set(r.id, msig);
-      if (old && /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(rel)) {
-        refsSig = refsSigOf(refsOf().filter((y) => y === r || refReady(y)));
-        box.send({ type: 'ref-file-update', item: { key: r.key, rel, mime: MIMES[rel.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0), ...(assetCacheOn() ? { sig: x.sig, ...(msig ? { msig } : {}) } : {}) } });
-        return { ok: true, inPlace: true };
-      }
-      refsSig = null; sendRefs(); run({ sync: true });
-      return { ok: true, inPlace: false };
-    }
+    function reloadRefFile(...a) { return labPart(K, 'refs', 'reloadRefFile', a); } // tools/three-lab-refs.js
     const withFiles = (r, sig) => { const fl = refFiles.get(r.id); return sig && fl?.list.length ? `${sig}+${fl.list.length}-${hashStr(fl.list.map((x) => x.sig).join('\n'))}` : sig; };
-    async function addRef(src, { key, sketchId = null } = {}) {
-      // (round 72, labbridge72) sketchId: another scene's references (a chat's scene that runs backstage): saved with that
-      // scene, its bytes go to the preview when it's opened
-      const other = sketchId && sketchId !== current?.id ? sketchId : null;
-      if (other && !sketches.some((x) => x.id === other)) throw new Error('That scene is gone (deleted?)');
-      if (!current && !other) throw new Error('Open a sketch first');
-      const owner = other || current.id;
-      const list = () => (refsAll[owner] ||= []);
-      const name = String(src).split(/[\\/]/).pop().replace(/^\d{10,}-/, '');
-      const kind = refKindOf(name);
-      if (!kind) throw new Error(`${name} isn't a file a sketch can use (images, videos, 3D models, audio, fonts, data files)`);
-      const st = await window.hub.fs.stat(src);
-      if(!other&&current?.id!==owner)throw new Error('Sketch changed while importing; try again in the intended sketch');
-      if (st.size > 400 * 1048576) throw new Error(`${name} is over 400 MB`);
-      const existing = list().find((r) => r.name === name && r.size === st.size);
-      if (existing) return existing;
-      // (round 99, labmodels99) a model of several files: its folder copied whole; a file it names that isn't there is said
-      const whole = kind === 'model' && window.hub.importRefWhole && /[.](gltf|glb|obj)$/i.test(name) ? await window.hub.importRefWhole(src) : null;
-      const path = whole ? whole.path : await window.hub.importRef(src);
-      if(!other&&current?.id!==owner)throw new Error('Sketch changed while importing; the copied asset was kept safely');
-      const r = { id: `r${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`, key: refKey(key || name, null, list()), name, kind, path, size: st.size, at: Date.now(), ...(/[\\/]refs[\\/]\d{10,}-/.test(src) ? {} : { src }), ...(whole?.files > 1 ? { files: whole.files } : {}), ...(whole?.missing?.length ? { missing: whole.missing.slice(0, 20) } : {}) }; // (round 42) src: the original, followed when you save it again
-      if (whole?.missing?.length) toast(`${name} came without ${whole.missing.length === 1 ? 'a file it uses' : `${whole.missing.length} files it uses`}: ${whole.missing.slice(0, 3).join(' · ')}${whole.missing.length > 3 ? ` (and ${whole.missing.length - 3} more)` : ''}. Put ${whole.missing.length === 1 ? 'it' : 'them'} next to it and add it again.`, { timeout: 9000 });
-      refAdded = { name, files: whole?.files || 1, missing: whole?.missing || [], used: whole?.used || [] }; // (round 99: dev/checks/labmodels99.js)
-      list().push(r);
-      saveRefs();
-      if (other) return r;
-      await loadRefBytes();
-      renderRefsBtn();
-      if (refsDlg?.open) renderRefsDlg();
-      return r;
-    }
+    function addRef(...a) { return labPart(K, 'refs', 'addRef', a); } // tools/three-lab-refs.js
     // (round 97, labproj97) a removed reference's file to the Trash: given as a list (a bare path was walked letter by
     // letter by fs:trash: the file never went, and "/" was asked for), and only when no other scene's reference or song
     // still uses it (a copied project whose copy of the file couldn't be made shares the original's)
@@ -2205,17 +1737,7 @@ const ThreeLab = (() => {
       const dir = /^(.*[\\/]refs[\\/]\d{10,}-[^\\/]+)[\\/]/.exec(r.path)?.[1];
       window.hub.fs.trash([dir && !SceneSafeCore.refShared(dir, { refsAll, extras, except: r, under: true }) ? dir : r.path]).catch(() => {});
     }
-    // (round 99, labmodels99) several files or folders at once (the References dialog's pick and drop): a folder adds the
-    // models in it; a file a model of the same drop names (its .bin, .mtl, pictures) comes with the model, not on its own
-    async function addRefs(paths) {
-      const entries = await Promise.all((paths || []).map(async (p) => { const st = await window.hub.fs.stat(p).catch(() => null); return { name: String(p).split(/[\\/]/).pop(), path: p, isDir: Boolean(st?.isDir) }; }));
-      const g = await LabModelsCore.groupDrop(entries, { list: (d) => window.hub.fs.list(d, { recursive: true, depth: 6 }), uses: (ps) => window.hub.refUses?.(ps) || {} });
-      for (const f of g.folders) if (f.why) toast(f.why, { type: 'error' });
-      const added = [];
-      for (const e of g.add) { try { added.push(await addRef(e.path)); } catch (err) { toast(err.message, { type: 'error' }); } }
-      if (g.with.length) toast(g.with.map((w) => `${w.model}: ${w.n === 1 ? 'its file came' : `its ${w.n} files came`} with it`).join(' · '), { timeout: 4000 });
-      return { added, with: g.with, folders: g.folders };
-    }
+    function addRefs(...a) { return labPart(K, 'refs', 'addRefs', a); } // tools/three-lab-refs.js
     function removeRef(r) {
       refsAll[current.id] = refsOf().filter((x) => x !== r);
       refBytes.delete(r.id);
@@ -2263,26 +1785,7 @@ const ThreeLab = (() => {
     // scene switch sent every file whole: a video reference was copied twice per switch); a new page asks afresh
     let refsSig = null;
     const refsSigOf = (refs) => JSON.stringify([refs.map((r) => [r.id, r.key, r.kind, refSigs.get(r.id) || refBytes.get(r.id)?.byteLength, ...(refFiles.get(r.id)?.list || []).map((x) => x.sig)]), current?.palette || []]);
-    // (round 42, filewatch) a reference changed on disk (saved again in Photoshop, replaced in Finder; from: its original,
-    // copied over Hearth's copy first): read again and swapped into the textures using it in place, no re-run; a model /
-    // sound / data reference runs the scene again (in place). Another scene's is read when that scene opens.
-    async function reloadRef(id, { from = null } = {}) {
-      const r = Object.values(refsAll).flat().find((x) => x.id === id);
-      if (!r) return { ok: false, error: 'No such reference' };
-      if (from) { try { await window.hub.fs.copy(from, r.path); } catch (err) { return { ok: false, error: err.message }; } }
-      if (!refsOf().includes(r)) { refBytes.delete(r.id); return { ok: true, later: true }; }
-      let u8; try { u8 = await window.hub.fs.read(r.path, { encoding: 'buffer', maxBytes: 400 * 1048576 }); } catch (err) { return { ok: false, error: err.message, missing: true }; }
-      const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-      refBytes.set(r.id, buf); r.size = buf.byteLength; saveRefs();
-      refSigs.delete(r.id); if (assetCacheOn()) { try { const st = await window.hub.fs.stat(r.path); if (st && !st.error) refSigs.set(r.id, `${r.path}|${st.size}|${Math.round(st.mtimeMs || st.mtime || 0)}`); } catch { /* fine */ } } // (round 75)
-      if (r.kind === 'image' || r.kind === 'video') {
-        refsSig = refsSigOf(refsOf().filter((x) => refReady(x)));
-        box.send({ type: 'ref-update', item: { key: r.key, kind: r.kind, mime: MIMES[r.name.split('.').pop().toLowerCase()] || '', buffer: buf.slice(0), ...(refSigs.has(r.id) ? { sig: refSigs.get(r.id) } : {}) } });
-        return { ok: true, inPlace: true };
-      }
-      refsSig = null; sendRefs(); run({ sync: true });
-      return { ok: true, inPlace: false };
-    }
+    function reloadRef(...a) { return labPart(K, 'refs', 'reloadRef', a); } // tools/three-lab-refs.js
     // (round 75, labload75) fresh: a run in a page that just started; a file the last page held (so not read) is read
     // now, and the scene runs again once it's here
     // (round 99, labmodels99) a model copied whole: where it sits in its folder and its other files (each with its sig; its
@@ -2308,59 +1811,8 @@ const ThreeLab = (() => {
     refsBtn.dataset.feature = 'References';
     function renderRefsBtn() { const n = refsOf().length; refsBtn.textContent = n ? `🖼 ${n}` : '🖼'; refsBtn.title = `References${n ? ` (${n})` : ''}: images, videos, 3D models, sounds and data for this sketch. The Three Director can see and use them; you can also drop files in its chat.`; }
     let refsDlg = null; let refsGrid = null;
-    function openRefs() {
-      refsDlg?.remove();
-      refsGrid = el('div', { class: 'refs-grid' });
-      const add = btn('＋ Add files…', 'Pick images, videos, models…', async () => {
-        const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], title: 'References for this sketch' });
-        await addRefs(paths); // (round 99, labmodels99: a model's .bin / pictures picked with it come with it)
-      }, 'primary small');
-      refsDlg = el('dialog', { class: 'ui-modal refs-dialog' },
-        el('div', { class: 'refs-head' }, el('h3', { text: `References · ${current?.name || ''}` }), el('span', { class: 'spacer' }), add, btn('Close', '', () => refsDlg.close())),
-        el('p', { class: 'muted small', text: 'Drop files here. In code: refTexture(\'name\') for images and videos, refs.name (a URL) for models, sounds and data. Or just ask the director: "use the logo on the cube".' }),
-        refsGrid);
-      dropZone(refsDlg, (files) => addRefs(files.map((f) => window.hub.pathForFile(f)).filter(Boolean)), { hint: 'Drop to add references' }); // (round 99, labmodels99: a folder, or a model with its files)
-      refsDlg.addEventListener('close', () => { refsDlg.remove(); refsDlg = null; });
-      document.body.append(refsDlg);
-      renderRefsDlg();
-      openLight(refsDlg);
-    }
-    function renderRefsDlg() {
-      if (!refsGrid) return;
-      const list = refsOf();
-      refsGrid.replaceChildren(...(list.length ? list.map((r) => {
-        const thumb = r.kind === 'image' ? el('img', { src: fileUrl(r.path), alt: '' })
-          : r.kind === 'video' ? el('video', { src: fileUrl(r.path), muted: true, loop: true, playsInline: true, on: { mouseenter: (e) => e.target.play(), mouseleave: (e) => e.target.pause() } })
-            : el('span', { class: 'refs-icon', text: REF_ICONS[r.kind] });
-        const keyIn = el('input', { class: 'refs-key', value: r.key, spellcheck: false, title: 'The name code uses for it' });
-        keyIn.addEventListener('change', () => { keyIn.value = renameRef(r, keyIn.value); renderRefsDlg(); });
-        // (round 140, dropmedia140) a picture or a clip drags onto the timeline (tools/three-dropmedia.js): a layer at that time
-        const media = r.kind === 'image' || r.kind === 'video';
-        const card = el('div', { class: 'refs-card', attrs: media ? { draggable: 'true', title: 'Drag onto the timeline: a layer at that time' } : {}, on: media ? {
-          dragstart: (e) => { e.dataTransfer.setData('application/x-hearth-labref', JSON.stringify({ key: r.key, name: r.name, kind: r.kind, path: r.path })); e.dataTransfer.effectAllowed = 'copy'; window.Lazy?.load('dropmedia').catch(() => {}); for (const n of [refsDlg, refsDlg?.previousElementSibling]) if (n) { n.style.pointerEvents = 'none'; n.style.opacity = '0.35'; } },
-          dragend: () => { for (const n of [refsDlg, refsDlg?.previousElementSibling]) if (n) { n.style.pointerEvents = ''; n.style.opacity = ''; } },
-        } : {} });
-        card.append(el('div', { class: 'refs-thumb' }, thumb), keyIn,
-          el('div', { class: 'refs-meta', text: `${r.kind} · ${fmtSize(r.size)} · ${r.name}${r.files > 1 ? ` · ${r.files} files` : ''}${r.missing?.length ? ` · ⚠ ${r.missing.length} missing` : ''}`, title: r.missing?.length ? `It came without: ${r.missing.join(' · ')}` : '' }), // (round 99, labmodels99)
-          el('div', { class: 'refs-actions' },
-            btn('Copy code', refUse(r), () => { navigator.clipboard.writeText(refUse(r)); toast(`Copied ${refUse(r)}`, { timeout: 1200 }); }),
-            btn('Ask director', 'Start a message to the Three Director about this reference', () => askAboutRef(r), 'ghost small imp-ai'),
-            btn('Show', 'Show the file', () => window.hub.fs.reveal(r.path)),
-            r.kind === 'video' && typeof ThreeFrames !== 'undefined' ? btn('🎞 Read ▾', 'Read this clip exactly: contact sheet, scenes, motion, pacing · match its pacing (its rhythm, not its footage)', (e) => { const rr = e.currentTarget.getBoundingClientRect(); refsDlg?.close(); ThreeFrames.refMenu(rr.left, rr.bottom + 4, r.path, r.key); }) : null,
-            r.kind === 'image' ? btn('✦ Like this', 'Make a layer like this: the director studies the picture and builds ONE new layer in its spirit, with sliders, in its palette (the cost shows first)', () => { refsDlg?.close(); (window.Lazy ? Lazy.load('refmatch') : Promise.resolve()).then(() => LabRefMatch.fromRef(r)).catch((err) => toast(err.message, { type: 'error' })); }, 'ghost small imp-ai') : null, // (round 131, refmatch131)
-            r.kind === 'image' ? btn('🎨 Palette', 'Use this picture\'s colors as the sketch palette', async () => { try { const cols = await paletteFrom(r.path); setPalette(cols); toast(`Palette: ${cols.join(' ')}`, { timeout: 2400 }); } catch (err) { toast(err.message, { type: 'error' }); } }) : null,
-            media ? btn('⋯', 'More: ◎ Match against this', (e) => { const rr = e.currentTarget.getBoundingClientRect(); showMenu(rr.left, rr.bottom + 4, [{ label: '◎ Match against this', hint: 'a live "how close am I?" score by the stats line', action: () => { refsDlg?.close(); (window.Lazy ? Lazy.load('matchscore') : Promise.resolve()).then(() => LabMatch.fromRef(r)).catch((err) => toast(err.message, { type: 'error' })); } }]); }) : null, // (round 141, matchscore141)
-            btn('🗑', 'Remove (the copy goes to the Recycle Bin)', () => { removeRef(r); renderRefsDlg(); })));
-        return card;
-      }) : [el('div', { class: 'refs-empty', text: 'No references yet. Add pictures, logos, video clips, 3D models (.glb), sounds or data files.' })]));
-    }
-    function askAboutRef(r) {
-      const agent = H.agents().find((a) => a.dock === 'three' && a.mode === 'native');
-      if (!agent) return;
-      refsDlg?.close();
-      Native.setDraft(agent.id, `Use the reference "${r.key}" (${r.kind}, ${r.name}) in the sketch: `);
-      if (r.kind === 'image') Native.attachPaths(agent.id, [r.path]);
-    }
+    function openRefs(...a) { return labPart(K, 'refs', 'openRefs', a); } // tools/three-lab-refs.js
+    function renderRefsDlg(...a) { return labPart(K, 'refs', 'renderRefsDlg', a); } // tools/three-lab-refs.js
     api.addRef = (p, o) => addRef(p, o);
     api.refAdded = () => refAdded; // (round 99, labmodels99)
     api.addRefs = (paths) => addRefs(paths);
@@ -2396,73 +1848,9 @@ const ThreeLab = (() => {
       const open = notesOf().filter((n) => !n.done).length;
       notesBtn.textContent = notesOf().length ? `Notes ${open}${open !== notesOf().length ? `/${notesOf().length}` : ''}` : 'Notes';
     }
-    async function takeNote({ text: given, time } = {}) {
-      if (!current) return null;
-      const t = time ?? (player.loaded ? player.time : 0);
-      if (time != null && player.loaded) { player.seek(time); await sleep(500); }
-      // the frame is captured right away, while you type the note
-      const shotP = director.shot();
-      const text = given ?? await Modal.prompt(`Note at ${fmtMs(t)}`, { placeholder: 'What should change here? (the screenshot is saved with it)', multiline: true });
-      if (text == null) return null;
-      const shot = await shotP;
-      let image = null;
-      if (shot) { try { image = await window.hub.saveAttachment(`note ${current.name} ${fmtMs(t).replace(/:/g, '-')}.png`.replace(/[\\/:*?"<>|]/g, '_'), shot.split(',')[1]); } catch { image = null; } }
-      const n = { id: `n${Date.now().toString(36)}`, t: Math.round(t * 1000) / 1000, text: String(text).trim() || '(no text)', image, at: Date.now(), done: false };
-      notesOf().push(n);
-      notesOf().sort((a, b) => a.t - b.t);
-      saveNotes();
-      renderNotes();
-      if (given == null) toast(`Note saved at ${fmtMs(t)}`, { timeout: 1800 });
-      return n;
-    }
-    function placeCard(card, x, y) {
-      document.body.append(card);
-      const r = card.getBoundingClientRect();
-      Object.assign(card.style, { left: `${Math.max(8, Math.min(innerWidth - r.width - 8, x - r.width / 2))}px`, top: `${Math.max(8, Math.min(innerHeight - r.height - 8, y - r.height - 12))}px` });
-      const close = (e) => { if (!card.contains(e.target) && !e.target.closest?.('.ui-modal')) { card.remove(); removeEventListener('pointerdown', close, true); } };
-      setTimeout(() => addEventListener('pointerdown', close, true));
-    }
-    function openNote(id, x, y) {
-      const n = notesOf().find((m) => m.id === id);
-      if (!n) return;
-      document.querySelector('.note-card')?.remove();
-      const ta = el('textarea', { class: 'note-text', rows: 3 });
-      ta.value = n.text;
-      ta.addEventListener('change', () => { n.text = ta.value.trim() || '(no text)'; saveNotes(); renderNotes(); });
-      const card = el('div', { class: 'note-card' },
-        el('div', { class: 'note-head' }, el('b', { text: `📌 ${fmtMs(n.t)}` }), el('span', { class: 'hint', text: n.done ? 'done' : '' }), el('span', { class: 'spacer' }), btn('×', 'Close', () => card.remove())),
-        n.image ? el('img', { class: 'note-img', src: fileUrl(n.image), title: 'The frame when you took the note' }) : null,
-        ta,
-        el('div', { class: 'note-actions' },
-          btn(n.done ? 'Reopen' : '✓ Done', n.done ? 'Mark it as still to do' : 'Mark it as handled', () => { n.done = !n.done; saveNotes(); renderNotes(); card.remove(); }),
-          btn('Delete', 'Delete this note', () => { notesAll[current.id] = notesOf().filter((m) => m !== n); saveNotes(); renderNotes(); card.remove(); }),
-          el('span', { class: 'spacer' }),
-          btn('Send to director', 'Put this note and its screenshot in the Three Director\'s chat box', () => { card.remove(); sendNotes([n]); }, 'primary small')));
-      placeCard(card, x, y);
-    }
-    function notesList(anchor) {
-      document.querySelector('.note-card')?.remove();
-      const list = notesOf();
-      const card = el('div', { class: 'note-card note-list' },
-        el('div', { class: 'note-head' }, el('b', { text: `Notes on "${current?.name}"` }), el('span', { class: 'spacer' }), btn('📌 New', 'Take a note at the playhead (N)', () => { card.remove(); takeNote(); }), btn('×', 'Close', () => card.remove())),
-        list.length ? el('div', { class: 'note-rows' }, list.map((n) => el('div', { class: `note-row${n.done ? ' done' : ''}` },
-          n.image ? el('img', { class: 'note-thumb', src: fileUrl(n.image) }) : el('span', { class: 'note-thumb empty', text: '📌' }),
-          el('button', { class: 'note-time', text: fmtMs(n.t), title: 'Jump there', on: { click: () => player.seek(n.t) } }),
-          el('span', { class: 'note-sum', text: n.text, title: n.text }),
-          btn(n.done ? '↺' : '✓', n.done ? 'Reopen' : 'Done', () => { n.done = !n.done; saveNotes(); renderNotes(); card.remove(); notesList(anchor); }),
-          btn('🗑', 'Delete', () => { notesAll[current.id] = notesOf().filter((m) => m !== n); saveNotes(); renderNotes(); card.remove(); notesList(anchor); })))) : el('p', { class: 'hint', text: 'No notes yet. Press N (or 📌 Note) at a moment you want changed.' }),
-        list.some((n) => !n.done) ? el('div', { class: 'note-actions' }, el('span', { class: 'spacer' }), btn('Send open notes to the director', 'Puts every open note with its screenshot in the Three Director\'s chat box', () => { card.remove(); sendNotes(list.filter((n) => !n.done)); }, 'primary small')) : null);
-      const r = anchor.getBoundingClientRect();
-      placeCard(card, r.left + r.width / 2, r.top);
-    }
-    async function sendNotes(list) {
-      const agent = H.agents().find((a) => a.threeTools);
-      if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return; }
-      activate(agent.id);
-      const paths = list.map((n) => n.image).filter(Boolean);
-      if (paths.length) await Native.attachPaths(agent.id, paths);
-      Native.setDraft(agent.id, `My notes on "${current.name}" (song times${paths.length ? '; the screenshots are attached in the same order' : ''}):\n${list.map((n) => `- ${fmtMs(n.t)} [${n.id}]: ${n.text}`).join('\n')}\nPlease make these changes, then mark each note done (three_notes).`);
-    }
+    function takeNote(...a) { return labPart(K, 'notes', 'takeNote', a); } // tools/three-lab-notes.js
+    function openNote(...a) { return labPart(K, 'notes', 'openNote', a); } // tools/three-lab-notes.js
+    function notesList(...a) { return labPart(K, 'notes', 'notesList', a); } // tools/three-lab-notes.js
 
     // ---------- focus: almost fullscreen ----------
     let focusOn = false;
@@ -2686,35 +2074,7 @@ const ThreeLab = (() => {
       e.preventDefault();
       layerRowMenu(e, row);
     });
-    function layerRowMenu(e, row) {
-      const L = layerById(row.dataset.id); // (round 44) by id: group headers sit between the rows now
-      if (!L) return;
-      const Ls = layersOf(); const at = Ls.indexOf(L);
-      const move = (to) => { const ids = Ls.map((x) => x.id).filter((x) => x !== L.id); ids.splice(Math.max(0, Math.min(ids.length, to)), 0, L.id); if (window.LabGroups?.op) LabGroups.op(`Moved "${L.name}"`, (cur) => ids.map((i) => cur.find((x) => x.id === i)).filter(Boolean), { say: false }); else reorderLayers(ids); }; // (round 136, outline136) one undo step
-      ThreeTweaks.menu(e.clientX, e.clientY, [L.name,
-        [L.visible === false ? '👁 Show' : '◌ Hide', `Alt+${[...Ls].reverse().indexOf(L) + 1}`, () => editLayer(L.id, { visible: L.visible === false })],
-        [soloNow() === L.id ? 'Show every layer' : 'Only this layer (solo)', 'Alt+click its eye', () => setSolo(soloNow() === L.id ? null : L.id)],
-        ['Rename…', 'Or double-click its name', async () => { if (layersPanel.rename?.(L.id)) return; const v = await Modal.prompt('Rename layer', { value: L.name }); if (v?.trim()) editLayer(L.id, { name: v.trim() }); }], // (round 136, outline136) in place
-        ['Duplicate', 'A copy on top', () => { selectLayer(L.id); addLayer('copy'); }, false, 'Duplicate layer'],
-        at < Ls.length - 1 ? ['Move up', 'Alt+↑ in the list', () => (window.LabGroups?.nudge ? LabGroups.nudge(1, { layer: L.id }) : move(at + 1))] : null,
-        at > 0 ? ['Move down', 'Alt+↓ in the list', () => (window.LabGroups?.nudge ? LabGroups.nudge(-1, { layer: L.id }) : move(at - 1))] : null,
-        at < Ls.length - 1 ? ['To the top', '', () => move(Ls.length)] : null,
-        // (round 7) the layer's timing, whose two buttons wait behind Alt now
-        player.loaded ? ['Plays', L.in != null || L.out != null ? 'part of the song' : 'the whole song', [['The whole song', '', () => editLayer(L.id, { in: null, out: null }), L.in == null && L.out == null], player.loop ? ['Only during the loop', '', () => editLayer(L.id, { in: player.loop.a, out: player.loop.b })] : null].filter(Boolean)] : null,
-        ...(typeof ThreeComp !== 'undefined' ? ThreeComp.layerMenu(L) : []), // ◫ Precomp › / ◫ Comp › (tools/three-comp.js)
-        ...(typeof LabShader !== 'undefined' ? LabShader.layerMenu(L) : []), // (round 23) ◇ Shader › (tools/three-shader.js)
-        ...(typeof LabParticles !== 'undefined' ? LabParticles.layerMenu(L) : []), // (round 24) ✦ Particles › (tools/three-particles.js)
-        ...(typeof LabType !== 'undefined' ? LabType.layerMenu(L) : []), // (round 25) 🅰 Type › (tools/three-type.js)
-        ...(typeof LabPhysics !== 'undefined' ? LabPhysics.layerMenu(L) : []), // (round 25) ⚛ Physics › (tools/three-physics.js)
-        ...(typeof LabVisHook !== 'undefined' ? LabVisHook.layerMenu(L) : []), // (round 50) 🎵 Visualizer › (tools/three-vis-hook.js)
-        ...(typeof LabShapesHook !== 'undefined' ? LabShapesHook.layerMenu(L) : []), // (round 51) ◆ Shape › (tools/three-shapes-hook.js)
-        'Opacity',
-        ...[1, 0.75, 0.5, 0.25].map((o) => [`${Math.round(o * 100)}%`, '', () => editLayer(L.id, { opacity: o }), Math.abs((L.opacity ?? 1) - o) < 0.01]),
-        'Blend',
-        ...ThreeLayers.BLENDS.slice(0, 6).map(([v, label]) => [label, '', () => editLayer(L.id, { blend: v }), (L.blend || 'normal') === v]),
-        Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null,
-        ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab layers') : [])]);
-    }
+    function layerRowMenu(...a) { return labPart(K, 'dialogs', 'layerRowMenu', a); } // tools/three-lab-dialogs.js
     function renderLayers() {
       if (!current) return;
       if (LabPlay.playing) LabPlay.count('layers'); // (round 142, smooth142: counted while playing, dev/checks/smooth142.js)
@@ -2870,13 +2230,7 @@ const ThreeLab = (() => {
       renderLayers();
       return L;
     }
-    async function removeLayer(id, { confirm = true } = {}) {
-      const L = layerById(id);
-      if (!L) return false;
-      if (layersOf().length <= 1) { toast('A sketch keeps at least one layer', { type: 'error' }); return false; }
-      if (confirm && !(await Modal.confirm('Delete layer?', `"${L.name}" will be removed from "${current.name}".`, { ok: 'Delete', danger: true }))) return false;
-      return Boolean(removeLayers([id]));
-    }
+    function removeLayer(...a) { return labPart(K, 'dialogs', 'removeLayer', a); } // tools/three-lab-dialogs.js
     // (round 116, layerdelete116) one or several layers out as ONE step: the toast's Undo and the Lab's Ctrl/⌘+Z put them
     // all back where they were (the owner's typing in the selected one included). A chat deleting every layer leaves an
     // empty layer (a scene always has one), taken away again by the Undo. who: the AI that did it, for the toast.
@@ -3551,19 +2905,7 @@ const ThreeLab = (() => {
     const qChip = el('button', { type: 'button', class: 'lab-q', dataset: { feature: 'Preview quality' } });
     qChip.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
     qChip.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
-    // (round 142, smooth142) three choices: Smooth (auto) · Balanced · Force high quality, for this scene (and the
-    // default for scenes without their own); the chip says which, and what Smooth lowered and why on its tooltip
-    function qualityMenu(x, y) {
-      const m = qMode(); const own = Boolean(current?.speed?.q);
-      const pick = (k) => () => setQuality(k);
-      showMenu(x, y, [
-        { label: Q_NAMES.smooth, hint: 'lighter before frames drop · steady frame rate · renders stay full', checked: m === 'smooth' && !adaptHeld, action: pick('smooth') },
-        { label: Q_NAMES.balanced, hint: 'lighter only while frames keep dropping', checked: m === 'balanced' && !adaptHeld, action: pick('balanced') },
-        { label: Q_NAMES.high, hint: 'full resolution, antialias and shadows · frames may drop', checked: m === 'high' || adaptHeld, action: pick('high') },
-        '-',
-        own ? `Kept for this scene · the default: ${Q_NAMES[qGlobal()]}` : 'Your pick is kept for this scene and as the default',
-      ]);
-    }
+    function qualityMenu(...a) { return labPart(K, 'dialogs', 'qualityMenu', a); } // tools/three-lab-dialogs.js
     // what Smooth lowered right now, in plain words (the chip's tooltip, the ⚡ Speed check card)
     function qualityWhy(a = adaptLast) {
       if (!a) return '';
@@ -3897,72 +3239,15 @@ const ThreeLab = (() => {
       list.length = Math.min(list.length, 40);
       saveHistory(current.id); // (round 88) this scene's file only
     }
-    function historyDialog(read = false) {
-      if (!read && current && kvOk.has('three-history') && !histRead.has(current.id)) { loadHist(current.id).catch(() => false).then(() => historyDialog(true)); return; } // (round 88) its file read first (one that can't be read: what's here is shown)
-      const L = sel();
-      const versions = history[histKey(L)] || [];
-      const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
-      const preview = el('pre', { class: 'code-view', text: 'Pick a version to preview it.' });
-      let picked = null;
-      const restoreBtn = el('button', { type: 'button', class: 'primary', text: 'Restore this version', disabled: true, on: { click: () => {
-        snapshot();
-        editor.setValue(picked.code);
-        persist();
-        dlg.close();
-        run({ hot: true, layer: selId });
-        toast('Version restored (the code you had is in History too)');
-      } } });
-      const row = (label, sub, onClick) => el('button', { type: 'button', class: 'lib-item', on: { click: onClick } }, el('b', { text: label }), ' ', el('span', { class: 'hint', text: sub }));
-      dlg.append(el('form', { method: 'dialog' }, el('h2', { text: `History: ${current.name}${layersOf().length > 1 ? ` · ${L.name}` : ''}` }),
-        el('div', { class: 'lib-layout', style: { minHeight: '360px' } },
-          el('div', { class: 'lib-side' },
-            el('div', { class: 'lib-group', text: 'Versions (saved when run)' }),
-            ...(versions.length ? versions.map((v) => row(fmtDate(v.at), `${v.code.split('\n').length} lines`, () => {
-              picked = v; preview.innerHTML = highlight(v.code, 'js'); restoreBtn.disabled = false;
-            })) : [el('p', { class: 'hint', text: 'No versions yet. One is saved each time you run.' })]),
-            el('div', { class: 'lib-group', text: 'Deleted sketches' }),
-            ...(trash.length ? trash.map((t) => row(t.name, `deleted ${timeAgo(t.deletedAt)}`, () => {
-              trash = trash.filter((x) => x !== t);
-              saveHistory();
-              dlg.close();
-              create(t.name, t.code, t.layers);
-              toast(`Restored "${t.name}"`);
-            })) : [el('p', { class: 'hint', text: 'None.' })])),
-          preview),
-        el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Close' }), restoreBtn)));
-      dlg.addEventListener('close', () => dlg.remove());
-      document.body.append(dlg);
-      openLight(dlg);
-    }
+    function historyDialog(...a) { return labPart(K, 'dialogs', 'historyDialog', a); } // tools/three-lab-dialogs.js
 
     // Full runs reload the preview with every layer; hot runs (slider rebuilds, live code, a new layer)
     // re-run one layer in place, keeping three.js loaded, the other layers running and the music playing.
     // Cycle looks: every N bars while the song plays, each layer moves to its next saved look (morphing)
     let lookCycle = store.get('three.lookCycle', 0);
     let lookTimer = 0; let lookBar = -1;
-    function lookCycleMenu(anchor) {
-      const r = anchor.getBoundingClientRect();
-      showMenu(r.left, r.bottom + 4, [[0, 'Off'], [1, 'Every bar'], [2, 'Every 2 bars'], [4, 'Every 4 bars'], [8, 'Every 8 bars']].map(([n, label]) => ({ label: `${lookCycle === n ? '✓ ' : ''}${label}`, action: () => setLookCycle(n) })));
-    }
-    function setLookCycle(n) {
-      lookCycle = n; store.set('three.lookCycle', n);
-      clearInterval(lookTimer); lookTimer = 0; lookBar = -1;
-      if (!n) { for (const L of layersOf()) controllers.get(L.id)?.endLook?.(); toast('Look cycling off', { timeout: 1200 }); return; }
-      const looksCount = layersOf().reduce((s, L) => s + (controllers.get(L.id)?.looksApi.list().length || 0), 0);
-      toast(looksCount ? `Looks change every ${n} bar${n === 1 ? '' : 's'} while it plays` : 'Save a few looks first (Sliders → + Save look)', { timeout: 2200 });
-      lookTimer = setInterval(() => {
-        if (!player.playing) { if (lookBar !== -1) { lookBar = -1; for (const L of layersOf()) controllers.get(L.id)?.endLook?.(); } return; }
-        const barLen = (60 / player.bpm) * 4;
-        const bar = Math.floor(player.time / barLen);
-        if (bar === lookBar) return;
-        lookBar = bar;
-        if (bar % n) return;
-        for (const L of layersOf()) {
-          const c = controllers.get(L.id); const names = c?.looksApi.list() || [];
-          if (names.length) c.playLook(names[Math.floor(bar / n) % names.length]);
-        }
-      }, 40);
-    }
+    function lookCycleMenu(...a) { return labPart(K, 'dialogs', 'lookCycleMenu', a); } // tools/three-lab-dialogs.js
+    function setLookCycle(...a) { return labPart(K, 'dialogs', 'setLookCycle', a); } // tools/three-lab-dialogs.js
     if (lookCycle) queueMicrotask(() => setLookCycle(lookCycle));
     // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
     // right-click on the picture
@@ -4074,11 +3359,7 @@ const ThreeLab = (() => {
     const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚ Freeze', title: 'Freeze the picture (F or \\) · while frozen, . steps one frame · | pins this frame to compare with what comes next', dataset: { feature: 'Freeze', key: 'F' }, on: { click: () => setFreeze(!frozenNow) } });
     freezeBtn.addEventListener('dblclick', (e) => { if (frozenNow) { e.preventDefault(); setFreeze(true); box.send({ type: 'step' }); } }); // frozen: double-click = one frame
     freezeBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); freezeMenu(e); });
-    function freezeMenu(e) {
-      ThreeTweaks.menu(e.clientX, e.clientY, ['Freeze', [frozenNow ? 'Unfreeze' : 'Freeze now', 'F or \\', () => setFreeze(!frozenNow)],
-        ['On the next beat', 'Lands exactly on the beat while it plays', () => freezeOn('beat')], ['On the next bar', 'On the next 1', () => freezeOn('bar')], ['On the next kick', 'Your next kick marker', () => freezeOn('kick')],
-        ['◐ Pin this frame', '|', () => pinFrame()], ['📷 Still of this frame', 'Exact size', () => still()], [frozenNow ? 'One frame forward' : '', '.', () => box.send({ type: 'step' })].filter(() => frozenNow)].filter((x) => !Array.isArray(x) || x.length));
-    }
+    function freezeMenu(...a) { return labPart(K, 'dialogs', 'freezeMenu', a); } // tools/three-lab-dialogs.js
     // freeze exactly on the next beat / bar (counts in the song's grid; without a song: now)
     function freezeOn(unit = 'beat') {
       const wait = player.loaded && player.playing ? player.untilNext(unit) : 0;
@@ -4134,18 +3415,7 @@ const ThreeLab = (() => {
       pinned.mode = mode; paintOnion(); return mode;
     }
     function cycleCompare() { if (!pinned) pinFrame(); else setCompare(pinned.mode === 'onion' ? 'wipe' : pinned.mode === 'wipe' ? 'diff' : 'off'); }
-    function compareMenu(x, y) {
-      ThreeTweaks.menu(x, y, ['Compare with a pinned frame',
-        ['Pin this frame', '| · replaces the pinned one', () => pinFrame()],
-        ['Onion skin', 'The pinned frame over the live picture, see-through', () => setCompare('onion'), pinned?.mode === 'onion'],
-        ['Wipe', 'Pinned on the left, live on the right: drag the line', () => setCompare('wipe'), pinned?.mode === 'wipe'],
-        ['Difference', 'Only what changed lights up', () => setCompare('diff'), pinned?.mode === 'diff'],
-        ['Pin when I freeze', 'Each freeze also pins the frame', () => store.set('three.pinOnFreeze', !store.get('three.pinOnFreeze', false)), store.get('three.pinOnFreeze', false)],
-        ...(pinned?.mode === 'onion' ? [0.25, 0.5, 0.75].map((o) => [`${Math.round(o * 100)}% see-through`, '', () => { pinned.opacity = o; paintOnion(); }, pinned.opacity === o]) : []),
-        pinned ? ['Save the pinned frame…', '', () => saveDataUrl(pinned.url, `${current?.name || 'sketch'} pinned.png`)] : null,
-        pinned ? ['Send before / after to the director', 'Both frames in its chat', () => framesToDirector('compare')] : null,
-        pinned ? ['Off', '', () => setCompare('off')] : null]);
-    }
+    function compareMenu(...a) { return labPart(K, 'capture', 'compareMenu', a); } // tools/three-lab-capture.js
     wipeBar.addEventListener('pointerdown', (e) => {
       wipeBar.setPointerCapture(e.pointerId);
       const move = (ev) => { const r0 = onion.getBoundingClientRect(); pinned.split = Math.max(0, Math.min(1, (ev.clientX - r0.left) / r0.width)); paintOnion(); };
@@ -4157,82 +3427,18 @@ const ThreeLab = (() => {
     const stillBtn = el('button', { class: 'stage-btn', text: '📷', title: 'Still: save this frame as a PNG at the exact frame size · Shift+click: copy it · right-click: a still at 9:16 / 16:9 / 4:5 / 1:1', dataset: { feature: 'Still' } });
     stillBtn.addEventListener('click', (e) => still({ copy: e.shiftKey }));
     stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); stillMenu(e); });
-    function stillMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })],
-      ['Send this frame to the director', 'Attached in its chat, ready to describe', () => framesToDirector('frame')],
-      'A folder of stills', ['In all four sizes', '9:16, 16:9, 4:5, 1:1 as PNGs', () => stillsAt('sizes')], [player.loaded ? 'At every cue' : 'Across the song', player.cues.length ? `${player.cues.length} cues` : 'six evenly spaced frames', () => stillsAt('cues')], store.get('three.stillsDir', '') ? ['Choose another folder…', store.get('three.stillsDir', ''), () => { store.set('three.stillsDir', ''); stillsFolder(); }] : null]); }
-    async function still({ size = null, copy = false } = {}) {
-      const before = stage.size.id;
-      if (size && size !== before) { stage.setMode(size); await sleep(2200); }
-      const url = await director.shot();
-      if (size && size !== before) stage.setMode(before);
-      if (!url) { toast('Nothing is rendering', { type: 'error' }); return null; }
-      const z = ThreeMedia.SIZES.find((x) => x.id === (size || before));
-      const name = `${current?.name || 'sketch'}${z?.w ? ` ${z.w}x${z.h}` : ''}${player.loaded ? ` ${fmtMs(player.time).replace(/:/g, '-')}` : ''}.png`.replace(/[\\/:*?"<>|]/g, '_');
-      if (copy) {
-        const b = pngBlob(url);
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(() => toast('Still copied', { timeout: 1200 }), (err) => toast(`Couldn't copy: ${err.message}`, { type: 'error' }));
-      } else saveDataUrl(url, name);
-      return url;
-    }
-    // A folder of stills: one at every cue (or across the song), or the frame in all four sizes, as PNGs.
-    // Frames to the Three Director's chat: this frame, or the pinned one and the live one side by side in time
-    async function framesToDirector(which = 'frame') {
-      const agent = H.agents().find((a) => a.threeTools);
-      if (!agent) { toast('Add an agent with Three.js tools first (the Three Director)', { type: 'error' }); return false; }
-      const urls = which === 'compare' && pinned ? [pinned.url, await director.shot()] : [await director.shot()];
-      const paths = [];
-      for (const [k, u] of urls.entries()) if (u) paths.push(await window.hub.saveAttachment(`${safeName(current?.name || 'sketch')} ${which === 'compare' ? (k ? 'after' : 'before') : 'frame'}.png`, u.split(',')[1]));
-      if (!paths.length) return false;
-      activate(agent.id);
-      await Native.attachPaths(agent.id, paths);
-      Native.setDraft(agent.id, which === 'compare' ? 'Before (pinned) and after (now): ' : `This frame${player.loaded ? ` at ${fmtMs(player.time)}` : ''} of "${current?.name}": `);
-      return true;
-    }
-    async function stillsFolder() {
-      let dir = store.get('three.stillsDir', '');
-      if (!dir || !(await window.hub.fs.stat(dir))?.isDir) { [dir] = await window.hub.openDialog({ title: 'Folder for the stills', properties: ['openDirectory', 'createDirectory'] }); if (!dir) return null; store.set('three.stillsDir', dir); }
-      return dir;
-    }
+    function stillMenu(...a) { return labPart(K, 'dialogs', 'stillMenu', a); } // tools/three-lab-dialogs.js
+    function still(...a) { return labPart(K, 'capture', 'still', a); } // tools/three-lab-capture.js
+    function framesToDirector(...a) { return labPart(K, 'capture', 'framesToDirector', a); } // tools/three-lab-capture.js
+    function stillsFolder(...a) { return labPart(K, 'capture', 'stillsFolder', a); } // tools/three-lab-capture.js
     const pngBytes = (url) => Uint8Array.from(atob(url.split(',')[1]), (ch) => ch.charCodeAt(0));
     // a data URL as a Blob without fetch() (the page's CSP blocks fetching data: URLs, so copying a still failed)
     function pngBlob(url) { return new Blob([pngBytes(url)], { type: 'image/png' }); }
     const safeName = (x) => String(x).replace(/[\\/:*?"<>|]/g, '_');
-    async function stillsAt(kind = 'cues') {
-      const dir = await stillsFolder();
-      if (!dir) return 0;
-      const sep = dir.includes('\\') ? '\\' : '/';
-      const base = safeName(current?.name || 'sketch');
-      let n = 0;
-      const t0 = toast(kind === 'sizes' ? 'Stills in four sizes…' : 'A still at every cue…', { timeout: 60000 });
-      try {
-        if (kind === 'sizes') {
-          const before = stage.size.id;
-          for (const id of ['9:16', '16:9', '4:5', '1:1']) { stage.setMode(id); await sleep(2200); const url = await director.shot(); if (url) { const z = ThreeMedia.SIZES.find((x) => x.id === id); await window.hub.fs.write(`${dir}${sep}${base} ${z.w}x${z.h}.png`, pngBytes(url)); n += 1; } }
-          stage.setMode(before);
-        } else {
-          const was = player.time; const playing = player.playing;
-          if (playing) player.toggle(false);
-          const cues = player.cues.length ? player.cues : Array.from({ length: 6 }, (_, i) => ({ time: (player.duration * (i + 0.5)) / 6, name: `${i + 1}` }));
-          for (const [i, c] of cues.entries()) { player.seek(c.time + 0.05); await sleep(450); const url = await director.shot(); if (url) { await window.hub.fs.write(`${dir}${sep}${base} ${String(i + 1).padStart(2, '0')} ${safeName(c.name)}.png`, pngBytes(url)); n += 1; } }
-          player.seek(was); if (playing) player.toggle(true);
-        }
-      } finally { t0.remove(); }
-      toast(`${n} stills saved`, { timeout: 3000, action: { label: 'Show', fn: () => window.hub.fs.open(dir) } });
-      return n;
-    }
+    function stillsAt(...a) { return labPart(K, 'capture', 'stillsAt', a); } // tools/three-lab-capture.js
     // the preview's own ⋯: guides, safe zones, stage, fps, present
     const previewMoreBtn = el('button', { class: 'stage-btn', text: '⋯', title: 'Guides, safe zones, Stage window, frame rate, present', dataset: { feature: 'Preview more' }, on: { click: (e) => { const r0 = e.currentTarget.getBoundingClientRect(); Promise.resolve(previewMenu()).then((rows) => ThreeTweaks.menu(r0.right - 280, r0.bottom + 4, rows)); } } });
-    function previewMenu() {
-      return ['Preview',
-        ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
-        ['Safe zones', 'Platform buttons / captions / crops for the size (TikTok, Reels, Shorts)', () => stage.setSafe(), stage.safe, 'Safe zones'],
-        ['◐ Pin this frame to compare', '|', () => pinFrame()],
-        ['✦ Let Astra pick the frame size', 'For this picture · Undo puts yours back', () => (window.Lazy ? Lazy.load('assist') : Promise.resolve()).then(() => Decide.run('size'))], // (round 96: decide.js is in the 'assist' group)
-        [box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', 'Its own window, steady frames', () => setStage(!box.onStage), box.onStage, 'Stage window'],
-        ['Frame rate', `${(FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1]}${lightOn ? ' · light' : ''}`, [...FPS_OPTS.map(([v, l]) => [l, v === '-1' ? 'Follows the screen; 30 in the background; nothing when hidden' : '', () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); }, String(fpsPref()) === v, 'Preview fps']),
-          ['🪶 Light mode', 'Slower machine: 30 fps, 1× pixels, filters at half size', () => setLight(!lightOn), lightOn, 'Light mode'],
-          ['Perf HUD', 'fps, frame ms, draw calls, GPU memory, in a corner', () => setPerfHud(!perfHudOn), perfHudOn, 'Perf HUD']]]];
-    }
+    function previewMenu(...a) { return labPart(K, 'dialogs', 'previewMenu', a); } // tools/three-lab-dialogs.js
     let restartNext = false;
     function restartSim() {
       if (player.recording) { toast('Stop the recording first', { type: 'error' }); return; }
@@ -4502,76 +3708,7 @@ const ThreeLab = (() => {
       }, 3500);
     }
     const browseBtn = btn('▦', 'All your sketches as pictures', () => browseSketches());
-    function browseSketches() {
-      const q = el('input', { class: 'sb-search', placeholder: 'Search sketches…', spellcheck: false });
-      const grid = el('div', { class: 'sb-grid' });
-      const dlg = el('dialog', { class: 'ui-modal sb-dialog' },
-        el('div', { class: 'refs-head' }, el('h3', { text: 'Sketches' }), q, el('span', { class: 'spacer' }),
-          btn('＋ New', 'New sketch from a template', () => { dlg.close(); templateGallery(); }, 'primary small'),
-          btn('★ My work', 'Start a new scene from your past work: scenes, templates, standout layers, looks', () => { dlg.close(); Lazy.load('mywork').then(() => MyWork.open({ mode: 'lab', kind: 'scene' })).catch((e) => toast(e.message, { type: 'error' })); }, 'ghost small sb-mywork'), // (round 134, starters134)
-          btn('Close', '', () => dlg.close())),
-        grid);
-      // ★ pinned first, then by the sort you pick; right-click a card for rename / duplicate / pin / delete.
-      const sortSel = el('select', { class: 'sb-sort', title: 'Sort' }, [['recent', 'Recent'], ['name', 'Name'], ['layers', 'Most layers']].map(([v, l]) => el('option', { value: v, text: l, selected: v === store.get('three.sbSort', 'recent') })));
-      sortSel.addEventListener('change', () => { store.set('three.sbSort', sortSel.value); fill(); });
-      q.after(sortSel);
-      const pj = window.Lazy && !window.Lazy.loaded('projects') ? null : window.Projects;
-      const pf = pj?.sketchBrowse?.({ after: sortSel, refill: () => fill() }) || null; // (round 23) one project's scenes, its mark on cards (projects.js)
-      const pins = () => new Set(store.get('three.sketchPins', []));
-      const togglePin = (id) => { const p = pins(); if (p.has(id)) p.delete(id); else p.add(id); store.set('three.sketchPins', [...p]); window.LabPresets?.changed(); fill(); }; // (round 88) pins on both computers
-      const cardMenu = (e, sk) => {
-        e.preventDefault();
-        const p = pins();
-        showMenu(e.clientX, e.clientY, [
-          { label: 'Open', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } },
-          { label: '▣ Open and present', action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => togglePresent(), 400); } },
-          { label: '▶ Play', hint: 'as a game, full screen', action: () => { dlg.close(); playGame(sk); } },
-          ...(typeof ThreeSeq !== 'undefined' ? [{ label: '▤ Add to the sequence', action: () => { dlg.close(); ThreeSeq.add({ sketch: sk.id }).then(() => ThreeSeq.enter()).catch((err) => toast(err.message, { type: 'error' })); } },
-            { label: '▤ Its own sequence', hint: (() => { const x = ThreeSeq.summaryFor(sk.id); return x ? `${x.clips} clip${x.clips === 1 ? '' : 's'} · ${x.seconds.toFixed(1)} s` : 'made when you open it'; })(), action: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); setTimeout(() => ThreeSeq.enter().catch((err) => toast(err.message, { type: 'error' })), 300); } }] : []),
-          { label: p.has(sk.id) ? '☆ Unpin' : '★ Pin to the top', action: () => togglePin(sk.id) },
-          ...(pj?.sketchMenu?.(sk.id, sk.name) || []),
-          { label: 'Rename…', action: async () => { const n = await Modal.prompt('Rename sketch', { value: sk.name }); if (n?.trim()) { sk.name = n.trim(); save(); renderPicker(); fill(); } } },
-          { label: 'Earlier versions…', action: () => { dlg.close(); window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: sk.id, name: sk.name })); } }, // (round 75, versions75)
-          { label: 'Duplicate', action: () => { if (sk.id === current?.id) persist(); const copy = { ...JSON.parse(JSON.stringify(sk)), id: `s${Date.now()}`, name: `${sk.name} copy`, updatedAt: Date.now() }; sketches.push(copy); if (extras[sk.id]?.media) (extras[copy.id] ||= {}).media = { ...extras[sk.id].media }; if (extras[sk.id]?.timeline) { (extras[copy.id] ||= {}).timeline = { ...extras[sk.id].timeline }; player.copyMap(clockPath(sk.id), clockPath(copy.id)).catch(() => {}); } saveExtras(); save(); renderPicker(); fill(); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(sk.id, copy.id).catch(() => {}); toast(`Duplicated "${sk.name}"`, { timeout: 1500 }); } },
-          { label: 'Delete…', danger: true, action: async () => {
-            if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
-            if (!(await Modal.confirm('Delete sketch?', `"${sk.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
-            trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
-            trash.length = Math.min(trash.length, 30);
-            saveHistory();
-            removedIds.add(sk.id);
-            sketches = sketches.filter((s) => s.id !== sk.id);
-            save();
-            if (sk.id === current?.id) openSketch(sketches[0].id); else renderPicker();
-            fill();
-          } },
-        ]);
-      };
-      const fill = () => {
-        const needle = q.value.trim().toLowerCase();
-        const p = pins();
-        const by = sortSel.value;
-        const cmp = by === 'name' ? (a, b) => a.name.localeCompare(b.name) : by === 'layers' ? (a, b) => (b.layers?.length || 1) - (a.layers?.length || 1) : (a, b) => b.updatedAt - a.updatedAt;
-        const list = [...sketches].sort((a, b) => (p.has(b.id) - p.has(a.id)) || cmp(a, b)).filter((sk) => (!needle || sk.name.toLowerCase().includes(needle)) && (!pf || pf.keep(sk.id)));
-        grid.replaceChildren(...list.map((sk) => {
-          const t = thumbs[sk.id]?.url;
-          const layers = sk.layers?.length || 1;
-          const song = extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
-          const card = el('button', { class: `sb-card${sk.id === current?.id ? ' on' : ''}${p.has(sk.id) ? ' pinned' : ''}`, title: `Open "${sk.name}" (right-click for more)`, on: { click: () => { dlg.close(); if (sk.id !== current?.id) openSketch(sk.id); } } },
-            el('div', { class: 'sb-thumb' }, t ? el('img', { src: t, alt: '' }) : el('span', { text: '◭' }), p.has(sk.id) ? el('span', { class: 'sb-pin', text: '★' }) : null, song ? el('span', { class: 'sb-song', text: '♪', title: song }) : null),
-            el('b', { text: sk.name }, pf?.tag(sk.id), typeof ChatScenes !== 'undefined' && ChatScenes.ownerOf(sk.id) ? el('span', { class: 'sb-chat', text: ` ${ChatScenes.glyphFor(sk.id)}`, title: 'The scene of a director chat', style: { color: ChatScenes.identity(ChatScenes.ownerOf(sk.id)).color } }) : null),
-            el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ${song}` : ''}` }));
-          card.addEventListener('contextmenu', (e) => cardMenu(e, sk));
-          return card;
-        }));
-      };
-      q.addEventListener('input', fill);
-      dlg.addEventListener('close', () => dlg.remove());
-      document.body.append(dlg);
-      fill();
-      openLight(dlg);
-      q.focus();
-    }
+    function browseSketches(...a) { return labPart(K, 'dialogs', 'browseSketches', a); } // tools/three-lab-dialogs.js
     let pickerSig = '';
     // (round 86, projopen86) several scenes added in a row (a project import / Duplicate): one picker draw after them
     let pickerTimer = 0;
@@ -4686,82 +3823,14 @@ const ThreeLab = (() => {
       if (name) { current.name = name.trim(); save(); renderPicker(); }
     }
     function duplicate() { persist(); const from = current.id; const tl = extras[from]?.timeline; const s = create(`${current.name} copy`, current.code, current.layers, { timeline: tl }); if (tl) player.copyMap(clockPath(from), clockPath(s.id)).then((ok) => { if (ok && current === s) { player.unload({ silent: true }); sceneMedia(s.id); } }).catch(() => {}); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(from, s.id).catch(() => {}); }
-    async function removeSketch() {
-      if (sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
-      if (!(await Modal.confirm('Delete sketch?', `"${current.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
-      persist();
-      trash.unshift({ id: current.id, name: current.name, code: current.code, layers: current.layers, deletedAt: Date.now() });
-      trash.length = Math.min(trash.length, 30);
-      saveHistory();
-      removedIds.add(current.id);
-      sketches = sketches.filter((s) => s.id !== current.id);
-      save();
-      openSketch(sketches[0].id);
-    }
-    function templateGallery() {
-      if (typeof LabGalleryHook !== 'undefined' && LabGalleryHook.open()) return; // (round 27) the gallery of starting points (tools/three-gallery*.js)
-      const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
-      dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'New sketch' }),
-        el('div', { class: 'gallery' }, ThreeData.TEMPLATES.map((t) => el('button', {
-          type: 'button', class: 'gallery-item', on: { click: () => { dlg.close(); create(t.name, t.code); } },
-        }, el('b', { text: t.name }), el('span', { class: 'hint', text: t.desc })))),
-        el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { type: 'submit', text: 'Cancel' }))));
-      dlg.addEventListener('close', () => dlg.remove());
-      document.body.append(dlg);
-      openLight(dlg);
-    }
-    function exportHtml() {
-      if (layersOf().length > 1) { toast('Export HTML works for one-layer sketches. For layered ones, use ⏺ Record (it records every layer with the music).', { type: 'error', timeout: 6000 }); return; }
-      const v = store.get('three.version', ThreeData.VERSIONS[0]);
-      const code = editor.value;
-      const html = `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(current.name)}</title>
-<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; } canvas { display: block; }</style>${/\btweak\s*\(/.test(code) ? `
-<script>
-// Slider controls from the Three.js Lab, frozen at their saved values.
-window.tweak = (spec) => Object.fromEntries(Object.entries(spec).map(([k, v]) => [k, Array.isArray(v) ? v[0] : (v && typeof v === 'object' && 'value' in v) ? v.value : v]));
-</script>` : ''}${/\b(audio|media)\./.test(code) ? `
-<script>
-// The Lab's music input isn't part of the export: these stand-ins keep the sketch running (silent).
-window.audio = { level: 0, bass: 0, mid: 0, treble: 0, beat: 0, kick: 0, snare: 0, hit: 0, hits: { kick: [], snare: [], hit: [] }, since: () => Infinity, next: () => Infinity, beatInBar: 1, bar: 1, beatPhase: 0, barPhase: 0, beatsPerBar: 4, spectrum: new Uint8Array(1024), waveform: new Float32Array(2048), band: () => 0, time: 0, duration: 0, playing: false, loaded: false, simulated: false, bpm: 0, analysis: null, file: null };
-window.audio = new Proxy(window.audio, { get: (o, k) => (k === 'time' ? performance.now() / 1000 : o[k]) });
-window.media = { video: null, width: 0, height: 0, texture: () => null };
-</script>` : ''}
-<script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@${v}/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@${v}/examples/jsm/" } }
-</script>
-</head>
-<body>
-<script type="module">
-${code}
-</script>
-</body>
-</html>
-`;
-      window.hub.saveFile({ defaultPath: `${current.name.replace(/[\\/:*?"<>|]/g, '_')}.html`, filters: [{ name: 'HTML', extensions: ['html'] }], content: html })
-        .then((p) => p && toast('Exported. It runs in any browser (needs internet for three.js).', { action: { label: 'Open', fn: () => window.hub.fs.open(p) } }));
-    }
-    function askAbout() {
-      const own = errors.filter((e) => !e.layer || e.layer === selId);
-      const errText = own.length ? `\n\nIt currently shows these errors:\n${own.map((e) => `- ${e.message}${e.line ? ` (line ${e.line})` : ''}`).join('\n')}` : '';
-      const which = layersOf().length > 1 ? ` (the layer "${sel().name}" of a layered sketch: each layer is its own module with its own transparent renderer)` : '';
-      // (round 92, labchat92) the chat it starts is linked to this scene (its AI's Lab calls reach it; ▶ Apply on its code).
-      // A Claude with the Lab's tools reads the layer itself: the draft doesn't carry its whole code (≈ 1 token / 4 characters)
-      if (window.LabChatLink && H.claudeAgent()?.threeTools) { LabChatLink.ask(`About the layer "${sel().name}" (read it with three_read_code).${errText}\n\n`, { sceneId: current.id, agentId: H.claudeAgent().id }); return; }
-      (window.LabChatLink ? (t) => LabChatLink.ask(t, { sceneId: current.id, agentId: H.claudeAgent()?.id }) : draftToClaude)(`Here's my three.js sketch${which} (three r${(box.revision || store.get('three.version', ThreeData.VERSIONS[0]).split('.')[1])}, ES modules with an import map for 'three' and 'three/addons/').${errText}\n\n\`\`\`js\n${editor.value}\n\`\`\`\n\n`);
-    }
+    function removeSketch(...a) { return labPart(K, 'dialogs', 'removeSketch', a); } // tools/three-lab-dialogs.js
+    function templateGallery(...a) { return labPart(K, 'dialogs', 'templateGallery', a); } // tools/three-lab-dialogs.js
+    function exportHtml(...a) { return labPart(K, 'dialogs', 'exportHtml', a); } // tools/three-lab-dialogs.js
+    function askAbout(...a) { return labPart(K, 'dialogs', 'askAbout', a); } // tools/three-lab-dialogs.js
 
     picker.addEventListener('change', () => openSketch(picker.value));
     picker.addEventListener('contextmenu', (e) => { e.preventDefault(); pickerMenu(e); });
-    function pickerMenu(e) {
-      const pins = new Set(store.get('three.sketchPins', []));
-      const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt).slice(0, 14);
-      ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => openSketch(x.id), x.id === current?.id]), ['All as pictures…', 'O', () => browseSketches()], ...(current ? [[`▶ Play ${current.name}`, 'as a game, full screen', () => playGame()]] : []), ['＋ New sketch', '', () => templateGallery()]]);
-    }
+    function pickerMenu(...a) { return labPart(K, 'dialogs', 'pickerMenu', a); } // tools/three-lab-dialogs.js
     autoBox.addEventListener('change', () => { autoRun = autoBox.checked; store.set('three.autorun', autoRun); });
     version.addEventListener('change', () => { store.set('three.version', version.value); run(); });
     snippetSel.addEventListener('change', () => {
@@ -5709,273 +4778,13 @@ ${code}
       .then((p) => p && toast('Screenshot saved', { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }));
   }
 
-  // ---------- Model viewer tab ----------
-  function modelTab(pane) {
-    const view = el('div', { class: 'three-preview model-preview' });
-    const side = el('div', { class: 'model-side' });
-    let info = null;
-    const btn = (text, title, fn) => el('button', { class: 'ghost small', text, title, on: { click: fn } });
-    const toolbar = el('div', { class: 'three-toolbar' },
-      btn('Open model…', 'GLB, GLTF, FBX, OBJ, STL or PLY', openModel),
-      btn('Frame', 'Fit the model in view', () => box.send({ type: 'viewer', cmd: 'frame' })),
-      btn('📷', 'Save a screenshot', () => box.send({ type: 'screenshot' })),
-      btn('Loader code', 'Copy three.js code that loads this model and plays its animations', loaderCode),
-      el('span', { class: 'spacer' }),
-      el('span', { class: 'hint', text: 'Drop model files onto the view. For .gltf, drop its .bin and textures together.' }));
-    pane.append(toolbar, el('div', { class: 'model-split' }, view, side));
-    const box = sandboxFrame(view, 'viewer', (msg) => {
-      if (msg.type === 'model') { info = msg; renderSide(); toast(`Loaded ${msg.name}`, { timeout: 1500 }); }
-      if (msg.type === 'error') toast(msg.message, { type: 'error' });
-      if (msg.type === 'shot') saveDataUrl(msg.dataUrl, `${info?.name || 'model'}.png`);
-    });
-    const cmd = (c, value, extra = {}) => box.send({ type: 'viewer', cmd: c, value, ...extra });
+  function modelTab(...a) { return labPart(K0, 'tools', 'modelTab', a); } // tools/three-lab-tools.js
 
-    async function openModel() {
-      const paths = await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: '3D models', extensions: ['glb', 'gltf', 'fbx', 'obj', 'stl', 'ply', 'bin', 'png', 'jpg', 'jpeg', 'webp', 'ktx2'] }] });
-      if (!paths.length) return;
-      const main = paths.find((p) => /\.(glb|gltf|fbx|obj|stl|ply)$/i.test(p));
-      if (!main) { toast('Pick a .glb, .gltf, .fbx, .obj, .stl or .ply file', { type: 'error' }); return; }
-      const toBuf = async (p) => Uint8Array.from(atob(await window.hub.fs.read(p, { encoding: 'base64', maxBytes: 500 * 1048576 })), (c) => c.charCodeAt(0)).buffer;
-      const extra = await Promise.all(paths.filter((p) => p !== main).map(async (p) => ({ name: p.split(/[\\/]/).pop(), buffer: await toBuf(p) })));
-      box.send({ type: 'load', name: main.split(/[\\/]/).pop(), buffer: await toBuf(main), extra });
-    }
+  function shaderTab(...a) { return labPart(K0, 'tools', 'shaderTab', a); } // tools/three-lab-tools.js
 
-    function loaderCode() {
-      if (!info) { toast('Load a model first', { type: 'error' }); return; }
-      const clips = info.clips.map((c) => c.name);
-      const code = `import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-${/\.(glb|gltf)$/i.test(info.name) ? '' : `// ${info.name} isn't glTF: convert it (Blender → File → Export → glTF 2.0) or swap in the matching loader.\n`}const loader = new GLTFLoader();
-let mixer;
-loader.load('models/${info.name}', (gltf) => {
-  const model = gltf.scene;
-  scene.add(model);${clips.length ? `
-  mixer = new THREE.AnimationMixer(model);
-  // Clips: ${clips.join(', ')}
-  const clip = THREE.AnimationClip.findByName(gltf.animations, '${clips[0].replace(/'/g, "\\'")}');
-  mixer.clipAction(clip).play();` : ''}
-});
-${clips.length ? '// In your render loop: mixer?.update(clock.getDelta());\n' : ''}// Size in units: ${info.size.join(' × ')} · ${info.triangles.toLocaleString()} triangles
-`;
-      copyText(code, 'Loader code copied');
-    }
+  function textureTab(...a) { return labPart(K0, 'tools', 'textureTab', a); } // tools/three-lab-tools.js
 
-    function renderSide() {
-      side.replaceChildren();
-      if (!info) { side.append(el('p', { class: 'hint', text: 'Open or drop a model to see its stats, materials, scene tree and animations.' })); return; }
-      const stat = (label, value) => el('div', { class: 'stat' }, el('span', { text: label }), el('b', { text: value }));
-      const section = (title, ...kids) => el('details', { class: 'model-section', open: true }, el('summary', { text: title }), ...kids);
-      side.append(
-        el('h3', { text: info.name }),
-        section('Stats', el('div', { class: 'stats-grid' },
-          stat('Triangles', info.triangles.toLocaleString()), stat('Vertices', info.vertices.toLocaleString()),
-          stat('Meshes', info.meshes), stat('Draw calls (est.)', info.drawCalls), stat('Materials', info.materials.length),
-          stat('Textures', `${info.textures.length} · ${fmtBytes(info.gpuTextureBytes)} GPU`), stat('Size (units)', info.size.join(' × ')),
-          stat('Skinned meshes', info.skinned ? `${info.skinned} (${info.maxBones} bones max)` : '0'))),
-        section('Performance audit', el('ul', { class: 'issues' }, info.issues.map((i) => el('li', { class: i.level, text: i.text })))),
-        section('Display', ...displayControls()),
-        info.clips.length ? section(`Animations (${info.clips.length})`, animationControls()) : null,
-        section(`Materials (${info.materials.length})`, ...info.materials.map(materialRow)),
-        section('Scene tree', treeNode(info.tree, 0)),
-        info.textures.length ? section(`Textures (${info.textures.length})`, el('div', { class: 'tex-list' }, info.textures.map((t) => el('div', { class: 'tex-row' },
-          el('span', { text: t.name }), el('span', { class: t.pot ? '' : 'warn', text: `${t.w}×${t.h}` }), el('span', { class: 'hint', text: fmtBytes(t.bytes) }))))) : null);
-    }
-    function displayControls() {
-      const toggle = (label, c, initial) => {
-        const input = el('input', { type: 'checkbox', checked: initial, on: { change: () => cmd(c, input.checked) } });
-        return el('label', { class: 'check' }, input, label);
-      };
-      const bg = el('input', { type: 'color', value: '#1b1e25', on: { input: () => cmd('background', bg.value) } });
-      return [el('div', { class: 'check-grid' },
-        toggle('Wireframe', 'wireframe', false), toggle('Bounding box', 'bbox', false), toggle('Grid', 'grid', true), toggle('Axes', 'axes', true),
-        toggle('Environment light', 'environment', true), toggle('Vertex normals', 'normals', false), toggle('Auto-rotate', 'autorotate', false)),
-      el('label', { class: 'row' }, 'Background ', bg)];
-    }
-    function animationControls() {
-      const sel = el('select', {}, info.clips.map((c) => el('option', { value: c.name, text: `${c.name} (${c.duration}s, ${c.tracks} tracks)` })));
-      const speed = el('input', { type: 'range', min: 0, max: 3, step: 0.05, value: 1 });
-      const speedLabel = el('span', { class: 'hint', text: '1×' });
-      const scrub = el('input', { type: 'range', min: 0, max: info.clips[0].duration, step: 0.01, value: 0 });
-      let paused = false;
-      const pause = el('button', { class: 'ghost small', text: '⏸ Pause', on: { click: () => { paused = !paused; pause.textContent = paused ? '▶ Play' : '⏸ Pause'; cmd('pause', paused); } } });
-      sel.addEventListener('change', () => { cmd('clip', sel.value); scrub.max = info.clips.find((c) => c.name === sel.value).duration; });
-      speed.addEventListener('input', () => { speedLabel.textContent = `${Number(speed.value).toFixed(2)}×`; if (!paused) cmd('speed', Number(speed.value)); });
-      scrub.addEventListener('input', () => { if (!paused) pause.click(); cmd('seek', Number(scrub.value)); });
-      return el('div', { class: 'anim-controls' }, sel, el('div', { class: 'row' }, pause, el('span', { class: 'hint', text: 'Speed' }), speed, speedLabel), el('label', { class: 'hint' }, 'Scrub (pauses)', scrub));
-    }
-    function materialRow(m) {
-      const row = el('div', { class: 'mat-row' }, el('div', { class: 'mat-name' }, el('b', { text: m.name }), el('span', { class: 'hint', text: `${m.type}${m.maps.length ? ` · ${m.maps.join(', ')}` : ''}` })));
-      const ctrl = el('div', { class: 'mat-ctrl' });
-      if (m.color) ctrl.append(el('label', { class: 'hint' }, 'Color ', el('input', { type: 'color', value: m.color, on: { input: (e) => cmd('material', e.target.value, { uuid: m.uuid, prop: 'color' }) } })));
-      if (m.emissive) ctrl.append(el('label', { class: 'hint' }, 'Emissive ', el('input', { type: 'color', value: m.emissive, on: { input: (e) => cmd('material', e.target.value, { uuid: m.uuid, prop: 'emissive' }) } })));
-      for (const prop of ['roughness', 'metalness', 'opacity']) {
-        if (typeof m[prop] !== 'number') continue;
-        ctrl.append(el('label', { class: 'hint slider' }, prop, el('input', { type: 'range', min: 0, max: 1, step: 0.01, value: m[prop], on: { input: (e) => cmd('material', Number(e.target.value), { uuid: m.uuid, prop }) } })));
-      }
-      row.append(ctrl);
-      return row;
-    }
-    function treeNode(n, depth) {
-      const vis = el('input', { type: 'checkbox', checked: n.visible, title: 'Visible', on: { change: (e) => cmd('visible', e.target.checked, { uuid: n.uuid }) } });
-      const label = el('span', { class: 'tree-label', text: n.name, title: n.type, on: { click: () => cmd('select', null, { uuid: n.uuid }) } });
-      const row = el('div', { class: 'tree-row', style: { paddingLeft: `${depth * 12}px` } }, vis, label, el('span', { class: 'hint', text: n.type.replace(/Mesh$/, ' mesh') }));
-      return el('div', {}, row, n.children.slice(0, 400).map((c) => treeNode(c, depth + 1)));
-    }
-    renderSide();
-    api.openModel = openModel;
-  }
-
-  // ---------- Shader tab ----------
-  function shaderTab(pane) {
-    const status = el('span', { class: 'hint' });
-    const presetSel = el('select', {}, el('option', { value: '', text: 'Presets…' }), Object.keys(ThreeData.SHADERS).map((k) => el('option', { value: k, text: k })));
-    const editorHost = el('div', { class: 'three-editor' });
-    const preview = el('div', { class: 'three-preview' });
-    const errorsBox = el('div', { class: 'three-console' });
-    const editor = new CodeEditor(editorHost, { lang: 'glsl', onRun: () => apply(), onChange: debounce(() => { store.set('three.shader', editor.value); apply(); }, 500) });
-    const btn = (text, title, fn, cls = 'ghost small') => el('button', { class: cls, text, title, on: { click: fn } });
-    pane.append(el('div', { class: 'three-toolbar' },
-      btn('▶ Compile', 'Compile (Ctrl+Enter); it also recompiles as you type', () => apply(), 'primary small'), presetSel,
-      el('span', { class: 'hint', text: 'Uniforms: uTime, uResolution, uMouse, uFrame · write to fragColor · Shadertoy mainImage() works too' }),
-      el('span', { class: 'spacer' }), status,
-      btn('📷', 'Save a screenshot', () => box.send({ type: 'screenshot' })),
-      btn('Copy as ShaderMaterial', 'three.js code for this shader on a mesh', copyMaterial),
-      btn('Ask Claude', 'Send this shader (and errors) to Claude', () => draftToClaude(`Here's my GLSL ES 3.0 fragment shader (uniforms uTime, uResolution, uMouse; output fragColor).${errorsBox.textContent ? `\n\nCompiler errors:\n${errorsBox.textContent}` : ''}\n\n\`\`\`glsl\n${editor.value}\n\`\`\`\n\n`))),
-    el('div', { class: 'three-split' }, editorHost, el('div', { class: 'three-right' }, preview, errorsBox)));
-    const box = sandboxFrame(preview, 'shader', (msg) => {
-      if (msg.type === 'shader-error') {
-        status.textContent = 'Compile error';
-        status.className = 'hint bad';
-        errorsBox.replaceChildren(...msg.errors.map((e) => el('div', { class: 'console-row error' }, e.line ? el('span', { class: 'console-line', text: `line ${e.line}` }) : null, el('span', { text: e.message }))));
-        editor.setErrorLines(msg.errors.map((e) => e.line).filter((l) => l > 0));
-      }
-      if (msg.type === 'ready' && msg.again) apply(); // the page restarted by itself: compile again
-      if (msg.type === 'shader-ok') { status.textContent = 'Compiled'; status.className = 'hint ok'; errorsBox.replaceChildren(); editor.setErrorLines([]); }
-      if (msg.type === 'shot') saveDataUrl(msg.dataUrl, 'shader.png');
-    });
-    function apply() { box.send({ type: 'shader', code: editor.value }); }
-    function copyMaterial() {
-      const frag = editor.value.replace(/`/g, '\\`');
-      copyText(`const uniforms = { uTime: { value: 0 }, uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) }, uMouse: { value: new THREE.Vector2() }, uFrame: { value: 0 } };
-const material = new THREE.ShaderMaterial({
-  glslVersion: THREE.GLSL3,
-  uniforms,
-  vertexShader: \`out vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }\`,
-  fragmentShader: \`uniform float uTime; uniform vec2 uResolution; uniform vec2 uMouse; uniform int uFrame;
-in vec2 vUv;
-out vec4 fragColor;
-#define iTime uTime
-#define iResolution vec3(uResolution, 1.0)
-#define iMouse vec4(uMouse, 0.0, 0.0)
-${frag}\`,
-});
-// Each frame: uniforms.uTime.value = clock.getElapsedTime();`, 'ShaderMaterial code copied');
-    }
-    presetSel.addEventListener('change', () => { if (presetSel.value) { editor.setValue(ThreeData.SHADERS[presetSel.value]); store.set('three.shader', editor.value); apply(); presetSel.value = ''; } });
-    editor.setValue(store.get('three.shader', ThreeData.SHADERS['Gradient + time']));
-    apply();
-    api.openShader = (code) => { editor.setValue(code); store.set('three.shader', code); apply(); };
-    window.ShaderNodes?.attachPlayground?.(pane, { editor }); // "◇ Nodes": edit shaders as node graphs (nodes-shader.js)
-  }
-
-  // ---------- Textures tab ----------
-  function textureTab(pane) {
-    const list = el('div', { class: 'tex-cards' });
-    const intro = el('div', { class: 'drop-hint', text: 'Drop images here (or Open…) to check sizes, power-of-two, alpha and GPU memory, and to resize them for three.js.' });
-    pane.append(el('div', { class: 'three-toolbar' },
-      el('button', { class: 'ghost small', text: 'Open images…', on: { click: async () => { for (const p of await window.hub.openDialog({ properties: ['openFile', 'multiSelections'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }] })) inspect({ name: p.split(/[\\/]/).pop(), url: WinMac.fileUrl(p), path: p }); } } }),
-      el('button', { class: 'ghost small', text: 'Clear', on: { click: () => list.replaceChildren() } })), intro, list);
-    dropZone(pane, (files) => files.filter((f) => f.type.startsWith('image/')).forEach((f) => inspect({ name: f.name, url: URL.createObjectURL(f), size: f.size, path: window.hub.pathForFile(f) })), { hint: 'Drop images to inspect' });
-    const pot = (n) => (n & (n - 1)) === 0;
-    const nearestPot = (n) => 2 ** Math.round(Math.log2(n));
-    async function inspect({ name, url, size, path }) {
-      intro.hidden = true;
-      const img = new Image();
-      img.src = url;
-      await img.decode().catch(() => null);
-      if (!img.naturalWidth) { toast(`Couldn't read ${name}`, { type: 'error' }); return; }
-      const w = img.naturalWidth; const h = img.naturalHeight;
-      if (size == null && path) size = (await window.hub.fs.stat(path))?.size;
-      // Alpha check on a downscaled copy.
-      const c = document.createElement('canvas');
-      c.width = Math.min(w, 256); c.height = Math.min(h, 256);
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      const px = ctx.getImageData(0, 0, c.width, c.height).data;
-      let alpha = false;
-      for (let i = 3; i < px.length; i += 4) if (px[i] < 250) { alpha = true; break; }
-      const gpu = Math.round(w * h * 4 * 1.333);
-      const tips = [];
-      if (!pot(w) || !pot(h)) tips.push(`Not power-of-two. Nearest POT: ${nearestPot(w)}×${nearestPot(h)}.`);
-      if (Math.max(w, h) > 2048) tips.push('Larger than 2048 px; most web scenes don\'t need it (and some phones cap at 4096).');
-      if (!alpha && /\.png$/i.test(name) && (size || 0) > 300 * 1024) tips.push('No transparency: a JPG or WebP would be much smaller.');
-      if (gpu > 16 * 1048576) tips.push('Uses a lot of GPU memory. KTX2/Basis compression cuts it ~4–8×.');
-      if (!tips.length) tips.push('Looks good for three.js.');
-      const target = el('select', {}, [4096, 2048, 1024, 512, 256, 128].map((s) => el('option', { value: s, text: `${s}×${s}`, selected: s === Math.min(2048, nearestPot(Math.max(w, h))) })));
-      const fmtSel = el('select', {}, el('option', { value: 'png', text: 'PNG' }), el('option', { value: 'jpeg', text: 'JPG', selected: !alpha }), el('option', { value: 'webp', text: 'WebP' }));
-      const tileBox = el('input', { type: 'checkbox' });
-      const preview = el('div', { class: 'tex-preview', style: { backgroundImage: `url("${url}")` } });
-      tileBox.addEventListener('change', () => preview.classList.toggle('tiled', tileBox.checked));
-      list.prepend(el('div', { class: 'tex-card' }, preview,
-        el('div', { class: 'tex-info' },
-          el('b', { text: name }),
-          el('div', { class: 'stats-grid' },
-            el('div', { class: 'stat' }, el('span', { text: 'Size' }), el('b', { class: pot(w) && pot(h) ? 'ok' : 'warn', text: `${w}×${h}` })),
-            el('div', { class: 'stat' }, el('span', { text: 'File' }), el('b', { text: size ? fmtBytes(size) : '?' })),
-            el('div', { class: 'stat' }, el('span', { text: 'Alpha' }), el('b', { text: alpha ? 'yes' : 'no' })),
-            el('div', { class: 'stat' }, el('span', { text: 'GPU (RGBA + mips)' }), el('b', { text: fmtBytes(gpu) }))),
-          el('ul', { class: 'issues' }, tips.map((t) => el('li', { class: tips[0] === 'Looks good for three.js.' ? 'ok' : 'info', text: t }))),
-          el('div', { class: 'row' }, el('label', { class: 'check small' }, tileBox, 'Tile preview'), 'Resize to', target, fmtSel,
-            el('button', { class: 'ghost small', text: 'Save resized…', on: { click: () => resize(img, name, Number(target.value), fmtSel.value) } })))));
-    }
-    function resize(img, name, maxSide, format) {
-      const scale = maxSide / Math.max(img.naturalWidth, img.naturalHeight);
-      const c = document.createElement('canvas');
-      // Keep aspect, snapping each side to a power of two.
-      c.width = 2 ** Math.round(Math.log2(Math.max(1, img.naturalWidth * scale)));
-      c.height = 2 ** Math.round(Math.log2(Math.max(1, img.naturalHeight * scale)));
-      const ctx = c.getContext('2d');
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      const ext = format === 'jpeg' ? 'jpg' : format;
-      const dataUrl = c.toDataURL(`image/${format}`, 0.9);
-      window.hub.saveFile({ defaultPath: `${name.replace(/\.\w+$/, '')}_${c.width}x${c.height}.${ext}`, filters: [{ name: 'Image', extensions: [ext] }], content: dataUrl.split(',')[1], base64: true })
-        .then((p) => p && toast(`Saved ${c.width}×${c.height} ${ext.toUpperCase()}`, { action: { label: 'Show', fn: () => window.hub.fs.reveal(p) } }));
-    }
-  }
-
-  // ---------- Docs tab ----------
-  function docsTab(pane) {
-    const search = el('input', { type: 'search', placeholder: 'Search three.js classes (e.g. MeshStandardMaterial)…' });
-    const list = el('div', { class: 'docs-list' });
-    const webHost = el('div', { class: 'docs-web' });
-    pane.append(el('div', { class: 'docs-layout' }, el('div', { class: 'docs-side' }, search,
-      el('div', { class: 'row' },
-        el('button', { class: 'ghost small', text: 'Manual', on: { click: () => web.view.loadURL('https://threejs.org/manual/') } }),
-        el('button', { class: 'ghost small', text: 'Examples', on: { click: () => web.view.loadURL('https://threejs.org/examples/') } }),
-        el('button', { class: 'ghost small', text: 'Forum', on: { click: () => web.view.loadURL('https://discourse.threejs.org/') } })),
-      list), webHost));
-    const web = WebPane(webHost, { url: 'https://threejs.org/docs/', partition: 'persist:threedocs', zoomKey: 'threedocs' });
-    let classes = [];
-    const render = () => {
-      const q = search.value.trim().toLowerCase();
-      const hits = classes.filter((c) => c.toLowerCase().includes(q)).sort((a, b) => (a.toLowerCase().startsWith(q) ? -1 : 0) - (b.toLowerCase().startsWith(q) ? -1 : 0)).slice(0, 300);
-      list.replaceChildren(...hits.map((c) => el('button', { class: 'docs-item', text: c, on: { click: () => web.view.loadURL(`https://threejs.org/docs/${c}.html`) } })));
-    };
-    search.addEventListener('input', render);
-    search.addEventListener('keydown', (e) => { if (e.key === 'Enter') list.querySelector('button')?.click(); });
-    (async () => {
-      const cached = store.get('three.docsIndex', null);
-      if (cached && Date.now() - cached.at < 7 * 864e5) classes = cached.classes;
-      else {
-        try {
-          const html = await window.hub.fetchText('https://threejs.org/docs/');
-          classes = [...new Set([...html.matchAll(/<a href="([A-Za-z0-9_]+)\.html">\1<\/a>/g)].map((m) => m[1]))].sort();
-          store.set('three.docsIndex', { at: Date.now(), classes });
-        } catch (err) { list.append(el('p', { class: 'hint', text: `Couldn't load the class list: ${calmError(err)}` })); }
-      }
-      render();
-    })();
-  }
+  function docsTab(...a) { return labPart(K0, 'tools', 'docsTab', a); } // tools/three-lab-tools.js
 
   // Secondary tools, one click away in the "Tools" drawer: [id, label, hint, render, icon]
   const TOOL_TABS = [
@@ -5986,12 +4795,7 @@ ${frag}\`,
     ['color', 'Color', 'Convert colors (three.js, GLSL, AE), tints, contrast', (p) => Kit.colorTool(p), '🎨'],
     ['easing', 'Easing', 'Draw a bezier, get CSS / GSAP / three.js / AE code', (p) => Kit.easingTool(p), '〰'],
   ];
-  function toolsDrawer(anchor) {
-    const r = anchor.getBoundingClientRect();
-    ThreeTweaks.menu(r.left, r.bottom + 4, ['Tools', ['◭ Sketch', 'The Lab (Esc from any tool)', () => tabs.show('sketch'), tabs.current === 'sketch', 'Tools: Sketch'],
-      ...TOOL_TABS.map(([id, label, hint, , icon]) => [`${icon} ${label}`, hint, () => tabs.show(id), tabs.current === id, `Tools: ${label}`]),
-      'Quick', ['Open a 3D model…', 'GLB, FBX, OBJ, STL, PLY', () => { tabs.show('models'); setTimeout(() => api.openModel?.(), 80); }], ...(typeof Apps !== 'undefined' ? [['▣ Apps: Meshy, Poly Haven, Sketchfab…', 'Free skies and models, Meshy 3D models: straight into this sketch', () => Apps.menu(r.left, r.bottom + 4)]] : []), ['Paste a shader…', 'Opens the playground with your clipboard', async () => { let t = ''; try { t = await navigator.clipboard.readText(); } catch { /* none */ } tabs.show('shader'); if (/void\s+main|mainImage/.test(t)) setTimeout(() => api.openShader?.(t), 80); }]]);
-  }
+  function toolsDrawer(...a) { return labPart(K0, 'tools', 'toolsDrawer', a); } // tools/three-lab-tools.js
   Tools.define({
     id: 'three', name: 'Three.js Lab', icon: '◭', color: '#4f8cff',
     description: 'Live sketches, model viewer, shaders, textures and docs',
@@ -6179,83 +4983,7 @@ ${frag}\`,
     }
     return labCallMore(tool, args, d);
   }
-  // the director's rarer Lab tools (triggers, eval, input, the timeline and keyframes, notes, contact sheet, references)
-  async function labCallMore(tool, args, d) {
-    if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
-    if (tool === 'three_eval') {
-      const r = await d.evalInSketch(String(args.code || ''));
-      return r.ok ? { ok: true, value: { result: r.value, console: d.report().console?.slice?.(-5) } } : { ok: false, error: r.error };
-    }
-    if (tool === 'three_input') {
-      const r = await d.inputToSketch(Array.isArray(args.actions) ? args.actions : []);
-      if (!r.ok) return { ok: false, error: r.error };
-      if (!args.screenshot) return { ok: true, value: { done: r.log } };
-      const url = await d.shot();
-      return { ok: true, value: { done: r.log }, ...(url ? { images: [{ data: url.split(',')[1], mime: 'image/png' }] } : {}) };
-    }
-    if (tool === 'three_timeline') return { ok: true, value: d.timeline(args.from != null || args.to != null ? { from: args.from ?? 0, to: args.to ?? Infinity } : null) };
-    if (tool === 'three_timeline_edit') return { ok: true, value: d.timelineEdit(args) };
-    if (tool === 'three_animate') return { ok: true, value: d.applyPreset(args.layer, args.preset) };
-    if (tool === 'three_notes') {
-      const action = args.action || 'list';
-      if (action === 'list') {
-        const list = d.notes.list();
-        const open = list.filter((n) => !n.done && n.image).slice(0, 6);
-        const images = [];
-        for (const n of open) { try { images.push({ data: await window.hub.fs.read(n.image, { encoding: 'base64' }), mime: 'image/png' }); } catch { /* missing file */ } }
-        return { ok: true, images, value: { notes: list.map(({ image, ...n }) => n), screenshots: images.length ? `The ${images.length} images are the open notes' screenshots, in this order: ${open.map((n) => n.id).join(', ')}` : 'none' } };
-      }
-      if (action === 'done' || action === 'reopen') return { ok: true, value: d.notes.set(args.id, { done: action === 'done' }) };
-      if (action === 'edit') return { ok: true, value: d.notes.set(args.id, { text: String(args.text || '') }) };
-      if (action === 'delete') { d.notes.remove(args.id); return { ok: true, value: d.notes.list() } ; }
-      if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
-      return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
-    }
-    if (tool === 'three_contact_sheet') {
-      const sheet = await d.contactSheet({ times: Array.isArray(args.times) ? args.times : null, count: Math.max(2, Math.min(16, Number(args.count) || 8)) });
-      return { ok: true, images: [{ data: sheet.dataUrl.split(',')[1], mime: 'image/jpeg' }], value: { frames: sheet.frames, note: 'Numbered left to right, top to bottom.' } };
-    }
-    if (tool === 'three_references') {
-      const action = args.action || 'list';
-      const R = d.refs;
-      const find = (n) => R.list().find((r) => r.key === n || r.name === n) || (() => { throw new Error(`No reference "${n}". References: ${R.list().map((r) => r.key).join(', ') || 'none'}`); })();
-      if (action === 'list') {
-        const list = R.list();
-        const imgs = list.filter((r) => r.kind === 'image').slice(0, 6);
-        const images = [];
-        for (const r of imgs) {
-          try {
-            const img = new Image(); img.src = R.url(r.path); await img.decode();
-            const c = document.createElement('canvas'); const sc = Math.min(1, 640 / Math.max(img.width, img.height));
-            c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
-            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            images.push({ data: (await canvasDataUrl(c, 'image/jpeg', 0.85)).split(',')[1], mime: 'image/jpeg' });
-          } catch { /* unreadable */ }
-        }
-        return { ok: true, images, value: { palette: R.palette(), references: list.map((r) => ({ name: r.key, kind: r.kind, file: r.name, size: R.size(r.size), use: R.use(r) })), pictures: images.length ? `The ${images.length} images are, in order: ${imgs.map((r) => r.key).join(', ')}` : 'none' } };
-      }
-      if (action === 'add') {
-        const p = String(args.path || '');
-        const dir = await window.hub.attachmentsDir();
-        if (!p.toLowerCase().startsWith(dir.toLowerCase())) return { ok: false, error: 'You can only add files the user attached in this chat (their path is in the hub\'s attachments folder). Ask the user to drop the file in the chat or in the Lab\'s References.' };
-        const r = await R.add(p, args.name);
-        return { ok: true, value: { added: r.key, kind: r.kind, use: R.use(r), note: 'Available in code right away; run the sketch (three_set_code / three_update_layer) to use it.' } };
-      }
-      if (action === 'rename') { const r = find(args.name); return { ok: true, value: { renamed: R.rename(r, String(args.to || r.key)) } }; }
-      if (action === 'remove') { R.remove(find(args.name)); return { ok: true, value: { references: R.list().map((r) => r.key) } }; }
-      if (action === 'palette') {
-        if (args.from) return { ok: true, value: { palette: await R.paletteFrom(String(args.from)) } };
-        const cols = parseColors(args.coolors || args.colors || []);
-        R.setPalette(cols);
-        return { ok: true, value: { palette: cols } };
-      }
-      // (round 131, refmatch131) like: the picture (small) + its palette and look, to build ONE layer in its spirit
-      if (action === 'like') { if (typeof LabRefMatch === 'undefined' && window.Lazy) await Lazy.load('refmatch'); return LabRefMatch.op(find(args.name), args); }
-      return { ok: false, error: 'action must be list, add, rename, remove, palette or like' };
-    }
-    if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
-    return { ok: false, error: `Unknown tool ${tool}` };
-  }
+  function labCallMore(...a) { return labPart(K0, 'ai', 'labCallMore', a); } // tools/three-lab-ai.js
   // (round 23) the time machine notes who changed the scene (tools/three-history.js: Claude / Astra, and their turns)
   HubBridge.register(['three_'], (tool, args, ctx) => (window.ThreeHistory?.director ? ThreeHistory.director(tool, args, ctx, handleTool) : handleTool(tool, args, ctx)));
   return {
