@@ -2889,12 +2889,15 @@ const ThreeLab = (() => {
     const fWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview fps' } }, el('span', { class: 'dock-label', text: 'FPS' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview frame rate' } }, fBtns));
     // (Nov 9, labplayer) PLAYER: IN-APP (Hearth's own frame) or SEPARATE (its own app and graphics process: a heavy scene
     // can't make Hearth's interface wait). Kept; the preview's overlays (the size pill, guides) wait under it while on.
-    const playerPref = () => store.get('three.player', 'app');
+    // (Nov 9, retired) SEPARATE rendered scenes black / partly on Quentin's machine: the preview stays in Hearth's own
+    // window. A stored 'separate' is cleared; the PLAYER control is off the dock (labplayer/ kept, nothing starts it).
+    if (store.get('three.player', 'app') === 'separate') store.set('three.player', 'app');
+    const playerPref = () => 'app';
     const pBtns = [['app', 'IN-APP', 'The preview in Hearth\'s own window (as before)'], ['separate', 'SEPARATE', 'The preview in its own app and graphics process: a heavy scene can\'t slow Hearth down. The size pill and guides over the picture wait while it\'s on.']]
       .map(([v, t, title]) => segBtn(t, title, () => setPlayer(v)));
     const pWrap = el('div', { class: 'dock-group', dataset: { feature: 'Lab player' } }, el('span', { class: 'dock-label', text: 'PLAYER' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Lab player' } }, pBtns));
     function setPlayer(v) {
-      if (!['app', 'separate'].includes(v)) return playerPref();
+      if (v !== 'app') return playerPref();
       store.set('three.player', v);
       if (box.onStage) setStage(false);
       box.usePlayer(v === 'separate');
@@ -2904,7 +2907,7 @@ const ThreeLab = (() => {
     }
     box.onPlayerClosed = () => { if (playerPref() === 'separate') toast('The separate Lab player stopped: the preview is back in Hearth\'s window.', { type: 'warn' }); paintLevel(); };
     if (playerPref() === 'separate') queueMicrotask(() => { box.usePlayer(true); paintLevel(); });
-    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap, pWrap);
+    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap);
     function paintLevel() {
       const i = previewLevel(); const forced = qMode() === 'high';
       qBtns.forEach((b, k) => { const on = k === i; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
