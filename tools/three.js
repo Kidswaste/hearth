@@ -1162,7 +1162,7 @@ const ThreeLab = (() => {
     let lightOn = Boolean(store.get('three.light', false));
     // (round 153a, lite153) ⚡ Lite mode, the owner's one switch (powerwise.js HearthLite): the preview at 30 fps, half
     // resolution, no glow / effects, no shadows, no antialias (three-sandbox.html "lite153"); renders never see it
-    const liteOn = () => Boolean(window.HearthLite?.on);
+    function liteOn() { return Boolean(window.HearthLite?.on); } // (a declaration: the Lab bar's tag reads it before this line runs)
     // (round 31 "labadapt") the preview lightens itself while frames drop (resolution, filters, shadows, particles: see
     // "Adaptive quality" in three-sandbox.html) and says so in its corner; right-click › View turns it off. Renders,
     // stills and recordings are always full quality.
