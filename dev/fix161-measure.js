@@ -37,7 +37,7 @@ async function measure(name) {
     ws += q.mem || 0; priv += q.priv || 0; pss += q.pss || 0;
   }
   const r = { ws: MB(ws), priv: MB(priv), pss: MB(pss), procCount: m.procs.length, procs, hearthHeapMb: await heapOf(), domNodes: document.getElementsByTagName('*').length,
-    lab: { mounted: Boolean(H.surfaces.get('tool:three')?.mounted), dropped: window.ThreeLab?.dropped?.() ?? null, api: Boolean(window.ThreeLab?.director) } };
+    lab: { mounted: Boolean(H.surfaces.get('tool:three')?.mounted), dropped: typeof ThreeLab !== 'undefined' ? ThreeLab.dropped?.() ?? null : null, api: typeof ThreeLab !== 'undefined' && Boolean(ThreeLab.director) } };
   out.setups[name] = r;
   console.log(`[FIX161M:${name}]`, JSON.stringify(r));
   return r;
