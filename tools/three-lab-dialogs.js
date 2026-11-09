@@ -19,7 +19,9 @@
     d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
     document.body.append(d); K.openLight(d);
   }
-  function newMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => K.create(t.name, t.code)]), ['Duplicate this one', K.current?.name || '', () => K.duplicate()]]); }
+  // (Nov 9, Scenes v2) a new scene is v2 (WebGPU, format 'gpu'); the old templates stay, for old-format scenes
+  const newV2 = (t) => { const Ls = ThreeData.v2Layers(t); K.create(t.name, Ls[0].code, Ls, { format: 'gpu' }); };
+  function newMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['New scene (v2)', ...(ThreeData.V2_TEMPLATES || []).map((t) => [t.name, t.desc || '', () => newV2(t)]), 'Old version (one canvas per layer)', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => K.create(t.name, t.code)]), ['Duplicate this one', K.current?.name || '', () => K.duplicate()]]); }
   function snippetMenu() {
     const r = K.labMoreBtn.getBoundingClientRect();
     K.setCodeVisible(true);
@@ -307,7 +309,7 @@
       const by = sortSel.value;
       const cmp = by === 'name' ? (a, b) => a.name.localeCompare(b.name) : by === 'layers' ? (a, b) => (b.layers?.length || 1) - (a.layers?.length || 1) : (a, b) => b.updatedAt - a.updatedAt;
       const list = [...K.sketches].sort((a, b) => (p.has(b.id) - p.has(a.id)) || cmp(a, b)).filter((sk) => (!needle || sk.name.toLowerCase().includes(needle)) && (!pf || pf.keep(sk.id)));
-      grid.replaceChildren(...list.map((sk) => {
+      const cardOf = (sk) => {
         const t = K.thumbs[sk.id]?.url;
         const layers = sk.layers?.length || 1;
         const song = K.extras[sk.id]?.media?.path?.split(/[\\/]/).pop();
@@ -317,7 +319,15 @@
           el('span', { class: 'sb-meta', text: `${layers} layer${layers === 1 ? '' : 's'} · ${new Date(sk.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}${song ? ` · ${song}` : ''}` }));
         card.addEventListener('contextmenu', (e) => cardMenu(e, sk));
         return card;
-      }));
+      };
+      // (Nov 9, Scenes v2) v2 scenes first; the old format's folded under "Old version" (open, edit, render as before)
+      const fresh = list.filter((sk) => sk.format === 'gpu'); const old = list.filter((sk) => sk.format !== 'gpu');
+      if (!old.length) { grid.replaceChildren(...fresh.map(cardOf)); return; }
+      const wasOpen = store.get('three.sbOldOpen', !fresh.length || Boolean(needle));
+      const fold = el('details', { class: 'sb-old' }, el('summary', { text: `Old version · ${old.length} scene${old.length === 1 ? '' : 's'}`, title: 'Scenes made before v2 (one WebGL canvas per layer): open, edit and render them as always' }), el('div', { class: 'sb-grid sb-old-grid' }, ...old.map(cardOf)));
+      fold.open = Boolean(wasOpen || needle);
+      fold.addEventListener('toggle', () => { if (!needle) store.set('three.sbOldOpen', fold.open); });
+      grid.replaceChildren(...fresh.map(cardOf), fold);
     };
     q.addEventListener('input', fill);
     dlg.addEventListener('close', () => dlg.remove());
@@ -342,6 +352,8 @@
     if (typeof LabGalleryHook !== 'undefined' && LabGalleryHook.open()) return; // (round 27) the gallery of starting points (tools/three-gallery*.js)
     const dlg = el('dialog', { class: 'ui-modal gallery-dialog' });
     dlg.append(el('form', { method: 'dialog' }, el('h2', { text: 'New sketch' }),
+      el('div', { class: 'gallery' }, (ThreeData.V2_TEMPLATES || []).map((t) => el('button', { type: 'button', class: 'gallery-item', on: { click: () => { dlg.close(); newV2(t); } } }, el('b', { text: `⚡ ${t.name}` }), el('span', { class: 'hint', text: t.desc })))), // (Nov 9, Scenes v2)
+      el('h4', { text: 'Old version', class: 'hint' }),
       el('div', { class: 'gallery' }, ThreeData.TEMPLATES.map((t) => el('button', {
         type: 'button', class: 'gallery-item', on: { click: () => { dlg.close(); K.create(t.name, t.code); } },
       }, el('b', { text: t.name }), el('span', { class: 'hint', text: t.desc })))),

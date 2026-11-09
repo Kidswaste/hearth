@@ -415,5 +415,105 @@ void main() {
 }`,
   };
 
-  return { TEMPLATES, SNIPPETS, SHADERS, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
+  // (Nov 9) Scenes v2 (WebGPU, docs/upgrades/scenes-v2-webgpu.md): a v2 layer is a module whose default export fills
+  // the scene and camera it is given. ONE renderer draws the whole scene (tools/three-sandbox.html "Scenes v2"): layer
+  // code never makes a renderer, a canvas or an animation loop. Shaders are TSL node materials (tsl.*), not GLSL.
+  //   V2_LAYERS: layers for a v2 scene (the ＋ Layer picker of a v2 scene, /template in one) · V2_TEMPLATES: whole v2 scenes
+  const V2_HEAD = '// v2 layer (WebGPU): fill `scene` and `camera`; the scene\'s one renderer draws it. No renderer, canvas or loop here.\n';
+  const V2_LAYERS = [
+    {
+      id: 'v2-backdrop', name: 'Backdrop (v2)', desc: 'A slow gradient behind everything (a TSL background node)',
+      code: `${V2_HEAD}export default ({ THREE, tsl, scene, tweak, audio, onFrame }) => {
+  const { color, mix, screenUV, sin, time, uniform, float } = tsl;
+  const P = tweak({
+    top: { value: '#2a0f3a', label: 'Top', group: 'Look' },
+    bottom: { value: '#05060c', label: 'Bottom', group: 'Look' },
+    breathe: { value: 0.4, min: 0, max: 1, label: 'Breathe on bass', group: 'Music' },
+  });
+  const top = uniform(new THREE.Color(P.top)); const bottom = uniform(new THREE.Color(P.bottom)); const bass = uniform(0);
+  const k = screenUV.y.oneMinus().add(sin(time.mul(0.3)).mul(0.05)).add(bass.mul(0.25)).clamp(0, 1);
+  scene.backgroundNode = mix(bottom, top, k);
+  onFrame(() => { top.value.set(P.top); bottom.value.set(P.bottom); bass.value = audio.bass * P.breathe; });
+};
+`,
+    },
+    {
+      id: 'v2-knot', name: 'Glow knot (v2)', desc: 'A lit knot whose surface ripples and glows on the bass (node material)',
+      code: `${V2_HEAD}export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { mix, uniform, sin, time, positionLocal, normalLocal, vec3 } = tsl;
+  const P = tweak({
+    speed: { value: 1, min: 0, max: 4, label: 'Spin', group: 'Motion' },
+    color: { value: '#7c5cff', label: 'Colour', group: 'Look' },
+    glow: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look' },
+    pulse: { value: 0.6, min: 0, max: 2, label: 'Pulse on bass', group: 'Music' },
+  });
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 1.2));
+  const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 4, 5); scene.add(sun);
+  const bass = uniform(0); const tint = uniform(new THREE.Color(P.color)); const glow = uniform(P.glow);
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 0.2 });
+  mat.colorNode = mix(tint, vec3(1, 0.85, 0.6), sin(positionLocal.y.mul(4).add(time.mul(2))).mul(0.5).add(0.5).mul(0.35));
+  mat.emissiveNode = tint.mul(glow.mul(bass.mul(0.8).add(0.15)));
+  mat.positionNode = positionLocal.add(normalLocal.mul(bass.mul(0.08).mul(sin(positionLocal.x.mul(10).add(time.mul(6))))));
+  const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.32, 256, 48), mat);
+  scene.add(knot);
+  camera.position.set(0, 0, 5);
+  onFrame((t, dt) => {
+    bass.value = audio.bass * P.pulse; tint.value.set(P.color); glow.value = P.glow;
+    knot.rotation.x += dt * 0.3 * P.speed; knot.rotation.y += dt * 0.5 * P.speed;
+  });
+};
+`,
+    },
+    {
+      id: 'v2-particles', name: 'Particle field (v2)', desc: '30,000 points drifting, bursting outwards on the kick (instanced sprites)',
+      code: `${V2_HEAD}export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { uniform, instanceIndex, hash, vec3, sin, cos, time, float, mix, color, uv } = tsl;
+  const P = tweak({
+    count: { value: 30, min: 1, max: 200, step: 1, label: 'Particles (thousands)', group: 'Look' },
+    size: { value: 0.03, min: 0.005, max: 0.2, label: 'Size', group: 'Look' },
+    tint: { value: '#62d0ff', label: 'Colour', group: 'Look' },
+    burst: { value: 1, min: 0, max: 3, label: 'Burst on kick', group: 'Music' },
+  });
+  const N = Math.round(P.count * 1000);
+  const kick = uniform(0); const tint = uniform(new THREE.Color(P.tint));
+  const i = float(instanceIndex);
+  // each point on a sphere shell (from its index), breathing out on the kick
+  const a = hash(i).mul(6.2832); const b = hash(i.add(7.1)).mul(2).sub(1); const r = hash(i.add(3.3)).mul(2).add(1.5);
+  const s = b.mul(b).oneMinus().sqrt();
+  const dir = vec3(s.mul(cos(a.add(time.mul(0.05)))), b, s.mul(sin(a.add(time.mul(0.05)))));
+  const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.positionNode = dir.mul(r.add(kick.mul(0.6)));
+  mat.colorNode = mix(tint, color('#ffffff'), kick.mul(0.5));
+  mat.opacityNode = uv().sub(0.5).length().mul(2).oneMinus().clamp(0, 1).pow(2);
+  mat.scaleNode = float(P.size);
+  const pts = new THREE.Sprite(mat); pts.count = N; pts.frustumCulled = false;
+  scene.add(pts);
+  camera.position.set(0, 0, 7);
+  onFrame((t, dt) => { kick.value = Math.max(kick.value * Math.exp(-dt * 6), (audio.kick || audio.bass) * P.burst); tint.value.set(P.tint); pts.rotation.y += dt * 0.05; });
+};
+`,
+    },
+  ];
+  const V2_TEMPLATES = [
+    { id: 'v2-music', name: 'Music visual (v2)', desc: 'Backdrop, particles and a glowing knot on one WebGPU renderer', layers: ['v2-backdrop', 'v2-particles', 'v2-knot'] },
+    { id: 'v2-empty', name: 'Empty (v2)', desc: 'One v2 layer with a lit cube to start from', layers: ['v2-cube'] },
+  ];
+  V2_LAYERS.push({
+    id: 'v2-cube', name: 'Cube (v2)', desc: 'A lit cube that turns (a starting point)',
+    code: `${V2_HEAD}export default ({ THREE, tsl, scene, camera, tweak, onFrame }) => {
+  const P = tweak({ speed: { value: 1, min: 0, max: 4, label: 'Spin' }, color: { value: '#7c5cff', label: 'Colour' } });
+  scene.background = new THREE.Color('#15181e');
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.5));
+  const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(4, 6, 3); scene.add(sun);
+  const cube = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), new THREE.MeshStandardNodeMaterial({ color: P.color, roughness: 0.4 }));
+  scene.add(cube);
+  camera.position.set(3, 2, 5); camera.lookAt(0, 0, 0);
+  onFrame((t, dt) => { cube.rotation.x += dt * 0.4 * P.speed; cube.rotation.y += dt * 0.6 * P.speed; cube.material.color.set(P.color); });
+};
+`,
+  });
+  // a v2 template's layers as a scene's layers ({ id, name, code, slot })
+  const v2Layers = (tpl) => (tpl?.layers || []).map((id, i) => { const L = V2_LAYERS.find((x) => x.id === id); return L ? { id: i ? `l${i + 1}` : 'main', name: L.name.replace(/ \(v2\)$/, ''), code: L.code, slot: i } : null; }).filter(Boolean);
+
+  return { TEMPLATES, SNIPPETS, SHADERS, V2_LAYERS, V2_TEMPLATES, v2Layers, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
 })();
