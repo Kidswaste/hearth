@@ -131,6 +131,8 @@ contextBridge.exposeInMainWorld('hub', {
   gameTest: { script: call('game:script'), stop: call('game:script-stop'), shot: call('game:shot') }, // (round 53, directorgame) the director's play-test into the ▶ Play window (directorgamemain.js)
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),
+  // (Nov 9, labplayer) the Lab preview in its own app and graphics process, laid over the preview area (labplayermain.js)
+  labPlayer: { open: call('labplayer:open'), close: call('labplayer:close'), state: call('labplayer:state'), send: (msg) => ipcRenderer.send('labplayer:to', msg), rect: (r) => ipcRenderer.send('labplayer:rect', r), onMessage: on('labplayer:from'), onClosed: on('labplayer:closed') },
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),
   pathForFile: (file) => webUtils.getPathForFile(file),

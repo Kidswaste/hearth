@@ -110,7 +110,7 @@
 
   const post = (msg) => (window.__stageHost ? window.__stageHost.post({ source: 'three-sandbox', ...msg }) : parent.postMessage({ source: 'three-sandbox', ...msg }, '*'));
   // In the Stage window an exact frame size (fw × fh) is rendered at full size and scaled to fit the window.
-  if (window.__stageHost && params.get('fw')) {
+  if (window.__stageHost && !window.__stageHost.player && params.get('fw')) { // (Nov 9: the Lab player is the preview, not the Stage)
     const fw = Number(params.get('fw')); const fh = Number(params.get('fh'));
     Object.defineProperty(window, 'innerWidth', { get: () => fw });
     Object.defineProperty(window, 'innerHeight', { get: () => fh });
@@ -122,7 +122,7 @@
     addEventListener('DOMContentLoaded', fit);
     addEventListener('resize', fit); // the window resized; the sketch keeps seeing fw × fh
   }
-  if (window.__stageHost) addEventListener('keydown', (e) => { if (e.key === 'F11') { e.preventDefault(); window.__stageHost.fullscreen(); } });
+  if (window.__stageHost && !window.__stageHost.player) addEventListener('keydown', (e) => { if (e.key === 'F11') { e.preventDefault(); window.__stageHost.fullscreen(); } });
   const fmt = (v) => {
     if (typeof v === 'string') return v;
     if (v instanceof Error) return `${v.name}: ${v.message}`;
@@ -3167,7 +3167,7 @@ function setGuides(kind) {
 //     right after a frame was drawn (no redraw) and read by a worker, its chroma-weighted hue, brightness and edge
 //     colour; sent only when it changed (or every 2 s). Its main-thread cost is counted (__stage150.info()).
 const STG = { ptr: false, tint: false, every: 250, timer: 0, at: 0, c: null, w: undefined, force: false, lost: 0, msMerge: 0, msRead: 0, busy: false, seen: -1, last: null, sentAt: 0, n: 0, ms: 0, max: 0, sent: 0, pAt: 0, out: true };
-const stgOk = () => mode === 'sketch' && !XP_PAGE && !GAME && !window.__stageHost;
+const stgOk = () => mode === 'sketch' && !XP_PAGE && !GAME && !(window.__stageHost && !window.__stageHost.player);
 function stgSet(msg) {
   if (!stgOk()) return;
   STG.ptr = msg.ptr !== false;
@@ -16694,7 +16694,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; if (msg.lite !== undefined) LITE.on = Boolean(msg.lite) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
-  if (msg.type === 'lite') { LITE.on = Boolean(msg.on) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); if (DOZE.on) dozeWake('lite'); } // (round 153a, lite153)
+  if (msg.type === 'lite') { LITE.on = Boolean(msg.on) && !XP_PAGE && !GAME && !(window.__stageHost && !window.__stageHost.player); applyCap(); if (DOZE.on) dozeWake('lite'); } // (round 153a, lite153)
   if (msg.type === 'power') pacePower(msg.battery); // (round 33 "labpace": on battery or not, from the Lab)
   if (msg.type === 'pace') PACE.on = msg.on !== false;
   if (msg.type === 'loop-clock') { loopMessage(msg); return; } // (round 31, perfectloop)

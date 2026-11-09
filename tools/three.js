@@ -99,7 +99,7 @@ const ThreeLab = (() => {
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
     // (capturefix2) a frame taken off the page (the Lab closed, the preview remade) has no window: what arrives for it
     // late (a library file loaded for /still) goes nowhere instead of throwing
-    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : frame.contentWindow?.postMessage(m, '*'));
+    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : target === 'player' ? window.hub.labPlayer?.send(m) : frame.contentWindow?.postMessage(m, '*')); // (Nov 9, labplayer: 'player' = the preview in its own app)
     let coverShot = null; // resolves with the picture the page answered for the cover
     // (round 43, glrecover) the GPU took the page's WebGL contexts ('gpu-lost'): the page rebuilds its layers in place
     // when they come back ('gpu-restored'). None back within GL_WAIT: the owner is told ('gpu-stuck') and, unless it
@@ -116,7 +116,7 @@ const ThreeLab = (() => {
       // (round 51) pages that couldn't get a WebGL context at all ('gpu-lost' with none), three in a row: no more new
       // pages on their own (each would fail the same way); the Lab's calm banner stays, with ⟲ Restart
       if (gl.noneRow >= 3) return;
-      if (gpuStuck !== 'owner' && (target === 'stage' || frame.isConnected)) { gl.again = true; load(true); }
+      if (gpuStuck !== 'owner' && (target === 'stage' || target === 'player' || frame.isConnected)) { gl.again = true; load(true); }
     };
     // (round 50, crashsafe) the page's own process died (a crash, killed by the system): the main process says which
     // pages are still up (crashsafemain.js); this one isn't → the same as a GPU that didn't come back: a new page for
@@ -274,6 +274,7 @@ const ThreeLab = (() => {
       const go = () => {
         if (nonce !== mine) return; // a newer load took over while the picture came
         if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
+        else if (target === 'player') window.hub.labPlayer.open({ query, fresh }).then((ok) => { if (!ok && target === 'player') usePlayer(false); }); // (Nov 9: it didn't start: back in Hearth's frame)
         else {
           if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
           frame.src = `${SANDBOX}${query}`;
@@ -311,9 +312,43 @@ const ThreeLab = (() => {
       if (on) { target = 'stage'; frame.src = 'about:blank'; } else { target = 'frame'; window.hub.stageClose(); }
       load();
     }
+    // (Nov 9, labplayer) Run in the Lab player (on): the preview page in its own app and graphics process
+    // (labplayermain.js), its window laid over this frame's place. The place is sent on resizes and 4×/s while visible
+    // (the Lab's panels move); hidden while a menu or dialog is open over the picture (the player's window is above
+    // Hearth's: it would cover them), the Lab off screen or Hearth's window hidden. Off: back in this frame.
+    let playerWired = false; let playerT = 0; let playerRO = null; let playerSent = ''; let onPlayerClosed = null;
+    const coveredByUi = () => Boolean(document.querySelector('#menu:not([hidden]), .mb-menu.lab-pop, dialog[open], body > .palette'));
+    function sendRect() {
+      if (target !== 'player') return;
+      const r = parent.getBoundingClientRect();
+      const vis = document.visibilityState === 'visible' && parent.isConnected && parent.checkVisibility?.({ visibilityProperty: true }) !== false && r.width > 2 && r.height > 2 && !coveredByUi();
+      const key = vis ? `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}` : 'off';
+      if (key === playerSent) return;
+      playerSent = key;
+      window.hub.labPlayer.rect({ x: r.left, y: r.top, width: r.width, height: r.height, visible: vis });
+    }
+    const playerTick = () => { clearInterval(playerT); playerT = 0; if (target === 'player' && document.visibilityState === 'visible') playerT = setInterval(sendRect, 250); sendRect(); };
+    function usePlayer(on) {
+      if (!window.hub.labPlayer) return false;
+      if (!playerWired) {
+        playerWired = true;
+        window.hub.labPlayer.onMessage((data) => { if (target === 'player') handle(data); });
+        window.hub.labPlayer.onClosed(() => { if (target !== 'player') return; usePlayer(false); onPlayerClosed?.(); });
+        document.addEventListener('visibilitychange', playerTick); // (nothing ticks while Hearth's window is hidden)
+      }
+      clearInterval(playerT); playerT = 0; playerRO?.disconnect(); playerRO = null; playerSent = '';
+      if (on) {
+        if (target === 'stage') window.hub.stageClose();
+        target = 'player'; frame.src = 'about:blank';
+        playerRO = new ResizeObserver(sendRect); playerRO.observe(parent);
+        playerTick();
+      } else if (target === 'player') { target = 'frame'; window.hub.labPlayer.close(); }
+      load();
+      return on;
+    }
     if (!lazy) load();
     return {
-      frame, send, reload: (fresh) => load(Boolean(fresh)), useStage,
+      frame, send, reload: (fresh) => load(Boolean(fresh)), useStage, usePlayer, set onPlayerClosed(fn) { onPlayerClosed = fn; },
       // (round 74, projdesk74) hold(true) right after a load: its 'ready' waits; hold(false) lets it through (now, if it came)
       // While held, the frame is drawn though its Lab is hidden (visible, transparent, click-through, like LabBoot's warm
       // page): Chromium throttles a frame inside a hidden surface, and a page loaded that way came up slower than a new one
@@ -325,6 +360,7 @@ const ThreeLab = (() => {
         cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweaks.clear(); tweakRaf = 0;
         const port = life; life = null; port?.close();
         if (target === 'stage') { target = 'frame'; window.hub.stageClose(); }
+        if (target === 'player') { target = 'frame'; clearInterval(playerT); playerRO?.disconnect(); window.hub.labPlayer?.close(); } // (Nov 9, labplayer)
         frame.src = 'about:blank'; uncover();
       },
       // (round 161, fix161) for good (ThreeLab.drop): released, and its window listener gone (a new Lab makes a new one)
@@ -356,6 +392,7 @@ const ThreeLab = (() => {
       // (round 43, glrecover) is the page without its GPU contexts right now; { lost, stuck, restored, since }
       get gl() { return { lost: gl.lost, stuck: gl.stuck, restored: gl.restored, since: gl.lost ? gl.at : 0, remaking: gl.again }; },
       get onStage() { return target === 'stage'; },
+      get onPlayer() { return target === 'player'; }, // (Nov 9, labplayer)
       get revision() { return ready?.revision; }, get ready() { return Boolean(ready); },
       get query() { return loadedWith; }, // (round 37, labboot)
       get warm() { return Boolean(warmed); }, // (round 112, labopen112) a page from tools/three-boot.js waits to be taken at the first load
@@ -2850,7 +2887,24 @@ const ThreeLab = (() => {
     const fpsOrder = ['30', '60', '0', '-1'];
     const fBtns = fpsOrder.map((v) => segBtn(FPS_SHORT[v], (FPS_OPTS.find(([k]) => k === v) || [, v])[1], () => { fpsSel.value = v; fpsSel.dispatchEvent(new Event('change')); paintLevel(); }));
     const fWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview fps' } }, el('span', { class: 'dock-label', text: 'FPS' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview frame rate' } }, fBtns));
-    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap);
+    // (Nov 9, labplayer) PLAYER: IN-APP (Hearth's own frame) or SEPARATE (its own app and graphics process: a heavy scene
+    // can't make Hearth's interface wait). Kept; the preview's overlays (the size pill, guides) wait under it while on.
+    const playerPref = () => store.get('three.player', 'app');
+    const pBtns = [['app', 'IN-APP', 'The preview in Hearth\'s own window (as before)'], ['separate', 'SEPARATE', 'The preview in its own app and graphics process: a heavy scene can\'t slow Hearth down. The size pill and guides over the picture wait while it\'s on.']]
+      .map(([v, t, title]) => segBtn(t, title, () => setPlayer(v)));
+    const pWrap = el('div', { class: 'dock-group', dataset: { feature: 'Lab player' } }, el('span', { class: 'dock-label', text: 'PLAYER' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Lab player' } }, pBtns));
+    function setPlayer(v) {
+      if (!['app', 'separate'].includes(v)) return playerPref();
+      store.set('three.player', v);
+      if (box.onStage) setStage(false);
+      box.usePlayer(v === 'separate');
+      if (current) run({ reload: true, quiet: true });
+      paintLevel();
+      return v;
+    }
+    box.onPlayerClosed = () => { if (playerPref() === 'separate') toast('The separate Lab player stopped: the preview is back in Hearth\'s window.', { type: 'warn' }); paintLevel(); };
+    if (playerPref() === 'separate') queueMicrotask(() => { box.usePlayer(true); paintLevel(); });
+    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap, pWrap);
     function paintLevel() {
       const i = previewLevel(); const forced = qMode() === 'high';
       qBtns.forEach((b, k) => { const on = k === i; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
@@ -2859,6 +2913,7 @@ const ThreeLab = (() => {
       if (qWrap.title !== t) qWrap.title = t;
       const f = String(fpsPref());
       fBtns.forEach((b, k) => { const on = fpsOrder[k] === f; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
+      const pv = box.onPlayer ? 'separate' : 'app'; ['app', 'separate'].forEach((v, k) => { const b = pBtns?.[k]; if (!b) return; const on = v === pv; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
     }
     paintLevel();
     function qualityMenu(...a) { return labPart(K, 'dialogs', 'qualityMenu', a); } // tools/three-lab-dialogs.js

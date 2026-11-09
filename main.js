@@ -629,6 +629,7 @@ ipcMain.handle('stage:open', (_e, { query, width, height, fresh }) => {
   return true;
 });
 ipcMain.handle('stage:close', () => { if (stageWin && !stageWin.isDestroyed()) stageWin.close(); });
+require('./labplayermain').register(); // (Nov 9, labplayer) the Lab preview in its own app and graphics process (opt-in)
 ipcMain.handle('stage:focus', () => { if (stageWin && !stageWin.isDestroyed()) { stageWin.show(); stageWin.focus(); } });
 ipcMain.on('stage:to', (_e, msg) => { if (stageWin && !stageWin.isDestroyed()) stageWin.webContents.send('stage:to', msg); });
 ipcMain.on('stage:from', (_e, msg) => { stageHost()?.send('stage:from', msg); });
