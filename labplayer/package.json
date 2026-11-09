@@ -1,0 +1,6 @@
+{
+  "name": "hearth-lab-player",
+  "private": true,
+  "main": "main.js",
+  "description": "Hearth's Lab player: the Lab preview in its own Electron process (its own graphics process). Started by labplayermain.js."
+}
