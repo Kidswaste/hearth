@@ -359,6 +359,10 @@ dialog.lab-light-dlg[open] { position: fixed; inset: 0; margin: auto; z-index: 9
    preview (the ◐ in the corner says when it is lighter) */
 .three-stats .lab-q { pointer-events: auto; cursor: pointer; font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; text-decoration: underline dotted; text-underline-offset: 3px; }
 .three-stats .lab-q.warn { color: var(--warn, #ffb648); }
+/* (Nov 9) the Quality slider next to it: four presets for every scene's preview (Low · Medium · High · Full) */
+.three-stats .lab-q-wrap { pointer-events: auto; display: inline-flex; align-items: center; gap: 5px; cursor: default; }
+.three-stats .lab-q-slider { width: 64px; height: 12px; margin: 0; accent-color: var(--fh-gold, #ffd75e); cursor: pointer; }
+.three-stats .lab-q-level { white-space: nowrap; }
 /* (round 133, speed133) ⚡ the slow chip just above the stats line ("Slow: 21 fps · Why? · ✕"; or the graphics card's
    "Reopen in safe mode"): small, one line, gone in a show (tools/three-speed-hook.js; the card: tools/three-speed.css) */
 .lab-speedchip { position: absolute; left: 8px; bottom: 36px; z-index: 3; display: flex; align-items: center; gap: 5px; max-width: calc(100% - 16px); padding: 2px 4px 2px 9px; border: 1px solid var(--line); border-radius: 9px; background: color-mix(in srgb, var(--panel, #15181b) 92%, transparent); color: var(--warn, #ffb648); font: 11.5px Consolas, monospace; box-shadow: 0 4px 14px #0006; }

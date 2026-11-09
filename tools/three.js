@@ -549,7 +549,7 @@ const ThreeLab = (() => {
     const K = {
       get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
       get FPS_OPTS() { return FPS_OPTS; }, get GUIDES() { return GUIDES; }, get MIMES() { return MIMES; },
-      get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; },
+      get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; }, get PREVIEW_LEVELS() { return PREVIEW_LEVELS; }, get previewLevel() { return previewLevel; }, get setPreviewLevel() { return setPreviewLevel; },
       get REF_ICONS() { return REF_ICONS; }, get adaptHeld() { return adaptHeld; }, get adaptOn() { return adaptOn; },
       addLayer, addRef, get animatedProps() { return animatedProps; }, get api() { return api; }, applyPreset,
       applyTrigPreset, askAbout, askDirector, get assetCacheOn() { return assetCacheOn; },
@@ -2796,6 +2796,39 @@ const ThreeLab = (() => {
     const qChip = el('button', { type: 'button', class: 'lab-q', dataset: { feature: 'Preview quality' } });
     qChip.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
     qChip.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); qualityMenu(e.clientX, e.clientY); });
+    // (Nov 9) the Quality slider: four presets for every scene's preview (see speedMsg). Default High: antialias costs
+    // the most for the least (Visualizer2: 21 → 41 fps with it off), and renders keep it (export pages force it on).
+    const PREVIEW_LEVELS = [
+      { id: 'low', name: 'Low', hint: 'no antialias, 1× pixels, filters at half size, no shadows', fix: { noAA: true, px1: true, fxHalf: true, sh: 0 } },
+      { id: 'medium', name: 'Medium', hint: 'no antialias, 1× pixels', fix: { noAA: true, px1: true } },
+      { id: 'high', name: 'High', hint: 'no antialias (the biggest saving, edges a little rougher)', fix: { noAA: true } },
+      { id: 'full', name: 'Full', hint: 'as each scene asks (antialias, its own pixel ratio, shadows, filters)', fix: {} },
+    ];
+    const previewLevel = () => { const i = PREVIEW_LEVELS.findIndex((x) => x.id === store.get('three.previewLevel', 'high')); return i >= 0 ? i : 2; };
+    function setPreviewLevel(i) {
+      const n = Math.max(0, Math.min(PREVIEW_LEVELS.length - 1, Math.round(Number(i))));
+      if (n === previewLevel()) return PREVIEW_LEVELS[n].id;
+      const aaWas = speedMsg().noAA;
+      store.set('three.previewLevel', PREVIEW_LEVELS[n].id);
+      paintLevel();
+      box.send(speedMsg());
+      if (speedMsg().noAA !== aaWas && current) run({ reload: true, quiet: true }); // (a context's antialias is fixed when it's made)
+      statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
+      return PREVIEW_LEVELS[n].id;
+    }
+    const qSlider = el('input', { type: 'range', class: 'lab-q-slider', attrs: { min: '0', max: String(PREVIEW_LEVELS.length - 1), step: '1', 'aria-label': 'Preview quality' }, dataset: { feature: 'Preview quality slider' } });
+    const qLevel = el('span', { class: 'lab-q-level' });
+    const qWrap = el('label', { class: 'lab-q-wrap' }, qSlider, qLevel);
+    function paintLevel() {
+      const i = previewLevel(); const L = PREVIEW_LEVELS[i];
+      if (qSlider.value !== String(i)) qSlider.value = String(i);
+      const t = `Preview: ${L.name}`; if (qLevel.textContent !== t) qLevel.textContent = t;
+      const title = `Preview quality, every scene: ${L.name} (${L.hint}). Renders and ▶ Play stay full quality.${qMode() === 'high' ? ' Force high quality is on: the preview draws full quality now.' : ''}`;
+      if (qWrap.title !== title) qWrap.title = title;
+    }
+    qSlider.addEventListener('input', () => setPreviewLevel(qSlider.value));
+    for (const ev of ['pointerdown', 'click', 'contextmenu']) qWrap.addEventListener(ev, (e) => e.stopPropagation());
+    paintLevel();
     function qualityMenu(...a) { return labPart(K, 'dialogs', 'qualityMenu', a); } // tools/three-lab-dialogs.js
     // what Smooth lowered right now, in plain words (the chip's tooltip, the ⚡ Speed check card)
     function qualityWhy(a = adaptLast) {
@@ -2834,7 +2867,7 @@ const ThreeLab = (() => {
         const t = (tag, o) => { const n = el(tag, o || {}); n.append(document.createTextNode('')); return n; };
         statsParts = { fb, fps: t('b'), worst: t('span', { title: 'The longest gap between two frames in the last half second: over ~25 ms shows as a stutter (60 Hz = 16.7 ms per frame)' }), ms: t('span'), calls: t('span'), tris: t('span'), points: t('span'), geo: t('span') };
         const P = statsParts;
-        stats.replaceChildren(P.fps, ...(fb ? [fb] : []), qualityChip(msg), P.worst, P.ms, P.calls, P.tris, P.points, P.geo); // (round 72, labfps72) Quality: auto · 70 %, a click away from Full
+        stats.replaceChildren(P.fps, ...(fb ? [fb] : []), qualityChip(msg), qWrap, P.worst, P.ms, P.calls, P.tris, P.points, P.geo); // (round 72, labfps72) Quality: auto · 70 %, a click away from Full
       }
       const P = statsParts;
       const put = (n, text, cls) => { if (n.firstChild.data !== text) n.firstChild.data = text; if (cls !== undefined && n.className !== cls) n.className = cls; };
@@ -2875,7 +2908,16 @@ const ThreeLab = (() => {
     const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
     // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
     // "no antialias" once the page asked for it on this scene (from its next run)
-    const speedMsg = (lite = liteOn()) => { if (lite) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    const speedMsg0 = (lite = liteOn()) => { if (lite) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    // (Nov 9) the Quality slider's preset, for every scene, on top of the scene's own ⚡ fixes (Force high quality,
+    // Light mode and Safe open keep their own say): Full = as the scene asks · High = no antialias · Medium = also 1×
+    // pixels · Low = also filters at half size and no shadows. Renders and ▶ Play never see it (their own pages).
+    const speedMsg = (lite = liteOn()) => {
+      const b = speedMsg0(lite);
+      if (lite || safeOn() || qMode() === 'high') return b;
+      const p = PREVIEW_LEVELS[previewLevel()].fix;
+      return { ...b, noAA: Boolean(b.noAA || p.noAA), px1: Boolean(b.px1 || p.px1), fxHalf: Boolean(b.fxHalf || p.fxHalf), sh: p.sh === 0 ? 0 : b.sh };
+    };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
@@ -2907,7 +2949,8 @@ const ThreeLab = (() => {
       if (speedMsg(!on).noAA !== speedMsg().noAA && current) run({ reload: true, quiet: true });
       paintLiteTag(); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
     });
-    api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip };
+    api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip,
+      levels: PREVIEW_LEVELS, level: () => PREVIEW_LEVELS[previewLevel()].id, setLevel: (id) => setPreviewLevel(typeof id === 'number' ? id : PREVIEW_LEVELS.findIndex((x) => x.id === id)), slider: () => qWrap, speed: () => speedMsg() };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
     let perfHudOn = Boolean(store.get('three.perfHud', false));
