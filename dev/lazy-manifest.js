@@ -74,10 +74,15 @@ const put = (anchor, files) => {
   tail.set(at, files.at(-1));
 };
 const ownFiles = (g) => g.files.filter((f) => !(g.places || {})[f]);
+// (round 160, boot160) a file placed after one of a group that comes later (the Lab's three-comp.js after chat-scenes.js,
+// now the lazy group 'chatscenes') goes in once that group's files are in
+const later = [];
+const inHtml = (f) => { let at = f; while (tail.has(at)) at = tail.get(at); return html.includes(tag(at)); };
 for (const g of ordered) {
   put(g.at, ownFiles(g));
-  for (const [f, at] of Object.entries(g.places || {})) put(at, [f]);
+  for (const [f, at] of Object.entries(g.places || {})) if (inHtml(at)) put(at, [f]); else later.push([f, at]);
 }
+for (const [f, at] of later) put(at, [f]);
 const byName = new Map(LazyData.GROUPS.map((g) => [g.name, g]));
 const posOf = () => { const p = new Map(); [...html.matchAll(/<script defer src="([^"]+)"><\/script>/g)].forEach((m, i) => p.set(m[1], i)); return p; };
 const moved = [];
@@ -201,7 +206,7 @@ const B = '  // ---- end of generated part ----';
 const a = src.indexOf(A), b = src.indexOf(B);
 if (a < 0 || b < 0) { console.error('markers missing in lazy-data.js'); process.exit(1); }
 const next = `${src.slice(0, a)}${A}  const META = ${JSON.stringify(meta)};\n${src.slice(b)}`;
-console.log(Object.entries(meta).map(([n, o]) => `${n}: ${o.commands?.length || 0} cmds, ${o.actions?.length || 0} actions, ${o.keys?.length || 0} keys, ${o.bridge?.length || 0} tool prefixes, ${o.apps?.length || 0} apps, ${o.tools?.length || 0} tools`).join('\n'));
+console.log(Object.entries(meta).map(([n, o]) => `${n}: ${o.commands?.length || 0} cmds, ${(o.actions || lines[n]?.actions)?.length || 0} actions, ${(o.keys || lines[n]?.keys)?.length || 0} keys, ${o.bridge?.length || 0} tool prefixes, ${(o.apps || lines[n]?.apps)?.length || 0} apps, ${o.tools?.length || 0} tools`).join('\n'));
 let bad = 0;
 // (round 36) a recording cut short (a busy machine: the old-order copy not finished when it was read) wrote a manifest
 // with most groups empty, so their stand-ins (commands, agent tool prefixes like adobe_) vanished and dev/checks/lazy.js
