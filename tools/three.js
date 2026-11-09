@@ -587,7 +587,8 @@ const ThreeLab = (() => {
     restartBtn.dataset.key = 'Ctrl+R';
     const liveLabel = el('label', { class: 'check small', title: 'Apply code changes live, a moment after you stop typing' }, autoBox, 'Live code');
     const newBtn = btn('New', 'New sketch from a template · right-click: the templates as a list', () => templateGallery(), 'ghost small imp-main');
-    newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); });
+    newBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); newMenu(e); });
+    function newMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['New sketch from', ...ThreeData.TEMPLATES.map((t) => [t.name, t.desc || '', () => create(t.name, t.code)]), ['Duplicate this one', current?.name || '', () => duplicate()]]); }
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
     const sketchMenuBtn = btn('Sketch ▾', 'Start a new one, or rename, copy, share, export or delete this one, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
@@ -725,7 +726,8 @@ const ThreeLab = (() => {
     let unseen = { errors: 0, other: 0 };
     const consoleBtn = btn('Console', 'Shows or hides the scene\'s errors and messages', () => { consolePeek = !consoleShown(); syncConsole(); });
     consoleBtn.dataset.feature = 'Console';
-    consoleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Console shows', ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m]), ['Errors only', 'Hide console.log lines', () => { const on = !store.get('three.consoleErrors', false); store.set('three.consoleErrors', on); consoleWrap.classList.toggle('errors-only', on); }, store.get('three.consoleErrors', false)], ['Clear', '', () => { consoleBox.replaceChildren(); consoleLines = []; }], ['Copy', '', () => api.cmd.console('copy')]]); });
+    consoleBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); consoleMenu(e); });
+    function consoleMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['Console shows', ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m]), ['Errors only', 'Hide console.log lines', () => { const on = !store.get('three.consoleErrors', false); store.set('three.consoleErrors', on); consoleWrap.classList.toggle('errors-only', on); }, store.get('three.consoleErrors', false)], ['Clear', '', () => { consoleBox.replaceChildren(); consoleLines = []; }], ['Copy', '', () => api.cmd.console('copy')]]); }
     consoleBtn.dataset.key = '`';
     const consoleModeSel = el('select', { class: 'tc-mode', title: 'When the console shows' }, CONSOLE_MODES.map(([v, l]) => el('option', { value: v, text: l, selected: v === consoleMode })));
     consoleModeSel.addEventListener('change', () => setConsoleMode(consoleModeSel.value));
@@ -773,7 +775,8 @@ const ThreeLab = (() => {
     // Present: just the picture, fullscreen (P · Esc). Space, arrows and cue keys still work.
     const presentBtn = btn('▣ Present', 'Shows the preview full screen with nothing else, for showing it off (P · Esc leaves)', () => togglePresent());
     presentBtn.dataset.feature = 'Present';
-    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)], ['◉ Perform', 'Live: 1–9 cues and Q W E looks on the beat or bar, the other screen at full speed', () => (window.Lazy ? Lazy.load('perform') : Promise.resolve()).then(() => ThreePerform.start()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))], ['📱 Live on my phone', 'The preview on your phone over your Wi-Fi: scan a QR code (the song plays here)', () => (window.Lazy ? Lazy.load('phoneview') : Promise.resolve()).then(() => PhoneView.live()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))]]); }); // (round 131, perform131) ◉ Perform: tools/three-perform.js · (round 136, phone136) 📱 Live on my phone: phoneview.js
+    presentBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); presentMenu(e); }); // (round 131, perform131) ◉ Perform: tools/three-perform.js · (round 136, phone136) 📱 Live on my phone: phoneview.js
+    function presentMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['Present', ['Present', 'P', () => togglePresent()], player.loaded ? ['From the top of the song', 'Starts it playing', () => { player.seek(0); player.toggle(true); togglePresent(); }] : null, player.loop ? ['The loop', '', () => { player.seek(player.loop.a); player.toggle(true); togglePresent(); }] : null, [`${store.get('three.presentHud', false) ? '✓ ' : ''}Show the info line`, 'I while presenting', () => store.set('three.presentHud', !store.get('three.presentHud', false))], ['Bake for a perfect show', 'Renders it to a video first, then plays it: not live (the mic, camera and sliders won\'t react)', () => togglePresent('bake')], ['Stage window', 'Its own window, for a second monitor', () => setStage(true)], ['◉ Perform', 'Live: 1–9 cues and Q W E looks on the beat or bar, the other screen at full speed', () => (window.Lazy ? Lazy.load('perform') : Promise.resolve()).then(() => ThreePerform.start()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))], ['📱 Live on my phone', 'The preview on your phone over your Wi-Fi: scan a QR code (the song plays here)', () => (window.Lazy ? Lazy.load('phoneview') : Promise.resolve()).then(() => PhoneView.live()).catch((err) => toast(calmError(err), { type: 'error', raw: err }))]]); }
     previewHost.addEventListener('dblclick', (e) => { if (e.target === previewHost) togglePresent(); }); // double-click beside the picture
     presentBtn.dataset.key = 'P';
     // (round 52, gamemode) ▶ Play: the scene as a game, in its own full-screen window at max fidelity, its layers on one
@@ -2681,6 +2684,9 @@ const ThreeLab = (() => {
       const row = e.target.closest('.ly-row');
       if (!row || e.defaultPrevented) return; // (round 35, bugbash2) the row's own menu (LabEasy.layerMenu) took it: one menu, not two
       e.preventDefault();
+      layerRowMenu(e, row);
+    });
+    function layerRowMenu(e, row) {
       const L = layerById(row.dataset.id); // (round 44) by id: group headers sit between the rows now
       if (!L) return;
       const Ls = layersOf(); const at = Ls.indexOf(L);
@@ -2708,7 +2714,7 @@ const ThreeLab = (() => {
         ...ThreeLayers.BLENDS.slice(0, 6).map(([v, label]) => [label, '', () => editLayer(L.id, { blend: v }), (L.blend || 'normal') === v]),
         Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null,
         ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab layers') : [])]);
-    });
+    }
     function renderLayers() {
       if (!current) return;
       if (LabPlay.playing) LabPlay.count('layers'); // (round 142, smooth142: counted while playing, dev/checks/smooth142.js)
@@ -4067,12 +4073,12 @@ const ThreeLab = (() => {
     let frozenNow = false;
     const freezeBtn = el('button', { class: 'stage-btn freeze-btn', text: '❚❚ Freeze', title: 'Freeze the picture (F or \\) · while frozen, . steps one frame · | pins this frame to compare with what comes next', dataset: { feature: 'Freeze', key: 'F' }, on: { click: () => setFreeze(!frozenNow) } });
     freezeBtn.addEventListener('dblclick', (e) => { if (frozenNow) { e.preventDefault(); setFreeze(true); box.send({ type: 'step' }); } }); // frozen: double-click = one frame
-    freezeBtn.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
+    freezeBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); freezeMenu(e); });
+    function freezeMenu(e) {
       ThreeTweaks.menu(e.clientX, e.clientY, ['Freeze', [frozenNow ? 'Unfreeze' : 'Freeze now', 'F or \\', () => setFreeze(!frozenNow)],
         ['On the next beat', 'Lands exactly on the beat while it plays', () => freezeOn('beat')], ['On the next bar', 'On the next 1', () => freezeOn('bar')], ['On the next kick', 'Your next kick marker', () => freezeOn('kick')],
         ['◐ Pin this frame', '|', () => pinFrame()], ['📷 Still of this frame', 'Exact size', () => still()], [frozenNow ? 'One frame forward' : '', '.', () => box.send({ type: 'step' })].filter(() => frozenNow)].filter((x) => !Array.isArray(x) || x.length));
-    });
+    }
     // freeze exactly on the next beat / bar (counts in the song's grid; without a song: now)
     function freezeOn(unit = 'beat') {
       const wait = player.loaded && player.playing ? player.untilNext(unit) : 0;
@@ -4150,9 +4156,10 @@ const ThreeLab = (() => {
     // Shift+click copies it; right-click picks one of the four sizes (the preview switches, shoots, comes back).
     const stillBtn = el('button', { class: 'stage-btn', text: '📷', title: 'Still: save this frame as a PNG at the exact frame size · Shift+click: copy it · right-click: a still at 9:16 / 16:9 / 4:5 / 1:1', dataset: { feature: 'Still' } });
     stillBtn.addEventListener('click', (e) => still({ copy: e.shiftKey }));
-    stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })],
+    stillBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); stillMenu(e); });
+    function stillMenu(e) { ThreeTweaks.menu(e.clientX, e.clientY, ['A still at', ...stage.pillOrder.filter((id) => id !== 'fit').map((id) => [id, ThreeMedia.SIZES.find((z) => z.id === id).title, () => still({ size: id })]), ['Copy this frame', 'To the clipboard', () => still({ copy: true })],
       ['Send this frame to the director', 'Attached in its chat, ready to describe', () => framesToDirector('frame')],
-      'A folder of stills', ['In all four sizes', '9:16, 16:9, 4:5, 1:1 as PNGs', () => stillsAt('sizes')], [player.loaded ? 'At every cue' : 'Across the song', player.cues.length ? `${player.cues.length} cues` : 'six evenly spaced frames', () => stillsAt('cues')], store.get('three.stillsDir', '') ? ['Choose another folder…', store.get('three.stillsDir', ''), () => { store.set('three.stillsDir', ''); stillsFolder(); }] : null]); });
+      'A folder of stills', ['In all four sizes', '9:16, 16:9, 4:5, 1:1 as PNGs', () => stillsAt('sizes')], [player.loaded ? 'At every cue' : 'Across the song', player.cues.length ? `${player.cues.length} cues` : 'six evenly spaced frames', () => stillsAt('cues')], store.get('three.stillsDir', '') ? ['Choose another folder…', store.get('three.stillsDir', ''), () => { store.set('three.stillsDir', ''); stillsFolder(); }] : null]); }
     async function still({ size = null, copy = false } = {}) {
       const before = stage.size.id;
       if (size && size !== before) { stage.setMode(size); await sleep(2200); }
@@ -4214,7 +4221,7 @@ const ThreeLab = (() => {
       return n;
     }
     // the preview's own ⋯: guides, safe zones, stage, fps, present
-    const previewMoreBtn = el('button', { class: 'stage-btn', text: '⋯', title: 'Guides, safe zones, Stage window, frame rate, present', dataset: { feature: 'Preview more' }, on: { click: (e) => { const r0 = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r0.right - 280, r0.bottom + 4, previewMenu()); } } });
+    const previewMoreBtn = el('button', { class: 'stage-btn', text: '⋯', title: 'Guides, safe zones, Stage window, frame rate, present', dataset: { feature: 'Preview more' }, on: { click: (e) => { const r0 = e.currentTarget.getBoundingClientRect(); Promise.resolve(previewMenu()).then((rows) => ThreeTweaks.menu(r0.right - 280, r0.bottom + 4, rows)); } } });
     function previewMenu() {
       return ['Preview',
         ['⌗ Composition guides', `Now: ${GUIDES.find(([k]) => k === guides)[1]} · click for the next`, () => cycleGuides(), Boolean(guides), 'Guides'],
@@ -4749,12 +4756,12 @@ ${code}
     }
 
     picker.addEventListener('change', () => openSketch(picker.value));
-    picker.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
+    picker.addEventListener('contextmenu', (e) => { e.preventDefault(); pickerMenu(e); });
+    function pickerMenu(e) {
       const pins = new Set(store.get('three.sketchPins', []));
       const list = [...sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt).slice(0, 14);
       ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => openSketch(x.id), x.id === current?.id]), ['All as pictures…', 'O', () => browseSketches()], ...(current ? [[`▶ Play ${current.name}`, 'as a game, full screen', () => playGame()]] : []), ['＋ New sketch', '', () => templateGallery()]]);
-    });
+    }
     autoBox.addEventListener('change', () => { autoRun = autoBox.checked; store.set('three.autorun', autoRun); });
     version.addEventListener('change', () => { store.set('three.version', version.value); run(); });
     snippetSel.addEventListener('change', () => {
@@ -6110,7 +6117,6 @@ ${frag}\`,
       return { ok: true, value: await d.newSketch(String(args.name || 'Untitled'), String(args.code || ''), Number(args.wait) || 2.5) };
     }
     if (tool === 'three_console') return { ok: true, value: d.report() };
-    if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
     if (tool === 'three_media_info') { const live = d.live(); return { ok: true, value: live.input || live.nowPlaying ? { ...d.media.info(), live } : d.media.info() }; }
     if (tool === 'three_load_media') {
       d.songOnScene(String(args.path || '')); // a song on the scene's own timeline: its cues come along
@@ -6138,6 +6144,44 @@ ${frag}\`,
       toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       return { ok: true, value: await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5) };
     }
+    if (tool === 'three_read_code') return { ok: true, value: d.readCode(args.layer, Number(args.from) || 1, args.to != null ? Number(args.to) : null) };
+    if (tool === 'three_search_code') return { ok: true, value: d.searchCode(String(args.pattern || ''), { layer: args.layer || null, regex: Boolean(args.regex), context: Math.min(5, Math.max(0, Number(args.context ?? 1))) }) };
+    if (tool === 'three_edit_code') return { ok: true, value: await d.editCode(args.layer, Array.isArray(args.edits) ? args.edits : [], Number(args.wait) || 2.5) };
+    if (tool === 'three_update_layer') {
+      const patch = { ...(args.settings || {}) };
+      if (args.code != null) patch.code = args.code;
+      if (args.order != null) patch.order = args.order;
+      return { ok: true, value: await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5)) };
+    }
+    if (tool === 'three_sliders') return { ok: true, value: d.sliders(args.layer, args.set || null) };
+    if (tool === 'three_looks') return { ok: true, value: d.looks(args.layer, args.action || 'list', args.name) };
+    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layers ?? args.layer ?? args.name, { who: args._owner && args._owner === window.LabChatLink?.ownerToken ? null : aiName(ctx.chatId) }) }; // (round 116) layers: several in one step
+    if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
+    if (tool === 'three_set_frame') {
+      if (!ThreeMedia.SIZES.some((x) => x.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((x) => x.id).join(', ')}` };
+      d.setFrame(args.size);
+      await new Promise((res) => setTimeout(res, 1500));
+      return { ok: true, value: d.report() };
+    }
+    if (tool === 'three_screenshot') {
+      const url = await d.shot();
+      if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
+      // Shrink to a JPEG so the image stays light for the model.
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const c = document.createElement('canvas');
+      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      const jpeg = await canvasDataUrl(c, 'image/jpeg', 0.85); // (round 20) encoded off the window's thread
+      return { ok: true, images: [{ data: jpeg.split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
+    }
+    return labCallMore(tool, args, d);
+  }
+  // the director's rarer Lab tools (triggers, eval, input, the timeline and keyframes, notes, contact sheet, references)
+  async function labCallMore(tool, args, d) {
+    if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
     if (tool === 'three_eval') {
       const r = await d.evalInSketch(String(args.code || ''));
       return r.ok ? { ok: true, value: { result: r.value, console: d.report().console?.slice?.(-5) } } : { ok: false, error: r.error };
@@ -6148,15 +6192,6 @@ ${frag}\`,
       if (!args.screenshot) return { ok: true, value: { done: r.log } };
       const url = await d.shot();
       return { ok: true, value: { done: r.log }, ...(url ? { images: [{ data: url.split(',')[1], mime: 'image/png' }] } : {}) };
-    }
-    if (tool === 'three_read_code') return { ok: true, value: d.readCode(args.layer, Number(args.from) || 1, args.to != null ? Number(args.to) : null) };
-    if (tool === 'three_search_code') return { ok: true, value: d.searchCode(String(args.pattern || ''), { layer: args.layer || null, regex: Boolean(args.regex), context: Math.min(5, Math.max(0, Number(args.context ?? 1))) }) };
-    if (tool === 'three_edit_code') return { ok: true, value: await d.editCode(args.layer, Array.isArray(args.edits) ? args.edits : [], Number(args.wait) || 2.5) };
-    if (tool === 'three_update_layer') {
-      const patch = { ...(args.settings || {}) };
-      if (args.code != null) patch.code = args.code;
-      if (args.order != null) patch.order = args.order;
-      return { ok: true, value: await d.updateLayer(args.layer, patch, Number(args.wait) || (args.code != null ? 2.5 : 0.5)) };
     }
     if (tool === 'three_timeline') return { ok: true, value: d.timeline(args.from != null || args.to != null ? { from: args.from ?? 0, to: args.to ?? Infinity } : null) };
     if (tool === 'three_timeline_edit') return { ok: true, value: d.timelineEdit(args) };
@@ -6176,8 +6211,6 @@ ${frag}\`,
       if (action === 'add') { const n = await d.notes.add(Number(args.time) || 0, args.text); return { ok: true, value: n }; }
       return { ok: false, error: 'action must be list, done, reopen, edit, delete or add' };
     }
-    if (tool === 'three_sliders') return { ok: true, value: d.sliders(args.layer, args.set || null) };
-    if (tool === 'three_looks') return { ok: true, value: d.looks(args.layer, args.action || 'list', args.name) };
     if (tool === 'three_contact_sheet') {
       const sheet = await d.contactSheet({ times: Array.isArray(args.times) ? args.times : null, count: Math.max(2, Math.min(16, Number(args.count) || 8)) });
       return { ok: true, images: [{ data: sheet.dataUrl.split(',')[1], mime: 'image/jpeg' }], value: { frames: sheet.frames, note: 'Numbered left to right, top to bottom.' } };
@@ -6221,28 +6254,6 @@ ${frag}\`,
       return { ok: false, error: 'action must be list, add, rename, remove, palette or like' };
     }
     if (tool === 'three_keyframes') return { ok: true, value: d.setKeyframes(args.layer, args.property, args.keys, args.clear) };
-    if (tool === 'three_remove_layer') return { ok: true, value: await d.removeLayer(args.layers ?? args.layer ?? args.name, { who: args._owner && args._owner === window.LabChatLink?.ownerToken ? null : aiName(ctx.chatId) }) }; // (round 116) layers: several in one step
-    if (tool === 'three_select_layer') return { ok: true, value: d.selectLayer(args.layer) };
-    if (tool === 'three_set_frame') {
-      if (!ThreeMedia.SIZES.some((x) => x.id === args.size)) return { ok: false, error: `size must be one of ${ThreeMedia.SIZES.map((x) => x.id).join(', ')}` };
-      d.setFrame(args.size);
-      await new Promise((res) => setTimeout(res, 1500));
-      return { ok: true, value: d.report() };
-    }
-    if (tool === 'three_screenshot') {
-      const url = await d.shot();
-      if (!url) return { ok: false, error: 'No image: the sketch is not rendering (check three_console for errors).' };
-      // Shrink to a JPEG so the image stays light for the model.
-      const img = new Image();
-      img.src = url;
-      await img.decode();
-      const c = document.createElement('canvas');
-      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
-      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      const jpeg = await canvasDataUrl(c, 'image/jpeg', 0.85); // (round 20) encoded off the window's thread
-      return { ok: true, images: [{ data: jpeg.split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
-    }
     return { ok: false, error: `Unknown tool ${tool}` };
   }
   // (round 23) the time machine notes who changed the scene (tools/three-history.js: Claude / Astra, and their turns)
