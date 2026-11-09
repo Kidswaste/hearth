@@ -703,9 +703,25 @@ function ipcChannels(src) {
   }
   return chans;
 }
+// (round 162, main162) the channels read from each file are kept between starts (in Electron's profile folder, by the file's
+// size + modified time): ≈ 35 sources read and searched at every start became 35 stats; a changed file is read again
+const ipcCache = { file: null, old: {}, now: {}, dirty: false };
+try { ipcCache.file = path.join(app.getPath('userData'), 'hearth-ipc-channels.json'); ipcCache.old = JSON.parse(fs.readFileSync(ipcCache.file, 'utf8')) || {}; } catch { ipcCache.old = {}; }
+function channelsOf(file) {
+  const abs = path.join(__dirname, file);
+  let key = ''; try { const st = fs.statSync(abs); key = `${st.size}:${st.mtimeMs}`; } catch { /* read below says */ }
+  const hit = ipcCache.old[file];
+  if (key && hit?.key === key && Array.isArray(hit.chans)) { ipcCache.now[file] = hit; return hit.chans; }
+  const chans = ipcChannels(fs.readFileSync(abs, 'utf8'));
+  ipcCache.now[file] = { key, chans }; ipcCache.dirty = true;
+  return chans;
+}
+function saveIpcCache() {
+  if (!ipcCache.file || (!ipcCache.dirty && Object.keys(ipcCache.old).length === Object.keys(ipcCache.now).length)) return;
+  try { fs.writeFileSync(ipcCache.file, JSON.stringify(ipcCache.now)); } catch { /* only a cache */ }
+}
 function lazyIpc(file, register) {
-  const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
-  const chans = ipcChannels(src);
+  const chans = channelsOf(file);
   const real = new Map(); // channel → handler / listeners
   let loaded = false;
   const load = () => {
@@ -865,12 +881,16 @@ function registerAfterWindow() {
     };
     const soon = () => { clearTimeout(t); t = setTimeout(check, 60); };
     const arm = () => { try { w?.close(); w = fs.watch(file, (ev) => { soon(); if (ev === 'rename') setTimeout(arm, 100); }); w.on('error', () => { w = null; }); } catch { w = null; } };
-    arm();
-    // (round 39, powerwise) the safety net on the background schedule: every 10 s on screen, slower minimized / on
-    // battery, none while the computer sleeps (was a stat every 5 s per file, always)
+    // (round 162, main162) the watchers are armed once the first screen is up (the stamps above are taken now, and a
+    // check right after arming catches a change made in between): four fs.watch starts off the window's way
+    afterFirstScreen(() => { arm(); check(); });
+    // (round 39, powerwise) the safety net on the background schedule, slower minimized / on battery, none while the
+    // computer sleeps (was a stat every 5 s per file, always)
     nets.push(() => { if (!w) arm(); check(); });
   }
-  powerwise.every(`config-stat:files`, 10000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } }, { hiddenScale: 6 }); // (round 73) hidden: once a minute (fs.watch tells changes first)
+  // (round 162, main162) every 30 s on screen (was 10 s: 6 of the main process' 6 wake-ups a minute at idle); fs.watch
+  // tells a change at once, this only catches what a watcher missed (a network drive, an editor's odd save)
+  powerwise.every(`config-stat:files`, 30000, () => { for (const net of nets) { try { net(); } catch { /* the next file still checked */ } } }, { hiddenScale: 6 }); // (round 73) hidden: every 3 min (fs.watch tells changes first)
   bgmain.register(() => win);
   bgmain.subscribe((st) => { syncmain.pace?.(st); if (nowplaying.loaded) nowplaying.pace(st); appsmain.pace?.(st); });
   syncmain.setBusy?.(() => (engines.loaded ? engines.busy?.() || 0 : 0)); // (no replies can run before the engines module is in)
@@ -878,6 +898,7 @@ function registerAfterWindow() {
   require('./glrecovermain').register(ipcMain, { getWin: () => win }); // (round 43) the graphics card restarted / drawing without it: one calm note
   gpu52.register(ipcMain, { getWin: () => win }); // (round 52) did this start reach the card (told once if not), Windows' per-app graphics choice, Settings › Advanced › Graphics
   syncmain.setHold?.(() => (require('./powerwisemain').quietNow?.() ? 'quiet' : require('./jankmain').hold())); // a sync pass waits out a drag / typing burst · (round 52) and a Lab show (as long as it lasts)
+  afterFirstScreen(saveIpcCache); // (round 162, main162) the channels read this start, for the next
 }
 // /background (sync.js): what Hearth is doing in the background right now, and what each of its processes costs
 ipcMain.handle('bg:state', () => {

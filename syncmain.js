@@ -18,7 +18,7 @@ const S = require('./sync-merge');
 let syncEngine = null;
 const SE = () => (syncEngine ||= require('./sync-engine'));
 const createEngine = (o) => SE().createEngine(o);
-const hearthIn = (root) => SE().hearthIn(root);
+const hearthIn = (root) => (fs.existsSync(path.join(root, 'Hearth', 'files')) ? SE().hearthIn(root) : null); // (its own first test: no Hearth folder there → null)
 const K = require('./sync-kinds'); // (round 73, syncmedia73) What syncs
 const Evict = require('./cloud-evict'); // (round 73, syncmedia73) Free up space
 const SAmain = require('./storeackmain'); // (round 77, storeack77) stores the main process holds in memory
