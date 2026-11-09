@@ -28,6 +28,9 @@
 // (round 93, perf93) --cpu-at <ms>: each counted launch (not the warm-up, not the profiled one) also waits until <ms>
 //   after it was launched and reports every process's CPU time then (cpu.at; cpu.atMs = when it was read): "the CPU of
 //   the first 30 s" with --cpu-at 30000
+// (round 157, boot157) every launch also reports the window's JS heap, DOM nodes and listeners once settled; with --trace
+//   the last launch reports its V8 parse + compile and script evaluation ms before the first screen; --no-code-cache drops
+//   V8's code cache before each launch (a first start after an update)
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -75,6 +78,8 @@ async function cdp(wsUrl) {
 }
 
 async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuAt } = {}) {
+  // (round 157, boot157) --no-code-cache: V8's code cache dropped before each launch (the first start after an update)
+  if (args.includes('--no-code-cache')) fs.rmSync(path.join(userData, 'Code Cache'), { recursive: true, force: true });
   const spawned = Date.now();
   const probeOut = path.join(userData, `probe-${Date.now()}.json`);
   const mainProf = profDir ? path.join(profDir, 'main.cpuprofile') : null;
@@ -169,6 +174,9 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
     // (--cpu-also <ms,ms…>: more readings later on, e.g. 65000,75000 for idle at 1 min on a warm profile: cpu.also)
     const also = [];
     for (const t of String(opt('--cpu-also', '')).split(',').map(Number).filter((x) => x > 0)) { if (!cpuAt) break; const left = spawned + t - Date.now(); if (left > 0) await wait(left); also.push({ ms: Date.now() - spawned, cpu: await procCpu() }); }
+    // (round 157, boot157) the window's memory once settled (CDP Performance.getMetrics: JS heap, DOM nodes, listeners)
+    let metrics = null;
+    try { await c.send('Performance.enable'); const r = await c.send('Performance.getMetrics'); const g = Object.fromEntries((r.result?.metrics || []).map((x) => [x.name, x.value])); metrics = { heapMB: r1(g.JSHeapUsedSize / 1048576), heapTotalMB: r1(g.JSHeapTotalSize / 1048576), nodes: g.Nodes, listeners: g.JSEventListeners }; } catch { /* old Electron */ }
     const page = await c.evaluate(`(() => {
       const m = (n) => { const e = performance.getEntriesByName(n)[0]; return e ? e.startTime : null; };
       const paint = Object.fromEntries(performance.getEntriesByType('paint').map((e) => [e.name, e.startTime]));
@@ -196,7 +204,19 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
     const lastLong = cs.longs.reduce((m, [s, d]) => Math.max(m, s + d), 0);
     const keysAfter = cs.keys.filter(([s]) => s >= readyAt);
     const profiles = profDir ? summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) : null;
+    // (round 157, boot157) --trace: the window's main thread before the first screen (ms): V8 parse + compile (most of it
+    // comes from the code cache on a second launch) and the scripts' evaluation (EvaluateScript: compile + run)
+    let compile = null;
+    if (traceBuf?.length && page.ready != null) {
+      const win = traceBuf.find((e) => e.name === 'TracingStartedInBrowser')?.args?.data?.frames?.find((f) => /index\.html/.test(f.url || ''))?.processId
+        ?? traceBuf.find((e) => e.cat?.includes('blink.user_timing') && e.name === 'hearth:ready')?.pid;
+      const ready = traceBuf.find((e) => e.name === 'hearth:ready' && e.pid === win);
+      const main = traceBuf.find((e) => e.pid === win && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')?.tid;
+      const sum = (re) => r1(traceBuf.filter((e) => e.pid === win && e.tid === main && e.ph === 'X' && re.test(e.name) && (!ready || e.ts <= ready.ts)).reduce((a, e) => a + (e.dur || 0), 0) / 1000);
+      compile = { parseCompile: sum(/^(v8\.compile|V8\.CompileCode|v8\.parseOnBackground|V8\.ParseProgram|V8\.ParseFunction|v8\.compileModule)$/), evaluate: sum(/^(EvaluateScript|v8\.run)$/) };
+    }
     return {
+      metrics, compile,
       settled: toMain(lastLong || page.ready),
       cpu: { ready: cpuReady, settled: cpuSettled, at: cpuAtV, atMs: cpuAtMs, also }, // (round 82) every process's CPU ms: at the first screen + its 'soon' groups, and once settled
       longBeforeReady: cs.longs.filter(([s]) => s < readyAt).map(([, d]) => d),
@@ -267,6 +287,7 @@ function summarize(profDir, mainProf, traceOut, traceBuf, page, toMain) {
         if (args.includes('--groups')) console.log(`  groups: ${r.groups}`);
         console.log(`run ${i}: shown ${r1(r.windowShown)} · first paint ${r1(r.firstPaint)} · ready ${r1(r.ready)} · features ${r1(r.features)} · settled ${r1(r.settled)} · main ready→shown ${r1(r.mainReadyToShown)} · ready→ready-to-show ${r1(r.mainReadyToRTS)}`);
         console.log(`  window long tasks before ready ${JSON.stringify(r.longBeforeReady)} · after ${JSON.stringify(r.longAfterReady.slice(0, 20))}${r.keys ? ` · keys ${JSON.stringify(r.keys)}` : ''}`);
+        if (r.metrics || r.compile) console.log(`  window after settling ${JSON.stringify(r.metrics)}${r.compile ? ` · before the first screen (trace) ${JSON.stringify(r.compile)}` : ''}`);
         if (r.profiles) console.log(r.profiles);
       } catch (err) { console.log(`run ${i}: ${err.message}`); }
       await wait(500);
