@@ -105,7 +105,14 @@ s hidden, the same whole reply both ways · 10 Lab windows leave no listener / h
 On round 159 it would fail idle (6 / min), streaming (23 / s) and lazy. `dev/checks/powerwise.js`: its "half pace"
 step now expects the config net at 60 s (30 s × 2).
 
-Runs: see the end of this file.
+Runs (before merging round 160):
+- `flock /tmp/hearth-run.lock timeout 2900 node dev/run-checks.js --exact main162 perf151 idlecpu mem154 labwin153
+  crashsafe storeack77 sync unit:boot-test unit:lazymanifest-test`: **10 / 10 passed** (main162 265 s, perf151 156 s,
+  idlecpu 331 s, mem154 89 s, labwin153 54 s, crashsafe 89 s, storeack77 94 s, sync 58 s, boot-test 1 s, lazymanifest 151 s).
+- For what this round touched (config net, engines' batching / idle timer, capture, sync): `--exact powerwise filewatch
+  capture-frames capture-record capture-shots chat-stream streamrender liveness-ui syncpanel92 sync-switch-safety
+  unit:sync-test`: **11 / 11 passed**.
+- After merging round 160 (claude/intelligent-galileo-yaiqem): `--exact main162 mem154`: **2 / 2 passed**. `node dev/codex-server-test.js`: 14 groups passed. `node dev/whatsnew-test.js`: 49 passed.
 
 ## For Codex
 
