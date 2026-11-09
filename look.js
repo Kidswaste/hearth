@@ -30,13 +30,15 @@ const Look = (() => {
     const p = preset();
     const f = fx();
     setAttr('data-look', p?.look || '');
-    setAttr('data-tex', f.texture ? '' : 'off');
+    // (round 153a, lite153) ⚡ Lite mode: no textures, Motion: off, no glow (never saved: off gives back the look as it was)
+    const lite = Boolean(window.HearthLite?.on);
+    setAttr('data-tex', f.texture && !lite ? '' : 'off');
     // (round 39, powerwise) on battery / battery saver, Full moves like Calm (not saved; plugged in, Full again)
-    setAttr('data-motion', f.motion === 'full' ? (window.Power?.lite?.() ? 'calm' : '') : f.motion);
+    setAttr('data-motion', lite ? 'off' : f.motion === 'full' ? (window.Power?.lite?.() ? 'calm' : '') : f.motion);
     setAttr('data-density', f.density === 'normal' ? '' : f.density);
     setAttr('data-corners', f.corners === 'cut' ? '' : f.corners);
     for (const k of applied) root.style.removeProperty(k);
-    const vars = { ...(p?.vars || {}), '--glow': String(Math.max(0, Math.min(100, Number(f.glow) || 0)) / 50) };
+    const vars = { ...(p?.vars || {}), '--glow': lite ? '0' : String(Math.max(0, Math.min(100, Number(f.glow) || 0)) / 50) };
     if (f.accent) vars['--fh-gold'] = f.accent;
     if (READ_FONTS[f.chatfont]) vars['--font-read'] = READ_FONTS[f.chatfont];
     for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);

@@ -259,7 +259,7 @@ const Jank = (() => {
     if (msg.worst >= 100 && readyAt) keep({ t: labAt - Math.round(msg.worst), kind: 'lab', ms: Math.round(msg.worst), area: 'Lab', fps: Math.round(msg.fps) });
     ring[ri++ % ring.length] = bad ? 1 : 0;
     // keeps dropping frames (40 of the last 30 s), even at lowered resolution: suggest Light mode, once, ever
-    if (!asked && !msg.light && !env.test && ri >= ring.length && ring.reduce((a, x) => a + x, 0) >= 40) suggestLight();
+    if (!asked && !msg.light && !msg.lite && !env.test && ri >= ring.length && ring.reduce((a, x) => a + x, 0) >= 40) suggestLight();
   }
   function suggestLight() {
     asked = true; ls('jank.labAsked', '1');

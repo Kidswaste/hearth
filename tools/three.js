@@ -629,6 +629,10 @@ const ThreeLab = (() => {
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
     const labMoreBtn = btn('⋯', 'More: variations, dials, make & export, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
     labMoreBtn.dataset.feature = 'Lab more';
+    // (round 153a, lite153) the quiet LITE tag beside ⋯ while Lite mode is on: a click turns it off
+    const liteTag = el('button', { type: 'button', class: 'lite-tag', text: 'LITE', title: '⚡ Lite mode is on: 30 fps preview at half resolution, no glow or animations (renders stay full quality) · click to turn it off', dataset: { feature: 'Lite mode tag' }, hidden: !liteOn(), on: { click: () => { window.HearthLite?.set(false); toast('Lite mode off: everything is back as it was', { timeout: 2200 }); } } });
+    function paintLiteTag() { if (liteTag.hidden === liteOn()) liteTag.hidden = !liteOn(); }
+    const liteRow = () => ['⚡ Lite mode', liteOn() ? 'On: 30 fps preview at half resolution, no glow or animations · click to turn off' : 'Busy PC: 30 fps preview at half resolution, no glow, no animations (renders stay full quality)', () => { const on = window.HearthLite?.toggle(); toast(on ? '⚡ Lite mode on: 30 fps preview at half resolution, no glow, no animations. Renders stay full quality.' : 'Lite mode off: everything is back as it was', { timeout: 2600 }); }, liteOn(), 'Lite mode'];
     // (round 64, clickfirst64) ▶ Playtest (notes and the hitch map) at the end of Capture & playtest (round 116, slim116: moved here from clickfirst.js)
     function playtestRows(extra = []) {
       const say = (t) => { if (t && typeof t === 'string') toast(t, { timeout: 4000 }); };
@@ -650,6 +654,7 @@ const ThreeLab = (() => {
       const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
       const speed = easy.filter((r) => /Speed check/.test(r[0])); // (round 133, speed133)
       return ['Make',
+        liteRow(), // (round 153a, lite153) ⚡ Lite mode, the menu's top row
         ...easy.filter((r) => !fix.includes(r) && !speed.includes(r)),
         'This Lab',
         ...fix,
@@ -1155,6 +1160,9 @@ const ThreeLab = (() => {
     try { new IntersectionObserver(() => syncPark()).observe(previewHost); } catch { /* old engine: events + timer */ }
     // Light mode (for slower machines): 30 fps, at most 1× pixels in the preview, filters at half resolution
     let lightOn = Boolean(store.get('three.light', false));
+    // (round 153a, lite153) ⚡ Lite mode, the owner's one switch (powerwise.js HearthLite): the preview at 30 fps, half
+    // resolution, no glow / effects, no shadows, no antialias (three-sandbox.html "lite153"); renders never see it
+    const liteOn = () => Boolean(window.HearthLite?.on);
     // (round 31 "labadapt") the preview lightens itself while frames drop (resolution, filters, shadows, particles: see
     // "Adaptive quality" in three-sandbox.html) and says so in its corner; right-click › View turns it off. Renders,
     // stills and recordings are always full quality.
@@ -3628,7 +3636,7 @@ const ThreeLab = (() => {
     const speedOf = (sk = current) => { const { q, ...own } = sk?.speed || {}; return { px1: false, noAA: false, sh: null, fxHalf: false, ...own }; }; // (round 142: q is the scene's quality choice, not a speed fix)
     // (round 142, smooth142) what the page gets: Force high quality sets the scene's preview fixes aside; Smooth adds
     // "no antialias" once the page asked for it on this scene (from its next run)
-    const speedMsg = () => { if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
+    const speedMsg = (lite = liteOn()) => { if (lite) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; if (safeOn()) return { type: 'speed', px1: true, noAA: true, sh: 0, fxHalf: true, lay: speedOf().lay || null }; const m = qMode(); if (m === 'high') return { type: 'speed', px1: false, noAA: false, sh: null, fxHalf: false, lay: null }; const s = speedOf(); return { type: 'speed', ...s, noAA: Boolean(s.noAA || (m === 'smooth' && current && aaAuto.has(current.id))) }; };
     api.speed = {
       host: previewHost, stats, sceneId: () => current?.id || null, sceneName: () => current?.name || '',
       get: () => speedOf(),
@@ -3643,16 +3651,23 @@ const ThreeLab = (() => {
         if (aaWas !== speedMsg().noAA) run({ reload: true, quiet });
         return speedOf();
       },
-      quality: () => ({ mode: qMode(), own: current?.speed?.q || null, global: qGlobal(), held: adaptHeld, why: qualityWhy(), adapt: adaptLast }), // (round 142, smooth142) for the ⚡ card
+      quality: () => ({ mode: qMode(), own: current?.speed?.q || null, global: qGlobal(), held: adaptHeld, why: qualityWhy(), adapt: adaptLast, lite: liteOn() }), // (round 142, smooth142) for the ⚡ card
       measure: (ms = 3000, toggle = 3) => sandboxCall({ type: 'speed-measure', ms, toggle }, ms * 20 + 30000), // (a slow software GPU stretches each window to 6 frames)
       reopen: () => run({ reload: true }), // a fresh page for the scene (safe mode after the graphics card dropped it)
       name: (id) => layerById(id)?.name || null,
       userCap: () => { const v = fpsPref(); return v > 0 ? v : 0; },
-      light: () => lightOn, frozen: () => frozenNow, parked: () => parkedNow,
+      light: () => lightOn || liteOn(), frozen: () => frozenNow, parked: () => parkedNow, // (round 153a: Lite's 30 isn't "slow")
       layers: () => renderLayers(), // (round 146, layercost146) the cost badges on the Layers rows shown / hidden
     };
     // (round 142, smooth142) the preview's quality: get() → 'smooth' | 'balanced' | 'high' (this scene's, else the default);
     // set(mode, { scene }) keeps it for this scene (sketch.speed.q) and as the default
+    // (round 153a, lite153) Lite on / off: the page told at once; antialias changes from a fresh page (fixed when made)
+    addEventListener('hearth:lite', () => {
+      const on = liteOn();
+      box.send({ type: 'lite', on }); box.send(speedMsg());
+      if (speedMsg(!on).noAA !== speedMsg().noAA && current) run({ reload: true, quiet: true });
+      paintLiteTag(); statsSig = ''; if (lastStatsMsg) paintStats(lastStatsMsg);
+    });
     api.quality = { get: () => qMode(), set: (m, o) => setQuality(m, o), global: () => qGlobal(), why: () => qualityWhy(), names: Q_NAMES, menu: (x = 200, y = 200) => qualityMenu(x, y), chip: () => qChip };
     // Perf HUD (/lab perf, round 16 "labperf"): a quiet line in the preview's corner, fps · frame ms (median / worst
     // 5 %) · draw calls · GPU memory estimate, 2 updates a second at most, written only when the text changes
@@ -3662,7 +3677,7 @@ const ThreeLab = (() => {
     function perfLine(m) {
       if (!m) return 'no frames yet';
       const q = (m.quality < 1 ? ` · ${Math.round(m.quality * 100)}%` : '') + (m.adapt?.level > 3 ? ` · lighter ${m.adapt.level}/9` : '') + (m.adapt?.covered ? ` · ${m.adapt.covered} hidden skipped` : '');
-      return `${Math.round(m.fps)} fps${m.cap ? `/${m.cap}` : ''} · ${m.p50 ?? m.ms.toFixed(1)}/${m.p95 ?? '–'} ms · ${m.callsAll ?? m.calls} calls · ≈${m.gpuMB ?? '?'} MB${q}${m.light ? ' · 🪶' : ''}`;
+      return `${Math.round(m.fps)} fps${m.cap ? `/${m.cap}` : ''} · ${m.p50 ?? m.ms.toFixed(1)}/${m.p95 ?? '–'} ms · ${m.callsAll ?? m.calls} calls · ≈${m.gpuMB ?? '?'} MB${q}${m.light ? ' · 🪶' : ''}${m.lite ? ' · ⚡ lite' : ''}`;
     }
     function paintPerfHud(m) { if (!perfHudOn) return; const t = perfLine(m); if (perfHud.textContent !== t) perfHud.textContent = t; }
     function setPerfHud(on) { perfHudOn = Boolean(on); store.set('three.perfHud', perfHudOn); perfHud.hidden = !perfHudOn; paintPerfHud(lastStatsMsg); return perfHudOn; }
@@ -3781,6 +3796,7 @@ const ThreeLab = (() => {
         lastStats = { fps: Math.round(msg.fps), worstFrameMs: Math.round(msg.worst || 0), renderMs: Number(msg.ms.toFixed(2)), drawCalls: msg.calls, triangles: msg.triangles, points: msg.points, geometries: msg.geometries, textures: msg.textures, shaders: msg.programs };
         lastStatsMsg = msg;
         window.Jank?.lab(msg); // (round 20) the jank watch: real frame times on this computer (/smooth)
+        window.HearthLite?.stats?.(msg); // (round 153a, lite153) "Things are slow: turn on Lite mode?" once a session (lite.js)
         window.LabHudStage?.stats?.(msg); // (round 150, stage150) the stage's fps label (written only while it shows)
         if (typeof LabSpeedHook !== 'undefined') LabSpeedHook.stats(msg); // (round 133, speed133) ⚡ "Slow: 21 fps · Why?" after 5 s under 50 fps / half the screen's rate
         paintPerfHud(msg);
@@ -3808,7 +3824,7 @@ const ThreeLab = (() => {
       if (msg.type === 'refs-need') { if (msg.n === pageN) { for (const x of msg.sigs || []) pageHeld.sigs.delete(x); refsSig = null; const want = current; loadRefBytes().then(() => { if (current === want) run({ sync: true }); }).catch(() => {}); } return; }
       if (msg.type === 'asset-progress') return;
       if (msg.type === 'ready') window.PerfectLoop?.onReady?.(); // (round 31) ∞ a fresh page gets the scene's loop clock again
-      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); sendQuality(); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
+      if (msg.type === 'ready') { box.send(capMsg()); if (onBattery) box.send({ type: 'power', battery: true }); if (lightOn) box.send({ type: 'light', on: true }); if (liteOn()) box.send({ type: 'lite', on: true }); sendQuality(); adaptLast = null; paintAdapt(); parkedNow = false; parkSoon(); }
       if (msg.type === 'ready') { if (frozenNow) box.send({ type: 'freeze', on: true }); if (guides) box.send({ type: 'guides', kind: guides }); if (previewHost.classList.contains('presenting')) box.send({ type: 'present', on: true }); sendTriggers(); if (trigPanel) box.send({ type: 'trig-watch', on: true }); }
       if (msg.type === 'ready' && liveKind) {
         // a reloaded preview: the hub page keeps capturing, the Stage captures again by itself
@@ -4791,7 +4807,7 @@ ${code}
         group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present'], [playBtn, '▶', 'Play']])),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
-        group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
+        group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), liteTag, labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
       { const row = player.el.querySelector('.mb-main'); row.querySelector('.mb-g-capture').append(noteBtn, notesBtn, sheetBtn); row.querySelector('.mb-g-live').append(writeBtn, midiBtn); row.querySelector('.tb-group[data-cat="Beat"]').after(el('span', { class: 'tb-group mb-g-sound', dataset: { cat: 'Sound' } }, liveBtn, trigBtn, trigPresetBtn, autoBarsBtn, npBox)); for (const n of [notesBtn, sheetBtn, writeBtn, midiBtn]) n.classList.add('mb-adv'); const rec = row.querySelector('.mb-g-live .mb-rec'); if (rec) { row.querySelector('.mb-g-capture').prepend(rec); rec.classList.add('mb-adv'); } row.querySelector('.mb-g-live').classList.add('mb-adv'); }
       window.LabRegroup?.apply({ toolbar, bar: player.el, preview: previewHost, media: player }); // (round 148, look148: + the instrument headers) (round 143, lab143) ⚙ Inspect ▾ · ♩ Beat ▾ · ⚡ Sync ▾: folds holding the real controls (tools/three-regroup.js)
       window.LabHudStage?.apply({ preview: previewHost, frame: () => box.frame, send: (m) => box.send(m), ready: () => box.ready, media: player, frozen: () => frozenNow }); // (round 150, stage150) the stage around the preview: controls out of the way until wanted, the mono HUD frame that follows the scene and the song (tools/three-hudstage.js)

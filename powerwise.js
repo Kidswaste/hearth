@@ -120,7 +120,10 @@
   function mode(st = {}) { return st.saver || st.lowPower ? 'saver' : st.battery ? 'battery' : 'plugged'; }
   function policy(st = {}) {
     const m = mode(st);
-    return { mode: m, lite: m !== 'plugged', motion: m === 'plugged' ? null : 'calm', pollScale: m === 'saver' ? 3 : m === 'battery' ? 2 : 1, warm: m === 'plugged', labLite: m !== 'plugged' };
+    const p = { mode: m, lite: m !== 'plugged', motion: m === 'plugged' ? null : 'calm', pollScale: m === 'saver' ? 3 : m === 'battery' ? 2 : 1, warm: m === 'plugged', labLite: m !== 'plugged' };
+    // (round 153a, lite153) ⚡ Lite mode, the owner's own switch (st.lite): lighter than battery saver, whatever the power
+    if (st.lite) Object.assign(p, { lite: true, motion: 'off', pollScale: Math.max(p.pollScale, 3), warm: false, labLite: true, user: true });
+    return p;
   }
   // macOS: `pmset -g` lists "lowpowermode 1" (Intel / older) or "powermode 1" (Apple silicon: 1 = low power)
   function parseMacLowPower(text) {
@@ -238,6 +241,44 @@
 
 // ======================= the window =======================
 if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof module === 'object' && module.exports)) {
+  // (round 153a, lite153) ⚡ Lite mode: one switch for busy days (docs/upgrades/lite153.md). Read here, before the first
+  // paint (localStorage hub.lite, the store's own key), as <html data-lite>: powerwise.css drops every animation,
+  // transition, backdrop-filter and will-change; look.js moves as Motion: off (never saved); Power's background timers
+  // run at a third of their pace; the Lab's preview draws 30 fps at half resolution without glow, shadows or antialias
+  // (tools/three.js, three-sandbox.html "lite153"). Renders and exports never see it. Nothing else is changed or
+  // saved, so turning it off gives back exactly what was there. The menus, the indicator and the "things are slow"
+  // offer are in lite.js (lazy group 'lite'). window.HearthLite = { on, set(v), toggle(), phrase(text) } for any window.
+  window.HearthLite = (() => {
+    const KEY = 'hub.lite'; const de = document.documentElement;
+    const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || 'false') === true; } catch { return false; } };
+    let on = read();
+    const paint = () => { if (on) de.setAttribute('data-lite', ''); else de.removeAttribute('data-lite'); };
+    paint();
+    function changed(why) {
+      paint();
+      try { if (typeof Look !== 'undefined') Look.apply(); } catch { /* the look comes back on its next apply */ }
+      dispatchEvent(new CustomEvent('hearth:lite', { detail: { on, why } }));
+    }
+    function set(v, { why = 'you' } = {}) {
+      v = Boolean(v);
+      if (v === on) return on;
+      on = v;
+      try { localStorage.setItem(KEY, JSON.stringify(on)); } catch { /* storage is a convenience */ }
+      changed(why);
+      return on;
+    }
+    // another Hearth window (the Lab window) switched it: follow
+    addEventListener('storage', (e) => { if (e.key === KEY && read() !== on) { on = !on; changed('other window'); } });
+    // the command bar's words: "lite mode on", "turn off lite", "lite" (true / false, 'toggle', or null: not these words)
+    function phrase(text) {
+      const s = String(text || '').trim().toLowerCase().replace(/[.!]+$/, '').replace(/\s+/g, ' ');
+      let m = /^(?:(turn|switch|put) )?(on|off)? ?(?:the )?(?:⚡ ?)?lite(?: mode)?(?: (on|off))?$/.exec(s) || /^(enable|disable|start|stop) (?:the )?lite(?: mode)?$/.exec(s);
+      if (!m) return null;
+      const w = m.slice(1).find((x) => /^(on|off|enable|disable|start|stop)$/.test(x || ''));
+      return w ? /^(on|enable|start)$/.test(w) : 'toggle';
+    }
+    return { get on() { return on; }, set, toggle: () => set(!on), phrase, stats: (msg) => window.LiteUI?.stats?.(msg) };
+  })();
   window.Power = (() => {
     const C = window.PowerCore;
     const api = () => window.hub?.power || null;
@@ -245,10 +286,10 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
     let sys = { battery: false, saver: false, lowPower: false, asleep: false, hidden: false, wokeAt: 0 };
     let awake = { type: null, held: [], text: '', n: 0 };
     const listeners = new Set();
-    const stateNow = () => ({ ...sys, hidden: Boolean(sys.hidden || document.hidden) });
+    const stateNow = () => ({ ...sys, hidden: Boolean(sys.hidden || document.hidden), lite: Boolean(window.HearthLite?.on) });
     const sched = C.createScheduler({ state: stateNow });
     const every = (id, ms, fn, o) => sched.every(id, ms, fn, o);
-    const pol = () => C.policy(sys);
+    const pol = () => C.policy({ ...sys, lite: Boolean(window.HearthLite?.on) });
 
     // ---------- holds made here (renders, recordings, Present) ----------
     // set(key, reason, on): one hold per key (a render job, the recording, Present), whatever calls it how often
@@ -344,7 +385,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
       // look.js reads Power.lite() when it sets the motion tier (Full → Calm while lighter; never saved)
       try { if (typeof Look !== 'undefined') Look.apply(); } catch { /* the look comes back on its next apply */ }
       if (!first || p.lite) for (const fn of listeners) { try { fn(p); } catch (err) { console.warn('power', err); } }
-      if (p.lite) note();
+      if (p.mode !== 'plugged') note(); // (round 153a: Lite mode alone is not "on battery")
     }
     // the first time on battery, one calm note (through Hints: never over work, never twice)
     function note() {
@@ -363,6 +404,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
       dispatchEvent(new CustomEvent('hearth:power', { detail: { ...sys, mode: pol().mode, awake: awake.text } }));
     }
     document.addEventListener('visibilitychange', () => sched.setState());
+    addEventListener('hearth:lite', () => sched.setState()); // (round 153a, lite153) background timers at a third of their pace
 
     function start() {
       const a = api();
@@ -375,7 +417,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !(typeof
     }
     function status() {
       const p = pol();
-      const lines = [`**Power**: ${words()}`, awake.n ? `**${awake.text}**` : 'Nothing is keeping your computer awake.'];
+      const lines = [`**Power**: ${words()}`, ...(window.HearthLite?.on ? ['**⚡ Lite mode is on**: background checks at a third of their pace'] : []), awake.n ? `**${awake.text}**` : 'Nothing is keeping your computer awake.'];
       const ts = sched.list().map((t) => `${t.id} ${t.every == null ? 'paused' : `every ${Math.round(t.every / 1000)} s`}`);
       if (ts.length) lines.push(`Background checks here: ${ts.join(' · ')}`);
       if (p.lite) lines.push('Renders, stills and recordings stay full quality.');

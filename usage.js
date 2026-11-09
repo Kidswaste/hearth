@@ -277,7 +277,7 @@ const Usage = (() => {
     new MutationObserver((records) => {
       if (decorateTimer) return;
       if (records.every(noisy)) return;
-      decorateTimer = setTimeout(idleDecorate, 800);
+      decorateTimer = setTimeout(idleDecorate, window.HearthLite?.on ? 4000 : 800); // (round 153a, lite153: ⚡ Lite: the usage pass waits longer)
     }).observe(document.body, { childList: true, subtree: true });
     scheduleDecorate();
   }

@@ -184,6 +184,7 @@ const CmdBar = (() => {
       const text = input.value.trim();
       if (!text) { close(); return; }
       // (round 141, cmdbar141) plain words in the Lab: its own reading first (the line under the bar), one undo step
+      if (window.HearthLite?.phrase?.(text) != null) { if (!e.altKey) { input.value = ''; grow(); } histAt = -1; menuApi?.close(); runLine(text); return; } // (round 153a, lite153) "lite mode on / off", in the Lab too
       const lab = plainNow();
       if (lab && plainText(text)) {
         if (!e.altKey) { input.value = ''; grow(); }
@@ -295,6 +296,9 @@ const CmdBar = (() => {
       await Native.sendText(agent.id, msg);
       return true;
     }
+    // (round 153a, lite153) "lite mode on", "turn off lite", "lite": the one switch (powerwise.js HearthLite)
+    const lite = window.HearthLite?.phrase?.(text);
+    if (lite != null) { Commands.addHistory(text); const on = HearthLite.set(lite === 'toggle' ? !HearthLite.on : lite); show(on ? '**⚡ Lite mode on**: the Lab preview at 30 fps and half resolution, no glow, no animations, slower background checks. Renders stay full quality.' : '**Lite mode off**: everything is back as it was.', { actions: [{ label: on ? 'Turn it off' : 'Turn it on', run: () => runLine(on ? 'lite mode off' : 'lite mode on') }] }); return true; }
     // a timer-free plain sentence: the best matches as buttons
     if (!text.startsWith('/')) {
       const s = Commands.suggest(text, { limit: 5, ctx: Commands.context(agent.id, null, { source: 'bar' }) });

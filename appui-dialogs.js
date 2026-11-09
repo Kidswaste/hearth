@@ -95,7 +95,10 @@ const AppUIDialogs = (() => {
     // ---- Look & size ----
     const look = Look.picker({ split: true });
     const sizeRow = typeof Bigscreen !== 'undefined' ? Bigscreen.sizeRow({ compact: true }) : null;
-    const lookSec = section('Look & size', look, sizeRow,
+    // (round 153a, lite153) ⚡ Lite mode: one switch for busy days (powerwise.js HearthLite; nothing else changes or is saved)
+    const liteBox = el('input', { type: 'checkbox', checked: Boolean(window.HearthLite?.on), on: { change: (e) => window.HearthLite?.set(e.target.checked) } });
+    const liteRow = window.HearthLite ? el('label', { class: 'check-row lite-row', dataset: { feature: 'Lite mode' }, title: 'The Lab preview at 30 fps and half resolution, no glow, shadows or effects in it; no animations anywhere; slower background checks. Renders and exports stay full quality. Off gives back exactly what was there.' }, liteBox, el('span', { text: '⚡ Lite mode: lighter for a busy PC (30 fps preview at half resolution, no glow, no animations; renders stay full quality)' })) : null;
+    const lookSec = section('Look & size', look, sizeRow, liteRow,
       fold('look', 'More looks and tweaks', 'Every other look, following your computer\'s light / dark mode, your saved looks, glow, motion, spacing, sparkles',
         () => [lookName(), window.NativeFeel?.following?.() ? 'follows your computer' : '', swOn('sparkles') === false ? 'no sparkles' : ''].filter(Boolean).join(' · '),
         home(section('More looks and tweaks', look.rest, el('span', { class: 'sf-slot' })), 'look')));
