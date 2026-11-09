@@ -47,7 +47,7 @@ How it works (`tools/three.js`, top of `ThreeLab`): each moved function leaves a
 time, then calls it; once the part's file is in, a call runs **in the same task** (as before). A part file is
 `(window.LabParts ||= {}).name = (K) => { …the moved code as it was… return { … }; }`: the names it reads inside the Lab
 go through `K`, an object at the top of `sketchTab` (`ThreeLab`'s own `K0` for the tools part) with the functions
-themselves and getters / setters for the state (226 + 6 names). The moved code is otherwise byte for byte what it was,
+themselves and getters / setters for the state (227 + 6 names). The moved code is otherwise byte for byte what it was,
 its comments with it.
 
 Only these call sites changed shape: a right-click handler keeps `e.preventDefault()` in the listener and calls a named
@@ -62,21 +62,26 @@ do their work in `layerStudioDo`.
 `node dev/split158-measure.js --runs 5 [--app <before>]` (each run a fresh profile, the Lab's code not loaded at the
 start; Hearth's window: activate the Lab 4 s after the first screen → the preview's first drawn frame; then ⋯ › ⧉ Open
 in its own window → the Lab window's first frame) and `node dev/split158-measure.js --parse` (V8 alone compiling the
-file, median of 30). This box: 4 shared CPUs, software GL. "Before" = this branch's base (round 157 merged).
+file, median of 30). This box: 4 shared CPUs, software GL. "Before" = this branch's base with round 157 (Lite mode) merged, run between the "after" runs on the same box, medians of 5 (the run-to-run range in brackets).
 
 | | Before | After |
 | --- | ---: | ---: |
-| `tools/three.js` | 533,850 bytes (521 KB) | 405,982 bytes (396 KB) = **76.0 %** |
-| …code without whole-line comments | 448 KB | 326 KB = 72.7 % |
-| The Lab's own code loaded at its open (the `lab` group + parts) | 4,170 KB | 4,045 KB (no part loads) |
-| `tools/three.js` compile, as a page compiles it (V8, inner functions pre-parsed) | 10.3 ms | **7.6 ms** (−26 %) |
-| …every function compiled (what V8 does for the sketch tab when it first runs) | 24.4 ms | **17.6 ms** (−28 %) |
-%MEASURE%
+| `tools/three.js` | 536,484 bytes (524 KB) | 408,579 bytes (399 KB) = **76.2 %** |
+| …code without whole-line comments | 440 KB | 320 KB = 72.8 % |
+| The Lab's own code loaded at its open (the `lab` group + parts), either window | 4,173 KB | 4,048 KB (no part loads) |
+| `tools/three.js` compile, as a page compiles it (V8, inner functions pre-parsed; median of 4 × 30) | 7.6 ms | **6.7 ms** (−12 %) |
+| …every function compiled (what V8 does for the sketch tab when it first runs) | 24.3 ms | **18.0 ms** (−26 %) |
+| Hearth's window: activate the Lab → the preview's first drawn frame | 1,463 ms (1,319–1,593) | 1,399 ms (1,351–1,550) |
+| …the Lab tool's mount inside it (the sketch tab compiled and built) | 45 ms (34–53) | 51 ms (37–53) |
+| …the `lab` group loaded (its 120+ files) | 293 ms | 294 ms |
+| Lab window: its page start → the Lab's code in | 324 ms (303–381) | 328 ms (291–330) |
+| Lab window: its page start → its first frame | 2,062 ms (1,572–2,766) | 2,176 ms (1,715–2,385) |
+| JS heap after a GC: Hearth's window · the Lab window | 11.8 MB · 7.6 MB | 11.8 MB · 7.7 MB |
 
 What the numbers mean:
 
 - The file and its compile shrink by about a quarter, on every open, in both windows; on the owner's machine (a fast
-  desktop CPU) these are a few milliseconds of main-thread work, here ~7 ms per open.
+  desktop CPU) these are a few milliseconds of main-thread work, here ~6 ms per open (the sketch tab's compile on its first run).
 - The first frame on this box (~1.4 s in Hearth's window, ~2.2–2.7 s in the Lab window from its page start) is mostly
   software GL compiling the scene's shaders and the other 120 files of the `lab` group; the saving is inside the run-to-run
   noise there (±150 ms in Hearth's window, ±600 ms in the Lab window).
