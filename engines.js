@@ -1460,10 +1460,18 @@ function send({ agent: agent0, chatId, session, text, options = {}, connections 
     live?.({ type: 'pulse', quietMs: now - lastAt, alive, cpu, ...(t ? { tool: t.name, args: t.args, toolMs: now - t.at } : {}) });
   };
   const pulses = setInterval(() => { pulse().catch(() => {}); }, PULSE_MS);
+  // (round 162, main162) one idle timer per run, not a new one for every piece of output (a streaming reply cleared and
+  // made ≈ 250 timers a second): when it fires early (output came since) it waits the rest; the stop is the same
+  const idleFire = () => {
+    idle = null;
+    if (finished) return;
+    const left = IDLE_MS - (Date.now() - lastAt);
+    if (left > 0) { idle = setTimeout(idleFire, left); return; }
+    child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); kill(child);
+  };
   const touch = () => {
     lastAt = Date.now();
-    clearTimeout(idle);
-    idle = setTimeout(() => { child.hubIdle = true; log(`${engine} ${chatId} idle for ${IDLE_MS / 60000} min, stopping`); kill(child); }, IDLE_MS);
+    if (!idle) idle = setTimeout(idleFire, IDLE_MS);
   };
   touch();
   const finish = (event) => {
