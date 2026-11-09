@@ -108,7 +108,8 @@ header readouts and now expect the dock's stats to stay in sight; the bottom edg
 "every control is still in the Lab" lists the dock (stats, QUALITY, FPS) among the essentials in sight at rest.
 look148, lab143 needed nothing.
 
-Found, not changed (Lab CSS is the owner's): **redux151's "nothing animates at rest"** fails on this branch with
+Found, not changed (Lab CSS is the owner's): **redux151's "nothing animates at rest"** can fail (2 of 3 full runs on
+this branch before the last merge; it passed in the final run) with
 `transform@fb-fill` (the frame budget bar's .25 s transition, tools/framebar.css). In the dock the bar is always drawn,
 and the rule that stopped its transitions while the stats were hidden (three-hudstage.css `.three-preview.st-on … >
 .three-stats *`) no longer applies there. On origin/main the same check passes because the bar is often missing: the
@@ -121,7 +122,8 @@ labcalm's "pointing at the picture shows More…, 📷 and ⋯" fails as on ever
 
 `flock /tmp/hearth-run.lock timeout 2900 node dev/run-checks.js --exact stage150 look148 redux151 lab143 labcalm playfix
 lazy fastboot firstscreen96 trim153 labwin153 split158 lite153 qa-keys cmdbar141 unit:lazymanifest-test
-unit:boot-test`: 15 / 17 (redux151 and labcalm as above). `node dev/whatsnew-test.js` 49 passed,
+unit:boot-test` after the final merge of origin/main and claude/intelligent-galileo-yaiqem: **16 / 17** (labcalm as
+above; redux151 passed this time, see its intermittent fb-fill step above). `node dev/whatsnew-test.js` 49 passed,
 `node dev/trim-weights.js --check` up to date (171 groups), `node dev/lazy-groups-test.js` ✓.
 
 Measured with `node dev/coldstart-report.js --app <copy> --runs 5` (twice each, interleaved), `--groups`,
