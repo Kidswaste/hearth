@@ -35,6 +35,7 @@ const LabSpeedHook = (() => {
   const toolbarRow = () => ['⚡ Speed check', 'Why is it slow? Measured here, one-click fixes (no tokens)', openIt, false, 'Speed check'];
 
   // ---------- the chip ----------
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { S.chip?.remove(); S.chip = null; S.mode = null; S.gl = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop)
   function hideChip(forScene) {
     if (forScene && S.scene && S.mode === 'slow') S.hidden.add(S.scene);
     S.chip?.remove(); S.chip = null; S.mode = null;
