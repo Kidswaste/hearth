@@ -15,7 +15,7 @@ const TrimData = (() => {
     routines: { name: 'Keep going & Auto-improve', area: 'Chat & AI', desc: 'Repeats a prompt in a project round after round, within a budget you set.', words: '\\b(auto-improve|keep going|keepgoing)\\b' },
     localanswers: { name: 'Answered by Hearth', area: 'Chat & AI', desc: 'Questions about Hearth answered for free in a small card above the chat box.', passive: true, words: 'answered by hearth' },
     sendpreview: { name: 'Cost preview by Send', area: 'Chat & AI', desc: 'Shows "≈ 52k" next to Send when a message will cost much more than usual.', passive: true },
-    quickidea: { name: 'Quick idea window', area: 'Chat & AI', desc: 'The small 💡 window to jot an idea from any app (tray menu or its key).', words: '\\b(quick idea|ideas?)\\b' },
+    quickidea: { name: 'Quick idea window', area: 'Chat & AI', desc: 'Ideas jotted in the small 💡 window come into Hearth. (The window\'s key from any app is its own setting: Settings › Advanced › Keys.)', words: '\\b(quick idea|ideas?)\\b' },
     costcoach: { name: 'Cost coach & Usage left', area: 'Chat & AI', desc: 'Where the tokens went this week, the 3 changes that save the most, and how much of each plan is left.', words: '\\b(cost coach|usage left)\\b' },
     usagedash: { name: 'Usage dashboard', area: 'Chat & AI', desc: 'The big Usage window: token charts by day, chat and feature (the meter itself stays).', words: '\\b(usage dashboard|token dashboard)\\b|^Token dashboard' },
     studio: { name: 'Studio pipelines', area: 'Chat & AI', desc: 'One-click recipes that chain the board, the Lab, renders and apps into one make.', words: '\\bstudio\\b' },
