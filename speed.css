@@ -6,7 +6,7 @@
   background: var(--sidebar); border: 1px solid var(--line); box-shadow: 0 14px 40px #000a; color: var(--text); font-size: 12.5px;
 }
 :root[data-look~=v2] .speed-card { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); border-color: var(--line-hi, var(--line)); box-shadow: var(--m-glass-edge, none), 0 14px 40px #000a; }
-:root:not([data-motion=off]) .speed-card { animation: speed-in .22s cubic-bezier(.2, .9, .3, 1.1) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .speed-card { animation: speed-in .22s cubic-bezier(.2, .9, .3, 1.1) backwards; transform-origin: bottom left; }
 :root:not([data-motion=off]) .speed-card.out { animation: speed-out .15s ease both; }
 @keyframes speed-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes speed-out { to { opacity: 0; transform: translateY(6px); } }

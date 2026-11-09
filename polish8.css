@@ -44,10 +44,10 @@ html[data-skin~="forge"] .bd-quick { clip-path: var(--cut-sm, none); }
 .bd-quick button { font-size: 12px; min-height: 24px; }
 .bd-search { border-radius: var(--r-pill, 999px); border-color: var(--line-hi, var(--line)); background: color-mix(in srgb, var(--fh-pop, var(--sidebar)) 96%, transparent); }
 html[data-skin~="forge"] .bd-search { border-radius: 0; clip-path: var(--cut-sm, none); }
-:root:not([data-motion=off]) .bd-search { animation: hx-pop .16s var(--ease-out, ease-out) both; }
+:root:not([data-motion=off]) .bd-search { animation: hx-pop .16s var(--ease-out, ease-out) backwards; }
 .bd-selinfo { font-family: var(--mono, ui-monospace, monospace); font-size: 10.5px; letter-spacing: .02em; }
 .bd-present-cap { font-family: var(--font-head, inherit); letter-spacing: .05em; }
-:root:not([data-motion=off]) .bd-compare { animation: hx-fade .2s ease both; }
+:root:not([data-motion=off]) .bd-compare { animation: hx-fade .2s ease backwards; }
 .bd-cmp-head button { border-radius: var(--r-sm, 6px); }
 .bd-cmp-head b { font-family: var(--font-head, var(--font)); letter-spacing: .08em; text-transform: uppercase; font-size: 13px; color: var(--fh-gold-hi, #fff); }
 /* references can be picked up: the hand says so (not on locked ones, not while editing text) */

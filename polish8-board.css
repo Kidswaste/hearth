@@ -7,7 +7,7 @@
 .bd-root:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fh-gold, var(--accent)) 55%, transparent); }
 .bd-empty { gap: 10px; }
 .bd-empty .p8-ico { width: 44px; height: 44px; color: var(--fh-gold, var(--accent)); opacity: .55; filter: drop-shadow(0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent)); }
-:root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) both; }
+:root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) backwards; }
 .bd-search:focus-within { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); }
 .bd-root:not(.bd-hand) .bd-item:not(.bd-locked):not(.bd-t-link):hover { cursor: grab; }
 .bd-root .bd-item [contenteditable="true"] { cursor: text; }
