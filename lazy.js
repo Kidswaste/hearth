@@ -112,11 +112,13 @@ const Lazy = (() => {
         Object.defineProperty(window, name, {
           configurable: true, enumerable: false,
           get() {
-            if (g.state === 'stub') {
+            // (round 157, boot157) a `redraw` group peeked at while the first screen is drawn (native.js' empty-chat hints,
+            // missions' chip) isn't a miss: it loads first right after the first frame and the chat is drawn again then
+            if (g.state === 'stub' && !(g.redraw && !painted)) {
               missLog.push({ name, group: g.name, at: Math.round(performance.now()), where: (new Error().stack || '').split('\n').slice(2, 4).map((l) => l.trim().replace(/^at /, '').replace(/\(?file:\/\/\S*\/([^/]+:\d+):\d+\)?/, '$1')).join(' < ') });
               if (missLog.length > 200) missLog.shift();
               want(g);
-            }
+            } else if (g.state === 'stub') want(g);
             return undefined;
           },
           set(v) { Object.defineProperty(window, name, { value: v, writable: true, configurable: true, enumerable: true }); },
@@ -266,12 +268,15 @@ const Lazy = (() => {
   function stubNow(g) {
     if (g.off) return;
     g.stubbed = true;
+    if (g.slots) makeSlots(g);
     const m = groupMeta(g.name);
     each(g, (m.commands || []).filter((c) => !c.dcl), (c) => stubCommand(g, c));
     each(g, m.bridge, (p) => stubBridge(g, p));
     // (round 139, room139) keysNow: a group whose keys-sheet lines its file added as it loaded (keys-lines.js, once
     // part of keys-ui.js) gets their stand-ins right here too, so the sheet keeps its order
     if (g.keysNow) { seen = {}; each(g, m.keys, (k) => stubKey(g, k)); }
+    // (round 157, boot157) actionsNow: a group whose file added its Ctrl/⌘+K lines as it ran (astra.js) gets them here too
+    if (g.actionsNow) { seen = {}; each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys)); }
   }
   // (what the palette / keys sheet already list, read once per moment: their lists are copied on every read)
   let seen = {};
@@ -282,7 +287,7 @@ const Lazy = (() => {
     each(g, (m.commands || []).filter((c) => c.dcl), (c) => stubCommand(g, c));
     each(g, m.tools, (t) => stubTool(g, t));
     if (!g.keysNow) each(g, m.keys, (k) => stubKey(g, k));
-    each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
+    if (!g.actionsNow) each(g, m.actions, (a) => stubAction(g, a.label || a, a.keys));
     each(g, m.apps, (a) => stubApp(g, a));
   }
   // ---------- (round 52, lazymeta) the stand-ins' words come right after the first frame ----------
@@ -338,12 +343,73 @@ const Lazy = (() => {
     }
   }
 
+  // ---------- (round 157, boot157) chat parts that load right after the first frame ----------
+  // Files that used to be on the first screen and decorate the chat (astra.js, access.js, offline.js, chat-things.js…)
+  // are lazy groups with three flags:
+  //   slots:  their Native.hooks (message, render, send, compose, finish…) go exactly where the files used to put them
+  //           (a quiet placeholder in each list at their lazy-at.js tag, replaced when they load), so hooks run in the old order
+  //   redraw: the chats on screen are drawn again once the last such group is in ('mount': first through Native.mount
+  //           again, for astra.js' chat-box chip), so a reply's cards, badges and calm error lines appear as before
+  //   send:   a message sent before they're in waits for them (Lazy.sendReady(), native.js send): every hook, option and
+  //           permission setting of a send is the same as before (null when all are in)
+  const slotFn = () => {}; // (one shared shape; each placeholder is its own function so indexOf finds it)
+  function makeSlots(g) {
+    const hk = typeof Native !== 'undefined' && Native.hooks;
+    if (!hk || g.slotFns) return;
+    g.slotFns = {};
+    for (const [k, arr] of Object.entries(hk)) {
+      if (!Array.isArray(arr)) continue;
+      const f = slotFn.bind(null);
+      Object.defineProperty(f, 'name', { value: `lazy:${g.name}` });
+      arr.push(f);
+      g.slotFns[k] = f;
+    }
+  }
+  function slotPatch(g, swap) {
+    const hk = g.slotFns && typeof Native !== 'undefined' && Native.hooks;
+    if (!hk) return;
+    for (const [k, f] of Object.entries(g.slotFns)) {
+      const arr = hk[k];
+      if (!Array.isArray(arr)) continue;
+      swap(arr, 'push', (orig) => (...items) => { const i = arr.indexOf(f); if (i < 0) return orig(...items); arr.splice(i, 0, ...items); return arr.length; });
+    }
+  }
+  function dropSlots(g) {
+    const hk = g.slotFns && typeof Native !== 'undefined' && Native.hooks;
+    if (hk) for (const [k, f] of Object.entries(g.slotFns)) { const arr = hk[k]; const i = Array.isArray(arr) ? arr.indexOf(f) : -1; if (i >= 0) arr.splice(i, 1); }
+    g.slotFns = null;
+  }
+  let redrawMount = false;
+  let redrawDue = false;
+  function redrawSoon(g) {
+    if (g.redraw === 'mount') redrawMount = true;
+    if ([...groups.values()].some((x) => x.redraw && !x.off && (x.state === 'stub' || x.state === 'loading') && (x.asap || x.promise))) return;
+    if (redrawDue) return;
+    redrawDue = true;
+    requestAnimationFrame(() => {
+      redrawDue = false;
+      if (typeof Native === 'undefined' || typeof H === 'undefined') return;
+      const mount = redrawMount; redrawMount = false;
+      for (const a of H.agents()) {
+        const v = Native.view?.(a.id);
+        if (!v?.root?.isConnected) continue;
+        try { if (mount) Native.mount(a.id, v.root); if (H.activeChat?.[a.id]) Native.refresh(a.id, { keepScroll: true }); } catch (err) { console.warn(err); }
+      }
+      if (mount) { try { renderRail(); } catch { /* no rail (the Lab window) */ } }
+    });
+  }
+  function sendReady() {
+    const due = [...groups.values()].filter((g) => g.send && !g.off && g.state !== 'loaded');
+    return due.length ? Promise.all(due.map((g) => load(g.name, { auto: true }).catch(() => {}))).then(() => {}) : null; // (null: nothing to wait for)
+  }
+
   // ---------- loading ----------
   // While a group's files run, the registries are patched so its registrations replace the stand-ins instead of adding
   // duplicates, and its DOMContentLoaded handlers (the page fired that long ago) run once its files are in.
   function patch(g, rep) {
     const undo = [];
     const swap = (obj, key, fn) => { if (!obj || typeof obj[key] !== 'function') return; const orig = obj[key]; const own = Object.prototype.hasOwnProperty.call(obj, key); obj[key] = fn(orig.bind(obj)); undo.push(() => { if (own) obj[key] = orig; else delete obj[key]; }); };
+    slotPatch(g, swap);
     const ready = [];
     const onLoad = (orig) => (type, fn, opts) => ((type === 'DOMContentLoaded' || type === 'load') && typeof fn === 'function' ? ready.push(fn) : orig(type, fn, opts));
     swap(window, 'addEventListener', onLoad);
@@ -472,10 +538,13 @@ const Lazy = (() => {
         } catch (err) {
           g.state = 'failed';
           p.restore();
+          dropSlots(g);
+          if (g.redraw) redrawSoon(g);
           console.error(`Lazy: ${g.name}: ${err.message}`);
           throw err;
         }
         p.restore();
+        dropSlots(g);
         dropLeftovers(g);
         if (!names.has(g.name)) names.set(g.name, namesOf(g.name));
         if (D.META) delete D.META[g.name]; // its manifest isn't needed any more
@@ -487,6 +556,7 @@ const Lazy = (() => {
         g.ms = Math.round(performance.now() - t0);
         g.at = Math.round(performance.now());
         dispatchEvent(new CustomEvent('hearth:lazy', { detail: { group: g.name } }));
+        if (g.redraw) redrawSoon(g);
       });
       chain = go.catch(() => {});
       return go;
@@ -636,7 +706,7 @@ const Lazy = (() => {
   addEventListener('DOMContentLoaded', () => setTimeout(start, 6000), { once: true });
   const state = () => [...groups.values()].map((g) => ({ name: g.name, tier: g.tier, state: g.state, files: g.files.length, ms: g.ms ?? null, at: g.at ?? null, ...(g.prefetch ? { prefetch: true, pace: g.pace || null } : {}), ...(g.follow ? { follow: true } : {}), ...(g.off ? { off: true } : {}), ...(g.timers ? { timers: g.timers } : {}) }));
   return {
-    load, state, start, at, text,
+    load, state, start, at, text, sendReady,
     // (round 153, trim153) Trim Hearth: off(group), names(group) (what its usage is matched with), used(group), and
     // kit() — what trim.js's live switch (Trim.setFeature) needs of the stand-ins
     off: (name) => Boolean(groups.get(name)?.off), names: namesOf, used: (name) => { const g = groups.get(name); if (g) used(g); },
