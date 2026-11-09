@@ -54,7 +54,7 @@ R.main.heap = (await smoke({ cdp: 'Runtime.getHeapUsage' })) || null;
 // ---------- the Lab window ----------
 await until(() => window.LabWinHost && ThreeLab.search, 30000);
 await wait(1000);
-const view = ThreeLab.search.menus().more.find((r) => Array.isArray(r) && r[0] === 'View & help');
+const view = (await ThreeLab.search.menus()).more.find((r) => Array.isArray(r) && r[0] === 'View & help');
 const row = view?.[2]?.find((r) => Array.isArray(r) && /Open in its own window/.test(r[0]));
 await smoke({ trace: 'start', cats: CATS });
 await wait(300);

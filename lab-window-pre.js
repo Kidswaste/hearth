@@ -13,7 +13,7 @@ window.HearthLabWindow = (() => {
     'labfinish', 'labbatch', 'labsearch', 'searchcore', 'renders', 'gamemode', 'gameready', 'gameperf', 'interop', 'remote',
     'phoneview',
     // (round 158, split158) the Lab's cold parts (tools/three-lab-*.js), loaded on first use
-    'labparttools', 'labpartrefs', 'labpartnotes', 'labpartmidi', 'labpartlive', 'labpartcapture', 'labpartdialogs', 'labpartedit', 'labpartlanes', 'labpartai'];
+    'labparttools', 'labpartrefs', 'labpartnotes', 'labpartmidi', 'labpartlive', 'labpartcapture', 'labpartdialogs', 'labpartmenus', 'labpartedit', 'labpartlanes', 'labpartai'];
   const groups = Object.fromEntries([...SOON.map((n) => [n, 'soon']), ...USE.map((n) => [n, 'use'])]);
   return { scene, groups, t0: performance.now() };
 })();

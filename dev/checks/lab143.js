@@ -120,7 +120,7 @@ try {
   const pmText = pm?.textContent || '';
   await esc();
   const pmGone = await until(() => !menuNow(), 3000);
-  const PM = ThreeLab.search.menus().preview;
+  const PM = (await ThreeLab.search.menus()).preview;
   const sub = (label) => { const it = PM.find((x) => x && typeof x === 'object' && x.label === label); return it ? (typeof it.items === 'function' ? it.items() : it.items) : []; };
   const qSub = sub('View').find((x) => x?.label === 'Quality');
   const qRows = qSub ? qSub.items().map((x) => x.label) : [];

@@ -46,6 +46,7 @@ const LazyData = (() => {
     { name: 'labpartlive', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-live.js'] },
     { name: 'labpartcapture', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-capture.js'] },
     { name: 'labpartdialogs', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-dialogs.js'] },
+    { name: 'labpartmenus', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-menus.js'] },
     { name: 'labpartedit', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-edit.js'] },
     { name: 'labpartlanes', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-lanes.js'] },
     { name: 'labpartai', tier: 'use', after: ['lab'], at: 'updater.js', files: ['tools/three-lab-ai.js'] },
@@ -158,7 +159,7 @@ const LazyData = (() => {
     { name: 'labdirection', after: ['lab'], at: 'updater.js', files: ['tools/three-direction-core.js', 'tools/three-direction.js'], css: ['tools/three-direction.css'], globals: ['DirCore', 'LabDirection'] }, // (round 67, direction67) · docs/lazy-groups.md
     { name: 'labfinish', after: ['lab'], at: 'updater.js', files: ['tools/three-finish-core.js', 'tools/three-finish.js'], css: ['tools/three-finish.css'], globals: ['FinishCore', 'LabFinish'] }, // (round 67, finishlines67) · docs/lazy-groups.md
     { name: 'labbatch', tier: 'use', after: ['lab', 'labtemplates', 'multiformat'], at: 'updater.js', files: ['tools/three-batch-core.js', 'tools/three-batch.js'], css: ['tools/three-batch.css'], globals: ['BatchCore', 'LabBatch'] }, // (round 42) · docs/lazy-groups.md
-    { name: 'labsearch', tier: 'use', after: ['lab', 'searchcore'], at: 'updater.js', files: ['tools/three-search.js'], css: ['tools/three-search.css'], globals: ['LabSearch'] }, // (round 36) · docs/lazy-groups.md
+    { name: 'labsearch', tier: 'use', after: ['lab', 'searchcore', 'labpartmenus'], at: 'updater.js', files: ['tools/three-search.js'], css: ['tools/three-search.css'], globals: ['LabSearch'] }, // (round 36) · docs/lazy-groups.md
     { name: 'appsearch', tier: 'use', after: ['searchcore', 'updater'], at: 'updater.js', files: ['appsearch-data.js', 'appsearch.js'], globals: ['AppSearchData', 'AppSearch'] }, // (round 37) · docs/lazy-groups.md
     { name: 'chatfind', tier: 'use', at: 'updater.js', files: ['recall-core.js', 'chatfind.js', 'findfold.js'], globals: ['RecallCore', 'ChatFind', 'FindFold'] }, // (round 113; round 114: findfold.js, Alt+F's folding) · docs/lazy-groups.md
     { name: 'dragdrop', at: 'updater.js', files: ['dragdrop-core.js', 'dragdrop.js'], css: ['dragdrop.css'], globals: ['DragDropCore', 'DragDrop'] }, // (round 38) · docs/lazy-groups.md

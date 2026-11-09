@@ -15,7 +15,7 @@ const ThreeLab = (() => {
   // in tools/three-lab-*.js, lazy groups loaded on first use (docs/upgrades/split158.md). A stand-in left here
   // (`function x(...a) { return labPart(K, part, 'x', a); }`) loads its part, then calls it: in the same task once the
   // part's file is in, after the load the first time. K is what a part reaches in here (state, helpers, stand-ins).
-  const PARTS = { tools: 'labparttools', refs: 'labpartrefs', notes: 'labpartnotes', midi: 'labpartmidi', live: 'labpartlive', capture: 'labpartcapture', dialogs: 'labpartdialogs', edit: 'labpartedit', lanes: 'labpartlanes', ai: 'labpartai' };
+  const PARTS = { tools: 'labparttools', refs: 'labpartrefs', notes: 'labpartnotes', midi: 'labpartmidi', live: 'labpartlive', capture: 'labpartcapture', dialogs: 'labpartdialogs', menus: 'labpartmenus', edit: 'labpartedit', lanes: 'labpartlanes', ai: 'labpartai' };
   const partMods = new WeakMap();
   function labPart(K, part, fn, args) {
     let mods = partMods.get(K);
@@ -550,31 +550,36 @@ const ThreeLab = (() => {
       get CONSOLE_MODES() { return CONSOLE_MODES; }, get FILES_MAX() { return FILES_MAX; },
       get FPS_OPTS() { return FPS_OPTS; }, get GUIDES() { return GUIDES; }, get MIMES() { return MIMES; },
       get PAD_ACTIONS() { return PAD_ACTIONS; }, get Q_NAMES() { return Q_NAMES; },
-      get REF_ICONS() { return REF_ICONS; }, get adaptHeld() { return adaptHeld; }, addLayer, addRef,
-      get animatedProps() { return animatedProps; }, get api() { return api; }, applyPreset, applyTrigPreset,
-      askDirector, get assetCacheOn() { return assetCacheOn; }, get box() { return box; }, get btn() { return btn; },
-      get clockPath() { return clockPath; }, get consoleBox() { return consoleBox; },
+      get REF_ICONS() { return REF_ICONS; }, get adaptHeld() { return adaptHeld; }, get adaptOn() { return adaptOn; },
+      addLayer, addRef, get animatedProps() { return animatedProps; }, get api() { return api; }, applyPreset,
+      applyTrigPreset, askAbout, askDirector, get assetCacheOn() { return assetCacheOn; },
+      get autoBox() { return autoBox; }, get autoRun() { return autoRun; }, get box() { return box; }, browseSketches,
+      get btn() { return btn; }, get clockPath() { return clockPath; }, get consoleBox() { return consoleBox; },
       get consoleLines() { return consoleLines; }, set consoleLines(x) { consoleLines = x; },
       get consoleMode() { return consoleMode; }, get consoleWrap() { return consoleWrap; },
-      get controllers() { return controllers; }, create, get current() { return current; }, cycleGuides,
-      get director() { return director; }, duplicate, get editBtn() { return editBtn; }, editLayer,
-      get editOn() { return editOn; }, set editOn(x) { editOn = x; }, get editPanel() { return editPanel; },
-      get editSel() { return editSel; }, set editSel(x) { editSel = x; }, get editUndo() { return editUndo; },
-      get editor() { return editor; }, get errors() { return errors; }, get extras() { return extras; },
+      get controllers() { return controllers; },
+      get copyNextShot() { return copyNextShot; }, set copyNextShot(x) { copyNextShot = x; }, create,
+      get current() { return current; }, cycleGuides, get director() { return director; }, duplicate,
+      get editBtn() { return editBtn; }, editLayer, get editOn() { return editOn; }, set editOn(x) { editOn = x; },
+      get editPanel() { return editPanel; }, get editSel() { return editSel; }, set editSel(x) { editSel = x; },
+      get editUndo() { return editUndo; }, get editor() { return editor; }, ensureTimeline,
+      get errors() { return errors; }, exportHtml, get extras() { return extras; },
       get fileBytes() { return fileBytes; }, get fileUrl() { return fileUrl; }, get fmtClock() { return fmtClock; },
-      get fmtMs() { return fmtMs; }, get fmtSize() { return fmtSize; }, get footBox() { return footBox; },
-      get fpsPref() { return fpsPref; }, get fpsSel() { return fpsSel; }, framesToDirector, freezeOn,
-      get frozenNow() { return frozenNow; }, get guides() { return guides; }, get histKey() { return histKey; },
-      get histRead() { return histRead; }, get history() { return history; }, get hubLive() { return hubLive; },
-      hubLiveStop, get hudTimer() { return hudTimer; }, set hudTimer(x) { hudTimer = x; },
-      get keysOf() { return keysOf; }, get kvOk() { return kvOk; }, get labMoreBtn() { return labMoreBtn; },
-      laneProps, get lanesOf() { return lanesOf; }, get lastStats() { return lastStats; },
-      get layerById() { return layerById; }, get layersOf() { return layersOf; },
-      get layersPanel() { return layersPanel; }, get lightOn() { return lightOn; }, listRefFiles,
-      get liveBpm() { return liveBpm; }, get liveIo() { return liveIo; }, get liveKind() { return liveKind; },
-      get liveOpts() { return liveOpts; }, loadHist, loadRefBytes,
-      get lookBar() { return lookBar; }, set lookBar(x) { lookBar = x; },
-      get lookCycle() { return lookCycle; }, set lookCycle(x) { lookCycle = x; },
+      get fmtMs() { return fmtMs; }, get fmtSize() { return fmtSize; }, get focusOn() { return focusOn; },
+      get footBox() { return footBox; }, get fpsPref() { return fpsPref; }, get fpsSel() { return fpsSel; },
+      framesToDirector, freezeOn, get frozenNow() { return frozenNow; },
+      get guides() { return guides; }, set guides(x) { guides = x; }, get guidesBtn() { return guidesBtn; },
+      get histKey() { return histKey; }, get histRead() { return histRead; }, get history() { return history; },
+      historyDialog, get hubLive() { return hubLive; }, hubLiveStop,
+      get hudTimer() { return hudTimer; }, set hudTimer(x) { hudTimer = x; }, get keysOf() { return keysOf; },
+      get kvOk() { return kvOk; }, labKeys, get labMoreBtn() { return labMoreBtn; }, laneProps,
+      get lanesOf() { return lanesOf; }, get lastStats() { return lastStats; }, get layerById() { return layerById; },
+      get layerProps() { return layerProps; }, get layerStudio() { return layerStudio; },
+      get layersOf() { return layersOf; }, get layersPanel() { return layersPanel; },
+      get lightOn() { return lightOn; }, listRefFiles, get liveBpm() { return liveBpm; },
+      get liveIo() { return liveIo; }, get liveKind() { return liveKind; }, get liveOpts() { return liveOpts; },
+      loadHist, loadRefBytes, get lookBar() { return lookBar; }, set lookBar(x) { lookBar = x; },
+      get lookCycle() { return lookCycle; }, set lookCycle(x) { lookCycle = x; }, lookCycleMenu,
       get lookTimer() { return lookTimer; }, set lookTimer(x) { lookTimer = x; },
       get midi() { return midi; }, set midi(x) { midi = x; }, get midiBtn() { return midiBtn; },
       get midiDevices() { return midiDevices; },
@@ -583,6 +588,7 @@ const ThreeLab = (() => {
       get midiSeen() { return midiSeen; }, set midiSeen(x) { midiSeen = x; }, get notesAll() { return notesAll; },
       get notesOf() { return notesOf; }, get np() { return np; }, set np(x) { np = x; },
       get npBox() { return npBox; }, openLight, openSketch, get outlinerBtn() { return outlinerBtn; },
+      get paceLast() { return paceLast; }, get paceOn() { return paceOn; }, get paceText() { return paceText; },
       get paintMode() { return paintMode; }, paintOnion, paletteFrom, parseColors,
       get perfHudOn() { return perfHudOn; }, persist, pinFrame, get pinned() { return pinned; },
       get placements() { return placements; }, get playGame() { return playGame; }, get player() { return player; },
@@ -595,25 +601,28 @@ const ThreeLab = (() => {
       get refsDlg() { return refsDlg; }, set refsDlg(x) { refsDlg = x; },
       get refsGrid() { return refsGrid; }, set refsGrid(x) { refsGrid = x; }, get refsOf() { return refsOf; },
       get refsSig() { return refsSig; }, set refsSig(x) { refsSig = x; }, get refsSigOf() { return refsSigOf; },
-      removeLayers, removeRef, get removedIds() { return removedIds; }, renameRef, renderNotes, renderPicker,
-      renderRefsBtn, renderTracksOnly, reorderLayers, run, get safeName() { return safeName; },
-      get save() { return save; }, saveDataUrl, get saveExtras() { return saveExtras; }, saveHistory,
-      get saveNotes() { return saveNotes; }, savePalette, get saveRefs() { return saveRefs; },
-      get saveTriggers() { return saveTriggers; }, get savedPalettes() { return savedPalettes; },
-      get sel() { return sel; }, get selBox() { return selBox; }, get selId() { return selId; }, selectLayer,
-      sendKeys, sendRefs, get sendTriggers() { return sendTriggers; }, setCodeVisible, setCompare, setConsoleMode,
-      setFreeze, setLanes, setLight, setLive, setLiveIo, get setLiveOpt() { return setLiveOpt; }, setPalette,
+      removeLayers, removeRef, removeSketch, get removedIds() { return removedIds; }, renameRef, renameSketch,
+      renderLayers, renderNotes, renderPicker, renderRefsBtn, renderTracksOnly, reorderLayers, restartSim, run,
+      get safeName() { return safeName; }, get save() { return save; }, saveDataUrl,
+      get saveExtras() { return saveExtras; }, saveHistory, get saveNotes() { return saveNotes; }, savePalette,
+      get saveRefs() { return saveRefs; }, get saveTriggers() { return saveTriggers; },
+      get savedPalettes() { return savedPalettes; }, get sel() { return sel; }, get selBox() { return selBox; },
+      get selCtl() { return selCtl; }, get selId() { return selId; }, selectLayer, sendKeys, sendRefs,
+      get sendTriggers() { return sendTriggers; }, setCodeVisible, setCompare, setConsoleMode, setFocus, setFreeze,
+      setLanes, setLight, setLive, setLiveIo, get setLiveOpt() { return setLiveOpt; }, setPaceOn, setPalette,
       setPerfHud, setQuality, setSlidersVisible, setSolo, setStage, setWrite,
-      get sheetBusy() { return sheetBusy; }, set sheetBusy(x) { sheetBusy = x; },
+      get sheetBusy() { return sheetBusy; }, set sheetBusy(x) { sheetBusy = x; }, showSheet,
+      get sketchMenuBtn() { return sketchMenuBtn; },
       get sketches() { return sketches; }, set sketches(x) { sketches = x; }, get sleep() { return sleep; }, snapshot,
-      get soloNow() { return soloNow; }, get spaceBtn() { return spaceBtn; }, get stage() { return stage; },
-      startNowPlaying, still, stillsAt, stillsFolder, stopNowPlaying, syncKeyUI, takeNote,
-      get thumbs() { return thumbs; }, togglePresent, toggleTriggers, touch,
+      snippetMenu, get soloNow() { return soloNow; }, get spaceBtn() { return spaceBtn; },
+      get stage() { return stage; }, startNowPlaying, still, stillsAt, stillsFolder, stopNowPlaying,
+      get studioImpl() { return studioImpl; }, set studioImpl(x) { studioImpl = x; }, syncKeyUI, takeNote,
+      templateGallery, get thumbs() { return thumbs; }, togglePresent, toggleTriggers, touch,
       get trash() { return trash; }, set trash(x) { trash = x; },
       get trigCfg() { return trigCfg; }, set trigCfg(x) { trigCfg = x; }, get trigPanel() { return trigPanel; },
       get trigPresets() { return trigPresets; },
       get trigTuned() { return trigTuned; }, set trigTuned(x) { trigTuned = x; }, get version() { return version; },
-      get withFiles() { return withFiles; }, get writeArmed() { return writeArmed; },
+      versionMenu, get withFiles() { return withFiles; }, get writeArmed() { return writeArmed; },
     };
     let sketches = [];
     // (round 43, scenesafe) a store is written only once it was read for sure: a read that failed (Windows: a file held
@@ -665,93 +674,13 @@ const ThreeLab = (() => {
     // Less frequent sketch actions live in a menu (they used to take a whole toolbar row).
     const sketchMenuBtn = btn('Sketch ▾', 'Start a new one, or rename, copy, share, export or delete this one, or see its history', (e) => {
       const r = e.currentTarget.getBoundingClientRect();
-      popup(r.left, r.bottom + 4, sketchMenuRows());
+      Promise.resolve(sketchMenuRows()).then((rows) => popup(r.left, r.bottom + 4, rows));
     });
-    // (round 36, labsearch: the rows on their own, so 🔎 Lab search lists them too)
-    function sketchMenuRows() {
-      // (round 43, menucalm) nine rows, nothing folded away: start something, this sketch (Rename, ⧉ Duplicate, History ›,
-      // ⇪ Share & export ›, More ›), Delete last; every row ≤ 2 clicks (it was 6 rows hiding 11 behind "This sketch ›")
-      const packs = typeof LabPacksHook !== 'undefined' ? LabPacksHook.sketchRow(() => current?.id)[2] : []; // (round 28) ⇪ Save as a pack, open one (tools/three-packs-hook.js)
-      return [
-        ['New from a template…', 'Right-click it for the list', () => templateGallery()],
-        ['▦ All your sketches', 'As pictures', () => browseSketches()],
-        ...(typeof LabTemplatesHook !== 'undefined' ? [LabTemplatesHook.sketchRow()] : []), // (round 35) 📐 My templates (tools/three-templates-hook.js)
-        'This sketch',
-        ['Rename…', current?.name || '', () => renameSketch()],
-        ['⧉ Duplicate', 'A copy you can change freely', () => duplicate()],
-        ['History', 'Time machine, earlier versions, deleted and lost scenes', [
-          ['🕘 Scene versions…', 'Named and automatic versions: compare 2–4 side by side, live; use one or take one layer', () => window.Lazy.load('scenevers').then(() => LabVersions.open()).catch((err) => toast(err.message, { type: 'error' }))], // (round 132, versions132)
-          ['Save a version…', 'The scene as it is now, with a name', () => window.Lazy.load('scenevers').then(async () => { await LabVersions.open(); LabVersions.panel?.querySelector('.vs-head .vs-btn')?.click(); }).catch((err) => toast(err.message, { type: 'error' }))], // (round 132, versions132)
-          ['⏱ Time machine…', 'Every version of the scene as pictures: scrub, compare, restore, branch · Alt+H', () => window.ThreeHistoryUI?.open()],
-          ['Earlier versions and deleted sketches…', 'Of the selected layer; deleted sketches come back from here', () => historyDialog()],
-          ['🕘 Earlier versions of the scene…', 'From every safety copy: automatic copies, sync, conflicts, backups', () => window.Lazy.load('versions').then(() => Versions.open({ kind: 'scene', id: current?.id, name: current?.name }))], // (round 75, versions75)
-          ...(window.LabSceneSafe ? [LabSceneSafe.sketchRow()] : [])]], // (round 43) 🛟 Recover lost scenes… (tools/three-scenesafe.js)
-        ['⇪ Share & export', 'A pack, the code, a web page, Photoshop', [
-          ...packs,
-          ['Copy all the code', 'Every layer, one after the other, to the clipboard', () => { navigator.clipboard.writeText(layersOf().map((L) => `// ===== ${L.name} =====\n${L.code}`).join('\n\n')); toast('Code copied', { timeout: 1200 }); }],
-          ['Web page (one .html)…', 'A standalone .html file of this sketch', () => exportHtml()],
-          ...(typeof Deploy !== 'undefined' ? [['Publish as a web page…', 'Vercel, Netlify… · preview first; asks before it goes public', () => Deploy.menuAt(sketchMenuBtn)], ['Preview the web page here', 'Built like the published one, on this computer', () => Deploy.build('scene', current?.id || '').then((b) => Deploy.preview(b)).catch((err) => toast(err.message, { type: 'error' }))]] : []), // (round 14: deploy.js)
-          ...(typeof Adobe !== 'undefined' ? [['Open the picture in Photoshop', 'A still of the preview (all layers)', () => Adobe.labToPhotoshop().catch((err) => toast(err.message, { type: 'error', timeout: 9000 }))]] : [])]], // (round 14: adobe.js)
-        ['More', 'Cycle looks, restart, ask about this layer', [
-          ['Cycle looks…', lookCycle ? `Now: every ${lookCycle} bar${lookCycle === 1 ? '' : 's'}` : 'Switch between your saved looks every few bars while it plays', () => lookCycleMenu(sketchMenuBtn)],
-          ['⟲ Restart from scratch', 'A fresh page, GPU and sound, when something bugs out (Ctrl+Shift+Enter)', () => restartSim()],
-          ['Ask Claude about this layer', 'Sends the code and any errors to Claude', () => askAbout()]]],
-        'Careful',
-        ['Delete…', 'Moves it to History → deleted sketches', () => removeSketch()],
-      ];
-    }
+    function sketchMenuRows(...a) { return labPart(K, 'menus', 'sketchMenuRows', a); } // tools/three-lab-menus.js
     // ⋯ in the Lab toolbar: the controls you rarely or never use, still one click away (with their old names for usage)
-    const labMoreBtn = btn('⋯', 'More: variations, dials, make & export, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); ThreeTweaks.menu(r.right - 290, r.bottom + 4, labMoreItems()); });
+    const labMoreBtn = btn('⋯', 'More: variations, dials, make & export, the director, fix my scene, capture, code, view', (e) => { const r = e.currentTarget.getBoundingClientRect(); Promise.resolve(labMoreItems()).then((rows) => ThreeTweaks.menu(r.right - 290, r.bottom + 4, rows)); });
     labMoreBtn.dataset.feature = 'Lab more';
-    // (round 64, clickfirst64) ▶ Playtest (notes and the hitch map) at the end of Capture & playtest (round 116, slim116: moved here from clickfirst.js)
-    function playtestRows(extra = []) {
-      const say = (t) => { if (t && typeof t === 'string') toast(t, { timeout: 4000 }); };
-      const run = (fn) => () => Promise.resolve().then(fn).catch((err) => toast(window.calmError ? calmError(err) : String(err?.message || err), { type: 'error' }));
-      const gm = () => Lazy.load('gamemode');
-      return ['▶ Playtest',
-        ...extra, // (round 144, calm144) ⚡ Speed check
-        ['✎ Playtest log', 'Your F8 notes with their pictures · a click jumps back there', run(async () => { await gm(); return PlayNotes.open(); })],
-        ['● Record the hitch map', 'Off by default · while on, ▶ Play records where it stutters', run(async () => { await gm(); say(await HitchMap.set(!HitchMap.isOn())); }), store.get('hitchmap.on', false) === true],
-        ['▦ Hitch map', 'The last recording of this scene', run(async () => { await gm(); return HitchMap.open(); })]];
-    }
-    function labMoreItems() {
-      const v = store.get('three.version', ThreeData.VERSIONS[0]);
-      // (round 43, menucalm) two short parts, no row twice: what you make from the scene (🎲 ▦ ⧉ 📐 📜 Director ›), then
-      // the Lab itself (🩺 Fix my scene, Capture ›, Code & console ›, View & help ›); 17 rows → 11, every row ≤ 2 clicks
-      const easy = typeof LabEasy !== 'undefined' ? LabEasy.toolbarItems() : []; // (round 26) Director › (tools/three-easy.js)
-      // (round 144, calm144) ten rows at most, so popMenu never folds "This Lab" into a submenu of its own (its rows were 3
-      // clicks deep): ⚡ Speed check went into Capture & playtest, beside the hitch map (tools/three-easy.js has the rest)
-      const fix = easy.filter((r) => /Fix my scene/.test(r[0]));
-      const speed = easy.filter((r) => /Speed check/.test(r[0])); // (round 133, speed133)
-      return ['Make',
-        ...easy.filter((r) => !fix.includes(r) && !speed.includes(r)),
-        'This Lab',
-        ...fix,
-        ['Capture & playtest', 'Screenshot, contact sheet, speed check, hitch map', [ // (round 64, clickfirst64) + ▶ Playtest at its end
-          ['🖼 Save a screenshot', 'Save the picture (all layers) as it shows here', () => { copyNextShot = false; box.send({ type: 'screenshot' }); }, false, 'Screenshot'],
-          ['📋 Copy a screenshot', 'To the clipboard', () => { copyNextShot = true; box.send({ type: 'screenshot' }); }],
-          ['🎞 Contact sheet', 'Frames across the song', () => showSheet()],
-          ...(typeof Capture !== 'undefined' ? [['◉ More capture…', 'Social frames, recording, tours · Ctrl/⌘+Alt+S', () => { const r = labMoreBtn.getBoundingClientRect(); Capture.menu(r.right - 300, r.bottom + 4, Capture.mainItems()); }]] : []),
-          ...playtestRows(speed)]], // (round 64, clickfirst64) ▶ Playtest: Playtest log · Record the hitch map · Hitch map (round 116, slim116: here since clickfirst.js left with the quests) // (round 8) the Lab reaches the whole capture menu
-        ['Code & console', `r${v.split('.')[1]}${autoRun ? ' · live' : ''} · console: ${CONSOLE_MODES.find(([m]) => m === consoleMode)[1].toLowerCase()}`, [
-          ['Insert snippet…', 'At the cursor in the code', () => snippetMenu(), false, 'Insert snippet'],
-          [`three.js version · r${v.split('.')[1]}`, 'Switch and re-run', () => versionMenu(), false, 'three.js version'],
-          ['Live code', 'Apply code changes a moment after you stop typing', () => { autoBox.checked = !autoBox.checked; autoBox.dispatchEvent(new Event('change')); }, autoRun],
-          'The console shows',
-          ...CONSOLE_MODES.map(([m, l]) => [l, '', () => setConsoleMode(m), consoleMode === m])]],
-        ['View & help', 'Focus, frame pace, keys', [
-          ...(window.LabWinHost ? LabWinHost.rows() : []), // (round 153c, labwin153) ⧉ Open in its own window · Hide Hearth meanwhile (tools/three-labwin.js)
-          ['⛶ Focus', 'Almost fullscreen · Shift+F (Esc leaves)', () => setFocus(!focusOn), focusOn, 'Focus'],
-          ...(typeof ThreeGestures !== 'undefined' ? [ThreeGestures.helpRow()] : []), // (round 34 "labgestures") how to move around the picture
-          ['Frame pace', paceText(paceLast), () => { setPaceOn(!paceOn); }, paceOn, 'Frame pace'], // (round 33 "labpace") the readout lives here; ticked: also in the preview's corner
-          ...(window.LabRegroup ? [LabRegroup.lookRow()] : []), // (round 143, lab143) Lab look: Forgeheart · Plain
-          ...(window.LabHudStage ? [LabHudStage.row()] : []), // (round 150, stage150) Stage: reactive → calm → off
-          ['Key hints on hover', 'Little key badges on the main buttons (hold Ctrl for all of them)', () => { const off = !document.body.classList.contains('lab-nohints'); document.body.classList.toggle('lab-nohints', off); store.set('three.keyHints', !off); }, !document.body.classList.contains('lab-nohints')],
-          ['Lab keys', '? · the keys button, bottom left', () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys())],
-          ...(window.Lazy?.isIn?.('quickstart') && typeof QuickstartHooks !== 'undefined' ? [QuickstartHooks.labRow()] : [])]], // (round 31) ✦ What can I do here? (quickstart-hooks.js)
-        ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab') : [])]; // (round 8) ends like every menu
-      // (copy / export are in Sketch ▾, the frame rate in the preview's ⋯)
-    }
+    function labMoreItems(...a) { return labPart(K, 'menus', 'labMoreItems', a); } // tools/three-lab-menus.js
     function snippetMenu(...a) { return labPart(K, 'dialogs', 'snippetMenu', a); } // tools/three-lab-dialogs.js
     function versionMenu(...a) { return labPart(K, 'dialogs', 'versionMenu', a); } // tools/three-lab-dialogs.js
     document.body.classList.toggle('lab-nohints', store.get('three.keyHints', true) === false);
@@ -1876,7 +1805,8 @@ const ThreeLab = (() => {
     // built right now (the preview's right-click, the toolbar's ⋯, Sketch ▾, a layer's right-click), its layers and sliders
     api.search = {
       get pane() { return pane; },
-      menus: () => ({ preview: previewMenuItems(), more: labMoreItems(), sketch: sketchMenuRows() }),
+      // (round 158, split158) the rows come from their part: at once once it is in (Lab search loads it first: lazy-data.js labsearch), a promise the first time
+      menus: () => { const m = [previewMenuItems(), labMoreItems(), sketchMenuRows()]; const o = ([preview, more, sketch]) => ({ preview, more, sketch }); return m.some((x) => x instanceof Promise) ? Promise.all(m).then(o) : o(m); },
       layerMenu: (id) => layersPanel.menuFor?.(id) || null,
       layers: () => [...layersOf()].reverse().map((L) => ({ id: L.id, name: L.name, mask: L.mask || null, visible: L.visible !== false, selected: L.id === selId, color: L.color, filter: ThreeLayers.isFilter(L.code || '') })),
       selectLayer: (id) => { if (!layerById(id)) return false; selectLayer(id); return true; },
@@ -2143,62 +2073,11 @@ const ThreeLab = (() => {
       return part;
     }
     const uniqueName = (name) => { const names = new Set(layersOf().map((L) => L.name)); if (!names.has(name)) return name; let i = 2; while (names.has(`${name} ${i}`)) i += 1; return `${name} ${i}`; };
-    const layerStudio = api.layerStudio = {
-      async generate({maskSource=null, settings=null}={}) {
-        const owner=current?.id;if(!owner)return;
-        const v=settings || await Modal.form(maskSource?'Add a mask layer':'Shape generator',[
-          {name:'shape',label:'Shape',type:'select',value:'circle',options:ThreeLayers.SHAPES.map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))},
-          {name:'dimension',label:'Dimension',type:'select',value:'2D',options:[{value:'2D',label:'2D · flat'},{value:'3D',label:'3D · solid'}]},
-          {name:'color',label:'Color',type:'color',value:'#ffffff'},
-          {name:'depth',label:'3D depth',type:'number',value:.4}],{ok:maskSource?'Add mask track':'Add shape'});
-        if(!v || current?.id!==owner)return;
-        const source=maskSource && layerById(maskSource);if(maskSource&&!source)return;
-        const code=ThreeLayers.shapeCode(v);
-        const L=addLayer('code',{name:`${source?'Mask · ':''}${v.dimension} ${v.shape}`,code,props:source?{mask:{kind:'video',source:source.id,sourceName:source.name,channel:'alpha'}}:{}});
-        if(source){ensureTimeline();L.in=player.time;L.out=Math.max(L.in+.1,player.duration || L.in+8);L.lanes=['x','scale'];touch();renderLayers();box.send({type:'layer-props',id:L.id,props:layerProps(L)});}
-        return L;
-      },
-      async moodboard(id) {
-        const owner=current?.id;
-        try {
-          await Lazy.load('board');await Board.ready();
-          const boards=Board.boards();if(!boards.length){toast('Add an image or video to a moodboard first');return;}
-          const project=window.ProjectWorkspace?.current?.();
-          const pick=await Modal.form('Fill from moodboard',[{name:'board',label:'Moodboard',type:'select',value:project?.workspace?.boardId || Board.current()?.id || boards[0].id,options:boards.map(b=>({value:b.id,label:b.name}))}],{ok:'Browse media'});
-          if(!pick || current?.id!==owner)return;
-          const b=await Board.load(pick.board);
-          const items=(b?.items || []).filter(it=>['image','gif','video'].includes(it.type)&&it.src);
-          if(!items.length){toast('This board has no imported images or videos');return;}
-          const item=await layerStudio.pickMedia(items);
-          if(!item || current?.id!==owner)return;
-          await layerStudio.useAsset(id,item);
-        }catch(err){toast(err.message,{type:'error'});}
-      },
-      pickMedia(items) {
-        return new Promise(resolve=>{
-          let result=null;
-          const dialog=el('dialog',{class:'ui-modal'}),grid=el('div',{});
-          grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:55vh;overflow:auto;width: min(680px,75vw)';
-          for(const item of items){
-            const preview=el(item.type==='video'?'video':'img',{src:Board.fileUrl(item.src),title:item.title||item.name||'Moodboard media'});
-            preview.style.cssText='width:100%;height:100px;object-fit:contain;border-radius:8px;background:#101014';
-            if(item.type==='video'){preview.muted=true;preview.preload='metadata';}else preview.loading='lazy';
-            grid.append(el('button',{type:'button',title:'Use this as the shape fill',on:{click:()=>{result=item;dialog.close();}}},preview,el('div',{text:`${item.type==='video'?'▶':'▧'} ${item.title||item.name||'Untitled'}`})));
-          }
-          dialog.append(el('h2',{text:'Fill from moodboard'}),grid,el('button',{type:'button',text:'Cancel',on:{click:()=>dialog.close()}}));
-          dialog.addEventListener('close',()=>{for(const v of grid.querySelectorAll('video')){v.removeAttribute('src');v.load();}dialog.remove();resolve(result);},{once:true});
-          document.body.append(dialog);dialog.showModal();
-        });
-      },
-      async useAsset(id,item) {
-        const owner=current?.id;if(!layerById(id))return;
-        const ref=await addRef(item.src);
-        if(current?.id!==owner || !layerById(id))return;
-        editLayer(id,{mask:{kind:'video',source:`ref:${ref.key}`,sourceName:item.title || ref.name,channel:'bright',offset:0,rate:1}});
-        ensureTimeline();setLanes(layerById(id),[...new Set([...(layerById(id).lanes||[]),'x','scale'])]);
-        return ref;
-      }
-    };
+    // ◇ Shape generator, ◐ Mask layer, Fill from moodboard (tools/three-fx.js, the layers list): every method answers a
+    // promise; (round 158, split158) the work is in layerStudioDo (a part)
+    const layerStudio = api.layerStudio = Object.fromEntries(['generate', 'moodboard', 'pickMedia', 'useAsset'].map((m) => [m, (...a) => layerStudioDo(m, a)]));
+    let studioImpl = null;
+    function layerStudioDo(...a) { return labPart(K, 'dialogs', 'layerStudioDo', a); } // tools/three-lab-dialogs.js
     function newLayer(o) {
       const Ls = layersOf();
       const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
@@ -3119,7 +2998,7 @@ const ThreeLab = (() => {
       }
       if (msg.type === 'ctx') {
         const r = box.frame.getBoundingClientRect(); const k = r.width / (box.frame.offsetWidth || r.width);
-        showMenu(r.left + msg.x * k, r.top + msg.y * k, previewMenuItems());
+        Promise.resolve(previewMenuItems()).then((rows) => showMenu(r.left + msg.x * k, r.top + msg.y * k, rows));
         return;
       }
       if (msg.type === 'adapt') { paintAdapt(msg); return; }
@@ -3249,99 +3128,7 @@ const ThreeLab = (() => {
     function lookCycleMenu(...a) { return labPart(K, 'dialogs', 'lookCycleMenu', a); } // tools/three-lab-dialogs.js
     function setLookCycle(...a) { return labPart(K, 'dialogs', 'setLookCycle', a); } // tools/three-lab-dialogs.js
     if (lookCycle) queueMicrotask(() => setLookCycle(lookCycle));
-    // ⟲ Restart: everything from scratch (a new page, GPU context and audio), when a sketch bugs out.
-    // right-click on the picture
-    // Right-click the picture (round 7): the frequent things first, the rest in a few open submenus.
-    // (round 43, menucalm) one order, most used first (the owner's counts: Freeze, the frame sizes, Save / Shuffle, the
-    // music): Freeze · Frame size › · Sliders › · ♪ Music › · Capture › · View › — then what you add or make: ＋ Add ›
-    // (layers, models, the webcam, the sequence) · ✨ Look & motion › (grade, camera moves, variations) · ⇪ Make & export ›
-    // · ✦ More › (fix my scene, restart, live, share, templates, recipes, keys). 23 rows → 11; pointing opens two levels.
-    function previewMenuItems() {
-      const ctl = selCtl();
-      const seqItem = typeof ThreeSeq !== 'undefined' ? ThreeSeq.previewItem() : null;
-      const inSeq = Boolean(seqItem?.items); // the sequence is on screen: its own menu (back to the scene…) right at the top
-      // ◫ Comp's rows sit in ＋ Add itself (another scene as a layer, picture in picture first; dispatch, precomps,
-      // render after the layers), so a precomp's settings stay two levels down
-      const comp = typeof ThreeComp !== 'undefined' ? (ThreeComp.previewItem().items?.() || []) : [];
-      const compAdd = comp.filter((x) => typeof x === 'object' && /^＋/.test(x.label));
-      const compRest = comp.filter((x) => !compAdd.includes(x));
-      const add = [
-        ...compAdd,
-        ...(seqItem && !inSeq ? [seqItem] : []),
-        '-',
-        ...(typeof LabShader !== 'undefined' ? [LabShader.previewItem()] : []), // (round 23) ◇ shader layers (tools/three-shader.js)
-        ...(typeof LabParticles !== 'undefined' ? [LabParticles.previewItem()] : []), // (round 24) ✦ GPU particles (tools/three-particles.js)
-        ...(typeof LabType !== 'undefined' ? [LabType.previewItem()] : []), // (round 25) 🅰 kinetic type, lyrics (tools/three-type.js)
-        ...(typeof LabKineticHook !== 'undefined' ? [LabKineticHook.addItem()] : []), // (round 45) 🅰 Text that moves… (tools/three-kinetic-hook.js)
-        ...(typeof LabVisHook !== 'undefined' ? [LabVisHook.addItem()] : []), // (round 50) 🎵 Music visualizer… (tools/three-vis-hook.js)
-        ...(typeof LabShapesHook !== 'undefined' ? [LabShapesHook.addItem()] : []), // (round 51) ◆ Shape… (tools/three-shapes-hook.js)
-        ...(typeof LabPhysics !== 'undefined' ? [LabPhysics.previewItem()] : []), // (round 25) ⚛ light physics (tools/three-physics.js)
-        ...(typeof ThreeModels !== 'undefined' ? [ThreeModels.previewItem()] : []), // 3D models (tools/three-models.js)
-        ...(window.AssetsHooks ? [AssetsHooks.previewItem()] : []), // (round 24) 🗂 the asset library (assets-cmds.js)
-        { label: '★ From my work…', hint: 'layers, scenes, looks', tip: 'Your past scenes, standout layers and looks: add a layer here, start a new scene from one, or use a look (each one Undo)', action: () => Lazy.load('mywork').then(() => MyWork.open({ mode: 'lab', kind: 'layer' })).catch((e) => toast(e.message, { type: 'error' })) }, // (round 134, starters134) mywork.js
-        ...(typeof LabMotionIn !== 'undefined' ? [LabMotionIn.previewItem()] : []), // (round 25) 📷 the webcam as a live input (tools/three-motion-in.js)
-        ...(compRest.length ? ['-', '◫ Comp', ...compRest] : []),
-      ];
-      const look = [
-        ...(typeof LabGrade !== 'undefined' ? [LabGrade.previewItem()] : []), // (round 24) ◐ Grade: color, LUTs, film & lens, scopes (tools/three-grade.js)
-        ...(typeof LabCamera !== 'undefined' ? [LabCamera.previewItem()] : []), // (round 40) 🎥 Camera moves (tools/three-camera.js)
-        ...(window.LabMatHook ? [LabMatHook.previewItem()] : []), // (round 50) ◉ Material looks on 3D things (tools/three-materials-hook.js)
-      ];
-      // ⇪ Export's rows after the making ones (tools/three-export.js); its rarer formats one level down
-      const ex = typeof LabExport !== 'undefined' ? (LabExport.previewItem().items?.() || []).filter((x) => typeof x === 'object' && !/All formats/.test(x.label)) : [];
-      const make = ex.length ? [ex[0], { label: 'Other formats', hint: '4K, ProRes, GIF, print, GLB…', tip: 'Export in one of the other formats: 4K, ProRes with alpha, a loop GIF, a still for print, 3D, a web page', items: ex.slice(1) }] : [];
-      const more = [
-        { label: '⟲ Restart from scratch', key: 'Ctrl+Shift+Enter', tip: 'A fresh page, GPU and sound, for when something bugs out', action: () => restartSim() },
-        ...(typeof ThreeStage !== 'undefined' ? [ThreeStage.previewItem()] : []), // (round 22) live / VJ: MIDI, set list, crossfade, output, show mode
-      ];
-      const tail = ['-', { label: 'Lab keys', key: '?', tip: 'Every key of the Lab, and what it does', action: () => (typeof KeysUI !== 'undefined' ? KeysUI.open() : labKeys()) }];
-      const E = typeof LabEasy !== 'undefined' ? LabEasy : null;
-      return [
-        ...(inSeq ? [seqItem, '-'] : []),
-        { label: frozenNow ? '▶ Unfreeze' : '❚❚ Freeze', key: 'F', tip: 'Hold the picture; the music and the timeline go on', action: () => setFreeze(!frozenNow) },
-        { label: 'Frame size', hint: stage.size.id === 'fit' ? 'Fit' : stage.size.id, tip: 'The size of the picture: fit the window, or exactly 9:16, 16:9, 4:5, 1:1', items: () => [
-          ...stage.pillOrder.map((id, k) => ({ label: id === 'fit' ? 'Fit' : id, hint: ThreeMedia.SIZES.find((z) => z.id === id)?.title || '', key: `Shift+${k + 1}`, checked: stage.size.id === id, action: () => stage.setMode(id) })),
-          '-', { label: 'Safe zones', checked: Boolean(stage.safe), action: () => stage.setSafe() },
-        ] },
-        ctl ? { label: 'Sliders', tip: 'Shuffle, save into the code, looks, for the selected layer', items: () => [
-          { label: '💾 Save into the code', key: 'Ctrl+S', action: () => { ctl.save(); toast('Sliders saved into the code', { timeout: 1200 }); } },
-          { label: '🎲 Shuffle', key: 'R', action: () => ctl.shuffle() },
-          { label: 'The shuffle before', key: 'Shift+R', action: () => ctl.shuffleStep(-1) },
-          { label: 'Save as a look', key: 'Ctrl+Shift+S', action: () => ctl.quickLook() },
-          { label: 'Next look', action: () => ctl.lookStep(1) },
-        ] } : null,
-        ...(E ? [E.musicItem()] : []),
-        { label: 'Capture', tip: 'A still, a screenshot, a frame to compare, a recording', items: () => [
-          { label: '📷 Still at the frame size', action: () => still() },
-          { label: '📋 Copy this frame', action: () => still({ copy: true }) },
-          { label: '🖼 Save a screenshot', hint: 'as it shows here', action: () => box.send({ type: 'screenshot' }) },
-          { label: '◐ Pin this frame to compare', key: '|', action: () => pinFrame() },
-          { label: '🎞 Contact sheet', action: () => showSheet() },
-          { label: '📌 Note at this moment', key: 'N', action: () => takeNote() },
-          ...(typeof LabExport !== 'undefined' ? [{ label: '⇪ Render this…', hint: 'a video of this scene', tip: 'The Render card: what to render (full song, the loop…), format, quality', action: () => LabExport.panel() }] : []), // (round 143, lab143) the Render card from the picture
-          // round 7's capture (screenshots / recordings of Hearth itself, in the captures folder) from here too
-          ...(typeof Capture !== 'undefined' ? ['-',
-            { label: '● Record the Lab preview…', hint: 'for your intro video', action: () => Capture.record({ target: 'lab' }).catch((e) => toast(e.message, { type: 'error' })) },
-            { label: '◉ More capture…', key: 'Ctrl+Alt+S', action: () => Capture.menu(Math.max(8, innerWidth / 2 - 120), 80, Capture.mainItems()) }] : []),
-        ] },
-        { label: 'View', tip: 'Present, the Stage window, focus, guides, moving around', items: () => [
-          { label: '▣ Present', key: 'P', action: () => togglePresent() },
-          { label: '▶ Play', hint: 'as a game, its own window', action: () => playGame() },
-          { label: box.onStage ? '🖥 Back from the Stage window' : '🖥 Stage window', action: () => setStage(!box.onStage) },
-          ...(window.LabWinHost ? LabWinHost.rows().map(([label, hint, fn, on]) => ({ label, hint, checked: on || undefined, action: fn })) : []), // (round 153c, labwin153)
-          { label: '⛶ Focus', key: 'Shift+F', checked: focusOn, action: () => setFocus(!focusOn) },
-          { label: 'Quality: auto', hint: 'lighter while frames drop · full in renders', checked: adaptOn, action: () => { setQuality(adaptOn ? 'high' : 'smooth', { scene: false, quiet: true }); toast(adaptOn ? 'The preview lightens itself when frames drop (renders stay full quality)' : 'The preview stays at full quality, even when frames drop', { timeout: 2200 }); } }, // (round 142: Smooth ⇄ Force high quality, as the default)
-          { label: 'Quality', hint: Q_NAMES[adaptHeld ? 'high' : qMode()], tip: 'How the preview draws while it plays (renders are always full quality)', items: () => [['smooth', 'steady frame rate · lighter before frames drop'], ['balanced', 'lighter only while frames keep dropping'], ['high', 'full resolution, antialias and shadows']].map(([k, hint]) => ({ label: Q_NAMES[k], hint, checked: k === 'high' ? qMode() === 'high' || adaptHeld : qMode() === k && !adaptHeld, action: () => setQuality(k) })) }, // (round 143, lab143) the Quality chip's three choices
-          { label: '⌗ Composition guides', hint: GUIDES.find(([k]) => k === guides)[1], items: () => GUIDES.map(([k, l]) => ({ label: l, checked: k === guides, action: () => { guides = k; store.set('three.guides', k); box.send({ type: 'guides', kind: k }); guidesBtn.classList.toggle('on', Boolean(k)); } })) },
-          ...(typeof ThreeGestures !== 'undefined' ? ThreeGestures.viewItems() : []), // (round 34) frame, reset, keep the view, moving around
-          ...(window.LabAB ? LabAB.viewItems() : []), // (round 37) ◧ Before / after the last change (tools/three-abcompare.js)
-        ] },
-        '-',
-        add.some((x) => typeof x === 'object') ? { label: '＋ Add', hint: 'layers, models, webcam…', tip: 'Add to the scene: shader, particle, type and physics layers, a 3D model, an asset, another scene, the webcam', items: add } : null,
-        ...(E ? [E.lookItem(look), E.makeItem(make), E.previewItem(more, tail)] : [...look, ...make, ...more, ...tail]),
-        ...(typeof Declutter !== 'undefined' ? Declutter.customiseItems('Lab preview') : []),
-      ];
-    }
+    function previewMenuItems(...a) { return labPart(K, 'menus', 'previewMenuItems', a); } // tools/three-lab-menus.js
     // ⌗ composition guides over the picture (not in screenshots / videos)
     const GUIDES = [['', 'off'], ['thirds', 'thirds'], ['golden', 'golden ratio'], ['center', 'center cross']];
     let guides = store.get('three.guides', '');

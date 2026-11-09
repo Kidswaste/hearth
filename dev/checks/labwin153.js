@@ -37,7 +37,7 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   const id = ThreeLab.scenes.currentId();
 
   // ---------- open: the Lab ⋯ › View & help row ----------
-  const more = ThreeLab.search.menus().more;
+  const more = (await ThreeLab.search.menus()).more;
   const view = more.find((r) => Array.isArray(r) && r[0] === 'View & help');
   const row = view?.[2]?.find((r) => Array.isArray(r) && /Open in its own window/.test(r[0]));
   step('the Lab ⋯ › View & help has "⧉ Open in its own window" (and "Hide Hearth while the Lab window is open")', Boolean(row) && view[2].some((r) => Array.isArray(r) && /Hide Hearth/.test(r[0])), view?.[2]?.slice(0, 3).map((r) => r[0]));

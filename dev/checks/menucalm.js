@@ -143,7 +143,7 @@ await until(() => ThreeLab.search?.menus, 15000);
 await wait(1500);
 try { await c.loadSong(SONG); await until(() => c.player?.loaded, 8000); } catch (e) { out.songError = String(e); }
 await wait(800);
-const LM = ThreeLab.search.menus();
+const LM = await ThreeLab.search.menus();
 const prevRows = view(LM.preview, false);
 record('Lab preview (right-click)', prevRows, false);
 const moreRow = prevRows.find((r) => r.label.startsWith('✦ More'));

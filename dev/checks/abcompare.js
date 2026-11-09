@@ -172,7 +172,7 @@ step('after a variation: "Before: 🎲 <its take>", live', /^🎲 /.test(s.pair?
 LabVariations.close();
 
 // ---------- ways in ----------
-const view = ThreeLab.search.menus().preview.find((x) => x?.label === 'View').items();
+const view = (await ThreeLab.search.menus()).preview.find((x) => x?.label === 'View').items();
 const row = view.find((x) => /Before \/ after/.test(x?.label || ''));
 const rows = row?.items?.() || [];
 step('right-click › View › ◧ Before / after: split view, a moment of before, keep before, keep now', rows.some((r) => /Split view/.test(r.label)) && rows.some((r) => /Keep before/.test(r.label)) && rows.some((r) => /Keep now/.test(r.label)), rows.map((r) => r.label || r));

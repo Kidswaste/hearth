@@ -94,6 +94,65 @@
       Ls.length > 1 ? ['Delete…', 'With Undo', () => removeLayer(L.id), false, 'Delete layer'] : null,
       ...(typeof Declutter !== 'undefined' ? Declutter.popItems('Lab layers') : [])]);
   }
+  function layerStudioDo(m, a) {
+    K.studioImpl ||= {
+    async generate({maskSource=null, settings=null}={}) {
+      const owner=K.current?.id;if(!owner)return;
+      const v=settings || await Modal.form(maskSource?'Add a mask layer':'Shape generator',[
+        {name:'shape',label:'Shape',type:'select',value:'circle',options:ThreeLayers.SHAPES.map(value=>({value,label:value[0].toUpperCase()+value.slice(1)}))},
+        {name:'dimension',label:'Dimension',type:'select',value:'2D',options:[{value:'2D',label:'2D · flat'},{value:'3D',label:'3D · solid'}]},
+        {name:'color',label:'Color',type:'color',value:'#ffffff'},
+        {name:'depth',label:'3D depth',type:'number',value:.4}],{ok:maskSource?'Add mask track':'Add shape'});
+      if(!v || K.current?.id!==owner)return;
+      const source=maskSource && K.layerById(maskSource);if(maskSource&&!source)return;
+      const code=ThreeLayers.shapeCode(v);
+      const L=K.addLayer('code',{name:`${source?'Mask · ':''}${v.dimension} ${v.shape}`,code,props:source?{mask:{kind:'video',source:source.id,sourceName:source.name,channel:'alpha'}}:{}});
+      if(source){K.ensureTimeline();L.in=K.player.time;L.out=Math.max(L.in+.1,K.player.duration || L.in+8);L.lanes=['x','scale'];K.touch();K.renderLayers();K.box.send({type:'layer-props',id:L.id,props:K.layerProps(L)});}
+      return L;
+    },
+    async moodboard(id) {
+      const owner=K.current?.id;
+      try {
+        await Lazy.load('board');await Board.ready();
+        const boards=Board.boards();if(!boards.length){toast('Add an image or video to a moodboard first');return;}
+        const project=window.ProjectWorkspace?.current?.();
+        const pick=await Modal.form('Fill from moodboard',[{name:'board',label:'Moodboard',type:'select',value:project?.workspace?.boardId || Board.current()?.id || boards[0].id,options:boards.map(b=>({value:b.id,label:b.name}))}],{ok:'Browse media'});
+        if(!pick || K.current?.id!==owner)return;
+        const b=await Board.load(pick.board);
+        const items=(b?.items || []).filter(it=>['image','gif','video'].includes(it.type)&&it.src);
+        if(!items.length){toast('This board has no imported images or videos');return;}
+        const item=await K.layerStudio.pickMedia(items);
+        if(!item || K.current?.id!==owner)return;
+        await K.layerStudio.useAsset(id,item);
+      }catch(err){toast(err.message,{type:'error'});}
+    },
+    pickMedia(items) {
+      return new Promise(resolve=>{
+        let result=null;
+        const dialog=el('dialog',{class:'ui-modal'}),grid=el('div',{});
+        grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:55vh;overflow:auto;width: min(680px,75vw)';
+        for(const item of items){
+          const preview=el(item.type==='video'?'video':'img',{src:Board.fileUrl(item.src),title:item.title||item.name||'Moodboard media'});
+          preview.style.cssText='width:100%;height:100px;object-fit:contain;border-radius:8px;background:#101014';
+          if(item.type==='video'){preview.muted=true;preview.preload='metadata';}else preview.loading='lazy';
+          grid.append(el('button',{type:'button',title:'Use this as the shape fill',on:{click:()=>{result=item;dialog.close();}}},preview,el('div',{text:`${item.type==='video'?'▶':'▧'} ${item.title||item.name||'Untitled'}`})));
+        }
+        dialog.append(el('h2',{text:'Fill from moodboard'}),grid,el('button',{type:'button',text:'Cancel',on:{click:()=>dialog.close()}}));
+        dialog.addEventListener('close',()=>{for(const v of grid.querySelectorAll('video')){v.removeAttribute('src');v.load();}dialog.remove();resolve(result);},{once:true});
+        document.body.append(dialog);dialog.showModal();
+      });
+    },
+    async useAsset(id,item) {
+      const owner=K.current?.id;if(!K.layerById(id))return;
+      const ref=await K.addRef(item.src);
+      if(K.current?.id!==owner || !K.layerById(id))return;
+      K.editLayer(id,{mask:{kind:'video',source:`ref:${ref.key}`,sourceName:item.title || ref.name,channel:'bright',offset:0,rate:1}});
+      K.ensureTimeline();K.setLanes(K.layerById(id),[...new Set([...(K.layerById(id).lanes||[]),'x','scale'])]);
+      return ref;
+    }
+  };
+    return K.studioImpl[m](...a);
+  }
   async function removeLayer(id, { confirm = true } = {}) {
     const L = K.layerById(id);
     if (!L) return false;
@@ -336,5 +395,5 @@ ${code}
     const list = [...K.sketches].sort((a, b) => (pins.has(b.id) - pins.has(a.id)) || b.updatedAt - a.updatedAt).slice(0, 14);
     ThreeTweaks.menu(e.clientX, e.clientY, ['Switch to', ...list.map((x) => [`${pins.has(x.id) ? '★ ' : ''}${x.name}`, `${x.layers?.length || 1} layer${(x.layers?.length || 1) === 1 ? '' : 's'}`, () => K.openSketch(x.id), x.id === K.current?.id]), ['All as pictures…', 'O', () => browseSketches()], ...(K.current ? [[`▶ Play ${K.current.name}`, 'as a game, full screen', () => K.playGame()]] : []), ['＋ New sketch', '', () => templateGallery()]]);
   }
-  return { labKeys, historyDialog, browseSketches, templateGallery, exportHtml, askAbout, removeSketch, lookCycleMenu, setLookCycle, previewMenu, trigPresetMenu, qualityMenu, snippetMenu, versionMenu, newMenu, consoleMenu, presentMenu, stillMenu, freezeMenu, pickerMenu, layerRowMenu, fixErrors, autoBars, removeLayer, setHud };
+  return { labKeys, historyDialog, browseSketches, templateGallery, exportHtml, askAbout, removeSketch, lookCycleMenu, setLookCycle, previewMenu, trigPresetMenu, qualityMenu, snippetMenu, versionMenu, newMenu, consoleMenu, presentMenu, stillMenu, freezeMenu, pickerMenu, layerRowMenu, fixErrors, autoBars, removeLayer, setHud, layerStudioDo };
 };
