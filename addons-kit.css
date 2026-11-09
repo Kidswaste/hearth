@@ -1,0 +1,20 @@
+/* (round 159, css159) from addons.css: only "kit" code makes these match; loaded with it, right after addons.css (lazy-data.js CSS_AFTER) */
+.kit-dialog { width: min(1020px, calc(100vw - 32px)); }
+.kit-dialog .tabpane { padding: 12px 4px; }
+.kit-dialog .tabbar { padding-left: 0; }
+.kit-col { display: flex; flex-direction: column; gap: 8px; }
+.kit-chip.big { width: 44px; height: 32px; }
+.kit-harmony { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.kit-harmony .kit-format-label { width: 150px; }
+.kit-contrast-sample { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 12px; border: 1px solid var(--line); }
+.kit-ratio { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+.kit-badge { padding: 1px 9px; border-radius: 999px; font-size: 12px; }
+.kit-badge.ok { background: color-mix(in srgb, #22c55e 25%, transparent); }
+.kit-badge.bad { background: color-mix(in srgb, #ef4444 25%, transparent); }
+.kit-gradient { height: 90px; border-radius: 12px; border: 1px solid var(--line); }
+.kit-formats-1 { grid-template-columns: 1fr; }
+.kit-frame { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+.kit-frame-canvas { width: 260px; height: 260px; border-radius: 10px; background: color-mix(in srgb, #000 20%, var(--bg)); }
+.kit-ratio-in { width: 100%; }
+.kit-frame-info code { white-space: pre-wrap; word-break: break-word; }
+.kit-tc-out { font-size: 15px; }

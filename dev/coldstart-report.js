@@ -176,7 +176,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
     for (const t of String(opt('--cpu-also', '')).split(',').map(Number).filter((x) => x > 0)) { if (!cpuAt) break; const left = spawned + t - Date.now(); if (left > 0) await wait(left); also.push({ ms: Date.now() - spawned, cpu: await procCpu() }); }
     // (round 157, boot157) the window's memory once settled (CDP Performance.getMetrics: JS heap, DOM nodes, listeners)
     let metrics = null;
-    try { await c.send('Performance.enable'); const r = await c.send('Performance.getMetrics'); const g = Object.fromEntries((r.result?.metrics || []).map((x) => [x.name, x.value])); metrics = { heapMB: r1(g.JSHeapUsedSize / 1048576), heapTotalMB: r1(g.JSHeapTotalSize / 1048576), nodes: g.Nodes, listeners: g.JSEventListeners }; } catch { /* old Electron */ }
+    try { await c.send('Performance.enable'); const r = await c.send('Performance.getMetrics'); const g = Object.fromEntries((r.result?.metrics || []).map((x) => [x.name, x.value])); metrics = { heapMB: r1(g.JSHeapUsedSize / 1048576), heapTotalMB: r1(g.JSHeapTotalSize / 1048576), nodes: g.Nodes, listeners: g.JSEventListeners, recalcStyleMs: r1((g.RecalcStyleDuration || 0) * 1000), recalcStyles: g.RecalcStyleCount }; } catch { /* old Electron */ }
     const page = await c.evaluate(`(() => {
       const m = (n) => { const e = performance.getEntriesByName(n)[0]; return e ? e.startTime : null; };
       const paint = Object.fromEntries(performance.getEntriesByType('paint').map((e) => [e.name, e.startTime]));
@@ -213,7 +213,7 @@ async function launch(dir, userData, port, { traceOut, shot, hold, profDir, cpuA
       const ready = traceBuf.find((e) => e.name === 'hearth:ready' && e.pid === win);
       const main = traceBuf.find((e) => e.pid === win && e.name === 'thread_name' && e.args?.name === 'CrRendererMain')?.tid;
       const sum = (re) => r1(traceBuf.filter((e) => e.pid === win && e.tid === main && e.ph === 'X' && re.test(e.name) && (!ready || e.ts <= ready.ts)).reduce((a, e) => a + (e.dur || 0), 0) / 1000);
-      compile = { parseCompile: sum(/^(v8\.compile|V8\.CompileCode|v8\.parseOnBackground|V8\.ParseProgram|V8\.ParseFunction|v8\.compileModule)$/), evaluate: sum(/^(EvaluateScript|v8\.run)$/) };
+      compile = { parseCompile: sum(/^(v8\.compile|V8\.CompileCode|v8\.parseOnBackground|V8\.ParseProgram|V8\.ParseFunction|v8\.compileModule)$/), evaluate: sum(/^(EvaluateScript|v8\.run)$/), style: sum(/^(UpdateLayoutTree|RecalculateStyles)$/), cssParse: sum(/^(ParseAuthorStyleSheet|CSSParserImpl::parseStyleSheet)$/) }; // (round 159, css159) + style recalc and stylesheet parsing
     }
     return {
       metrics, compile,
