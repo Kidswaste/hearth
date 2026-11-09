@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of features.css: its rules only the "lab" group's code can make match. Loaded with that
-   group, right after features.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from features.css: only "lab" code makes these match; loaded with it, right after features.css (lazy-data.js CSS_AFTER) */
 .three-preview.drop-on { outline: 2px dashed var(--ui-gold); outline-offset: -6px; }
 @container (max-width: 760px) {
 .three-split.with-tweaks .tweaks { max-height: 45vh; }

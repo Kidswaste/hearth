@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of addons.css: its rules only the "kit" group's code can make match. Loaded with that
-   group, right after addons.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from addons.css: only "kit" code makes these match; loaded with it, right after addons.css (lazy-data.js CSS_AFTER) */
 .kit-dialog { width: min(1020px, calc(100vw - 32px)); }
 .kit-dialog .tabpane { padding: 12px 4px; }
 .kit-dialog .tabbar { padding-left: 0; }

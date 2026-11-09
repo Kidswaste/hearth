@@ -238,7 +238,7 @@ if (args.includes('--movable')) {
     for (const { f, g, out, items } of Object.values(plan)) {
       const text = items[0].text;
       const nodes = parse(text).nodes.filter((n) => (n.kind === 'rule' && items.some((x) => x.n.start === n.start)) || (n.kind === 'comment' && carried[f].get(n.start) === g));
-      let css = `/* (round 159, css159) moved out of ${f}: its rules only the "${g}" group's code can make match. Loaded with that\n   group, right after ${f} (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */\n`;
+      let css = `/* (round 159, css159) from ${f}: only "${g}" code makes these match; loaded with it, right after ${f} (lazy-data.js CSS_AFTER) */\n`;
       let open = null;
       for (const n of nodes) {
         const wrap = []; for (let p = n.parent; p && p.kind === 'group'; p = p.parent) wrap.unshift(p.prelude);

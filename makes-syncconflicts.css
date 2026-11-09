@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of makes.css: its rules only the "syncconflicts" group's code can make match. Loaded with that
-   group, right after makes.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from makes.css: only "syncconflicts" code makes these match; loaded with it, right after makes.css (lazy-data.js CSS_AFTER) */
 .sync-row-acts { display: flex; gap: 6px; flex-shrink: 0; }
 .sync-what { white-space: normal !important; }
 .sync-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }

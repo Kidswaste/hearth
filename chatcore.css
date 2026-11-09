@@ -147,7 +147,7 @@ code.reach-path:hover { text-decoration-style: solid; }
 .up-note + .up-note { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
 .up-details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 6px 0; }
 
-/* ---------- (round 159, css159) was chat-live.css: merged here, in its place in index.html's order ---------- */
+/* ---------- (round 159, css159) was chat-live.css ---------- */
 /* What a running reply is doing (round 21, liveness: chat-live.js): the agents it deployed, the folded activity list,
    the status line when the engine has been quiet a while, long thinking in light blocks. Quiet colors, no bars. */
 

@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of look.css: its rules only the "juice" group's code can make match. Loaded with that
-   group, right after look.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from look.css: only "juice" code makes these match; loaded with it, right after look.css (lazy-data.js CSS_AFTER) */
 .juice-tip {
   position: fixed; z-index: 10001; max-width: 320px; padding: 5px 9px; pointer-events: none;
   font: 12px/1.4 var(--font); color: var(--text); white-space: pre-line;

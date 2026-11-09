@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of polish8.css: its rules only the "board" group's code can make match. Loaded with that
-   group, right after polish8.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from polish8.css: only "board" code makes these match; loaded with it, right after polish8.css (lazy-data.js CSS_AFTER) */
 .bd-chip:hover { color: var(--fh-gold-text, var(--text)); }
 .bd-chip:active { transform: translateY(1px); }
 .bd-chip .p8-ico { width: 15px; height: 15px; flex: none; color: var(--fh-gold, var(--accent)); }

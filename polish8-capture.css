@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of polish8.css: its rules only the "capture" group's code can make match. Loaded with that
-   group, right after polish8.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from polish8.css: only "capture" code makes these match; loaded with it, right after polish8.css (lazy-data.js CSS_AFTER) */
 :root .cap-seg { border-color: var(--line-hi, var(--line)); border-radius: var(--r-sm, 8px); }
 html[data-skin~="forge"] .cap-seg { border-radius: 0; clip-path: var(--cut-sm, none); }
 :root .cap-seg button:hover { color: var(--text); background: var(--hover); }

@@ -44,7 +44,7 @@
 .mk-ptext { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mk-ptext .cp-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- (round 159, css159) was sync.css: merged here, in its place in index.html's order ---------- */
+/* ---------- (round 159, css159) was sync.css ---------- */
 /* Sync (sync.js): a calm dot at the bottom of the rail, the setup / conflicts / deleted-files dialogs. */
 #sync-dot { width: 32px; height: 18px; display: grid; place-items: center; padding: 0; margin: 2px 0 0; opacity: .7; position: relative; }
 #sync-dot:hover { opacity: 1; }
@@ -77,7 +77,7 @@
 .sync-held-group { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
 .sync-held-group .sync-rows { max-height: 220px; overflow: auto; }
 
-/* ---------- (round 159, css159) was progress.css: merged here, in its place in index.html's order ---------- */
+/* ---------- (round 159, css159) was progress.css ---------- */
 /* Progress bars (round 11, progress-ui.js). The fill moves with transform: scaleX() only (compositor); nothing here
    animates layout or paint. Measured: solid; estimated: lighter and hatched ("about"); almost there: breathes
    (opacity); hung: ember; done: full, then fades. */

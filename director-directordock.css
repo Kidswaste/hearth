@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of director.css: its rules only the "directordock" group's code can make match. Loaded with that
-   group, right after director.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from director.css: only "directordock" code makes these match; loaded with it, right after director.css (lazy-data.js CSS_AFTER) */
 .dd-strip .spacer { flex: 1; }
 .dd-call:last-child { filter: none; background: color-mix(in srgb, var(--fh-gold, #ffd75e) 16%, transparent); }
 .dd-call.running { animation: dd-pulse 1s ease-in-out infinite; background: color-mix(in srgb, var(--fh-ai, #b07cff) 30%, transparent); filter: none; }

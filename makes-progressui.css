@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of makes.css: its rules only the "progressui" group's code can make match. Loaded with that
-   group, right after makes.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from makes.css: only "progressui" code makes these match; loaded with it, right after makes.css (lazy-data.js CSS_AFTER) */
 /* an estimate: softer, hatched */
 .pg-bar.pg-est > i { opacity: .62; background: repeating-linear-gradient(115deg, var(--fh-ai, #a98bff) 0 5px, color-mix(in srgb, var(--fh-ai, #a98bff) 55%, transparent) 5px 9px); }
 .pg-bar.pg-almost > i, .pg-bar.pg-late > i { animation: pg-breathe 1.8s ease-in-out infinite; }

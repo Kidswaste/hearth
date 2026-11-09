@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of polish.css: its rules only the "lab" group's code can make match. Loaded with that
-   group, right after polish.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from polish.css: only "lab" code makes these match; loaded with it, right after polish.css (lazy-data.js CSS_AFTER) */
 :root[data-look~=v2] .media-bar .ghost.mb-tap.flash { animation: none; }
 @container (max-width: 760px) {
 .three-split.with-tweaks .three-right { order: -1; }

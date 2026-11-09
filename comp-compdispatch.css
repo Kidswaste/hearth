@@ -1,5 +1,4 @@
-/* (round 159, css159) moved out of comp.css: its rules only the "compdispatch" group's code can make match. Loaded with that
-   group, right after comp.css (lazy-data.js CSS_AFTER), so they keep their place in the cascade. */
+/* (round 159, css159) from comp.css: only "compdispatch" code makes these match; loaded with it, right after comp.css (lazy-data.js CSS_AFTER) */
 .comp-sum { flex: 1; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comp-row { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 8px; min-width: 0; }
 .comp-row:hover { background: color-mix(in srgb, var(--text, #fff) 5%, transparent); }
