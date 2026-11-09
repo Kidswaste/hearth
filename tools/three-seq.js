@@ -43,6 +43,7 @@ const ThreeSeq = (() => {
   const listeners = {};
   const emit = (ev, d) => { for (const fn of listeners[ev] || []) { try { fn(d); } catch (err) { console.error(err); } } };
   const lab = () => S.L;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { S.L = null; S.view = false; S.drag = null; S.hover = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const fps = () => S.edit?.seq?.fps || 30;
   const frameOf = (T) => Math.floor(T * fps() + 1e-3);
   const frameStart = (n) => Math.max(0, n) / fps();

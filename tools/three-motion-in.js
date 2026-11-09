@@ -27,6 +27,7 @@ const LabMotionIn = (() => {
     devs: [], filesSent: false, offered: false, hinted: false, probes: new Map(), probeN: 0, pill: null, hideT: 0, starting: null,
   };
   const S = () => st.lab;
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { st.lab = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
 
   // ---------- the preview (tools/three.js attaches it) ----------
   // o: { send(msg), frame: () => iframe, onStage: () => bool, ready: () => bool, host: preview element }

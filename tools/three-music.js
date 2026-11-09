@@ -7,6 +7,7 @@
 // The Lab hands its pieces over with ThreeMusic.attach(…) (tools/three.js) once it is built.
 const ThreeMusic = (() => {
   let lab = null; // { player, selCtl, layers, selectedLayer, triggers, live }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { lab = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const offered = new Set(); // songs + sketches already offered "Make it react" this session
   const noted = new Set(); // songs whose "found" note was shown this session
   let current = null; // the trigger preset in use (picked from the song, or by you)

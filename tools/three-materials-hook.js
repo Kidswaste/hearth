@@ -7,6 +7,7 @@
 // Nothing runs and nothing is in any prompt until one of them is used (0 tokens).
 const LabMatHook = (() => {
   let h = null; // the Lab's host (tools/three.js): send, pane, previewHost, frame, layerById, sel, select, layers, sketchId, palette, setLook
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { h = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const waits = new Map(); let seq = 0;
   function attach(host) { h = host; }
   // a question to the preview page, answered by its id (null after ms)

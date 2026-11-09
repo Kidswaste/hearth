@@ -12,6 +12,7 @@
 const ThreeAudio = (() => {
   const AF = () => (typeof AudioFeat !== 'undefined' ? AudioFeat : null);
   let lab = null; // { player, send, layers, selCtl, selectedLayer, live: { kind, io, setIo, start } }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { lab = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const st = { coreSent: false, wanted: false, songWanted: false, frames: 0, sentAt: 0, last: null, lastAt: 0, probes: new Map(), probeN: 0 };
   const live = { node: null, ctx: null, mon: null, source: null, queue: [], rate: 48000 };
 

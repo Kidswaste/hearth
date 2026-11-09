@@ -17,6 +17,7 @@ const LabCamera = (() => {
   const clone = (o) => JSON.parse(JSON.stringify(o ?? null));
   const stats = { added: 0, drags: 0, undos: 0, commits: 0 };
   let h = null; // { send, player, layers, layerById, sel, edit, sketchId, host, ensureClock }
+  addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { h = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
   const P = () => h?.player;
 
   // ---------- the preview's answers (cam-info) ----------
