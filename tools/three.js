@@ -2704,7 +2704,7 @@ const ThreeLab = (() => {
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
       // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
       // (kept out of lastStats: the director's reports stay as short as they were)
-      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, pace: { readout: paceOn, text: paceText(paceLast), battery: onBattery, ...(paceLast || {}) }, line: perfLine(lastStatsMsg) }),
+      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.gpuApi ? { gpuMs: lastStatsMsg.gpuMs == null ? null : Math.round(lastStatsMsg.gpuMs * 100) / 100, gpuApi: lastStatsMsg.gpuApi } : {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, pace: { readout: paceOn, text: paceText(paceLast), battery: onBattery, ...(paceLast || {}) }, line: perfLine(lastStatsMsg) }),
       pace: (on) => (on == null ? paceOn : setPaceOn(on)), // (round 33 "labpace") the Frame pace readout
       adapt: (on) => (on == null ? adaptOn : setAdaptOn(on)),
       perfHud: (on) => setPerfHud(on ?? !perfHudOn), light: (on) => (on == null || on !== lightOn ? setLight(on ?? !lightOn) : lightOn),
@@ -2944,7 +2944,7 @@ const ThreeLab = (() => {
       return qChip;
     }
     function paintStats(msg) {
-      const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}`;
+      const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}|${msg.gpuMs == null ? '' : msg.gpuMs.toFixed(1)}`;
       if (sig === statsSig) return;
       statsSig = sig;
       // (round 73, startfast73) the line's parts are made once and their words changed in place: a new line every stats
@@ -2961,7 +2961,7 @@ const ThreeLab = (() => {
       qualityChip(msg);
       put(P.fps, `${Math.round(msg.fps)} fps`, msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok');
       P.worst.hidden = !msg.worst; if (msg.worst) put(P.worst, `worst ${Math.round(msg.worst)} ms`, msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok');
-      put(P.ms, `${msg.ms.toFixed(1)} ms render`); put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
+      put(P.ms, msg.gpuApi ? `${msg.ms.toFixed(1)} ms render · ${msg.gpuMs == null ? '–' : msg.gpuMs.toFixed(1)} ms GPU (WebGPU)` : `${msg.ms.toFixed(1)} ms render`); // (Nov 9, Scenes v2: a v2 scene's one renderer says its GPU time) put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
       P.points.hidden = !msg.points; if (msg.points) put(P.points, `${msg.points.toLocaleString()} points`);
       put(P.geo, `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders`);
       window.LabRegroup?.stats?.(msg, qChip.textContent); // (round 148, look148) the preview's instrument header: fps · quality (only when the line changed)
@@ -3545,7 +3545,8 @@ const ThreeLab = (() => {
       const valuesOf = (L) => { const p = preps.get(L.id); if (!p) return undefined; const b = baseOf(L); return Object.fromEntries(p.values.map((v, i) => [b + i, v])); };
       // (a precomp: another scene as this layer, tools/three-comp.js: its scene's layers come with it)
       const pcOf = (L) => (L.precomp && typeof ThreeComp !== 'undefined' ? ThreeComp.specFor(L, current.id, layersOf().indexOf(L)) : null);
-      const spec = (L) => { const pc = pcOf(L); return { id: L.id, code: codeOf(L), values: valuesOf(L), ...layerProps(L), ...(pc ? { precomp: pc } : {}) }; };
+      // (Nov 9, Scenes v2) a v2 scene's layers run on the page's one WebGPU renderer (tools/three-sandbox.html "Scenes v2")
+      const spec = (L) => { const pc = pcOf(L); return { id: L.id, code: codeOf(L), values: valuesOf(L), ...layerProps(L), ...(pc ? { precomp: pc } : {}), ...(current.format === 'gpu' ? { gpu: true } : {}) }; };
       // new code fades in over the old picture; a layer the sandbox doesn't run yet wipes in
       const fx = (L) => (ranCode.has(L.id) ? 'xfade' : 'reveal');
       if (partial) {
@@ -3747,8 +3748,8 @@ const ThreeLab = (() => {
       renderLayers();
       run({ sync: true });
     }
-    function create(name, code, layers, { timeline = null } = {}) {
-      const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
+    function create(name, code, layers, { timeline = null, format = null } = {}) {
+      const s = { id: `s${Date.now()}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}), ...(format === 'gpu' ? { format: 'gpu' } : {}) }; // (Nov 9, Scenes v2: format 'gpu')
       sketches.push(s);
       if (timeline) { (extras[s.id] ||= {}).timeline = { len: timeline.len, fps: timeline.fps || 30 }; saveExtras(); }
       save();
@@ -3759,7 +3760,7 @@ const ThreeLab = (() => {
       const name = await Modal.prompt('Rename sketch', { value: current.name });
       if (name) { current.name = name.trim(); save(); renderPicker(); }
     }
-    function duplicate() { persist(); const from = current.id; const tl = extras[from]?.timeline; const s = create(`${current.name} copy`, current.code, current.layers, { timeline: tl }); if (tl) player.copyMap(clockPath(from), clockPath(s.id)).then((ok) => { if (ok && current === s) { player.unload({ silent: true }); sceneMedia(s.id); } }).catch(() => {}); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(from, s.id).catch(() => {}); }
+    function duplicate() { persist(); const from = current.id; const tl = extras[from]?.timeline; const s = create(`${current.name} copy`, current.code, current.layers, { timeline: tl, format: current.format }); /* (Nov 9, Scenes v2: a copy keeps its format) */ if (tl) player.copyMap(clockPath(from), clockPath(s.id)).then((ok) => { if (ok && current === s) { player.unload({ silent: true }); sceneMedia(s.id); } }).catch(() => {}); if (typeof ThreeSeq !== 'undefined') ThreeSeq.sceneCopied(from, s.id).catch(() => {}); }
     function removeSketch(...a) { return labPart(K, 'dialogs', 'removeSketch', a); } // tools/three-lab-dialogs.js
     function templateGallery(...a) { return labPart(K, 'dialogs', 'templateGallery', a); } // tools/three-lab-dialogs.js
     function exportHtml(...a) { return labPart(K, 'dialogs', 'exportHtml', a); } // tools/three-lab-dialogs.js
@@ -4090,8 +4091,8 @@ const ThreeLab = (() => {
         return true;
       },
       // id: (round 52, chatkeep) a scene that never reached the disk comes back under its own id (its chat still links it)
-      create({ name, code, layers = null, open = false, frame = null, timeline = null, id = null }) {
-        const x = { id: id && /^[\w-]{1,80}$/.test(id) && !sketches.some((y) => y.id === id) ? id : `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}) };
+      create({ name, code, layers = null, open = false, frame = null, timeline = null, id = null, format = null }) {
+        const x = { id: id && /^[\w-]{1,80}$/.test(id) && !sketches.some((y) => y.id === id) ? id : `s${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, code, updatedAt: Date.now(), ...(layers ? { layers: JSON.parse(JSON.stringify(layers)) } : {}), ...(format === 'gpu' ? { format: 'gpu' } : {}) }; // (Nov 9, Scenes v2: format 'gpu')
         sketches.push(x);
         if (frame) { (extras[x.id] ||= {}).frame = frame; saveExtras(); }
         if (timeline) { (extras[x.id] ||= {}).timeline = { len: timeline.len || 10, fps: timeline.fps || 30 }; saveExtras(); } // its own timeline (the orb)
