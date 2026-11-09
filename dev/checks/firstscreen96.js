@@ -77,6 +77,7 @@ async function round(label) {
   await closeAll();
 
   // ---------- decide.js (assist group): the look picker's ✦ button, /decide, Ctrl/⌘+K, the kinds others add ----------
+  await Lazy.load('lookpicker'); // (round 160, boot160) the picker's code is a lazy group (Settings' dialogs load it first)
   const pick = Look.picker();
   ok(pick?.querySelector?.('.decide-btn'), `${label}: the look picker has ✦ Let Astra pick (assist ${state('assist')})`);
   said.length = 0;

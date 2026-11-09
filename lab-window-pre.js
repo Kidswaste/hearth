@@ -6,7 +6,7 @@ window.HearthLabWindow = (() => {
   // name → 'soon' (loads right after the window is up) or 'use' (only when the Lab asks for it). Everything else (chats,
   // boards, projects, usage, sync panels, memory, routines, budget…) does not exist in this window.
   const SOON = ['kit', 'nodes', 'labintent', 'cmdbar', 'glrecover', 'keyslines', 'dragdrop'];
-  const USE = ['lab', 'codeflow', 'blocks', 'labsay', 'gallery', 'packs', 'labvar', 'framebar', 'scenedoctor', 'critique',
+  const USE = ['lab', 'lookpicker', 'keyssheet', 'codeflow', 'blocks', 'labsay', 'gallery', 'packs', 'labvar', 'framebar', 'scenedoctor', 'critique',
     'multiformat', 'labtemplates', 'kinetictype', 'labvis', 'labshapes', 'presentready', 'labmaterials', 'projlook', 'takes',
     'scenevers', 'speedcheck', 'refmatch', 'matchscore', 'renderpre', 'preflight', 'perform', 'explain', 'campath', 'audiomap',
     'outline', 'dials', 'favs', 'songmap', 'sectionmood', 'lyrics', 'dropmedia', 'labrecipes', 'labkeys', 'labdirection',
