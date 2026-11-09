@@ -1032,6 +1032,10 @@ const ThreeLab = (() => {
       parkedNow = on;
       api.parkTweaks?.(on);
       restArm(); // (round 154, mem154)
+      // (round 160, playfix) the Lab rested while Hearth's window was hidden, minimised or covered (Windows reports a
+      // covered window as hidden) and is on screen again: its page comes back here, as when the Lab tool is shown
+      // (onShow). Nothing else brought it back: the preview stayed black / frozen and ▶ did nothing on every scene.
+      if (!on && REST.by && workspaceReleased && !REST.closing && window.ProjectWorkspace?.state?.().phase !== 'opening') { REST.by = false; REST.woke += 1; api.workspace?.resume?.(); }
       stallArm?.(on);
       if (box.ready || !on) box.send({ type: 'park', on });
       if (paceOn) paintPace(); // (round 33 "labpace")
@@ -4234,7 +4238,7 @@ const ThreeLab = (() => {
     // is on, on the Stage window, ▶ Play or a baked show, a project opening, an AI turn on this scene, or while the Lab
     // window holds it (it is released then anyway). Tests: localStorage 'lab.restMs' (ms; '0' = never).
     const restMs = () => { let v = null; try { v = localStorage.getItem('lab.restMs'); } catch { /* none */ } const n = v == null || v === '' ? 300000 : Number(v); return Number.isFinite(n) && n >= 0 ? n : 300000; };
-    const restUnseen = () => !box.onStage && (document.visibilityState !== 'visible' || !previewHost.checkVisibility?.({ visibilityProperty: true }));
+    const restUnseen = () => !box.onStage && !previewHost.checkVisibility?.({ visibilityProperty: true }); // (round 160, playfix: only when another tool covers the Lab; a hidden, minimised or covered window (Windows reports covered as hidden) no longer counts, so the Lab never rests while it is the tool on screen)
     const restBlock = () => (workspaceReleased ? 'released' : !current ? 'no scene' : !restUnseen() ? 'seen' : REST.closing ? 'closing'
       : workspacePreparing || pagePrimed || box.loading ? 'preparing' : player.playing ? 'playing' : player.recording ? 'recording' : liveKind ? 'live'
       : xpOn ? 'rendering' : previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing') ? 'show'
