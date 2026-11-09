@@ -81,7 +81,7 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   out.measure.lean = { listed: names.length, loaded, scripts: lean.scripts.length };
   step('lean: no chat / board / project / usage group exists in the Lab window (not even a stand-in)', !CHAT_GROUPS.some((g) => names.includes(g)), CHAT_GROUPS.filter((g) => names.includes(g)));
   step('lean: none of the chat app\'s scripts load there (native.js, panel.js, usage.js, meter.js…), one surface (the Lab), no chat view or <webview>', !CHAT_SCRIPTS.some((f) => lean.scripts.includes(f)) && lean.surfaces.length === 1 && lean.surfaces[0] === 'tool:three' && !lean.natives && !lean.chats, { scripts: lean.scripts.filter((f) => CHAT_SCRIPTS.includes(f)), surfaces: lean.surfaces });
-  step('lean: what loaded is the Lab\'s (lab, nodes, kit…), and the window threw nothing', loaded.includes('lab') && loaded.includes('nodes') && loaded.every((n) => !CHAT_GROUPS.includes(n)) && !lean.errs.length, { loaded, errs: lean.errs });
+  step('lean: what loaded is the Lab\'s (lab, nodes, kit…), and the window threw nothing', loaded.includes('lab') && (loaded.includes('nodes') || loaded.includes('kit')) /* (round 164: nodes.js is in 'kit') */ && loaded.every((n) => !CHAT_GROUPS.includes(n)) && !lean.errs.length, { loaded, errs: lean.errs });
 
   // ---------- paused: Hearth's Lab ----------
   await wait(500);
