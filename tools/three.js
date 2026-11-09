@@ -1079,7 +1079,7 @@ const ThreeLab = (() => {
     // went still it stays off until the next input (no flip-flop: each change is a message that wakes the page).
     const RST = { on: false, moving: 0, out: false };
     const idleRest = () => document.documentElement.hasAttribute('data-hush') && !player.playing && !player.recording && !liveKind && !xpOn && RST.moving >= 3 && !RST.out;
-    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording) && !RST.on), modal: modalUp && !box.onStage && !player.recording }; };
+    const capMsg = () => { const v = fpsPref(); return { type: 'fps-cap', value: Math.max(0, v), auto: v < 0, focused: box.onStage || (winFocused && !(xpOn && !player.recording) && !RST.on), modal: modalUp && !box.onStage && !player.recording, lite: liteOn() }; }; // (round 153a, lite153: Lite rides on every cap message too, a warmed page included)
     // (round 72, labfps72) a modal over the Lab (a <dialog> opened with showModal(), the ⌘K Find anything palette): the
     // preview behind it draws 30 frames a second at most, whatever the fps setting (it still moves under the dim; at
     // 240 Hz the graphics card does an eighth of the work while you read or type in the dialog). Never on the Stage

@@ -16691,7 +16691,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'af' || /^audio-(core|track|probe)$/.test(msg.type)) { fxMessage(msg); return; } // (round 23, labaudio)
   if (msg.type === 'audio-stems') { STEMS.track = msg.track; STEMS.el = mediaEl; return; } // (round 30, stems) the song's parts, for the song loaded now
   // (auto: follow the screen and the window, see applyCap; focused: the Lab's window is the one in front)
-  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; applyCap(); }
+  if (msg.type === 'fps-cap') { capWant.value = Number(msg.value) || 0; capWant.auto = Boolean(msg.auto); capWant.focused = msg.focused !== false; capWant.modal = msg.modal === true; if (msg.lite !== undefined) LITE.on = Boolean(msg.lite) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); }
   if (msg.type === 'park') setParked(msg.on);
   if (msg.type === 'light') { lightMode = Boolean(msg.on); applyCap(); }
   if (msg.type === 'lite') { LITE.on = Boolean(msg.on) && !XP_PAGE && !GAME && !window.__stageHost; applyCap(); if (DOZE.on) dozeWake('lite'); } // (round 153a, lite153)
