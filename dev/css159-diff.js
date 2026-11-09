@@ -50,7 +50,7 @@ function encode(file, w, h, px) {
 if (args[0] === 'shoot') {
   const dir = path.resolve(args[1]); fs.mkdirSync(dir, { recursive: true });
   const extra = [...(opt('--app') ? ['--app', opt('--app')] : []), ...(opt('--coverage') ? ['--coverage', opt('--coverage')] : [])]; // --coverage <file>: the tour's CSS rule usage too
-  const r = spawnSync(process.execPath, [path.join(__dirname, 'smoke.js'), '--fake-engines', '--check-timeout', '600000', ...extra, '--eval', `window.CSS159_SHOTS = ${JSON.stringify(dir)}`, '--script', path.join(__dirname, 'css159-tour.js'), '--shot', path.join(dir, '99-final.png')], { encoding: 'utf8', maxBuffer: 1 << 30 });
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'smoke.js'), '--fake-engines', '--check-timeout', '1800000', ...extra, '--eval', `window.CSS159_SHOTS = ${JSON.stringify(dir)}`, '--script', path.join(__dirname, 'css159-tour.js'), '--shot', path.join(dir, '99-final.png')], { encoding: 'utf8', maxBuffer: 1 << 30 });
   const log = `${r.stdout || ''}${r.stderr || ''}`;
   fs.writeFileSync(path.join(dir, 'tour.log'), log);
   const res = log.split('\n').find((l) => l.startsWith('{"shots"'));
