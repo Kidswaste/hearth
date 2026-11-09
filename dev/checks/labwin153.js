@@ -46,17 +46,24 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   const heapMb = async () => { const r = await smoke({ cdp: 'Runtime.getHeapUsage' }); return r?.usedSize != null ? Math.round(r.usedSize / 1048576 * 10) / 10 : null; };
   const refs = { preview: new WeakRef(document.querySelector('.surface[data-id="tool:three"] .three-preview, .surface[data-id="tool:three"] .tool-body > *')), director: new WeakRef(ThreeLab.director), scenes: new WeakRef(ThreeLab.scenes) };
   const labNodes = () => document.querySelectorAll('.surface[data-id="tool:three"] .tool-body *').length;
-  const dockAgent = Tools.dockedAgent?.('three');
-  const draftBox = () => (dockAgent ? Native.view?.(dockAgent.id)?.input || document.querySelector('.surface[data-id="tool:three"] .tool-dock textarea') : null);
+  const dockAgent = Tools.dockedAgent?.('three') || H.claudeAgent(); // (a chat's box: the docked director's, else Claude's)
+  if (!Native.hasView?.(dockAgent.id)) { activate(dockAgent.id); await until(() => Native.hasView(dockAgent.id), 10000); activate('tool:three'); await wait(300); }
+  const draftBox = () => Native.view?.(dockAgent.id)?.input || null;
   const DRAFT = 'a draft kept across the Lab window (fix161)';
   if (draftBox()) { draftBox().value = DRAFT; draftBox().dispatchEvent(new Event('input', { bubbles: true })); }
   await gc(); const heapBefore = await heapMb(); const nodesBefore = labNodes();
 
   // ---------- open: the Lab ⋯ › View & help row ----------
-  const more = (await ThreeLab.search.menus()).more;
-  const view = more.find((r) => Array.isArray(r) && r[0] === 'View & help');
-  const row = view?.[2]?.find((r) => Array.isArray(r) && /Open in its own window/.test(r[0]));
-  step('the Lab ⋯ › View & help has "⧉ Open in its own window" (and "Hide Hearth while the Lab window is open")', Boolean(row) && view[2].some((r) => Array.isArray(r) && /Hide Hearth/.test(r[0])), view?.[2]?.slice(0, 3).map((r) => r[0]));
+  // (round 161) read in a function of its own: the menu's rows hold the Lab tab's closures, and this check must not keep
+  // them (the "released" step proves nothing keeps the tab once it is let go); the ⧉ row's action is LabWinHost's
+  const viewRow = await (async () => {
+    const more = (await ThreeLab.search.menus()).more;
+    const view = more.find((r) => Array.isArray(r) && r[0] === 'View & help');
+    const r = view?.[2]?.find((x) => Array.isArray(x) && /Open in its own window/.test(x[0]));
+    return { open: r ? r[2] : null, hide: Boolean(view?.[2]?.some((x) => Array.isArray(x) && /Hide Hearth/.test(x[0]))), labels: view?.[2]?.slice(0, 3).map((x) => x[0]) };
+  })();
+  const row = viewRow.open ? [null, null, viewRow.open] : null;
+  step('the Lab ⋯ › View & help has "⧉ Open in its own window" (and "Hide Hearth while the Lab window is open")', Boolean(row) && viewRow.hide, viewRow.labels);
   step('…and Ctrl/⌘+; knows it: /labwin, found by "open lab window"', Boolean(Commands.get('labwin')) && (Commands.suggest?.('open lab window') || []).some((x) => /labwin/.test(JSON.stringify(x))), (Commands.suggest?.('open lab window') || []).slice(0, 3));
   const t0 = performance.now();
   row[2]();
@@ -143,7 +150,7 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   const st2 = await window.hub.labwin.state();
   step('close: Hearth\'s Lab is back on that scene with everything changed there, its preview running again, the card gone', Boolean(back) && ThreeLab.scenes.currentId() === id && !document.querySelector('.labwin-away') && !st2.open && H.surfaceIdFor(H.activeId) === 'tool:three', { name: ThreeLab.scenes?.get(id)?.name, layers: ThreeLab.scenes?.get(id)?.layers?.map((l) => l.name), ws: ThreeLab.workspace?.state?.(), cur: ThreeLab.scenes?.currentId?.() === id });
   const draftNow = draftBox()?.value;
-  step('restored: Hearth\'s Lab mounted again (its DOM, its api), the director chat\'s draft kept', !ThreeLab.dropped() && labNodes() > 100 && Boolean(ThreeLab.director) && (!dockAgent || draftNow === DRAFT), { dropped: ThreeLab.dropped(), nodes: labNodes(), draft: draftNow, dock: dockAgent?.id || null, host: LabWinHost.state() });
+  step('restored: Hearth\'s Lab mounted again (its DOM, its api), the director chat\'s draft kept', !ThreeLab.dropped() && labNodes() > 100 && Boolean(ThreeLab.director) && draftNow === DRAFT, { dropped: ThreeLab.dropped(), nodes: labNodes(), draft: draftNow, chat: dockAgent?.id || null, host: LabWinHost.state() });
 
   // ---------- hide Hearth meanwhile ----------
   LabWinHost.hideMain(true);
