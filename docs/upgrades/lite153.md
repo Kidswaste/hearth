@@ -8,7 +8,7 @@ Lite mode switch … one click for busy days").
 
 - **One stored value**, `localStorage['hub.lite']` (the renderer store's own `hub.` prefix: `store.get('lite')`), self-
   contained so the "Trim Hearth" panel and the Lab-window rounds can't collide with it.
-- **`window.HearthLite = { on, set(v), toggle(), phrase(text), stats(msg) }`** in `powerwise.js` (first screen, ≈ 2 KB),
+- **`window.HearthLite = { on, set(v), toggle(), stats(msg) }`** in `powerwise.js` (first screen, ≈ 2 KB),
   read **before the first paint** (`<html data-lite>` is set when powerwise.js runs, ahead of DOMContentLoaded: the check
   sees it set at DOMContentLoaded and at the first frame after a reload). A change fires `hearth:lite` (`{ on, why }`)
   and another Hearth window's change arrives through the `storage` event, so a separate Lab window only has to load
@@ -32,8 +32,16 @@ Lite mode switch … one click for busy days").
 | indicator | a quiet gold mono **LITE** tag beside the Lab bar's ⋯ and in the rail's status corner; a click turns Lite off |
 
 Lazy group **`lite`** (`lite.js`, asap: right after the first frame): /lite, the actions, the key, the rail tag, the offer.
-The Lab's row and tag are in `tools/three.js` (group `lab`). First screen: 1,542 KB of 1,547 (+3 KB), 62 scripts (no new
-file: the reader is in powerwise.js, the CSS in powerwise.css).
+The Lab's row and tag are in `tools/three.js` (group `lab`); the command bar's words in `cmdbar.js` (`CmdBar.litePhrase`).
+First screen: after trim153 it stood at exactly 1,547 / 1,547 KB; Lite's eager part (the reader in powerwise.js ≈ 0.8 KB,
+look.js, the manifest lines: ≈ 2.2 KB) is paid for by moving Power-wise's main-process half out of the window: the
+holds' blocker, its reasons and the Mac / Windows battery-saver readers are now `powerwise-hold.js`, required only by Node
+(powerwise.js merges it into its exports for powerwisemain.js and dev/powerwise-test.js, unchanged: 83 / 83). Result:
+**1,543 KB of 1,547**, 62 scripts, 27 sheets (the CSS in powerwise.css). The lazy group `lite` is registered as core in
+Trim Hearth (`trim-data.js`, "Screen, accessibility and calm"). The Lab window (labwin153) loads powerwise.js, so it reads
+and sets the same switch (its `LabWinHost.lite()` reads `HearthLite.on`); a flip in either window reaches the other
+through the `storage` event, and a flip re-sends the frame cap, so the Lab window's own full rate behind other apps
+comes back when Lite goes off.
 
 ## What it does
 
@@ -86,3 +94,5 @@ CHECK_SECTION
 ## For Codex
 
 Nothing: no Codex-owned file was touched.
+
+Release: round 155 (owner notes `docs/patch-notes/round-155.md`), merged on top of labwin153 (round 153) and trim153 (round 154).

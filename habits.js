@@ -55,7 +55,7 @@ const Habits = (() => {
   // replies that failed (the engine's own message and its fix)
   if (typeof Native !== 'undefined') Native.hooks?.event?.push((ev, chat) => { if (ev?.type === 'error') record(ev.message, chat?.agentId || 'chat', ev.fix); });
   addEventListener('error', (e) => { if (e.message && !/ResizeObserver/.test(e.message)) record(`Page error: ${e.message}`, (e.filename || '').split('/').pop()); });
-  addEventListener('unhandledrejection', (e) => { const m = e.reason?.message || String(e.reason || ''); if (m && !/aborted|cancel/i.test(m)) record(`Unhandled: ${m}`, whereNow()); });
+  addEventListener('unhandledrejection', (e) => { const m = e.reason?.message || String(e.reason || ''); if (m && !/aborted|cancel|switched off on this computer/i.test(m)) record(`Unhandled: ${m}`, whereNow()); });
   const top = (n = 8) => Object.entries(log?.items || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => b.n - a.n || b.last - a.last).slice(0, n);
 
   // ---------- tidy: never-used buttons behind Alt, once a week per screen ----------

@@ -76,10 +76,10 @@ const LiteUI = (() => {
   }
   if (typeof Commands !== 'undefined' && !Commands.get('lite')) {
     Commands.register({
-      name: 'lite', area: 'App', args: '[on | off | status]', desc: '⚡ Lite mode for a busy PC: the Lab preview at 30 fps and half resolution, no glow or animations, slower background checks (renders stay full quality)',
-      keywords: 'lite light fast faster slow lag laggy performance smooth busy battery saver low power potato reduce effects glow animations',
+      name: 'lite', area: 'App', args: '[on | off | status]', desc: '⚡ Lite mode: 30 fps preview at half resolution, no glow or animations (renders stay full quality)',
+      keywords: 'lite fast slow lag performance busy glow animations',
       examples: ['/lite on', '/lite off', '/lite'],
-      complete: () => [{ value: 'on', hint: 'lighter: 30 fps preview, no glow or animations' }, { value: 'off', hint: 'everything back as it was' }, { value: 'status', hint: 'what it does now' }],
+      complete: () => [{ value: 'on', hint: 'lighter' }, { value: 'off', hint: 'as it was' }, { value: 'status', hint: 'what it does' }],
       run: async (args) => {
         const a = String(args || '').trim().toLowerCase();
         if (/^(on|yes|1|enable|start)$/.test(a)) set(true, { quiet: true });
@@ -92,8 +92,8 @@ const LiteUI = (() => {
   }
   try {
     if (typeof AppUI !== 'undefined' && AppUI.addAction) {
-      AppUI.addAction('Lite mode: on / off (⚡ 30 fps preview, no glow or animations)', () => toggle(), 'Ctrl+Alt+L');
-      AppUI.addAction('Lite mode: don\'t offer it when things are slow', () => { store.set('lite.noOffer', !noOffer()); toast(noOffer() ? 'Hearth won\'t offer Lite mode any more (/lite turns it on)' : 'Hearth may offer Lite mode again when things are slow', { timeout: 2600 }); });
+      AppUI.addAction('⚡ Lite mode: on / off', () => toggle(), 'Ctrl+Alt+L');
+      AppUI.addAction('Lite mode: don\'t offer it', () => { store.set('lite.noOffer', !noOffer()); toast(noOffer() ? 'Hearth won\'t offer Lite mode any more (/lite turns it on)' : 'Hearth may offer Lite mode again when things are slow', { timeout: 2600 }); });
     }
   } catch { /* optional */ }
   addEventListener('keydown', (e) => {
@@ -101,9 +101,11 @@ const LiteUI = (() => {
     e.preventDefault(); e.stopPropagation();
     toggle();
   }, true);
-  try { if (typeof Keys !== 'undefined' && Keys.add && !Keys.all().some((k) => k.keys === 'Ctrl+Alt+L')) Keys.add({ area: 'App', keys: 'Ctrl+Alt+L', what: '⚡ Lite mode on / off (30 fps preview, no glow or animations; renders stay full quality)', run: () => toggle() }); } catch { /* optional */ }
+  try { if (typeof Keys !== 'undefined' && Keys.add && !Keys.all().some((k) => k.keys === 'Ctrl+Alt+L')) Keys.add({ area: 'App', keys: 'Ctrl+Alt+L', what: '⚡ Lite mode on / off', run: () => toggle() }); } catch { /* optional */ }
 
   paintTag();
-  return { set, toggle, stats, offer, status, paintTag, state: () => ({ on: Boolean(L()?.on), offered: S.offered, offers: S.offers, why: S.why, slowSince: S.slowSince, freezes: S.freezes, tag: Boolean(S.tag && !S.tag.hidden) }), _test: { reset: () => { S.offered = false; S.slowSince = 0; S.offerNode?.remove?.(); S.offerNode = null; } } };
+  // the rail's ⋯ top row (simplify.js)
+  const railRow = () => ({ label: 'Lite mode', icon: 'clock', checked: Boolean(L()?.on), tip: 'Busy PC: 30 fps Lab preview at half resolution, no glow, no animations, slower background checks (renders stay full quality)', action: () => toggle() });
+  return { set, toggle, stats, offer, status, paintTag, railRow, state: () => ({ on: Boolean(L()?.on), offered: S.offered, offers: S.offers, why: S.why, slowSince: S.slowSince, freezes: S.freezes, tag: Boolean(S.tag && !S.tag.hidden) }), _test: { reset: () => { S.offered = false; S.slowSince = 0; S.offerNode?.remove?.(); S.offerNode = null; } } };
 })();
 window.LiteUI = LiteUI;

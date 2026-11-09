@@ -1,4 +1,4 @@
-# Round 153a: ⚡ Lite mode, one click for busy days
+# Round 155: ⚡ Lite mode, one click for busy days
 *November 2026*
 
 You asked for a one-click **Lite mode**: always 30 fps, no glow or effects, a half-resolution preview. Here it is.
