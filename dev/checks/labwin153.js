@@ -5,6 +5,12 @@
 //   lean      the Lab window has no chat / board / project / usage groups at all (not even stand-ins), loads none of
 //             the chat app's scripts (native.js, panel.js, usage.js…), and its loaded groups are the Lab's
 //   paused    Hearth's Lab let go of the scene (its preview page released) and shows "Open in Lab window ↗"
+//   released  (round 161, fix161) Hearth's window let its Lab go entirely while the Lab window holds the scene: no Lab
+//             DOM, no ThreeLab api, the tab's state collected (WeakRefs to its preview, director and scenes empty after
+//             a GC), the JS heap lower; showing the Lab there shows only the card; a director call still lands in the
+//             Lab window; something that needs Hearth's Lab mounts it again (held), and it can be let go again
+//   restored  (round 161) closing the Lab window mounts Hearth's Lab again on the scene; a draft in the director's chat
+//             kept; a second open / close cycle (hide) drops and restores again; no page error
 //   edits     an AI call made from Hearth's side (its chat) lands in the Lab window; a rename there is on disk at once;
 //             Hearth's Lab has both after the Lab window closes, back on that scene, its preview running again
 //   secure    the Lab window: contextIsolation on, no node integration, no <webview>, same as Hearth's window; no
@@ -35,6 +41,16 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   await until(() => ThreeLab.workspace.state().ready, 30000);
   await wait(1500);
   const id = ThreeLab.scenes.currentId();
+  // (round 161, fix161) what Hearth's Lab holds now, to see it go: WeakRefs to its preview, its director and its scenes
+  const gc = async () => { await smoke({ cdp: 'HeapProfiler.collectGarbage' }); await wait(200); await smoke({ cdp: 'HeapProfiler.collectGarbage' }); };
+  const heapMb = async () => { const r = await smoke({ cdp: 'Runtime.getHeapUsage' }); return r?.usedSize != null ? Math.round(r.usedSize / 1048576 * 10) / 10 : null; };
+  const refs = { preview: new WeakRef(document.querySelector('.surface[data-id="tool:three"] .three-preview, .surface[data-id="tool:three"] .tool-body > *')), director: new WeakRef(ThreeLab.director), scenes: new WeakRef(ThreeLab.scenes) };
+  const labNodes = () => document.querySelectorAll('.surface[data-id="tool:three"] .tool-body *').length;
+  const dockAgent = Tools.dockedAgent?.('three');
+  const draftBox = () => (dockAgent ? Native.view?.(dockAgent.id)?.input || document.querySelector('.surface[data-id="tool:three"] .tool-dock textarea') : null);
+  const DRAFT = 'a draft kept across the Lab window (fix161)';
+  if (draftBox()) { draftBox().value = DRAFT; draftBox().dispatchEvent(new Event('input', { bubbles: true })); }
+  await gc(); const heapBefore = await heapMb(); const nodesBefore = labNodes();
 
   // ---------- open: the Lab ⋯ › View & help row ----------
   const more = (await ThreeLab.search.menus()).more;
@@ -63,9 +79,17 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   // ---------- paused: Hearth's Lab ----------
   await wait(500);
   const away = document.querySelector('.surface.active .labwin-away');
-  step('paused: Hearth\'s Lab let go of the scene (its preview page released) and shows "Open in Lab window ↗"', ThreeLab.workspace.state().released && Boolean(away?.checkVisibility()) && /Open in Lab window ↗/.test(away?.textContent || '') && LabWinHost.away() === id, { ws: ThreeLab.workspace.state(), card: away?.textContent?.slice(0, 80) });
-  ThreeLab.workspace.resume(); await wait(600); // (Hearth's Lab coming back on screen does not run it here)
-  step('paused: Hearth\'s Lab coming back on screen still runs nothing of it (one preview of a scene, ever)', ThreeLab.workspace.state().released, ThreeLab.workspace.state());
+  step('paused: Hearth\'s Lab let go of the scene (its preview page released) and shows "Open in Lab window ↗"', (ThreeLab.dropped() || ThreeLab.workspace.state().released) && Boolean(away?.checkVisibility()) && /Open in Lab window ↗/.test(away?.textContent || '') && LabWinHost.away() === id && !document.querySelector('iframe[src*="three-sandbox"]'), { dropped: ThreeLab.dropped(), card: away?.textContent?.slice(0, 80) });
+
+  // ---------- released: Hearth's window holds no Lab while the Lab window has the scene (round 161, fix161) ----------
+  await gc();
+  const rel = { dropped: ThreeLab.dropped(), mounted: H.surfaces.get('tool:three')?.mounted, api: { director: Boolean(ThreeLab.director), scenes: Boolean(ThreeLab.scenes), workspace: Boolean(ThreeLab.workspace) }, nodes: labNodes(), nodesBefore,
+    collected: { preview: refs.preview.deref() === undefined, director: refs.director.deref() === undefined, scenes: refs.scenes.deref() === undefined }, heapBefore, heapAfter: await heapMb(), host: LabWinHost.state() };
+  out.measure.released = rel;
+  step('released: Hearth\'s Lab let go entirely (ThreeLab.dropped, no Lab DOM, no director / scenes / workspace api)', rel.dropped && !rel.api.director && !rel.api.scenes && !rel.api.workspace && rel.nodes === 0 && nodesBefore > 100, rel);
+  step('released: the tab\'s state is collected (its preview, director and scenes gone after a GC) and the JS heap is lower', rel.collected.preview && rel.collected.director && rel.collected.scenes && rel.heapAfter < rel.heapBefore, { collected: rel.collected, heap: [rel.heapBefore, rel.heapAfter] });
+  activate(H.claudeAgent().id); await wait(300); activate('tool:three'); await wait(800); // (Hearth's Lab coming back on screen does not run it here)
+  step('released: showing the Lab in Hearth shows only the card (no new Lab, no preview: one preview of a scene, ever)', ThreeLab.dropped() && labNodes() === 0 && Boolean(document.querySelector('.surface.active .labwin-away')?.checkVisibility()) && !document.querySelector('iframe[src*="three-sandbox"]'), { dropped: ThreeLab.dropped(), nodes: labNodes() });
 
   // ---------- edits ----------
   const call = await HubBridge.call('three_add_layer', { name: 'Added from Hearth', code: "import * as THREE from 'three';\nconst r = new THREE.WebGLRenderer({ alpha: true }); r.setSize(innerWidth, innerHeight); document.body.append(r.domElement);" }, {});
@@ -74,11 +98,17 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   await lw(`ThreeLab.scenes.rename(${JSON.stringify(id)}, 'Renamed in the Lab window')`);
   const disk = await until(async () => { const d = await window.hub.kvGet('three-sketches', null); const x = (d || []).find((s) => s.id === id); return x?.name === 'Renamed in the Lab window' && x.layers?.some((l) => l.name === 'Added from Hearth') ? x : null; }, 10000);
   step('edits: saved through the same path (the scenes file on disk has them at once)', Boolean(disk), disk ? { name: disk.name, layers: disk.layers.map((l) => l.name) } : null);
-  // Hearth's window saving its scenes meanwhile (another scene's change) never writes its old copy of this one back
+  // Hearth's window saving its scenes meanwhile (another scene's change) never writes its old copy of this one back.
+  // (round 161) Hearth's Lab is dropped: something that needs it mounts it again (held: the card, no preview of that scene)
+  await ThreeLab.cmd({ show: false });
+  await wait(800);
+  step('released: something that needs Hearth\'s Lab mounts it again, the away scene still held (no preview, the card)', !ThreeLab.dropped() && Boolean(ThreeLab.scenes) && ThreeLab.workspace.state().released && labNodes() > 100 && !document.querySelector('iframe[src*="three-sandbox"]') && LabWinHost.away() === id, { dropped: ThreeLab.dropped(), ws: ThreeLab.workspace?.state?.(), cur: ThreeLab.scenes?.currentId?.() === id });
   ThreeLab.scenes.rename(ThreeLab.scenes.all().find((s) => s.id !== id)?.id || id, `Other scene ${Date.now() % 1000}`);
   await wait(1500);
   const disk2 = ((await window.hub.kvGet('three-sketches', null)) || []).find((s) => s.id === id);
   step('edits: a save from Hearth\'s window meanwhile keeps the Lab window\'s version of its scene', disk2?.name === 'Renamed in the Lab window', disk2?.name);
+  const again = await ThreeLab.drop(); await wait(300);
+  step('released: and it can be let go again (ThreeLab.drop)', again?.ok && ThreeLab.dropped() && labNodes() === 0, again);
 
   // ---------- secure ----------
   const sec = await lw(`({ require: typeof require, process: typeof process, module: typeof module, csp: document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content || '', hub: typeof window.hub })`);
@@ -111,7 +141,9 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   await until(() => !LabWinHost.away(), 15000);
   const back = await until(() => { const s = ThreeLab.scenes.get(id); return s?.name === 'Renamed in the Lab window' && s.layers?.some((l) => l.name === 'Added from Hearth') && ThreeLab.workspace.state().ready && !ThreeLab.workspace.state().released ? s : null; }, 30000);
   const st2 = await window.hub.labwin.state();
-  step('close: Hearth\'s Lab is back on that scene with everything changed there, its preview running again, the card gone', Boolean(back) && ThreeLab.scenes.currentId() === id && !document.querySelector('.labwin-away') && !st2.open && H.surfaceIdFor(H.activeId) === 'tool:three', { name: ThreeLab.scenes.get(id)?.name, layers: ThreeLab.scenes.get(id)?.layers?.map((l) => l.name), ws: ThreeLab.workspace.state(), cur: ThreeLab.scenes.currentId() === id });
+  step('close: Hearth\'s Lab is back on that scene with everything changed there, its preview running again, the card gone', Boolean(back) && ThreeLab.scenes.currentId() === id && !document.querySelector('.labwin-away') && !st2.open && H.surfaceIdFor(H.activeId) === 'tool:three', { name: ThreeLab.scenes?.get(id)?.name, layers: ThreeLab.scenes?.get(id)?.layers?.map((l) => l.name), ws: ThreeLab.workspace?.state?.(), cur: ThreeLab.scenes?.currentId?.() === id });
+  const draftNow = draftBox()?.value;
+  step('restored: Hearth\'s Lab mounted again (its DOM, its api), the director chat\'s draft kept', !ThreeLab.dropped() && labNodes() > 100 && Boolean(ThreeLab.director) && (!dockAgent || draftNow === DRAFT), { dropped: ThreeLab.dropped(), nodes: labNodes(), draft: draftNow, dock: dockAgent?.id || null, host: LabWinHost.state() });
 
   // ---------- hide Hearth meanwhile ----------
   LabWinHost.hideMain(true);
@@ -125,6 +157,8 @@ r.setAnimationLoop((t) => { m.rotation.y = t / 900; m.rotation.x = t / 1700; r.r
   const hs2 = await window.hub.labwin.state();
   LabWinHost.hideMain(false);
   step('hide: "Hide Hearth while the Lab window is open" hides Hearth, and it comes back when the Lab window closes', h1?.ok && hs.open && hs.mainVisible === false && hs2.mainVisible === true && !hs2.open, { open: hs.mainVisible, closed: hs2.mainVisible });
+  const ok2 = await until(() => !ThreeLab.dropped() && ThreeLab.workspace?.state?.().ready && ThreeLab.scenes.currentId() === id, 30000);
+  step('restored: a second open / close cycle let Hearth\'s Lab go and brought it back (its preview running again)', Boolean(ok2) && LabWinHost.state().dropped >= 2 && LabWinHost.state().restored >= 2, { host: LabWinHost.state(), ws: ThreeLab.workspace?.state?.() });
 } catch (err) { step(`threw: ${err.message}`, false, String(err.stack || '').split('\n').slice(0, 4).join(' | ')); }
 
 const fails = out.steps.filter((s) => s.startsWith('✖'));

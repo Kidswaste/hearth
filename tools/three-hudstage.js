@@ -341,16 +341,28 @@ const LabHudStage = (() => {
     S.ro = new ResizeObserver(() => { measure(); clearTimeout(S.mt); S.mt = setTimeout(measure, 160); });
     S.ro.observe(preview);
     S.io = new IntersectionObserver((es) => { const v = es[es.length - 1]?.isIntersecting; if (v !== S.vis) { S.vis = Boolean(v); if (!S.vis) sleep(); config(); paint(); } });
-    document.addEventListener('visibilitychange', () => paint()); // (round 151, perf151) the label writer stops while Hearth is hidden
     S.io.observe(preview);
     preview.addEventListener('pointermove', onPtrLocal, { passive: true });
     preview.addEventListener('pointerleave', () => wake('out'));
     preview.addEventListener('focusin', (e) => { if (e.target.closest?.('.stage-pill, .three-stats')) wake(); });
     watchWarnings();
-    addEventListener('hearth:lab-playing', (e) => { S.playing = Boolean(e.detail?.playing); S.lastT = -1; if (!S.playing) { S.lvlShown = -1; S.h.glow.style.opacity = ''; } progress(true); config(); paint(); });
-    const re = () => { S.sent = ''; config(); };
-    rmq.addEventListener?.('change', re);
-    new MutationObserver(re).observe(de, { attributes: true, attributeFilter: ['data-motion', 'data-lablook', 'data-lite'] });
+    // (round 161, fix161) the window-wide listeners once per window: a Lab mounted again (after ThreeLab.drop) reuses them
+    if (!S.wired) {
+      S.wired = true;
+      document.addEventListener('visibilitychange', () => paint()); // (round 151, perf151) the label writer stops while Hearth is hidden
+      addEventListener('hearth:lab-playing', (e) => { if (!S.pv) return; S.playing = Boolean(e.detail?.playing); S.lastT = -1; if (!S.playing) { S.lvlShown = -1; if (S.h.glow) S.h.glow.style.opacity = ''; } progress(true); config(); paint(); });
+      const re = () => { S.sent = ''; config(); };
+      rmq.addEventListener?.('change', re);
+      new MutationObserver(re).observe(de, { attributes: true, attributeFilter: ['data-motion', 'data-lablook', 'data-lite'] });
+      // Hearth's Lab let go entirely while the Lab window holds its scene: nothing of its preview is kept here
+      addEventListener('hearth:lab-drop', (e) => {
+        if (!e.detail?.dropped) return;
+        clearTimeout(S.timer); clearTimeout(S.mt); clearInterval(S.labT); cancelAnimationFrame(S.raf); glide?.cancel(); glide = null;
+        for (const o of [S.ro, S.io, S.obs]) { try { o?.disconnect(); } catch { /* gone */ } }
+        Object.assign(S, { pv: null, head: null, hud: null, h: { pips: [] }, frameFn: null, frameEl: null, send: null, ready: null, media: null, frozen: null, timer: 0, labT: 0, raf: 0, rect: null, fb: null, ro: null, io: null, obs: null, sent: '', pips: [] });
+        S.warn.clear();
+      });
+    }
     S.playing = Boolean(window.LabPlay?.playing);
     setPips(4);
     measure(); paintMode(); paint(); config(true);
