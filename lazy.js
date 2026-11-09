@@ -349,7 +349,7 @@ const Lazy = (() => {
   //   redraw: the chats on screen are drawn again once the last such group is in ('mount': first through Native.mount
   //           again, for astra.js' chat-box chip), so a reply's cards, badges and calm error lines appear as before
   //   send:   a message sent before they're in waits for them (Lazy.sendReady(), native.js send): every hook, option and
-  //           permission setting of a send is the same as before
+  //           permission setting of a send is the same as before (null when all are in)
   const slotFn = () => {}; // (one shared shape; each placeholder is its own function so indexOf finds it)
   function makeSlots(g) {
     const hk = typeof Native !== 'undefined' && Native.hooks;
@@ -398,7 +398,7 @@ const Lazy = (() => {
   }
   function sendReady() {
     const due = [...groups.values()].filter((g) => g.send && !g.off && g.state !== 'loaded');
-    return due.length ? Promise.all(due.map((g) => load(g.name, { auto: true }).catch(() => {}))).then(() => {}) : Promise.resolve();
+    return due.length ? Promise.all(due.map((g) => load(g.name, { auto: true }).catch(() => {}))).then(() => {}) : null; // (null: nothing to wait for)
   }
 
   // ---------- loading ----------
