@@ -85,10 +85,12 @@ if (args[0] === 'shoot') {
     for (const n of [...new Set([...Object.keys(SA), ...Object.keys(SB)])].sort()) {
       const x = SA[n]; const y = SB[n];
       if (!x || !y) { console.log(`  styles: missing in one run   ${n}`); sbad++; continue; }
-      if (x.tags.join('|') !== y.tags.join('|')) { console.log(`  styles: the page differs (${x.tags.length} / ${y.tags.length} elements)   ${n}`); sbad++; continue; }
-      const off = x.hs.map((h, i) => (h !== y.hs[i] ? x.tags[i] : null)).filter(Boolean);
+      if (x.tags.length !== y.tags.length) { console.log(`  styles: the page differs (${x.tags.length} / ${y.tags.length} elements)   ${n}`); sbad++; continue; }
+      // (an element whose classes differ between the runs, a state such as "fresh" or "busy", isn't compared)
+      const same = x.tags.filter((t, i) => t === y.tags[i]).length;
+      const off = x.hs.map((h, i) => (x.tags[i] === y.tags[i] && h !== y.hs[i] ? x.tags[i] : null)).filter(Boolean);
       if (off.length) sbad++;
-      console.log(`  styles: ${String(off.length).padStart(5)} of ${x.hs.length} elements differ   ${n}${off.length ? `  (${[...new Set(off)].slice(0, 6).join(', ')})` : ''}`);
+      console.log(`  styles: ${String(off.length).padStart(5)} of ${same} elements differ${same < x.tags.length ? ` (${x.tags.length - same} not compared: other classes)` : ''}   ${n}${off.length ? `  (${[...new Set(off)].slice(0, 6).join(', ')})` : ''}`);
     }
     console.log(sbad ? `styles: ${sbad} views differ` : 'styles: every element identical in every view');
     if (sbad) bad += sbad;
