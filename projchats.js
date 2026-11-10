@@ -110,18 +110,23 @@ window.ProjChats = (() => {
   // ---------- the open project ----------
   const current = () => (scope && P.get(scope)) || null;
   let savedScope = scope; // (round 120, projperf120) what localStorage holds: written only when it changes
+  let barDue = false; let barLate = 0; // (round 170) a bar to paint with the list's next draw
+  function barNow() { clearTimeout(barLate); if (!barDue) return; barDue = false; paintBar(); }
   function setScope(pid, { quiet = false } = {}) {
     const p = pid ? P.get(pid) : null;
     scope = p ? p.id : null;
     if (scope !== savedScope) { store.set(SCOPE, scope); savedScope = scope; }
-    refresh();
-    if (!quiet) (Panel.soon || Panel.render)();
+    // (round 170, switch170) the bar is painted with the list's own draw (Panel.soon, 40 ms on): painted at once, the two
+    // came in two frames, each a whole window drawn again on software GL. A draw that doesn't come paints it anyway.
+    const later = !quiet && Panel.soon;
+    refresh({ withBar: !later });
+    if (later) { barDue = true; clearTimeout(barLate); barLate = setTimeout(barNow, 400); Panel.soon(); } else if (!quiet) Panel.render();
   }
   // the open project's chat ids (the list's filter), the early-ids note for the next start, the bar. Called when the
   // projects store or the scope changed (never by a plain draw). (round 120, projperf120) the note is written only when
   // the ids differ (≈ 40 KB of JSON for Earlier chats' 1,500 chats), the bar repainted only when what it shows differs
   let earlyKey = null;
-  function refresh() {
+  function refresh({ withBar = true } = {}) {
     const p = current();
     const next = new Set(p ? p.items.filter((x) => x.type === 'chat').map((x) => x.ref) : []);
     const same = earlyKey === (p ? p.id : '') && next.size === ids.size && [...next].every((id) => ids.has(id));
@@ -130,7 +135,7 @@ window.ProjChats = (() => {
       earlyKey = p ? p.id : '';
       try { store.set(EARLY, { ids: [...ids].slice(0, 3000), at: Date.now() }); } catch { /* a convenience */ }
     }
-    paintBar();
+    if (withBar) { barDue = false; clearTimeout(barLate); paintBar(); }
   }
   // what is open: a project's workspace or page, else the chat in front of you's project
   function followed() {
@@ -312,7 +317,7 @@ window.ProjChats = (() => {
   // the list: only the open project's chats (website chats aren't project chats: not listed)
   function inScope(c) { if (!ok) return true; return Boolean(c && ids.has(c.id)); }
   Panel.hooks.scope?.push(inScope);
-  Panel.hooks.render.push(() => { watch(); follow(); });
+  Panel.hooks.render.push(() => { barNow(); watch(); follow(); });
   Native.hooks.newChat.push(onNewChat);
   Native.hooks.send?.push(onSend); // (round 124, chatfix124) (the unit tests' stand-in Native has no send hooks)
   addEventListener('hearth:projects', (e) => { gen += 1; if (e.detail?.why === 'sync') keepSoon(); else if (e.detail?.why === 'delete') keepSoon(500); /* (round 118, projsync118) its chats to Earlier chats now */ refresh(); });

@@ -146,6 +146,35 @@ const A11y = (() => {
     else top.root.remove();
   });
 
+  // (round 170, switch170) Esc goes to what's on screen. The Lab's ★ Favourites and 🎛 Dials cards (inside its Layers &
+  // knobs panel's sections) listen for Esc on the whole window, in the capture phase, for as long as they're open, and
+  // stop it there: with the Lab out of sight (a chat shown), Esc in AI setup never reached the drawer and folded a
+  // section nobody could see instead (a11y's "AI setup: Esc did not close it" since the sections came in, round 142).
+  // (1) Leaving the Lab folds those open sections (the Lab's own toggle closes their cards and drops the listener);
+  // coming back opens them again, so the panel looks the same. Only the sections' `open`: no Lab code is called.
+  const keptSecs = new Set();
+  function labShown() {
+    const lab = typeof H !== 'undefined' ? H.surfaces?.get?.('tool:three')?.el : null;
+    if (!lab) return;
+    const shown = lab.classList.contains('active') && lab.checkVisibility?.() !== false;
+    if (!shown) { for (const d of lab.querySelectorAll('details.lk-sec[open]')) { keptSecs.add(d); d.open = false; } return; }
+    for (const d of keptSecs) if (d.isConnected && !d.open) d.open = true;
+    keptSecs.clear();
+  }
+  document.addEventListener('hearth:activate', () => setTimeout(labShown, 0)); // (renderer.js activate: on the document)
+  addEventListener('hearth:view', () => setTimeout(labShown, 0)); // (start.js / gamemode.js: on the window)
+  // (2) AI setup takes its own Esc first (registered at start, before any card's): with the Lab on screen behind a
+  // docked chat, a card's window listener otherwise took the Esc meant for the drawer on top of it. Same rule as the
+  // drawer's own (options.js: not in a box you type in, not the page version).
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || typeof Options === 'undefined') return;
+    const t = e.target instanceof Element ? e.target : null;
+    const sheet = t?.closest('aside.opt-sheet:not(.opt-page)');
+    if (!sheet || t.closest('textarea') || !Options.sheet || Options.sheet.root !== sheet) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    Options.hide();
+  }, true);
+
   // ---------- the chats list: one Tab stop, arrows move ----------
   function rovePanel() {
     const rows = [...document.querySelectorAll('#chat-groups .item')];

@@ -110,6 +110,13 @@
 /* (round 165, chat165) a chat over one plain opaque colour takes that same colour (native.js solidBack): an opaque scroll
    box the compositor scrolls, same pixels. Zero specificity: any look that paints the list itself wins */
 :where(.messages.solid-back) { background-color: var(--solid-back); }
+/* (round 170, switch170) the chat on screen over its solid colour keeps a GPU layer of its own. A chat's entrance (polish.css
+   .chat-enter) gave the list a layer for 240 ms and took it away again: each time, the list's box moved between the
+   window's own layer and its own, so the window's layer under the chat was rasterised again, twice per switch (in
+   Forgeheart a full-window picture of gradients and grain: ≈ 150 ms of the graphics process each on software GL). An
+   opaque box that is already a layer moves nothing: the same pixels, and a still frame costs the same. Not where
+   nothing animates (/motion off; Lite mode turns will-change off itself) */
+:root:not([data-motion=off]) .messages-wrap > .messages.solid-back:not(.parked) { will-change: transform; }
 /* (round 166, audit166) over a ground of gradients (the Forgeheart looks) the list takes the ground's plain base and the
    wrap draws the ground's see-through lights over it, fixed to the window as the ground is
    (round 168, forge168) each light only where it shines: native.js placeTints gives the ::before (and the ::after when
