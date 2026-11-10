@@ -20,8 +20,13 @@ const Gpu52 = (() => {
       setTimeout(() => resolve(0), 2000); // (a hidden window draws no frames)
     });
   }
+  // (round 174, audit174) measured once per screen: the window's screen, its size and scale name it (a move to another
+  // screen or another size / scale measures again; a refresh changed on the same screen shows from the next start); every
+  // Settings open asked ~40 frames for the same number (≈ 1.6 s of the GPU process' time per open on software GL)
+  const screenKey = () => { try { return [screen.width, screen.height, screen.availLeft, screen.availTop, devicePixelRatio].join(','); } catch { return ''; } };
+  let fpsKey = null;
   async function info({ fps = false } = {}) {
-    if (fps && document.visibilityState === 'visible') S.fps = await measureFps();
+    if (fps && document.visibilityState === 'visible' && (!S.fps || fpsKey !== screenKey())) { S.fps = await measureFps(); fpsKey = S.fps ? screenKey() : null; }
     try { S.info = await api()?.info?.({ fps: S.fps }); } catch { /* old main */ }
     return S.info;
   }
