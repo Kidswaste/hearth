@@ -600,7 +600,12 @@ async function cdpConnect(dir) {
       // as before that round: the checks find the Lab in (dev/checks/labload94.js runs without this wait)
       if (scriptFile && ci >= evals.length && !args.includes('--no-lazy-wait')) {
         // (and the page is up: chatcalm once ran into a window still loading, "H is not defined")
-        for (let i = 0; i < 60; i++) { const ready = await run('document.readyState === "complete" && (typeof H !== "undefined" || !/index\\.html/.test(location.href)) && (!window.Lazy || localStorage.getItem("lazy.hold") === "1" || (window.Lazy.calmNow?.(), Lazy.state().forEach((g) => { if (g.prefetch && g.state === "stub") Lazy.load(g.name).catch(() => {}); }), Lazy.state().every((g) => (g.tier === "use" && !g.prefetch && !g.follow) || (g.state !== "stub" && g.state !== "loading"))))'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
+        // (round 174, audit174) written with its own `return`: since round 94 the `;` inside the forEach made run() take the
+        // whole line as statements with no return value, so this wait never saw "ready" and every check part waited its
+        // full 30 s (speed's pick-up card, 20 s on screen, was gone before its restart part ran). A following group waits
+        // only for what will come in by itself: one that follows an on-use group nothing loads (appdialogs after
+        // lookpicker since round 160) stays out until it's used, as in the app.
+        for (let i = 0; i < 60; i++) { const ready = await run('return document.readyState === "complete" && (typeof H !== "undefined" || !/index\\.html/.test(location.href)) && (!window.Lazy || localStorage.getItem("lazy.hold") === "1" || (() => { Lazy.calmNow?.(); Lazy.state().forEach((g) => { if (g.prefetch && g.state === "stub") Lazy.load(g.name).catch(() => {}); }); const st = new Map(); for (const g of Lazy.state()) { st.set(g.name, g); for (const a of g.also || []) st.set(a, g); } const deps = (n) => ((typeof LazyData !== "undefined" && LazyData.GROUPS.find((x) => x.name === n || (x.also || []).includes(n))?.after) || []); const comes = (g, seen = 0) => g.state !== "stub" || g.prefetch || g.tier === "soon" || (g.follow && seen < 8 && deps(g.name).every((d) => !st.get(d) || comes(st.get(d), seen + 1))); return Lazy.state().every((g) => (g.tier === "use" && !g.prefetch && !(g.follow && comes(g))) || (g.state !== "stub" && g.state !== "loading")); })())'); if (ready.value === true) break; await new Promise((r) => setTimeout(r, 500)); }
       }
       const r = await run(c);
       console.log(`\n▶ ${c.length > 160 ? `${c.slice(0, 160)}…` : c}\n${r.error ? `✖ ${r.error}` : typeof r.value === 'string' ? r.value : JSON.stringify(r.value, null, 2)}`);
