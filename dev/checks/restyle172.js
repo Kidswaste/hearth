@@ -26,7 +26,7 @@ const T = (o) => window.hub.power.test(o);
 const cdp = (method, params) => smoke({ cdp: method, params });
 const out = { problems: [], cantTell: [], actions: {}, old: {} };
 const bad = (m) => out.problems.push(m);
-const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.65, resize: 300, idleHush: 100 };
+const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.65, resize: 300, idleHush: 100, insert: 150 };
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type, x, y, button: 'none', ...extra });
 const key = async (k, code, opts = {}) => { for (const type of ['keyDown', 'keyUp']) await cdp('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: opts.vk || (k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0), ...(type === 'keyDown' && opts.text ? { text: opts.text } : {}) }); };
@@ -167,6 +167,27 @@ await mouse('mouseMoved', 600, innerHeight - 30); await wait(400);
   out.actions.menu = r;
   if (!row) out.cantTell.push('menu: no row');
   else if (r.elements > B.menu) bad(`a row's menu opened and closed: ${r.elements} elements restyled (≤ ${B.menu})`);
+}
+
+// ---------- (round 173) a row arriving in the chats list ----------
+// a new chat on top of the project's 41: each row from the 14th child on skips layout while off screen; that was
+// `:nth-child(n+14)`, so each row added or removed restyled every row after the first dozen (now panel.js' .row-far)
+const addRow = async (n) => {
+  const at = Date.now(); const c = { id: `r173n-${n}-${at}`, agentId: claude.id, title: `Arrived ${n}`, createdAt: at, updatedAt: at, messages: [{ role: 'user', text: `new ${n}`, at }] };
+  await window.hub.saveChat(c); Native.save(c);
+  const before = rows().length;
+  const r = await restyled(async () => { H.chats = [{ id: c.id, agentId: claude.id, title: c.title, updatedAt: at, pinned: false }, ...H.chats]; Projects.add(p, 'chat', c.id, c.id, { links: false }); Panel.render(); await until(() => rows().length > before, 3000, 20); });
+  r.added = rows().length - before; return r;
+};
+{
+  const r = await addRow(1); out.actions.insert = r;
+  const undo = oldRule('#chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }');
+  const o = await addRow(2); undo(); out.old.insert = { elements: o.elements, biggest: o.biggest, styleMs: o.styleMs, added: o.added };
+  if (!r.added) out.cantTell.push('a row arriving: no row came');
+  else if (r.elements > B.insert) bad(`a row arriving in the chats list: ${r.elements} elements restyled (≤ ${B.insert}; the old way ${o.elements})`);
+  const far = rows().filter((x) => x.classList.contains('row-far')).length;
+  const want = rows().filter((x) => [...x.parentElement.children].indexOf(x) >= 13).length;
+  if (far !== want) bad(`the chats list: ${far} rows carry .row-far, ${want} are past the 13th child`);
 }
 
 // ---------- Alt held ----------
