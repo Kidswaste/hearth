@@ -1,6 +1,7 @@
 // Shared body of the big-screen checks (round 38, bigscreen): dev/checks/bigscreen.js (a 4K screen at 100 %, then an
 // ultrawide window) and dev/checks/bigscreen-hidpi.js (a 4K screen at 200 %). smoke.js adds it when a check uses BS.
-// Pictures land in /tmp/hearth-bigscreen/ (look at them).
+// Pictures land in /tmp/hearth-bigscreen/ while it runs; (round 176) the folder is removed at the end unless
+// window.BS_KEEP = 1 (look at them then).
 const BS = (() => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const until = async (fn, ms = 10000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(120); } return false; };
@@ -174,6 +175,7 @@ const BS = (() => {
       });
     }
     out.ok = out.steps.every((s) => s.ok);
+    if (!window.BS_KEEP) { try { await smoke({ tmpClean: DIR.replace(/\/$/, '') }); out.shots = `${out.shots.length} pictures, removed (window.BS_KEEP = 1 keeps them)`; } catch { /* kept */ } }
     return JSON.stringify(out, null, 1);
   }
   return { run, overflow };

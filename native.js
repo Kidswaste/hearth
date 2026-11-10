@@ -1324,14 +1324,16 @@ const Native = (() => {
     v.panes.set(key, pane);
     if (old) {
       const l = old.list; l.chatStop?.(); l.classList.add('parked'); old.size = 0; // (round 170: an entrance still running ends, its cover goes)
+      old.parkedAt = Date.now(); // (round 176, keep176) let go after KEEP_IDLE_MS unseen (keepArm)
       // (its fold watch lets go while it's hidden: one observer per chat window, not one per kept list)
       if (l.foldIO) { l.foldWait = [...l.foldWatch]; l.foldIO.disconnect(); l.foldIO = null; l.foldWatch = null; }
     }
-    pane.list.classList.remove('parked');
+    pane.list.classList.remove('parked'); pane.parkedAt = 0;
     v.list = pane.list; v.paneKey = key;
     const wait = pane.list.foldWait; pane.list.foldWait = null;
     for (const n of wait || []) if (n.parentElement === pane.list) foldWhenNear(v, n);
     trimPanes(v);
+    keepArm();
     return true;
   }
   function trimPanes(v) {
@@ -1352,6 +1354,58 @@ const Native = (() => {
     p.list.remove();
     v.nodes?.delete(key);
   }
+  // ---------- (round 176, keep176) a kept list gives its memory back when nobody needs it ----------
+  // The kept lists make switching back instant while you work; out of use they were a renderer's worth of DOM all day
+  // (≈ 25 K nodes for 3 long chats). A parked list is let go (dropPane: its nodes, its kept node cache) when it has not
+  // been shown for KEEP_IDLE_MS, or when Hearth has been out of sight (hidden, minimised) for KEEP_HIDDEN_MS:
+  // memtrimmain.js' second, deep trim ('hearth:mem-trim-deep', followed by Blink's GC), or this page's own timer from
+  // its visibilityState when that signal can't come. Only parked lists: never the chat on screen in any chat window,
+  // never one answering (pending). The chat itself, its draft (store), its unread line and queue stay; showing it
+  // again draws it like a chat opened afresh (its end first; the same place a kept list comes back to: its end or its
+  // new-messages line). The made-ahead nodes of a chat pointed at (prefetch) go with a hidden trim too.
+  // Tests: localStorage 'chat.keepIdleMs' / 'chat.keepHiddenMs' (ms; 0 = never).
+  const keepMs = (k, def) => { try { const n = Number(localStorage.getItem(k)); return localStorage.getItem(k) != null && Number.isFinite(n) && n >= 0 ? n : def; } catch { return def; } };
+  const KEEP = { released: 0, idle: 0, hidden: 0, last: null, timer: 0, due: 0, hiddenAt: 0, hiddenT: 0 };
+  function keepRelease(why) {
+    const now = Date.now(); const idleMs = keepMs('chat.keepIdleMs', 15 * 60000);
+    let n = 0;
+    for (const v of views.values()) {
+      for (const [k, p] of [...v.panes]) {
+        if (k === v.paneKey || pending.has(k) || !p.parkedAt) continue;
+        if (why !== 'hidden' && (!idleMs || now - p.parkedAt < idleMs)) continue;
+        dropPane(v, k); n += 1;
+      }
+      if (why === 'hidden' && v.preNodes) v.preNodes = null;
+    }
+    if (n) { KEEP.released += n; KEEP[why] += n; KEEP.last = { why, n, at: now }; }
+    keepArm();
+    return n;
+  }
+  // one timer for the parked list that comes due first (none while nothing is parked)
+  function keepArm() {
+    const idleMs = keepMs('chat.keepIdleMs', 15 * 60000);
+    let due = 0;
+    if (idleMs) for (const v of views.values()) for (const [k, p] of v.panes) if (k !== v.paneKey && p.parkedAt && !pending.has(k) && (!due || p.parkedAt + idleMs < due)) due = p.parkedAt + idleMs;
+    if (due && KEEP.timer && KEEP.due === due) return;
+    clearTimeout(KEEP.timer); KEEP.timer = 0; KEEP.due = due;
+    if (due) KEEP.timer = setTimeout(() => { KEEP.timer = 0; keepRelease('idle'); }, Math.max(1000, due - Date.now() + 50));
+  }
+  const keepHidden = () => {
+    clearTimeout(KEEP.hiddenT); KEEP.hiddenT = 0;
+    if (document.visibilityState !== 'hidden') { KEEP.hiddenAt = 0; return; }
+    KEEP.hiddenAt ||= Date.now();
+    const ms = keepMs('chat.keepHiddenMs', 5 * 60000);
+    // (a little after the main process' deep trim, which comes first when it can: its GC then takes what was let go)
+    if (ms) KEEP.hiddenT = setTimeout(() => { KEEP.hiddenT = 0; if (document.visibilityState === 'hidden') keepRelease('hidden'); }, ms + Math.min(15000, ms / 10));
+  };
+  function keepAfterReply(chatId) {
+    for (const v of views.values()) { const p = v.panes.get(chatId); if (p?.parkedAt) p.parkedAt = Date.now(); }
+    const ms = keepMs('chat.keepHiddenMs', 5 * 60000);
+    if (ms && KEEP.hiddenAt && document.visibilityState === 'hidden' && Date.now() - KEEP.hiddenAt >= ms) setTimeout(() => keepRelease('hidden'), 0); // (after its last draw)
+    else keepArm();
+  }
+  document.addEventListener('visibilitychange', keepHidden);
+  window.addEventListener('hearth:mem-trim-deep', () => { if (keepMs('chat.keepHiddenMs', 5 * 60000)) keepRelease('hidden'); });
   const parked = (node) => Boolean(node?.closest?.('.messages.parked'));
 
   // (round 45, chatswitch) a chat opened afresh draws its end first: the last TAIL messages are made and shown at once,
@@ -2424,6 +2478,7 @@ const Native = (() => {
     }
     pending.delete(event.chatId);
     clearInterval(p.tick);
+    keepAfterReply(event.chatId); // (round 176, keep176) a kept chat that answered: its quiet time starts now
     // a reply you weren't looking at: the chat gets an unread mark and a "New" line where it starts
     if (event.type !== 'stopped' && !(H.activeChat[chat.agentId] === chat.id && visibleNow(chat.agentId) && document.hasFocus())) {
       H.unreadChats.add(chat.id);
@@ -3267,7 +3322,10 @@ const Native = (() => {
       },
       paintBody: (p, body, text) => paintBody(p, body, text), // (dev/checks/streamrender.js times it against the old way)
       // (round 45, chatswitch) what the kept lists hold: lists per chat window, elements in the parked ones
-      kept() { let lists = 0; let nodes = 0; for (const v of views.values()) for (const [k, p] of v.panes || []) { lists += 1; if (k !== v.paneKey) nodes += p.list.getElementsByTagName('*').length; } return { lists, nodes }; },
+      kept() { let lists = 0; let nodes = 0; const ids = []; for (const v of views.values()) for (const [k, p] of v.panes || []) { lists += 1; if (k !== v.paneKey) { nodes += p.list.getElementsByTagName('*').length; ids.push(k); } } return { lists, nodes, ids }; },
+      // (round 176, keep176) what was let go and why; release(why) lets go now ('idle': past chat.keepIdleMs, 'hidden': all)
+      keep: () => ({ released: KEEP.released, idle: KEEP.idle, hidden: KEEP.hidden, last: KEEP.last, due: KEEP.due ? KEEP.due - Date.now() : null, hiddenAt: KEEP.hiddenAt || null }),
+      release: (why = 'idle') => keepRelease(why),
       // (round 48, memory48) sizes of what's kept per chat id (dev/checks/memory48.js: nothing grows with chats visited)
       maps() { let nodes = 0; for (const v of views.values()) nodes += v.nodes?.size || 0; return { chats: chats.size, used: chatUsed.size, unread: unreadFrom.size, full: fullChats.size, after: afterReply.size, pending: pending.size, nodeChats: nodes }; },
       // the live reply of a chat painted now with all its text; its HTML and the text it shows

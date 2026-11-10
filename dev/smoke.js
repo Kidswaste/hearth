@@ -450,6 +450,13 @@ async function cdpConnect(dir) {
         }
         await send('LayerTree.disable', {});
         result = { count: ls.length, drawing: ls.filter((l) => l.drawsContent).length, px: Math.round(ls.filter((l) => l.drawsContent).reduce((a, l) => a + Math.min(4096, l.width) * Math.min(4096, l.height), 0)), invisible: ls.filter((l) => l.invisible).length, timedOut: !L, ...(list ? { list } : {}) };
+      } else if (req.tmpClean) {
+        // (round 176) { tmpClean: dir }: a check's own picture folder removed when it is done (only a hearth-* folder
+        // right in the temp folder: /tmp or this run's TMPDIR)
+        const d = path.resolve(String(req.tmpClean)); const bases = new Set([os.tmpdir(), '/tmp'].map((x) => path.resolve(x)));
+        const ok = bases.has(path.dirname(d)) && /^hearth-[\w.-]+$/.test(path.basename(d));
+        if (ok) fs.rmSync(d, { recursive: true, force: true });
+        result = { removed: ok ? d : null };
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }
