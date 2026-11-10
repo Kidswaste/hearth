@@ -29,11 +29,14 @@ return value. The wait never saw `true`: **every part of every check has waited 
 queue's notice) and goes by itself after 20 s; the part started at ≈ 35 s, so the card was always gone. The card and
 `SpeedResume` were right all along (`SpeedResume.prev` and `items()` gave `lab, render` in the failing runs).
 
-A second, smaller thing showed once the wait worked: since round 160 (boot160) `appdialogs` is `after: ['lookpicker']`,
-an on-use group, which makes it a "following" group (lazy.js: a 'soon' group after a 'use' one waits for it) that only
-loads once the look picker is used or Settings opens. The wait counted every following group as "will come in", so it
-would still have timed out. In the app that is fine (Settings loads both on open: 70 ms here); the wait now skips a
-following group whose dependencies nothing loads by itself.
+A second thing showed once the wait worked: since round 160 (boot160) `appdialogs` (Settings and the other dialogs)
+is `after: ['lookpicker']`, and `lookpicker` was an on-use group. lazy.js makes a 'soon' group that needs an on-use one a
+"following" group: it waits until that one is used. So Settings' dialogs no longer loaded in an idle moment after the
+first screen (round 83's design, asserted by `firstscreen83`, which has failed since: "groups in before the first open:
+appdialogs stub"); they loaded on the first Settings open. Round 160's own doc meant the other order ("Settings' dialogs
+load it first"). **Fixed** in `lazy-data.js`: `lookpicker` loads after the first screen too, just before `appdialogs`
+(8 KB, which was on the first screen before round 160; the first screen is unchanged). The wait also no longer counts a
+following group whose dependencies nothing loads by itself, so such a group can't stall it again.
 
 **Fix** (`dev/smoke.js`, the test harness only): the wait's expression carries its own `return` and treats a following
 group as pending only when what it follows will come in by itself (loaded, loading, background-loaded, a 'soon' group,
@@ -83,8 +86,8 @@ of sight, 400-turn chats), all processes 598 → 776 MB at the peak. Disk after 
 | 6 | **Settings asked ~43 animation frames on every open** to time the screen (gpu52.js), for the same "· 60 fps" each time | 21 rAF/s while Settings is open; ≈ 10 ms of window CPU per open; GPU unchanged (frames with nothing new are free) | **fixed** |
 
 Also seen, fine: a look change costs one full raster (≈ 3.3 s here) then nothing; the hidden window's one trim
-(mem154); 3 small stores saved on hide (20 file events); Settings' first open loads `lookpicker` + `appdialogs` on the
-click since round 160 (70 ms, then 45 ms). Startup (boot157 / boot160 / main162), idle wakeups and disk growth held.
+(mem154); 3 small stores saved on hide (20 file events). Settings' first open loaded `lookpicker` + `appdialogs` on the
+click (70 ms, then 45 ms): fixed with part 1 (they load in an idle moment again). Startup (boot157 / boot160 / main162), idle wakeups and disk growth held.
 
 ## 3. The fix: the screen's pace measured once per screen
 
@@ -117,12 +120,21 @@ decision; the big ones are Chromium's paint (1) or deliberate (2, 3, 4).
 ## Check
 
 `dev/checks/audit174.js` (`node dev/run-checks.js --exact audit174`, group `audit174`): the check's part starts before
-26 s after the page loads (≈ 6.5 s now; 35 s with round 173's smoke.js) with every self-loading group in, and
-`appdialogs` not holding it; Settings opened twice: the first open asks ≥ 30 frames from gpu52.js, the second none,
+26 s after the page loads (≈ 6.5 s now; 35 s with round 173's smoke.js) with every self-loading group in, `appdialogs`
+and `lookpicker` among them before Settings is opened; Settings opened twice: the first open asks ≥ 30 frames from gpu52.js, the second none,
 and both show the same "· N fps" line. On round 173 (51b47d50 through `--app`) it fails the second-open step; with
 round 173's own smoke.js it also fails the start step (35,208 ms).
 
-RESULTS
+Final run (`--exact speed restyle172 audit166 chat165 fastboot playfix mem154 labwin153 unit:boot-test
+unit:lazymanifest-test audit174 firstscreen83 settingscalm lazy appcalm`): **15 / 15 passed** in 10 min (the asked-for
+ten plus this round's check and what the Settings / lazy change touches; `firstscreen83` passes again for the first time
+since round 160). A wider run for the harness change (`idlecpu perf151 habits declutter polish8 menucalm chatswitch
+firstscreen83 trim153 lite153 main162 diskcalm chatcore appcalm`, before the `lookpicker` change): 12 / 14, the two being
+firstscreen83 (fixed above) and perf151's Lab readouts step (25 rAF/s from the Lab's media while a scene plays), which
+passed on its rerun here and on round 173's copy: as in round 166, a busy-box flake. `node dev/whatsnew-test.js`: 49
+passed. `node dev/lazy-manifest.js --check`: clean; `node dev/trim-weights.js`: sizes unchanged; boot budget: 48 scripts /
+1,061 KB, 20 sheets / 383 KB (budget 50 / 1,072 / 20 / 385). origin/main and origin/claude/intelligent-galileo-yaiqem had
+nothing new to merge (both at 51b47d50, round 173's merge).
 
 ## For the Lab's owner
 
