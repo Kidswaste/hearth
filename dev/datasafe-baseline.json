@@ -261,6 +261,13 @@
    "why": "renderer kv store: the store guard merges a save built on a failed read with the disk (store.js / datasafe-core.js)"
   },
   {
+   "file": "main.js",
+   "kind": "read",
+   "fn": "(top)",
+   "call": "readFileSync(ipcCache.file, 'utf8')",
+   "why": "(round 175) the IPC channels cache in Electron's profile (main162): a failed read only means every channel list is read from its source again and the cache rewritten from that; no data of the owner's"
+  },
+  {
    "file": "makes.js",
    "kind": "kv",
    "store": "makes",

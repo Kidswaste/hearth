@@ -98,10 +98,11 @@ const Lazy = (() => {
   function offError(g) {
     const id = HF?.featureOf(g.name) || g.name;
     const name = (typeof TrimData !== 'undefined' && TrimData.WORDS[id]?.name) || id;
-    const err = new Error(`${name} is switched off on this computer: Settings › Trim Hearth turns it back on.`);
+    const words = `${name} is switched off on this computer: Settings › Trim Hearth turns it back on.`; // (our own plain words, never a raw error)
+    const err = new Error(words);
     err.code = 'EFEATUREOFF';
     // (said once in a while, and only right after a click or a key: a background ask stays quiet)
-    if (navigator.userActivation?.isActive && Date.now() - offToastAt > 4000) { offToastAt = Date.now(); try { toast(err.message, { timeout: 5000 }); } catch { /* no toasts yet */ } }
+    if (navigator.userActivation?.isActive && Date.now() - offToastAt > 4000) { offToastAt = Date.now(); try { toast(words, { timeout: 5000 }); } catch { /* no toasts yet */ } }
     return err;
   }
   // group → { commands, actions, tools, apps, bridge } (what Trim Hearth matches usage with), kept after the manifest goes

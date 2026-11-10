@@ -1,0 +1,8 @@
+/* (round 175, sweep175) from makes.css: only code of "progressui" or "renders" makes these match; loaded with whichever comes first, right after makes.css (lazy-data.js CSS_AFTER) */
+.pg-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden; pointer-events: none; z-index: 2;
+  background: color-mix(in srgb, var(--fh-ai, #a98bff) 14%, transparent); border-radius: 2px; contain: strict; transition: opacity .5s ease; }
+.pg-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform;
+  background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); border-radius: inherit; }
+.msg.streaming > .pg-bar { top: 0; bottom: auto; height: 2px; left: 0; right: 0; }
+#chat-groups .item > .pg-bar { left: 6px; right: 6px; bottom: 1px; }
+#agent-buttons .agent-btn > .pg-bar { left: 7px; right: 7px; bottom: 3px; height: 2px; }

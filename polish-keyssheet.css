@@ -1,0 +1,7 @@
+/* (round 175, sweep175) from polish.css: only "keyssheet" code makes these match; loaded with it, right after polish.css (lazy-data.js CSS_AFTER) */
+.keys-sheet .ks-latch.on, .keys-sheet .ks-latch:hover { color: var(--ui-gold, var(--accent)); border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 50%, var(--line)); }
+.keys-sheet .ks-search:focus { border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 55%, var(--line)); }
+.keys-sheet .ks-tip:hover { color: var(--text); border-color: color-mix(in srgb, var(--ui-gold, var(--accent)) 45%, var(--line)); }
+.keys-sheet .ks-foot { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 4px 2px 0; border-top: 1px solid var(--line); }
+.keys-sheet .ks-link { border: 0; background: none; color: var(--ui-gold, var(--accent)); cursor: pointer; font-size: 11px; padding: 2px 4px; }
+.keys-sheet .ks-none { padding: 10px 6px; }

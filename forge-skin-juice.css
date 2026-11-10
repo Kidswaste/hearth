@@ -1,0 +1,9 @@
+/* (round 175, sweep175) from forge-skin.css: only "juice" code makes these match; loaded with it, right after forge-skin.css (lazy-data.js CSS_AFTER) */
+/* click sparks: tiny diamonds flying out of the press */
+.juice-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; contain: strict; }
+/* (round 17) sparks never lay out the page */
+.juice-spark { position: fixed; width: 5px; height: 5px; background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px #fff; animation: fh-spark .55s cubic-bezier(.2, .8, .3, 1) both; }
+.juice-spark.big { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 10px var(--c), 0 0 4px var(--c); }
+@media (prefers-reduced-motion: reduce) {
+.juice-layer { display: none; }
+}

@@ -2,20 +2,13 @@
 
 /* ---------- notes ---------- */
 .notes-search { flex: 1; min-width: 80px; padding: 3px 8px !important; font-size: 12.5px; }
-.notes-head b { margin-right: 2px; }
 .notes-pin.on { background: color-mix(in srgb, var(--accent) 25%, transparent); }
-.notes-item.pinned { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
 .notes-tags { display: flex; gap: 4px; flex-wrap: wrap; flex: none; }
 .notes-tag { border: 0; background: var(--hover); color: var(--muted); border-radius: 999px; padding: 0 8px; font-size: 11.5px; cursor: pointer; }
 .notes-tag.on, .notes-tag:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 25%, transparent); }
 .notes-preview li.note-todo { list-style: none; margin-left: -1.2em; }
-.notes-preview li.note-todo input { margin: 0 6px 0 0; vertical-align: -2px; accent-color: var(--accent); }
-.notes-preview li.note-todo.done { color: var(--muted); text-decoration: line-through; }
-.notes-preview a.note-link { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; }
 .notes-links { display: flex; gap: 4px; flex-wrap: wrap; flex: none; }
-.notes-links:empty { display: none; }
 .notes-link-chip { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-.notes-link-chip button { border-radius: 0 !important; }
 
 /* ---------- prompt library ---------- */
 .prompts-dialog { width: min(980px, calc(100vw - 32px)); }
@@ -32,17 +25,10 @@
 
 /* ---------- memory ---------- */
 .memory-facts { width: min(860px, calc(100vw - 32px)); }
-.memory-facts .row input[type=search] { flex: 1; }
 .memory-cost { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .memory-cost-pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; background: var(--hover); font-size: 12px; }
-.memory-cost-pill.heavy { background: color-mix(in srgb, #f59e0b 25%, transparent); }
-.memory-cost-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
 .memory-list { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow-y: auto; margin: 8px 0; }
-.memory-row { display: flex; gap: 5px; align-items: center; }
-.memory-row.pinned .memory-text { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-.memory-text { flex: 1; min-width: 0; }
 .memory-cat, .memory-move { width: auto; font-size: 12px; padding: 3px 4px; max-width: 120px; }
-.memory-add input { flex: 1; }
 
 /* ---------- agent preset picker ---------- */
 .preset-picker { width: min(760px, calc(100vw - 32px)); }
@@ -64,10 +50,6 @@
 
 /* ---------- forge debug: stat watch ---------- */
 .game-view { position: relative; }
-.fg-watch { position: absolute; top: 8px; right: 8px; z-index: 3; min-width: 130px; padding: 6px 8px; border-radius: 10px; font: 11.5px/1.5 var(--mono, Consolas, monospace);
-  background: color-mix(in srgb, #000 62%, transparent); color: #f2f2f2; backdrop-filter: blur(6px); pointer-events: auto; }
-.fg-watch-row { display: flex; justify-content: space-between; gap: 12px; cursor: default; }
-.fg-watch-row span { opacity: .7; }
 
 /* ---------- downloads, trash, backups ---------- */
 .downloads-dialog, .trash-dialog, .backups-dialog { width: min(760px, calc(100vw - 32px)); }

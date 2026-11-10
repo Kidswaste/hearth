@@ -115,10 +115,10 @@ function timed(name, n, budget, fn) {
   for (let i = 0; i < 50; i++) renderHook();
   ok(counts.writes === c.writes && counts.barPaints === c.barPaints, 'a plain draw (50 of them): nothing written, no bar repainted', { writes: counts.writes - c.writes, barPaints: counts.barPaints - c.barPaints });
   c = { ...counts };
-  PCh.setScope('pj0');
+  PCh.setScope('pj0'); renderHook(); // (round 175) since switch170 the bar is painted with the list's own draw (Panel.soon's): here, the stand-in's draw
   ok(counts.writes - c.writes === 2 && counts.barPaints - c.barPaints === 1, 'a switch: the scope and the open project\'s ids written once, the bar repainted once', { writes: counts.writes - c.writes, barPaints: counts.barPaints - c.barPaints });
   c = { ...counts };
-  PCh.setScope('pj0');
+  PCh.setScope('pj0'); renderHook();
   ok(counts.writes === c.writes && counts.barPaints === c.barPaints, 'the same project again: nothing written, no repaint');
   const early = JSON.parse(fw.local.get('projchats.early'));
   ok(early.ids.length === 15 && early.ids.every((id) => P.get('pj0').items.some((x) => x.ref === id)), 'the early-ids note holds the open project\'s chats');

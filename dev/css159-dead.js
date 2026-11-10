@@ -148,7 +148,26 @@ if (args.includes('--movable')) {
   }
   const producers = (n) => { const s = new Set(prod.get(n) || []); for (const [f, ps] of filePre) if (ps.some((p) => n.startsWith(p) && n.length > p.length)) s.add(f); return s; };
   const memo = new Map();
-  const ownerOf = (n) => { if (memo.has(n)) return memo.get(n); const fs_ = [...producers(n)]; const gs = new Set(fs_.map((f) => groupOf.get(f) || '#eager')); const g = fs_.length && gs.size === 1 && !gs.has('#eager') ? [...gs][0] : null; memo.set(n, g); return g; };
+  // (round 175, sweep175) a name made by files of several groups belongs to the group they all load first: every one of
+  // them has it in its 'after' chain (loading a group loads its 'after' groups and their sheets first, and a group whose
+  // 'after' group is switched off in Trim Hearth goes off with it, except the order-only SOFT pairs, left out here)
+  const SOFT = new Set((/const SOFT = new Set\((\[[^\]]*\])\)/.exec(fs.readFileSync(path.join(ROOT, 'lazy-data.js'), 'utf8')) || [0, '[]'])[1].match(/'[^']*'/g)?.map((s) => s.slice(1, -1)) || []);
+  const byName = new Map(LazyData.GROUPS.map((g) => [g.name, g]));
+  const chain = new Map(); // group → itself and every group its 'after' chain loads first
+  const chainOf = (n) => { if (chain.has(n)) return chain.get(n); const s = new Set([n]); chain.set(n, s); for (const d of byName.get(n)?.after || []) if (!SOFT.has(`${n}>${d}`)) for (const x of chainOf(d)) s.add(x); return s; };
+  // (a shared owner 'a+b' is a sheet both groups list: whichever loads first puts it in; lazy.js never loads a sheet twice)
+  const under = (f, g) => groupOf.has(f) && g.split('+').some((x) => chainOf(groupOf.get(f)).has(x)); // f's group loads g (or one of a shared owner's groups) first, or is it
+  const SHARED = args.includes('--shared') ? Number(opt('--shared') || 3) : 0; // --shared [n]: a name no one group owns may go to a sheet up to n groups share
+  const ownerOf = (n) => {
+    if (memo.has(n)) return memo.get(n);
+    const fs_ = [...producers(n)]; const gs = new Set(fs_.map((f) => groupOf.get(f) || '#eager'));
+    let g = null;
+    if (fs_.length && !gs.has('#eager')) {
+      const common = [...chainOf([...gs][0])].filter((x) => [...gs].every((y) => chainOf(y).has(x))); g = common.sort((a, b) => chainOf(b).size - chainOf(a).size)[0] || null;
+      if (!g && SHARED) { const top = [...gs].filter((x) => ![...gs].some((y) => y !== x && chainOf(x).has(y))).sort(); if (top.length <= SHARED) g = top.join('+'); }
+    }
+    memo.set(n, g); return g;
+  };
   if (opt('--owner')) { for (const n of opt('--owner').split(',')) console.log(n, '→', ownerOf(n), [...producers(n)].join(' ')); process.exit(0); }
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const sheets = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map((m) => m[1]);
@@ -169,6 +188,8 @@ if (args.includes('--movable')) {
   const subjectNames = (sel) => { const parts = strip(sel.replace(/"[^"]*"|'[^']*'/g, '')).split(/[\s>+~]+/).filter(Boolean); return [...(parts[parts.length - 1] || '').matchAll(/[.#](-?[A-Za-z_][\w-]*)/g)].map((m) => m[1]); };
   const MIN = Number(opt('--min-kb') || 1.5) * 1024;
   const SKIPG = new Set((opt('--skip-groups') || '').split(',').filter(Boolean));
+  const JOIN = JSON.parse(opt('--join') || '{}');
+  const SKIPU = new Set((opt('--skip-under') || '').split(',').filter(Boolean)); // (round 175) --skip-under lab: no owner that loads these groups first (the Lab's own rules stay where they are)
   const tally = {}; const list = []; const kept = {};
   const cands = []; // { f, text, rules, i, n, g, P, S }
   const bySheet = {};
@@ -181,8 +202,11 @@ if (args.includes('--movable')) {
       const sels = splitList(n.prelude.replace(/\/\*[\s\S]*?\*\//g, ''));
       const gs = sels.map((sel) => new Set([...strip(sel.replace(/"[^"]*"|'[^']*'/g, '')).matchAll(/[.#](-?[A-Za-z_][\w-]*)/g)].map((m) => ownerOf(m[1])).filter(Boolean)));
       const common = gs.length ? [...gs[0]].filter((g) => gs.every((x) => x.has(g))) : [];
-      if (common.length !== 1 || SKIPG.has(common[0])) continue;
-      cands.push({ f, text, rules, i, n, g: common[0], P: props(n.body), S: sels.map(spec) });
+      if (common.length !== 1 || common[0].split('+').some((x) => SKIPG.has(x) || [...chainOf(x)].some((y) => SKIPU.has(y)))) continue;
+      // (round 175) --join '{"addons.css → addons": "addons.css → addons+quickidea"}': one sheet for both (a sheet loaded
+      // by more groups than need it is harmless: its rules can't match before their code runs; together they keep their order)
+      const g = (JOIN[`${f} → ${common[0]}`] || `${f} → ${common[0]}`).split(' → ')[1];
+      cands.push({ f, text, rules, i, n, g, P: props(n.body), S: sels.map(spec) });
     }
   }
   // moved, a rule comes after every later rule of its sheet that stays: one of those that could style the same element
@@ -195,7 +219,7 @@ if (args.includes('--movable')) {
     return splitList(m.prelude.replace(/\/\*[\s\S]*?\*\//g, '')).some((sel) => {
       // the same element: the moved rule's element is made by the group's code, so a class of the later rule's subject
       // that no file of the group ever writes can't be on it (a class another group owns, or one only other code adds)
-      if (subjectNames(sel).some((x) => ![...producers(x)].some((f) => groupOf.get(f) === c.g))) return false;
+      if (subjectNames(sel).some((x) => ![...producers(x)].some((f) => under(f, c.g)))) return false;
       const sp = spec(sel); return c.S.some((q) => q[0] === sp[0] && q[1] === sp[1] && q[2] === sp[2]);
     });
   });
@@ -238,7 +262,7 @@ if (args.includes('--movable')) {
     for (const { f, g, out, items } of Object.values(plan)) {
       const text = items[0].text;
       const nodes = parse(text).nodes.filter((n) => (n.kind === 'rule' && items.some((x) => x.n.start === n.start)) || (n.kind === 'comment' && carried[f].get(n.start) === g));
-      let css = `/* (round 159, css159) from ${f}: only "${g}" code makes these match; loaded with it, right after ${f} (lazy-data.js CSS_AFTER) */\n`;
+      let css = `/* (round ${opt('--round') || '159, css159'}) from ${f}: ${g.includes('+') ? `only code of ${g.split('+').map((x) => `"${x}"`).join(', ').replace(/, ([^,]*)$/, ' or $1')} makes these match; loaded with whichever comes first` : `only "${g}" code makes these match; loaded with it`}, right after ${f} (lazy-data.js CSS_AFTER) */\n`;
       let open = null;
       for (const n of nodes) {
         const wrap = []; for (let p = n.parent; p && p.kind === 'group'; p = p.parent) wrap.unshift(p.prelude);

@@ -17,7 +17,3 @@
 .dd-row-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, Consolas, monospace); font-size: 10.5px; }
 .dd-row-ms { font-variant-numeric: tabular-nums; }
 .dd-chips { display: flex; gap: 5px; padding: 4px 10px 0; overflow-x: auto; scrollbar-width: none; flex: none; }
-.dd-chip { flex: none; padding: 2px 9px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--fg, #eae0d5) 4%, transparent); color: var(--fg, #eae0d5); font-size: 11.5px; white-space: nowrap; cursor: pointer; opacity: .85; }
-.dd-chip:hover { opacity: 1; border-color: var(--fh-ai, #b07cff); }
-.dd-chip.local { border-style: dashed; }
-.dd-chip.local:hover { border-color: var(--fh-gold, #ffd75e); }
