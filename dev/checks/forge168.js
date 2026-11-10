@@ -61,7 +61,7 @@ async function layers() {
   for (let k = 0; k < 3; k++) {
     setTimeout(() => { dot.style.background = '#131313'; }, 250); setTimeout(() => { dot.style.background = '#111'; }, 900);
     const r = await smoke({ layers: true, detail: true }).catch(() => null);
-    if (r && !r.timedOut && r.list?.some((l) => /div\.messages/.test(l.who))) return r.list; // (a partial snapshot: once more)
+    if (r && !r.timedOut && r.list?.some((l) => /div\.messages/.test(l.who) && /OverflowScrolling/.test(l.why))) return r.list; // (a partial snapshot: once more) · (round 170, switch170: the list's scroller, not its own will-change layer, says the tree is whole)
     await wait(400);
   }
   return null;
