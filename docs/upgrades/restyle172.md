@@ -92,7 +92,12 @@ animation left running), hidden / shown ≤ 60 each (the dot too), a minute's hu
 Alt / resize (their rules put back) is measured in the same run and reported. `window.R172_REPORT = 1` reports without
 failing. smoke.js' `{ trace: 'stop', window: true }` now also gives `styleEls` (each pass' element count).
 
-CHECKS_PLACEHOLDER
+Final run (`--exact restyle172 chat165 switch170 chatswitch paint167 settings169 a11y qa-keys menucalm idlecpu fastboot
+playfix unit:boot-test unit:lazymanifest-test gpuload84 chatcore forge168`): **17 / 17 passed** (chat165's plain scroll
+once "can't tell": a 203 ms wall-clock task with 1.2 ms of its own CPU, the box's load; qa-keys skips its Board arrows
+step as before). restyle172 alone 5 more times on the way: passed. `node dev/whatsnew-test.js`: 49 passed.
+`node dev/lazy-manifest.js --check`: clean; `node dev/trim-weights.js` rerun. origin/main and
+origin/claude/intelligent-galileo-yaiqem had nothing new to merge (both at 40bba548, round 171's merge).
 
 ## For the Lab's owner
 
