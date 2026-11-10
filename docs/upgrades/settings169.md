@@ -66,7 +66,7 @@ board puts back +17 ms on every frame there, because an animated layer can't hid
 
 **Fix** (`polish8-board.css`): the board's active surface keeps a plain layer of its own (`will-change: opacity`,
 motion on only). The layer exists before and after the entrance, so nothing is redrawn when the fade ends; being a
-plain (not animated) opaque layer, it costs ≈ 3 % a frame on the board (the measured range: 0.97–1.05 × round 168).
+plain (not animated) opaque layer, a frame on the board costs the same within noise (0.97–1.05 × round 168 over four runs).
 Leaving the board for a chat is the chat's own entrance ending (the same as any switch to a chat, where round 167's
 saving on every later frame outweighs it); no always-alive layer is brought back anywhere else.
 
@@ -74,7 +74,28 @@ saving on every later frame outweighs it); no always-alive layer is brought back
 
 `dev/checks/settings169.js`, this way and round 168's way (put back with a style) in turn, same run:
 
-RESULTS_TABLE
+Two full runs (the final one first, then the one before it), GPU-process CPU:
+
+| | Round 168 | This round |
+|---|---:|---:|
+| One frame with Settings open, plain | 85 ms (103) | **74 ms** (87) — **−13 %** (−15 %) |
+| One frame with Settings open, Forgeheart | 123 ms (131) | **105 ms** (108) — **−14 %** (−17 %) |
+| 16 wheel steps inside Settings, plain | 1,313 ms (1,690) | **290 ms** (373) — **−78 %** |
+| 16 wheel steps inside Settings, Forgeheart | 500 ms (517) | **227 ms** (250) — **−55 %** (−52 %) |
+| Settings opened and closed twice, plain | 3,090 ms (3,445) | 2,845 ms (3,055) — −8 % (−11 %) |
+| Settings opened and closed twice, Forgeheart | 6,560 ms (7,465) | 5,770 ms (6,100) — −12 % (−18 %) |
+| Mood board opened (4 s) | 1,480 ms (1,477) | **1,153 ms** (1,280) — **−22 %** (−13 %) |
+| …and left (1.5 s) | 1,413 ms (1,553) | 1,377 ms (1,290) — −3 % (−17 %) |
+| One frame on the board | 81 ms (87) | 80 ms (86) — same |
+
+In the same runs paint167 (its own old way: round 166's fills) and forge168 still hold: a frame 0.70 × round 166's in a
+chat, 0.53 with Settings open, typing 0.77; Forgeheart chat frame 0.77 × round 167's, Settings 0.88. paint167's board
+action is back to 1.03 × round 166 (it was 1.17).
+
+Where Settings' frame now stands against a chat behind it (the floor: a frame with no dialog): plain 74 vs ≈ 52,
+Forgeheart 105 vs ≈ 55–70. What remains is the dialog's own layer (plain), and in Forgeheart the backdrop (a radial
+gradient: a full-window picture, not a plain fill) and the compositor-scrolled form (≈ 15 ms a frame: the price of
+scrolling it without repainting; without it a frame was ≈ 87 ms but 16 wheel steps ≈ 700 ms, worse than round 168).
 
 ## Pixels
 
@@ -93,7 +114,15 @@ Settings reported (fails > 110 %); the board: its surface on a plain layer (not 
 round 168's, open + leave ≤ 100 %, a frame on the board reported (fails > 110 %). `window.S169_REPORT = 1` reports
 without failing; `window.S169_SHOTS = '<dir>'` keeps the pictures.
 
-CHECK_RUNS
+Final run (`--exact settings169 paint167 forge168 settingscalm board journey-board polish8 playfix fastboot
+unit:boot-test unit:lazymanifest-test chatcore look148`): **13 / 13 passed**. In the run before it, paint167 failed on
+its "no layer kept for an ended animation" step, which counted the two plain `will-change` layers this round keeps on
+purpose (Settings' dialog, the board's surface); paint167 now leaves out a dialog / surface layer whose only reason is
+`WillChangeOpacity` / `WillChangeTransform` (an animation's layer still counts). a11y fails its "AI setup: Esc did not
+close it" step the same way on round 168 (3a6023e5, run through `--app`): not this round. `node dev/whatsnew-test.js`:
+49 passed. `node dev/lazy-manifest.js --check`: clean; `node dev/trim-weights.js` rerun (appdialogs +1 KB); fastboot and
+unit:boot-test (the boot budget) pass. origin/main and origin/claude/intelligent-galileo-yaiqem had nothing new to merge
+(both at 3a6023e5, round 168's merge).
 
 ## For Codex
 
