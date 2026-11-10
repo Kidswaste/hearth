@@ -356,6 +356,7 @@ function makeBackstage(opts = {}) {
     const NOTE = `Backstage: this chat's scene "${s().name}" isn't on screen (the owner is looking at another chat), so it runs hidden, ${hasSong() ? 'on its song, silently (the same beats, grid and audio features as on screen)' : 'on its own timeline'}. Your changes are saved to it and show when the owner opens this chat.`;
     const report = () => ({
       sketch: s().name,
+      ...(s().format === 'gpu' ? { format: 'v2' } : {}), // (round 176, gpuaware176)
       layer: layerName(selId()),
       layers: summary(),
       errors: errors.map((e) => ({ layer: layerName(e.layer), message: e.message, line: e.line || undefined })),
@@ -429,7 +430,8 @@ function makeBackstage(opts = {}) {
       async setCode(code, wait = 2.5) { return d.updateLayer(null, { code }, wait); },
       async addLayer({ name, code, template, props = {} }, wait = 2.5) {
         const Ls = layersOf(s());
-        const t = code == null ? ([...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template) || ThreeLayers.TEMPLATES[0]) : null;
+        const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template); // (round 176, gpuaware176) a v2 scene: v2 layers, as on screen
+        const t = code == null ? ((s().format === 'gpu' ? ThreeData.v2Layer(template) || (!old || template === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0]) : null;
         const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
         let nm = name || t?.name || 'Layer'; let n = 2;
         while (Ls.some((L) => L.name === nm)) { nm = `${name || t?.name || 'Layer'} ${n}`; n += 1; }
@@ -449,7 +451,7 @@ function makeBackstage(opts = {}) {
         const was = Ls.slice();
         for (const L of list) Ls.splice(Ls.indexOf(L), 1);
         let blank = null;
-        if (!Ls.length) { blank = ThreeLayers.defaults({ name: 'Empty layer', code: ThreeLayers.EMPTY_CODE, color: ThreeLayers.COLORS[0], slot: 0 }); Ls.push(blank); }
+        if (!Ls.length) { blank = ThreeLayers.defaults({ name: 'Empty layer', code: s().format === 'gpu' ? ThreeData.V2_EMPTY_CODE : ThreeLayers.EMPTY_CODE, color: ThreeLayers.COLORS[0], slot: 0 }); Ls.push(blank); }
         changed();
         const label = list.length === 1 ? `"${list[0].name}"` : `${list.length} layers`;
         if (!quiet) {
@@ -458,7 +460,7 @@ function makeBackstage(opts = {}) {
             const now = s() && layersOf(s());
             if (undone || !now) return;
             undone = true;
-            if (blank && blank.code === ThreeLayers.EMPTY_CODE && now.includes(blank)) now.splice(now.indexOf(blank), 1);
+            if (blank && (blank.code === ThreeLayers.EMPTY_CODE || blank.code === ThreeData.V2_EMPTY_CODE) && now.includes(blank)) now.splice(now.indexOf(blank), 1);
             for (const L of list) if (!now.some((x) => x.id === L.id)) now.splice(was.slice(0, was.indexOf(L)).filter((x) => now.some((y) => y.id === x.id)).length, 0, L);
             changed();
           } } });

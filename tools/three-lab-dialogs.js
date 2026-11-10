@@ -207,7 +207,7 @@
             K.trash = K.trash.filter((x) => x !== t);
             K.saveHistory();
             dlg.close();
-            K.create(t.name, t.code, t.layers);
+            K.create(t.name, t.code, t.layers, { format: ThreeData.formatOf(t.layers || [{ code: t.code }], t.format) }); // (round 176, gpuaware176)
             toast(`Restored "${t.name}"`);
           })) : [el('p', { class: 'hint', text: 'None.' })])),
         preview),
@@ -292,7 +292,7 @@
         { label: 'Delete…', danger: true, action: async () => {
           if (K.sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
           if (!(await Modal.confirm('Delete sketch?', `"${sk.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
-          K.trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now() });
+          K.trash.unshift({ id: sk.id, name: sk.name, code: sk.code, layers: sk.layers, deletedAt: Date.now(), ...(sk.format ? { format: sk.format } : {}) });
           K.trash.length = Math.min(K.trash.length, 30);
           K.saveHistory();
           K.removedIds.add(sk.id);
@@ -340,7 +340,7 @@
     if (K.sketches.length === 1) { toast('Keep at least one sketch', { type: 'error' }); return; }
     if (!(await Modal.confirm('Delete sketch?', `"${K.current.name}" will be deleted. You can bring it back from History.`, { ok: 'Delete', danger: true }))) return;
     K.persist();
-    K.trash.unshift({ id: K.current.id, name: K.current.name, code: K.current.code, layers: K.current.layers, deletedAt: Date.now() });
+    K.trash.unshift({ id: K.current.id, name: K.current.name, code: K.current.code, layers: K.current.layers, deletedAt: Date.now(), ...(K.current.format ? { format: K.current.format } : {}) });
     K.trash.length = Math.min(K.trash.length, 30);
     K.saveHistory();
     K.removedIds.add(K.current.id);

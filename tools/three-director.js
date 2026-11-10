@@ -59,6 +59,7 @@ const ThreeDirector = (() => {
     const out = {};
     for (const k of ['added', 'updated', 'removed']) if (r[k]) out[k] = r[k];
     out.sketch = r.sketch;
+    if (r.format) out.format = r.format; // (round 176, gpuaware176) a v2 scene says so in every result (the layer code differs)
     out.layer = r.layer;
     if (r.errors?.length) out.errors = r.errors.map((e) => `${e.layer ? `[${e.layer}] ` : ''}${e.line ? `line ${e.line}: ` : ''}${clip(e.message, 240)}`);
     const con = (r.console || []).slice(-lines).map((l) => clip(l, 220));
@@ -1013,7 +1014,7 @@ return await new Promise((res) => { const tick = () => { if (!A.playing || A.tim
       return args.report === 'full' ? { ok: true, value } : withPic(value, await autoShot(d, args, B, ctx, value));
     }
     if (tool === 'three_add_layer') {
-      if (!args.code && !args.template) return { ok: false, error: 'Give complete code (alpha: true, no background) or a template.' };
+      if (!args.code && !args.template) return { ok: false, error: 'Give complete code (a v2 scene: a v2 layer; an old one: alpha: true, no background) or a template.' };
       if (!d.backstage) toast(`Three Director added a layer${args.name ? ` "${args.name}"` : ''}`, { timeout: 1500 });
       const r = await d.addLayer({ name: args.name, code: args.code, template: args.template, position: args.position, props: args.settings || {} }, Number(args.wait) || 2.5);
       if (args.report === 'full') return { ok: true, value: r };

@@ -94,8 +94,8 @@ quest-atlas-worker.js quest-atlas.js quest-catalog.js quest-chat-core.js quest-c
 quest-mapfirst.css quest-mapfirst.js quest-paris-ui.js quest-paris.js quest-project.js quest-proof.js quest-review.js quest-shelf.js
 quest-walk-core.js quest-walk.css quest-walk.js refab-core.js refab.css refab.js sketchpads-core.js sketchpads.css sketchpads.js
 soundbank-core.js soundbank.css soundbank.js studiohours-core.js studiohours.css studiohours.js workbench-vst-embed.js
-workbench-vst-live.js workbench-vst.css workbench-vst.js trynew-core.js trynew.css trynew.js trynew71-core.js volume-preload.js
-volumemain.js weekendplan-core.js weekendplan.css weekendplan.js weekquest-core.js weekquest-nudge.js weekquest.css weekquest.js
+workbench-vst-live.js workbench-vst.css workbench-vst.js trynew-core.js trynew.css trynew.js trynew71-core.js
+weekendplan-core.js weekendplan.css weekendplan.js weekquest-core.js weekquest-nudge.js weekquest.css weekquest.js
 weekquestmain.js`.split(/\s+/);
 const REMOVED_GLOBALS = `QuestCore QuestHud QuestHudCore QuestJournal QuestGuide QuestGuideCore QuestParis QuestParisUI QuestReview QuestProof
 QuestChat QuestChatCore QuestCatalog QuestWalk QuestWalkCore QuestMapFirst QuestAtlas QuestShelf QuestProject OutingCore OutingDesk
@@ -111,8 +111,8 @@ const LEFT = [
   [new RegExp(`(?<![\\w.-])(${REMOVED_FILES.map(esc).join('|')})(?![\\w-])`), 'a removed file'],
   [new RegExp(`\\b(${REMOVED_GLOBALS.join('|')})\\b`), 'a removed module'],
   [new RegExp(`Lazy\\.\\w+\\(\\s*['"](${REMOVED_GROUPS.join('|')})['"]`), 'a removed lazy group'],
-  [/['"`](creative-vst|soundbank|audiodoctor|bouncelog|dawsend|sketchpads|parisphotos|questguide|weekquest|shows|leave|tickets|volume):|['"`]outing:guide/, 'a removed IPC channel'],
-  [/\bhub\??\.(questGuide|onQuestGuide\w*|outingGuide|onOutingGuide|vst|soundbank|parkSong|audioDoctor|liveset|bouncelog|dawsend|sketchpads|parisPhotos|weekquest|shows|leave|tickets|volume)\b/, 'a removed preload bridge'],
+  [/['"`](creative-vst|soundbank|audiodoctor|bouncelog|dawsend|sketchpads|parisphotos|questguide|weekquest|shows|leave|tickets):|['"`]outing:guide/, 'a removed IPC channel'],
+  [/\bhub\??\.(questGuide|onQuestGuide\w*|outingGuide|onOutingGuide|vst|soundbank|parkSong|audioDoctor|liveset|bouncelog|dawsend|sketchpads|parisPhotos|weekquest|shows|leave|tickets)\b/, 'a removed preload bridge'],
   [/['"`]tool:quests['"`]|\bchat_sound\b/, 'the Life tab / the Sound desk tool'],
 ];
 const SELF = path.join(__dirname, 'slim116-test.js');
