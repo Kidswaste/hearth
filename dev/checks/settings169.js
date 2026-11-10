@@ -61,6 +61,10 @@ const setLook = async (forge) => {
 const OPAQUE = 'linear-gradient(var(--hud), var(--hud)) top left / 12px 1px no-repeat, linear-gradient(var(--hud), var(--hud)) top left / 1px 12px no-repeat, linear-gradient(var(--hud), var(--hud)) bottom right / 12px 1px no-repeat, linear-gradient(var(--hud), var(--hud)) bottom right / 1px 12px no-repeat, var(--tx-brushed), linear-gradient(180deg, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)), var(--fh-iron-2))';
 const OLD = `.settings-dialog.sd-solid[open] { will-change: auto !important; } .settings-dialog.sd-solid form { background-color: transparent !important; }
 :root[data-look~=v2] dialog .settings-section { background: ${OPAQUE} !important; }
+:root[data-look~=v2] dialog.settings-dialog[open] { clip-path: var(--cut) !important; overflow: auto !important; border-color: var(--line-hi) !important; box-shadow: var(--m-glass-edge), 0 24px 80px #000c !important;
+  background: var(--hairline) top / 100% 1px no-repeat, var(--tx-noise), linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 86%, transparent), color-mix(in srgb, var(--fh-iron-3) 92%, transparent)) !important; }
+:root[data-look~=v2] dialog.settings-dialog[open]::before { display: none !important; }
+:root[data-look~=v2] dialog.settings-dialog[open] form { will-change: auto !important; }
 .surface.active[data-id="tool:board"] { will-change: auto !important; }`;
 const oldStyle = document.createElement('style'); oldStyle.id = 's169-old'; document.head.append(oldStyle);
 const oldWay = (on) => { oldStyle.textContent = on ? OLD : ''; };
@@ -95,7 +99,8 @@ function compare(A, Bp, A2, w, corners = []) {
   }
   return { px: A.length / 4, differ: n, maxLevels: mx, overMax: over, where: over ? box : undefined, cornerPx: cn, cornerLevels: cmx, changedByItself: noise };
 }
-const abA = async (corners) => { dot.style.display = 'none'; const A = await px(await shot()); oldWay(true); const Bp = await px(await shot()); oldWay(false); const A2 = await px(await shot()); dot.style.display = ''; return compare(A, Bp, A2, innerWidth, corners); };
+let shotN = 0; const keep = async (tag) => { if (window.S169_SHOTS) await smoke({ shot: `${window.S169_SHOTS}/s169-${++shotN}-${tag}.png` }); };
+const abA = async (corners) => { dot.style.display = 'none'; const A = await px(await shot()); await keep('now'); oldWay(true); const Bp = await px(await shot()); await keep('old'); oldWay(false); const A2 = await px(await shot()); dot.style.display = ''; return compare(A, Bp, A2, innerWidth, corners); };
 const dlg = () => document.querySelector('dialog.settings-dialog[open]');
 const openSettings = async () => { await AppUI.openSettings(); await until(dlg, 5000); await wait(2000); document.activeElement?.blur?.(); await wait(300); };
 const closeDialogs = async () => { for (const d of document.querySelectorAll('dialog[open]')) d.close(); await wait(500); };
@@ -138,6 +143,7 @@ for (const look of ['plain', 'forge']) {
   if (o.pixels.changedByItself > o.pixels.px * 0.2) out.cantTell.push(`${look} pixels: ${o.pixels.changedByItself} pixels changed by themselves between two pictures this way`);
   // frame, scroll: in turn
   o.frame = { now: [], old: [] }; o.scroll = { now: [], old: [] };
+  for (const way of ['now', 'old']) { oldWay(way === 'old'); await wait(800); await wheelIn(); } // (once each way first: the form's content below the fold drawn the first time)
   for (let r = 0; r < 3; r++) {
     for (const way of r % 2 ? ['old', 'now'] : ['now', 'old']) {
       oldWay(way === 'old'); await wait(800);

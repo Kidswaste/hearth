@@ -235,6 +235,15 @@ html[data-skin~="forge"] dialog {
   border: 1px solid var(--line-hi); box-shadow: 0 24px 80px #000c, inset 0 1px 0 #ffffff0a;
 }
 html[data-skin~="forge"] dialog[open] { animation: fh-scan var(--dur-slow, .24s) var(--ease-out, ease-out); }
+/* (round 169, settings169) Settings: its frame (background, border, shading) is drawn by a ::before cut by the clip-path, not
+   the dialog itself, so nothing inside it sits under the clip-path: its form scrolls on the compositor and no mask layer is
+   drawn over it in every frame. Same pixels (docs/upgrades/settings169.md). (Not with round or square corners: no cut there) */
+html[data-skin~="forge"]:not([data-corners=round]):not([data-corners=square]) dialog.settings-dialog[open] { clip-path: none; background: none; border-color: transparent; box-shadow: none; overflow: visible; }
+html[data-skin~="forge"]:not([data-corners=round]):not([data-corners=square]) dialog.settings-dialog[open]::before {
+  content: ""; position: absolute; inset: -1px; z-index: -1; pointer-events: none; border-radius: inherit;
+  clip-path: var(--cut); border: 1px solid var(--line-hi); background: linear-gradient(180deg, #14181b, #0e1113); box-shadow: 0 24px 80px #000c, inset 0 1px 0 #ffffff0a;
+}
+html[data-skin~="forge"]:not([data-corners=round]):not([data-corners=square]) dialog.settings-dialog[open] form { will-change: scroll-position; }
 html[data-skin~="forge"] dialog::backdrop { background: #000a; backdrop-filter: blur(3px); animation: fh-fade var(--dur-slow, .24s) var(--ease-out, ease-out); }
 html[data-skin~="forge"] dialog h2 { text-transform: uppercase; letter-spacing: .2em; font-size: 15px; color: var(--r-rare); }
 html[data-skin~="forge"] dialog h2::before { content: "◆ "; }

@@ -420,6 +420,13 @@
   backdrop-filter: var(--m-glass-filter);
   border: 1px solid var(--line-hi); box-shadow: var(--m-glass-edge), 0 24px 80px #000c;
 }
+:root[data-look~=v2]:not([data-corners=round]):not([data-corners=square]) dialog.settings-dialog[open]::before { /* (round 169: its frame on a ::before, forge-skin.css) */
+  background:
+    var(--hairline) top / 100% 1px no-repeat,
+    var(--tx-noise),
+    linear-gradient(180deg, color-mix(in srgb, var(--fh-iron-1) 86%, transparent), color-mix(in srgb, var(--fh-iron-3) 92%, transparent));
+  box-shadow: var(--m-glass-edge), 0 24px 80px #000c;
+}
 :root[data-look~=v2] dialog::backdrop { background: radial-gradient(ellipse at 50% 30%, color-mix(in srgb, var(--fh-heat) calc(8% * var(--glow)), #0006), #000b); backdrop-filter: blur(3px) saturate(.8); }
 :root[data-look~=v2] dialog h2 { color: var(--fh-gold); text-shadow: 0 0 calc(14px * var(--glow)) var(--g-gold); }
 :root[data-look~=v2] .palette { background: radial-gradient(ellipse at 50% 20%, color-mix(in srgb, var(--fh-heat) calc(6% * var(--glow)), #0005), #000a); backdrop-filter: blur(3px); }
