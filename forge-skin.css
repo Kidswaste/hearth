@@ -278,10 +278,6 @@ html[data-skin~="forge"] .hl-n { color: var(--r-unique); } html[data-skin~="forg
 @keyframes fh-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @keyframes fh-dust { 0%, 100% { opacity: .25; } 50% { opacity: .9; } }
 @keyframes fh-glint { 0%, 88% { transform: translateX(-30%) skewX(-20deg); opacity: 0; } 90% { opacity: 1; } 100% { transform: translateX(130vw) skewX(-20deg); opacity: 0; } }
-/* click sparks: tiny diamonds flying out of the press */
-.juice-layer { position: fixed; inset: 0; pointer-events: none; z-index: 9999; contain: strict; } /* (round 17) sparks never lay out the page */
-.juice-spark { position: fixed; width: 5px; height: 5px; background: var(--c); box-shadow: 0 0 8px var(--c), 0 0 2px #fff; animation: fh-spark .55s cubic-bezier(.2, .8, .3, 1) both; }
-.juice-spark.big { width: 7px; height: 7px; background: #fff; box-shadow: 0 0 10px var(--c), 0 0 4px var(--c); }
 /* presses squash a little */
 html[data-skin~="forge"] :is(.primary, .ghost, .tool-btn, .web-btn, .code-act):active:not(:disabled) { transform: translateY(1px) scale(.97); filter: brightness(1.2); }
 html[data-skin~="forge"] .agent-btn:active { transform: scale(.94); }
@@ -326,5 +322,4 @@ html[data-skin~="forge"] .toast.error { box-shadow: -6px 0 18px -8px #ff6a6a66, 
 /* ---------- reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   html[data-skin~="forge"] *, html[data-skin~="forge"] *::before, html[data-skin~="forge"] *::after { animation: none !important; transition: none !important; }
-  .juice-layer { display: none; }
 }

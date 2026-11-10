@@ -82,19 +82,12 @@
    animates layout or paint. Measured: solid; estimated: lighter and hatched ("about"); almost there: breathes
    (opacity); hung: ember; done: full, then fades. */
 :where(.pg-host) { position: relative; }
-.pg-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden; pointer-events: none; z-index: 2;
-  background: color-mix(in srgb, var(--fh-ai, #a98bff) 14%, transparent); border-radius: 2px; contain: strict; transition: opacity .5s ease; }
-.pg-bar > i { position: absolute; inset: 0; transform-origin: 0 50%; transform: scaleX(0); will-change: transform;
-  background: linear-gradient(90deg, var(--fh-ai, #a98bff), var(--fh-gold, #f5c451)); border-radius: inherit; }
 .pg-bar.pg-anim > i { transition: transform .45s cubic-bezier(.2, .7, .3, 1); }
 /* no number yet (a recording with no set length): a short segment sweeping */
 @keyframes pg-breathe { 0%, 100% { opacity: .9; } 50% { opacity: .45; } }
 @keyframes pg-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 
 /* where they sit */
-.msg.streaming > .pg-bar { top: 0; bottom: auto; height: 2px; left: 0; right: 0; }
-#chat-groups .item > .pg-bar { left: 6px; right: 6px; bottom: 1px; }
-#agent-buttons .agent-btn > .pg-bar { left: 7px; right: 7px; bottom: 3px; height: 2px; }
 .comp-row > .pg-bar, .flow-card > .pg-bar, .jam-card > .pg-bar, .bd-item > .pg-bar, .cp-run-head > .pg-bar { bottom: 0; }
 .cp-run-head > .pg-bar { height: 3px; }
 .bd-item > .pg-bar { height: 3px; left: 4px; right: 4px; bottom: 4px; }

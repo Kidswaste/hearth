@@ -1,0 +1,17 @@
+/* (round 175, sweep175) from polish.css: only "kit" code makes these match; loaded with it, right after polish.css (lazy-data.js CSS_AFTER) */
+:root[data-motion=calm] .nv-wire-flow { opacity: .25; }
+:root[data-look~=v2] .stage-pill .stage-seg .stage-btn + .stage-btn { border-left: 1px solid var(--fh-shade); }
+.stage-pill .stage-btn { min-height: 24px; }
+.stage-pill .stage-more { height: 24px; max-width: 92px; font-size: 11px; padding: 0 4px; }
+.nv-hud-btn:hover { color: var(--ui-gold); }
+.nv-status.error { color: var(--ui-red); }
+.nv-status.ok { color: var(--ui-ok); }
+:root[data-look~=v2] .nv-node:hover .nv-head { /* sheen: juice.js */ }
+.kit-badge.ok { background: color-mix(in srgb, var(--ui-ok) 25%, transparent); }
+.kit-badge.bad { background: color-mix(in srgb, var(--ui-red) 25%, transparent); }
+.kit-dialog .tabbar { scrollbar-width: none; }
+.kit-chip { transition: transform var(--t-fast) var(--ease-out); }
+.kit-chip:hover { transform: translateY(-1px); }
+:root[data-look~=v2][data-scheme=light] .stage-btn:not(.freeze-btn):not(.on) { color: color-mix(in srgb, var(--text) 85%, transparent); }
+:root[data-look~=v2][data-scheme=light] .nv-head { color: #fff; }
+:root[data-look~=v2][data-scheme=light] .nv-node { box-shadow: var(--m-bevel), 0 4px 12px #0002; }

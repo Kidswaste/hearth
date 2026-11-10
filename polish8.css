@@ -73,11 +73,6 @@ html[data-skin~="forge"] .bd-cmp-head button { clip-path: var(--cut-sm, none); }
 
 /* pointing at a reference: a quiet gold edge says it can be picked up (not while the board moves) */
 .bd-selinfo { background: color-mix(in srgb, var(--fh-pop, var(--bg)) 92%, transparent); border: 1px solid var(--line); }
-/* a reference dragged over a chat box: the box says what will happen */
-form.bdd-drop-hint { position: relative; }
-form.bdd-drop-hint::after { content: 'Drop: attach its vibe (not the file)'; position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 3; pointer-events: none; white-space: nowrap;
-  padding: 3px 12px; font: 600 11.5px var(--font-head, var(--font)); letter-spacing: .05em; color: var(--m-gold-ink, #1a1206); background: var(--m-gold, var(--fh-gold, #e6b450)); border-radius: var(--r-pill, 999px); }
-html[data-skin~="forge"] form.bdd-drop-hint::after { border-radius: 0; clip-path: var(--cut-sm, none); }
 
 /* ---------- the board drawer (over any chat or tool) ---------- */
 /* closed, it is out of the page's way: not focusable, not read out (it was only moved off screen) */

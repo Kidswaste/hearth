@@ -37,7 +37,6 @@
 .ctx-lead { font-size: 11px; color: var(--muted); padding: 0 2px; }
 .ctx-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px !important; min-height: 0 !important; font-size: 11.5px !important; line-height: 18px;
   border-radius: 6px; background: transparent !important; border: 1px solid transparent !important; color: var(--muted) !important; white-space: nowrap; }
-.ctx-chip:hover { color: var(--text) !important; border-color: color-mix(in srgb, var(--text) 18%, transparent) !important; }
 .ctx-g { opacity: .85; }
 .ctx-more { display: none; opacity: .75; }
 :root.reveal-alt .ctx-more { display: inline; }
@@ -76,24 +75,15 @@
 .cm-hero.cm-missing .cm-name::after { content: ' · file moved or deleted'; }
 
 /* ⬆ Update (updater.js): a small button at the bottom of the rail while main has something new */
-#up-btn { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px; opacity: .9; font-size: 12px; }
-#up-btn[hidden] { display: none; }
-#up-btn:hover { opacity: 1; }
-#up-btn .up-ic { text-align: center; color: var(--fh-teal, #2de2e6); line-height: 1; }
-#up-btn .up-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
-.up-dlg { max-width: 560px; }
 .up-dlg .up-list { max-height: 46vh; overflow: auto; margin: 8px 0; padding-left: 22px; }
 .up-dlg .up-list li { display: flex; gap: 8px; justify-content: space-between; padding: 2px 0; }
-.up-dlg .up-subj { flex: 1; min-width: 0; }
 .up-dlg .up-when { color: var(--muted, #8a8f98); font-size: 12px; white-space: nowrap; }
 /* (round 37, updatesafe) a blocked update: "!" on the button; the dialog with its one fix and the command it runs */
-.up-dlg { padding: 18px 22px; }
 .up-dlg h3 { margin: 0 0 6px; }
 .up-dlg .modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .up-dlg .modal-buttons button { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: none; color: var(--text); cursor: pointer; }
 .up-dlg .modal-buttons .primary { border-color: transparent; background: var(--accent); color: #fff; }
 .up-dlg .modal-buttons button:disabled { opacity: .55; cursor: default; }
-#up-btn.up-attn .up-ic, #up-btn.up-attn .up-n { color: var(--fh-orange, #ff9f43); }
 .up-trouble .up-say { line-height: 1.45; margin: 6px 0 10px; }
 .up-trouble .up-cmd { margin: 6px 0; font-size: 12px; }
 .up-trouble .up-cmd summary { cursor: pointer; color: var(--muted, #8a8f98); }
@@ -134,17 +124,8 @@
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */
-.reach-cards { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 2px; }
-.reach-card { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 10px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.08)); background: var(--panel-2, rgba(255,255,255,.04)); cursor: pointer; max-width: 560px; }
-.reach-card:hover { border-color: var(--accent, #e0337a); }
-.reach-card.waiting { cursor: default; opacity: .8; border-style: dashed; }
-.reach-ico { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
-.reach-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .reach-main b, .reach-main .hint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reach-main .hint { font-size: 12px; }
-.reach-acts { display: flex; gap: 4px; flex-shrink: 0; }
 code.reach-path { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-code.reach-path:hover { text-decoration-style: solid; }
 /* (round 26) ◎ Missions (missions.js): what the next message becomes */
 .ms-btn { flex: none; align-self: flex-end; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ms-btn.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, transparent); }
@@ -167,8 +148,6 @@ code.reach-path:hover { text-decoration-style: solid; }
 .pn-body p { margin: 4px 0; }
 .pn-body ul { margin: 4px 0 6px; padding-left: 20px; }
 .pn-body li { margin: 2px 0; }
-.up-notes { max-height: 50vh; overflow-y: auto; margin: 8px 0; padding-right: 4px; }
-.up-note + .up-note { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
 .up-details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin: 6px 0; }
 
 /* ---------- (round 159, css159) was chat-live.css ---------- */

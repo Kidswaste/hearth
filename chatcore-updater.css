@@ -1,0 +1,12 @@
+/* (round 175, sweep175) from chatcore.css: only "updater" code makes these match; loaded with it, right after chatcore.css (lazy-data.js CSS_AFTER) */
+#up-btn { width: 32px; height: 20px; padding: 0; margin: 2px 0 0; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px; opacity: .9; font-size: 12px; }
+#up-btn[hidden] { display: none; }
+#up-btn:hover { opacity: 1; }
+#up-btn .up-ic { text-align: center; color: var(--fh-teal, #2de2e6); line-height: 1; }
+#up-btn .up-n { font-size: 10px; font-weight: 600; line-height: 1; min-width: 9px; color: var(--muted, #8a8f98); font-variant-numeric: tabular-nums; }
+.up-dlg { max-width: 560px; }
+.up-dlg .up-subj { flex: 1; min-width: 0; }
+.up-dlg { padding: 18px 22px; }
+#up-btn.up-attn .up-ic, #up-btn.up-attn .up-n { color: var(--fh-orange, #ff9f43); }
+.up-notes { max-height: 50vh; overflow-y: auto; margin: 8px 0; padding-right: 4px; }
+.up-note + .up-note { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }

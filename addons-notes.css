@@ -1,0 +1,19 @@
+/* (round 175, sweep175) from addons.css: only code of "addons", "gamemode", "projtemplates" or "quickidea" makes these match; loaded with whichever comes first, right after addons.css (lazy-data.js CSS_AFTER) */
+.notes-head b { margin-right: 2px; }
+.notes-item.pinned { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
+.notes-preview li.note-todo input { margin: 0 6px 0 0; vertical-align: -2px; accent-color: var(--accent); }
+.notes-preview li.note-todo.done { color: var(--muted); text-decoration: line-through; }
+.notes-preview a.note-link { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; }
+.notes-links:empty { display: none; }
+.notes-link-chip button { border-radius: 0 !important; }
+.memory-facts .row input[type=search] { flex: 1; }
+.memory-cost-pill.heavy { background: color-mix(in srgb, #f59e0b 25%, transparent); }
+.memory-cost-pill .dot { width: 7px; height: 7px; border-radius: 50%; }
+.memory-row { display: flex; gap: 5px; align-items: center; }
+.memory-row.pinned .memory-text { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.memory-text { flex: 1; min-width: 0; }
+.memory-add input { flex: 1; }
+.fg-watch { position: absolute; top: 8px; right: 8px; z-index: 3; min-width: 130px; padding: 6px 8px; border-radius: 10px; font: 11.5px/1.5 var(--mono, Consolas, monospace);
+  background: color-mix(in srgb, #000 62%, transparent); color: #f2f2f2; backdrop-filter: blur(6px); pointer-events: auto; }
+.fg-watch-row { display: flex; justify-content: space-between; gap: 12px; cursor: default; }
+.fg-watch-row span { opacity: .7; }
