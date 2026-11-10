@@ -8,8 +8,10 @@ if (startZoom !== 1) { try { webFrame.setZoomFactor(startZoom); } catch { /* the
 // (round 154, mem154) the window has been hidden or minimised a while (memtrimmain.js): Blink's caches emptied and a
 // full garbage collection under "memory pressure" (webFrame.clearCache), then the page drops its own caches
 // ('hearth:mem-trim'). Asked by the main process only; nothing the page can call.
-ipcRenderer.on('mem:trim', () => {
-  try { window.dispatchEvent(new Event('hearth:mem-trim')); } catch { /* no page yet */ }
+// (round 176, keep176) { deep } after 5 min out of sight: the page lets go of the chats it keeps ready first
+// ('hearth:mem-trim-deep'), so this GC takes them
+ipcRenderer.on('mem:trim', (_e, o) => {
+  try { window.dispatchEvent(new Event(o?.deep ? 'hearth:mem-trim-deep' : 'hearth:mem-trim')); } catch { /* no page yet */ }
   try { webFrame.clearCache(); } catch { /* old Electron */ }
 });
 
