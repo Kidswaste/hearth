@@ -126,6 +126,9 @@
    of the chat drawn again in every frame */
 .messages-wrap.tint-back::before { content: ''; position: absolute; inset: var(--tint-at, 0); width: var(--tint-w, auto); height: var(--tint-h, auto); z-index: 1; pointer-events: none; background-image: var(--solid-tint); background-attachment: fixed; }
 .messages-wrap.tint-back.tint-two::after { content: ''; position: absolute; inset: var(--tint-at2, 0); width: var(--tint-w2, auto); height: var(--tint-h2, auto); z-index: 1; pointer-events: none; background-image: var(--solid-tint2); background-attachment: fixed; }
+/* (round 172, restyle172) the lights' places are the wrap's own (its ::before / ::after): its children don't carry them,
+   so a resize (Forgeheart) restyles the wrap, not every message in it (≈ 1,400 elements a frame) */
+.messages-wrap > * { --solid-tint: initial; --tint-at: initial; --tint-w: initial; --tint-h: initial; --solid-tint2: initial; --tint-at2: initial; --tint-w2: initial; --tint-h2: initial; }
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */
