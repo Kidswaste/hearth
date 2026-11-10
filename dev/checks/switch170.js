@@ -224,7 +224,7 @@ for (const look of ['plain', 'forge']) {
     for (const way of ['now', 'old']) {
       oldWay(way === 'old'); await openChat(all[4][1], 1500);
       for (const [k, fn] of Object.entries(KINDS)) { const c = await cost(fn); const a = (out.switches[`${look} ${k}`] ||= { now: [], old: [] }); a[way].push({ gpuMs: Math.round(c.gpuMs / COUNT[k]), taskMs: Math.round(c.taskMs / COUNT[k]) }); }
-      if (look === 'plain') { await wait(1500); const m = await gpuWin(true); out.memory[way].push({ winMB: Math.round(m.winMem / 1024), gpuMB: Math.round(m.gpuMem / 1024) }); }
+      if (look === 'plain') { await wait(2500); const ms = []; for (let i = 0; i < 3; i++) { ms.push(await gpuWin(true)); await wait(600); } out.memory[way].push({ winMB: Math.round(Math.min(...ms.map((m) => m.winMem)) / 1024), gpuMB: Math.round(Math.min(...ms.map((m) => m.gpuMem)) / 1024) }); } // (the least of 3: the GPU process' raster buffers come and go)
     }
   }
 }
