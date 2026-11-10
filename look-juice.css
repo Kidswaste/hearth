@@ -4,7 +4,7 @@
   font: 12px/1.4 var(--font); color: var(--text); white-space: pre-line;
   background: var(--tx-noise), color-mix(in srgb, var(--fh-pop, var(--sidebar)) 92%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--line-hi, var(--line)); clip-path: var(--cut-sm, none);
-  box-shadow: var(--m-glass-edge); animation: j-tip-in .14s ease-out both;
+  box-shadow: var(--m-glass-edge); animation: j-tip-in .14s ease-out backwards;
 }
 .juice-glint { position: fixed; pointer-events: none; overflow: hidden; z-index: 9998; clip-path: var(--cut-sm, none); }
 .juice-ring {

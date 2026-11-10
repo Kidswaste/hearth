@@ -23,6 +23,11 @@ const DiskCalmCore = (() => {
     { id: 'gameshaders', group: 'game cache', label: 'Game shader cache', what: 'What ▶ Play compiled before, so games start faster', back: 'Comes back by itself next time you play (that first start is a little slower)', free: true, live: true },
     { id: 'bakes', group: 'bakes', label: 'Present bakes', what: 'Shows baked to a video for a perfect Present', back: 'Baked again next time you Present that scene', free: true },
     { id: 'appcache', group: 'caches', label: 'Web caches', what: 'Hearth\'s own browser caches (pages, code, graphics)', back: 'They fill again by themselves as you use Hearth', free: true, live: true },
+    // (round 167, paint167) Chromium's GPUPersistentCache (its graphics process keeps what it compiled to draw; 5.5 MB after
+    // one session here) was counted as "Sign-ins and window settings" and never offered. The graphics process holds it
+    // open while Hearth runs, so Free up leaves a note and it is emptied the next time Hearth starts (main.js, before
+    // the graphics process starts). Nothing of the sign-ins is in it.
+    { id: 'gpucache', group: 'caches', label: 'Graphics cache', what: 'What Chromium\'s graphics process kept so pages and the Lab draw sooner', back: 'It fills again by itself; emptied the next time Hearth starts', free: true, live: true, nextStart: true },
     { id: 'thumbs', group: 'caches', label: 'Asset pictures', what: 'Small pictures of your assets and downloads', back: 'Made again when you look at your assets', free: true },
     { id: 'logs', group: 'other', label: 'Logs', what: 'What the AI programs printed, and problem reports', back: 'New ones start by themselves', free: true },
     { id: 'leftovers', group: 'other', label: 'Leftovers', what: 'Pieces left by renders, copies and saves that were cut off', back: 'Nothing needs them', free: true },
@@ -37,6 +42,8 @@ const DiskCalmCore = (() => {
   // ---------- where a file in the data folder belongs ----------
   // rel: relative to the data folder, '/' or '\' (Windows). Anything not proven to be a cache, a log, a leftover or a
   // safety copy is the owner's work: the fold says so and nothing there is ever offered.
+  const GPU_CACHE_DIR = 'GPUPersistentCache'; // (round 167) Chromium's graphics cache in the profile → gpucache
+  const GPU_EMPTY_MARK = '.hearth-empty-gpu-cache'; // the note Free up leaves for the next start (main.js reads it)
   const CACHE_DIRS = ['Cache', 'Code Cache', 'GPUCache', 'DawnCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'ShaderCache', 'GrShaderCache', 'GraphiteDawnCache'];
   const TITLES = /^\.hearth-titles-[a-z0-9]+$/i; // a Lab render's temporary title frames (tools/three-export.js, aemain.js)
   const SAFETY_NAME = /^(kv\/)?[^/]+(\.prev\.json|-torn-[a-z0-9]+(\.json)?)$/i; // a store's .prev copy, a cut-off store crashsafe kept aside
@@ -61,6 +68,7 @@ const DiskCalmCore = (() => {
   // a path inside Electron's own profile folder (userData) → gameshaders / appcache / profile
   function classifyProfile(rel) {
     const segs = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '').split('/');
+    if (segs[0] === GPU_CACHE_DIR || segs[0] === GPU_EMPTY_MARK || (segs[0] === 'Partitions' && segs[2] === GPU_CACHE_DIR)) return 'gpucache';
     if (segs[0] === 'Partitions' && segs.length > 2) {
       const cache = CACHE_DIRS.includes(segs[2]);
       if (!cache) return 'profile';
@@ -178,7 +186,16 @@ const DiskCalmCore = (() => {
     return null;
   }
 
-  return { PARTS, BY, FREEABLE, CACHE_DIRS, CAPS, THRESHOLD, LOW, KB, MB, GB, HOUR, DAY, classify, classifyProfile, isHearthTemp, fmt, groups, total, summary, freeable, capPlan, safeId, sceneIds, orphanBuilds, orphanBakes, orphanOptimized, staleTitles, staleTemps, tidyLine, hintFor };
+  // (round 167) at the start, before Chromium's graphics process opens it: the graphics cache emptied when Free up left
+  // its note (main.js calls this only when the note is there). Only GPUPersistentCache and the note; nothing else
+  function emptyGpuCacheAtStart(fsm, pathm, userData) {
+    const mark = pathm.join(userData, GPU_EMPTY_MARK);
+    if (!fsm.existsSync(mark)) return false;
+    fsm.rmSync(pathm.join(userData, GPU_CACHE_DIR), { recursive: true, force: true });
+    fsm.rmSync(mark, { force: true });
+    return true;
+  }
+  return { PARTS, BY, FREEABLE, CACHE_DIRS, GPU_CACHE_DIR, GPU_EMPTY_MARK, emptyGpuCacheAtStart, CAPS, THRESHOLD, LOW, KB, MB, GB, HOUR, DAY, classify, classifyProfile, isHearthTemp, fmt, groups, total, summary, freeable, capPlan, safeId, sceneIds, orphanBuilds, orphanBakes, orphanOptimized, staleTitles, staleTemps, tidyLine, hintFor };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = DiskCalmCore;
 if (typeof window !== 'undefined') window.DiskCalmCore = DiskCalmCore;

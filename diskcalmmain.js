@@ -89,7 +89,8 @@ async function measure({ fresh = false } = {}) {
   if (ud && !inside(ud, dd)) await walk(ud, (rel, st, isDir) => { if (isDir) return !inside(path.join(ud, rel), dd); if (st) add(C.classifyProfile(rel), st.size); return true; });
   let diskFree = null; try { const s = fs.statfsSync(dd); diskFree = Number(s.bavail) * Number(s.bsize); } catch { /* unknown */ }
   const total = C.total(parts);
-  cached = { at: Date.now(), parts, total, line: C.summary(parts), groups: C.groups(parts), freeable: C.freeable(parts), diskFree, playing: playing(), hint: C.hintFor({ total, freeable: C.freeable(parts), diskFree }), last };
+  const gpuLater = ud ? fs.existsSync(path.join(ud, C.GPU_EMPTY_MARK)) : false; // (round 167) the graphics cache goes at the next start
+  cached = { at: Date.now(), gpuLater, parts, total, line: C.summary(parts), groups: C.groups(parts), freeable: C.freeable(parts), diskFree, playing: playing(), hint: C.hintFor({ total, freeable: C.freeable(parts), diskFree }), last };
   return cached;
 }
 
@@ -168,7 +169,14 @@ async function free(id) {
   } else if (id === 'thumbs') await trashAll((await listDir(path.join(dd, '.cache'))).map((e) => e.path), id, moved, failed);
   else if (id === 'logs') await trashAll(['engine.prev.log', 'engine.log'].map((n) => path.join(dd, n)).filter((p) => fs.existsSync(p)), id, moved, failed);
   else if (id === 'leftovers') await tidyLeftovers({ now: Date.now(), age: true, moved, failed });
-  else if (id === 'gameshaders' || id === 'appcache') {
+  else if (id === 'gpucache') {
+    // (round 167, paint167) the graphics process holds it open: a note for the next start, which empties it before the
+    // graphics process starts (main.js). Nothing is removed now; the row keeps its size until then
+    const ud = userData();
+    if (!ud) return { ok: false, why: 'Hearth\'s profile folder couldn\'t be found just now: nothing was changed.' };
+    try { await fsp.writeFile(path.join(ud, C.GPU_EMPTY_MARK), JSON.stringify({ at: Date.now(), bytes: before })); } catch (err) { return { ok: false, why: `The note for the next start couldn't be written: ${err.message}` }; }
+    return { ok: true, part: id, freed: 0, later: before, back: P.back, line: cached?.line };
+  } else if (id === 'gameshaders' || id === 'appcache') {
     const S = E().session;
     try {
       if (id === 'gameshaders') await clearSession(S.fromPartition('persist:hearth-game'));

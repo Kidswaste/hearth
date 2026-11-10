@@ -592,13 +592,13 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 @keyframes hx-scene { from { opacity: 0; transform: translateY(6px); } }
 @keyframes hx-chat { from { opacity: 0; transform: translateY(10px); } }
 @keyframes hx-reveal { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top left; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) { animation: hx-pop var(--dur-med) var(--ease-pop) backwards; transform-origin: top left; }
 /* (round 109, projopen109) #menu fades in, rows unmoved: a click aimed mid-pop hit the row above (docs/upgrades/projopen109.md) */
 :root:not([data-motion=off]) #menu { animation-name: hx-fade; }
-:root:not([data-motion=off]) .slash-menu { animation: hx-rise var(--dur-med) var(--ease-pop) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .slash-menu { animation: hx-rise var(--dur-med) var(--ease-pop) backwards; transform-origin: bottom left; }
 /* (round 17) only the first rows slide in: a long menu animated every row, one compositor layer each */
-:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) both; }
-:root:not([data-motion=off]) .slash-menu > .slash-item:nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) both; }
+:root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu) > :is(.menu-item, button, .menu-head, .nv-menu-sec):nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) backwards; }
+:root:not([data-motion=off]) .slash-menu > .slash-item:nth-child(-n+11) { animation: hx-item var(--dur-med) var(--ease-out) backwards; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(1) { animation-delay: 14ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(2) { animation-delay: 28ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(3) { animation-delay: 42ms; }
@@ -609,11 +609,14 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(8) { animation-delay: 112ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(9) { animation-delay: 126ms; }
 :root:not([data-motion=off]) :is(#menu, .lab-pop, .mb-menu, .nv-menu, .slash-menu) > :nth-child(10) { animation-delay: 140ms; }
-:root:not([data-motion=off]) dialog[open] { animation: hx-dialog var(--dur-slow) var(--ease-pop) both; }
-:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade var(--dur-slow) var(--ease-out) both; }
-:root:not([data-motion=off]) .palette-card { animation: hx-pop var(--dur-med) var(--ease-pop) both; transform-origin: top center; }
+/* (round 167, paint167) entrances fill backwards, not both: their keyframes are a 'from' only, so the end is the element's
+   own style either way, but a 'forwards' fill that changes nothing left the element on its own GPU layer for good
+   (a dialog, the open surface, the board's empty card): every later frame drew it again (≈ 30 % of a frame here) */
+:root:not([data-motion=off]) dialog[open] { animation: hx-dialog var(--dur-slow) var(--ease-pop) backwards; }
+:root:not([data-motion=off]) dialog[open]::backdrop { animation: hx-fade var(--dur-slow) var(--ease-out) backwards; }
+:root:not([data-motion=off]) .palette-card { animation: hx-pop var(--dur-med) var(--ease-pop) backwards; transform-origin: top center; }
 /* switching agents / tools: the new surface eases in */
-:root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) both; }
+:root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) backwards; } /* (round 167: backwards, above) */
 /* switching chats: the conversation slides up into place */
 :root:not([data-motion=off]) .chat-enter { animation: hx-chat var(--dur-slow) var(--ease-out) both; }
 /* the Lab preview: a cover that fades away once the new scene has drawn (see three.js scene-cover) */
@@ -705,7 +708,7 @@ html[data-skin~="forge"] #menu-fly { border-radius: 0; clip-path: var(--cut-sm);
 @keyframes dc-fly-left { from { opacity: 0; transform: translateX(6px) scale(.98); } }
 :root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-in > * { animation-name: dc-in; animation-duration: var(--dur-med); }
 :root:not([data-motion=off]) :is(#menu, .mb-menu.lab-pop).m-back > * { animation-name: dc-back; animation-duration: var(--dur-med); }
-:root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) both; }
+:root:not([data-motion=off]) #menu-fly:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) backwards; }
 :root:not([data-motion=off]) #menu-fly.to-left:not([hidden]) { animation-name: dc-fly-left; }
 /* (round 43, menucalm) the flyout's own flyout: pointing at a submenu row inside #menu-fly shows its rows beside it,
    drawn exactly like #menu-fly */
@@ -729,7 +732,7 @@ html[data-skin~="forge"] #menu-fly2 { border-radius: 0; clip-path: var(--cut-sm)
 #menu-fly2 .menu-head { padding: 6px 10px 2px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--ui-gold, var(--accent)) 45%, var(--muted)); }
 #menu-fly2 button .menu-ico { order: -1; flex: none; width: 15px; height: 15px; align-self: center; margin-right: -9px; color: var(--fh-gold, var(--accent)); opacity: .9; }
 html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: var(--sidebar) !important; }
-:root:not([data-motion=off]) #menu-fly2:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) both; }
+:root:not([data-motion=off]) #menu-fly2:not([hidden]) { animation: dc-fly var(--dur-med) var(--ease-pop) backwards; }
 :root:not([data-motion=off]) #menu-fly2.to-left:not([hidden]) { animation-name: dc-fly-left; }
 
 /* Alt held (or tapped twice): the tucked buttons come back in place, outlined (declutter.js writes the rules) */
@@ -744,7 +747,7 @@ html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdr
   font: 600 10px/1.45 var(--mono, ui-monospace, monospace); letter-spacing: .02em;
   color: #1a1305; background: var(--ui-gold, var(--accent)); box-shadow: 0 2px 8px #0008, 0 0 0 1px #0006;
 }
-:root:not([data-motion=off]) .key-hint { animation: dc-hint var(--dur-fast) var(--ease-pop) both; }
+:root:not([data-motion=off]) .key-hint { animation: dc-hint var(--dur-fast) var(--ease-pop) backwards; }
 @keyframes dc-hint { from { opacity: 0; transform: translate(-50%, -3px) scale(.85); } }
 
 /* the keys button, bottom left of the rail: calm until pointed at */
@@ -759,7 +762,7 @@ html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdr
   background: var(--sidebar); border: 1px solid var(--line); box-shadow: 0 18px 50px #000b; color: var(--text);
 }
 :root[data-look~=v2] .keys-sheet { background: var(--tx-noise), color-mix(in srgb, var(--fh-pop) 96%, transparent); border-color: var(--line-hi); box-shadow: var(--m-glass-edge), 0 18px 50px #000b; }
-:root:not([data-motion=off]) .keys-sheet { animation: hx-rise var(--dur-med) var(--ease-pop) both; transform-origin: bottom left; }
+:root:not([data-motion=off]) .keys-sheet { animation: hx-rise var(--dur-med) var(--ease-pop) backwards; transform-origin: bottom left; }
 :root:not([data-motion=off]) .keys-sheet.out { animation: hx-reveal var(--dur-fast) var(--ease-in) both; }
 .keys-sheet .ks-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .keys-sheet .ks-head b { font-family: var(--font-head, inherit); letter-spacing: .02em; }

@@ -6,7 +6,7 @@
   background: var(--sidebar, #17181c); border: 1px solid var(--line, #2c2f36); box-shadow: 0 14px 36px #0009; color: var(--text, #e8e8ea); font-size: 12.5px;
 }
 :root[data-look~=v2] .qs-card { border-color: var(--line-hi, var(--line)); }
-:root:not([data-motion=off]) .qs-card { animation: qs-in .2s cubic-bezier(.2, .9, .3, 1.05) both; transform-origin: top right; }
+:root:not([data-motion=off]) .qs-card { animation: qs-in .2s cubic-bezier(.2, .9, .3, 1.05) backwards; transform-origin: top right; }
 :root:not([data-motion=off]) .qs-card.qs-out { animation: qs-out .13s ease both; }
 @keyframes qs-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes qs-out { to { opacity: 0; transform: translateY(-4px); } }
