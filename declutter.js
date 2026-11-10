@@ -111,6 +111,54 @@ const Declutter = (() => {
       return topSplit(one.slice(i + 4, j)).flatMap((opt) => expand(`${one.slice(0, i)}${opt}${one.slice(j + 1)}`));
     });
   }
+  // (round 173, alt173) what Alt shows is marked on the elements themselves: while Alt (a latch, /reveal) shows the
+  // tucked controls, exactly those carry .alt-reveal (found with their own selectors), and the 'hover' ones whose last
+  // part names no class or id (polish8's `.bdd-foot > span`, the memory rows' `button[title^=…]`) carry .alt-hover. The
+  // rules keyed on .reveal-alt name only those classes: `.reveal-alt <x>` made each Alt restyle every element <x>'s last
+  // part could match (every button, span, titled or data-feature element of the page: ≈ 850, 17–26 ms per hold).
+  // Hidden is still plain CSS (`:root <x>:not(.alt-reveal)`): nothing is marked, and nothing watched, while Alt is up.
+  const MARK = 'alt-reveal'; const HMARK = 'alt-hover';
+  const sels = { [MARK]: '', [HMARK]: '' };
+  const marks = { [MARK]: new Set(), [HMARK]: new Set() };
+  let shown = false;
+  // the last compound of a selector names a class or an id (outside [...] and (...)): narrow already
+  const named = (x) => {
+    let depth = 0; let br = 0; let last = '';
+    for (const ch of x) {
+      if (ch === '[') br += 1; else if (ch === ']') br -= 1;
+      else if (ch === '(') depth += 1; else if (ch === ')') depth -= 1;
+      if (!depth && !br && (ch === ' ' || ch === '>' || ch === '+' || ch === '~')) { last = ''; continue; }
+      if (!depth && !br && ch !== ')' && ch !== ']') last += ch;
+    }
+    return last.includes('.') || last.includes('#');
+  };
+  const usable = (x) => { try { document.querySelector(x); return true; } catch { return false; } };
+  function markWith(cls) {
+    const was = marks[cls];
+    const now = new Set(shown && sels[cls] ? document.querySelectorAll(sels[cls]) : []);
+    for (const n of was) if (!now.has(n)) n.classList.remove(cls);
+    for (const n of now) if (!was.has(n)) n.classList.add(cls);
+    marks[cls] = now;
+  }
+  let domMO = null; let remarkReq = 0;
+  function remark() {
+    cancelAnimationFrame(remarkReq); remarkReq = 0;
+    markWith(MARK); markWith(HMARK);
+    domMO?.takeRecords(); // (our own class changes)
+  }
+  // while shown, what arrives or changes is marked before the frame it shows in
+  const remarkSoon = () => { if (!remarkReq) remarkReq = requestAnimationFrame(remark); };
+  function syncReveal() {
+    const on = document.documentElement.classList.contains('reveal-alt');
+    if (on === shown) { if (on) remarkSoon(); return; }
+    shown = on;
+    if (on && document.body) {
+      domMO ||= new MutationObserver(remarkSoon);
+      domMO.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'title', 'data-feature', 'id'] });
+    } else domMO?.disconnect();
+    remark();
+  }
+  new MutationObserver(syncReveal).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   function paint() {
     const live = off ? [] : REVEAL.filter((r) => !pins.has(r.id));
     const alt = live.filter((r) => r.mode === 'alt');
@@ -118,19 +166,27 @@ const Declutter = (() => {
     const notKeep = (r) => (r.keep ? `:not(${r.keep})` : '');
     const css = [];
     if (!off) for (const m of mine) alt.push({ sel: m.sel });
-    const altSels = alt.flatMap((r) => expand(r.sel).map((x) => `${x}${notKeep(r)}`));
-    for (const x of altSels) css.push(`:root:not(.reveal-alt) ${x} { display: none !important; }`);
-    for (const x of altSels) css.push(`.reveal-alt ${x} { animation: dc-reveal .2s cubic-bezier(.2, .9, .3, 1.25) both; outline: 1px dashed color-mix(in srgb, var(--fh-gold, #f5b642) 75%, transparent) !important; outline-offset: 1px; }`);
+    const altSels = alt.flatMap((r) => expand(r.sel).map((x) => `${x}${notKeep(r)}`)).filter(usable);
+    for (const x of altSels) css.push(`:root ${x}:not(.${MARK}) { display: none !important; }`);
+    if (altSels.length) css.push(`.reveal-alt .${MARK} { animation: dc-reveal .2s cubic-bezier(.2, .9, .3, 1.25) both; outline: 1px dashed color-mix(in srgb, var(--fh-gold, #f5b642) 75%, transparent) !important; outline-offset: 1px; }`);
+    const fade = '{ opacity: 0; visibility: hidden; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease), visibility var(--dur-fast, .12s); }';
+    const hoverSels = [];
     for (const r of hover) {
       // (focus: false when the area holds something that keeps the focus, like the Lab picture's iframe)
       const state = `:not(:hover)${r.focus === false ? '' : ':not(:focus-within)'}`;
       for (const host of expand(r.host)) for (const x of expand(r.sel)) {
-        css.push(`:root:not(.reveal-alt) ${host}${state} ${x}${notKeep(r)} { opacity: 0; visibility: hidden; transition: opacity var(--dur-fast, .12s) var(--ease-out, ease), visibility var(--dur-fast, .12s); }`);
+        if (named(x)) { css.push(`:root:not(.reveal-alt) ${host}${state} ${x}${notKeep(r)} ${fade}`); continue; }
+        const whole = `${host} ${x}${notKeep(r)}`;
+        if (!usable(whole)) continue;
+        hoverSels.push(whole);
+        css.push(`:root ${host}${state} ${x}${notKeep(r)}:not(.${HMARK}) ${fade}`);
       }
     }
+    sels[MARK] = altSels.join(', '); sels[HMARK] = hoverSels.join(', ');
     styleEl.textContent = css.join('\n');
     document.documentElement.classList.toggle('calm-off', off);
     document.documentElement.dataset.pins = [...pins].join(' ');
+    if (shown) remark();
   }
   const savePins = () => { store.set('declutter.pins', [...pins]); paint(); };
   // a selector that finds this button again after a re-render: its id, its feature name or its title

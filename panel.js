@@ -354,14 +354,28 @@ const Panel = (() => {
       parent.insertBefore(node, cur);
     }
     while (cur) { const next = cur.nextSibling; cur.remove(); cur = next; }
+    if (parent.farMO) farMark(parent);
   }
+  // (round 173, alt173) a group's rows from its 14th child on carry .row-far (chatcore.css: they skip layout and paint
+  // while scrolled out of view). It was `:nth-child(n+14)`: each row added or removed then restyled every row after the
+  // first dozen; now only a row crossing the line changes class. Marked right after a patch and, for anything else that
+  // adds or removes children, by a MutationObserver per group (before the next frame).
+  function farMark(g) {
+    let i = 0;
+    for (let c = g.firstElementChild; c; c = c.nextElementSibling, i += 1) {
+      if (!c.classList.contains('item')) continue;
+      const far = i >= 13;
+      if (c.classList.contains('row-far') !== far) c.classList.toggle('row-far', far);
+    }
+  }
+  function farWatch(g) { g.farMO = new MutationObserver(() => farMark(g)); g.farMO.observe(g, { childList: true }); return g; }
   const entryEl = (agent, e) => (e.f != null ? folderFor(agent, e.f, e.closed) : rowFor(agent, e));
 
   // one AI's group: its head, a draft row, its rows (only those near the screen in a long one), "Show more"
   function groupFor(agent, items, q) {
     let g = groupsUI.get(agent.id);
     if (!g) {
-      const node = el('div', 'group');
+      const node = farWatch(el('div', 'group'));
       node.dataset.id = agent.id;
       g = { el: node, head: null, headSig: '', color: '', virt: null };
       groupsUI.set(agent.id, g);

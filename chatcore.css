@@ -108,7 +108,9 @@
 .messages > .msg.cv-far:not(.streaming):not(.marked) { content-visibility: auto; contain-intrinsic-size: auto 180px; }
 .messages > .day-sep.cv-far { content-visibility: auto; contain-intrinsic-size: auto 24px; }
 /* the chats list: in a long group, rows past the first dozen skip layout and paint while scrolled out of view */
-#chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
+/* (round 173, alt173) .row-far: panel.js marks rows from the 14th child on (was :nth-child(n+14), which restyled every
+   later row whenever one arrived or left) */
+#chat-groups .group > .item.row-far:not(.active) { content-visibility: auto; contain-intrinsic-size: auto 28px; }
 /* (round 165, chat165) a chat over one plain opaque colour takes that same colour (native.js solidBack): an opaque scroll
    box the compositor scrolls, same pixels. Zero specificity: any look that paints the list itself wins */
 :where(.messages.solid-back) { background-color: var(--solid-back); }

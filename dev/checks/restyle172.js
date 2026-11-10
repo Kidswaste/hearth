@@ -13,8 +13,13 @@
 //   typing   5 letters typed in the chat box: ≤ B.typing in all
 //   rows     the pointer over 10 rows of the chats list: ≤ B.rows in all
 //   menu     a row's right-click menu opened and closed with Esc: ≤ B.menu in all
-//   alt      Alt held (the tucked buttons): its biggest pass ≤ B.alt × the old way's (a `.reveal-alt *` rule restyled the
-//            whole page; the tucked buttons' own rules still reach every button, span and titled element)
+//   insert   (round 173) a row arriving on top of the chats list: ≤ B.insert in all (`:nth-child(n+14)` restyled every
+//            later row; now panel.js' .row-far), and .row-far on exactly the rows past the 13th child, after two
+//            arrive and after they leave
+//   alt      Alt held (the tucked buttons): the rail's tucked button shows with its dashed outline and goes with Alt;
+//            biggest pass ≤ B.altEls, all passes ≤ B.altAll (round 173: the tucked controls carry .alt-reveal while
+//            shown, so the rules keyed on .reveal-alt reach only them, not every button, span and titled element), and
+//            ≤ B.alt × the old `.reveal-alt *` way's; round 172's per-selector rules are put back for the report
 //   resize   Forgeheart, the window made narrower and back: ≤ B.resize (the lights' places, custom properties on the
 //            chat's wrap, were inherited by every message: each resize frame restyled the whole chat)
 // The old way of blur / hidden / Alt (their page-wide rules put back) is measured in the same run and reported.
@@ -26,7 +31,7 @@ const T = (o) => window.hub.power.test(o);
 const cdp = (method, params) => smoke({ cdp: method, params });
 const out = { problems: [], cantTell: [], actions: {}, old: {} };
 const bad = (m) => out.problems.push(m);
-const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.65, resize: 300, idleHush: 100 };
+const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.25, resize: 300, idleHush: 100, insert: 60, altEls: 150, altAll: 650 };
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type, x, y, button: 'none', ...extra });
 const key = async (k, code, opts = {}) => { for (const type of ['keyDown', 'keyUp']) await cdp('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: opts.vk || (k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0), ...(type === 'keyDown' && opts.text ? { text: opts.text } : {}) }); };
@@ -169,13 +174,63 @@ await mouse('mouseMoved', 600, innerHeight - 30); await wait(400);
   else if (r.elements > B.menu) bad(`a row's menu opened and closed: ${r.elements} elements restyled (≤ ${B.menu})`);
 }
 
-// ---------- Alt held ----------
-const altHold = () => restyled(async () => { await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 1 }); await wait(500); await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18 }); });
+// ---------- (round 173) a row arriving in the chats list ----------
+// a new chat on top of the project's 41: each row from the 14th child on skips layout while off screen; that was
+// `:nth-child(n+14)`, so each row added or removed restyled every row after the first dozen (now panel.js' .row-far)
+const rowOf = (id) => document.querySelector(`#chat-groups .item[data-key="${CSS.escape(id)}"]`);
+const addRow = async (n) => {
+  const at = Date.now(); const c = { id: `r173n-${n}-${at}`, agentId: claude.id, title: `Arrived ${n}`, createdAt: at, updatedAt: at, messages: [{ role: 'user', text: `new ${n}`, at }] };
+  await window.hub.saveChat(c); Native.save(c);
+  const r = await restyled(async () => { H.chats = [{ id: c.id, agentId: claude.id, title: c.title, updatedAt: at, pinned: false }, ...H.chats]; Projects.add(p, 'chat', c.id, c.id, { links: false }); Panel.render(); await until(() => rowOf(c.id), 3000, 20); });
+  r.added = Boolean(rowOf(c.id)); return r;
+};
 {
-  const r = await altHold(); out.actions.alt = r;
+  const r = await addRow(1); out.actions.insert = r;
+  const undo = oldRule('#chat-groups .group > .item:not(.active):nth-child(n+14) { content-visibility: auto; contain-intrinsic-size: auto 28px; }');
+  const o = await addRow(2); undo(); out.old.insert = { elements: o.elements, biggest: o.biggest, styleMs: o.styleMs, added: o.added };
+  if (!r.added) out.cantTell.push('a row arriving: no row came');
+  else if (r.elements > B.insert) bad(`a row arriving in the chats list: ${r.elements} elements restyled (≤ ${B.insert}; the old way ${o.elements})`);
+  const far = rows().filter((x) => x.classList.contains('row-far')).length;
+  const want = rows().filter((x) => [...x.parentElement.children].indexOf(x) >= 13).length;
+  if (far !== want) bad(`the chats list: ${far} rows carry .row-far, ${want} are past the 13th child`);
+  // and gone again: the rows after them move up, the marks follow
+  if (typeof Projects.remove === 'function') {
+    for (const x of rows().filter((n) => n.dataset.key?.startsWith('r173n-'))) { Projects.remove(p, 'chat', x.dataset.key); H.chats = H.chats.filter((h) => h.id !== x.dataset.key); }
+    Panel.render(); await wait(600);
+    const far2 = rows().filter((x) => x.classList.contains('row-far')).length;
+    const want2 = rows().filter((x) => [...x.parentElement.children].indexOf(x) >= 13).length;
+    if (far2 !== want2) bad(`the chats list after two rows left: ${far2} rows carry .row-far, ${want2} are past the 13th child`);
+  }
+}
+
+// ---------- Alt held ----------
+// (round 173, alt173) the tucked controls carry .alt-reveal while shown (declutter.js); the rules keyed on .reveal-alt
+// name only that class. Round 172's per-selector rules (`.reveal-alt <x>`, `:root:not(.reveal-alt) <x>`) are put back
+// for the report.
+const vis = (n) => Boolean(n?.checkVisibility?.({ visibilityProperty: true }));
+const tucked = () => document.getElementById(document.querySelector('.hearth-three-spaces') ? 'palette-btn' : 'add-btn'); // (as declutter.js' check)
+const shown = { during: null, outlined: null, after: null };
+const altHold = () => restyled(async () => {
+  await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18, modifiers: 1 }); await wait(500);
+  if (shown.during == null) { const a = tucked(); shown.during = vis(a); shown.outlined = a ? getComputedStyle(a).outlineStyle : null; }
+  await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Alt', code: 'AltLeft', windowsVirtualKeyCode: 18 });
+});
+{
+  const r = await altHold(); out.actions.alt = r; await wait(100);
+  shown.after = vis(tucked()); out.actions.alt.shown = shown;
+  if (!shown.during || shown.outlined !== 'dashed') bad(`Alt held: the rail's tucked button did not show with its dashed outline (${JSON.stringify(shown)})`);
+  if (shown.after) bad('Alt let go: the rail\'s tucked button still shows');
+  if (r.biggest > B.altEls || r.elements > B.altAll) bad(`Alt held: its biggest pass restyled ${r.biggest} elements (≤ ${B.altEls}), ${r.elements} in all (≤ ${B.altAll})`);
   const undo = oldRule(':root[data-motion=off].reveal-alt * { animation: none !important; }');
   const o = await altHold(); undo(); out.old.alt = { elements: o.elements, biggest: o.biggest, styleMs: o.styleMs };
   if (r.biggest > B.alt * o.biggest) bad(`Alt held: its biggest pass restyled ${r.biggest} elements, the old way ${o.biggest} (≤ ${Math.round(B.alt * 100)} %)`);
+  const keep = (x) => (x.keep ? `:not(${x.keep})` : '');
+  const split = (s) => { const o = []; let d = 0; let c = ''; for (const ch of s) { if (ch === '(') d += 1; if (ch === ')') d -= 1; if (ch === ',' && !d) { o.push(c.trim()); c = ''; } else c += ch; } if (c.trim()) o.push(c.trim()); return o; };
+  const css172 = Declutter.REVEAL.filter((x) => !Declutter.pinned(x.id)).flatMap((x) => split(x.sel).map((s) => (x.mode === 'alt'
+    ? `.reveal-alt ${s}${keep(x)} { outline-offset: 1px; }`
+    : `:root:not(.reveal-alt) ${x.host}:not(:hover) ${s}${keep(x)} { outline-offset: 0; }`))).join('\n');
+  const undo172 = oldRule(css172);
+  const o2 = await altHold(); undo172(); out.old.alt172 = { elements: o2.elements, biggest: o2.biggest, styleMs: o2.styleMs };
 }
 
 // ---------- Forgeheart: the window resized ----------
