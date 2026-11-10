@@ -154,7 +154,7 @@ const A11y = (() => {
   // coming back opens them again, so the panel looks the same. Only the sections' `open`: no Lab code is called.
   const keptSecs = new Set();
   function labShown() {
-    const lab = window.H?.surfaces?.get?.('tool:three')?.el;
+    const lab = typeof H !== 'undefined' ? H.surfaces?.get?.('tool:three')?.el : null;
     if (!lab) return;
     const shown = lab.classList.contains('active') && lab.checkVisibility?.() !== false;
     if (!shown) { for (const d of lab.querySelectorAll('details.lk-sec[open]')) { keptSecs.add(d); d.open = false; } return; }
