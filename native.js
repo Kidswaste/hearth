@@ -251,9 +251,13 @@ const Native = (() => {
     // chat), and each change judged every chat list again in the switch's first frame (a forced style pass of the whole
     // newly shown page, ≈ 45 ms here, chatswitch's "the chat's own scripts" on the Lab switch)
     const sheety = (n) => n.nodeType === 1 && (n.tagName === 'STYLE' || n.tagName === 'LINK' || n.querySelector?.('style, link'));
-    const counts = (r) => r.type === 'attributes' || r.target.nodeName === 'STYLE' || r.target.parentNode?.nodeName === 'STYLE' || [...r.addedNodes, ...r.removedNodes].some(sheety);
+    // (round 172, restyle172) on <html>, classes that only show / move controls (Alt's and Ctrl's reveal, a menu over
+    // media, offline) say nothing about the ground either: Alt held judged every list again, now and 1 s later
+    const QUIET = /^(reveal-alt|reveal-alt-armed|reveal-latched|reveal-ctrl|p8-over-media|net-offline)$/;
+    const quietClass = (r) => { if (r.attributeName !== 'class') return false; const a = new Set(String(r.oldValue || '').split(/\s+/).filter(Boolean)); const b = new Set(r.target.classList); for (const t of a) if (!b.has(t) && !QUIET.test(t)) return false; for (const t of b) if (!a.has(t) && !QUIET.test(t)) return false; return true; };
+    const counts = (r) => (r.type === 'attributes' && !quietClass(r)) || r.target.nodeName === 'STYLE' || r.target.parentNode?.nodeName === 'STYLE' || [...r.addedNodes, ...r.removedNodes].some(sheety);
     const mo = new MutationObserver((rs) => { if (rs.some(counts)) again(); });
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'] }); // (style: a look's colours are variables on the root)
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'], attributeOldValue: true }); // (style: a look's colours are variables on the root)
     if (document.head) mo.observe(document.head, { childList: true, subtree: true });
     document.addEventListener('load', (e) => { if (e.target?.tagName === 'LINK') again(); }, true);
   }

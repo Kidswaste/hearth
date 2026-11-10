@@ -532,7 +532,8 @@
 :root[data-motion=off] *, :root[data-motion=off] *::before, :root[data-motion=off] *::after { animation: none !important; transition: none !important; }
 :root[data-motion=off] :is(.tool-head, .native-head)::after { opacity: 0; }
 /* the window is hidden: every loop rests */
-:root[data-away] *, :root[data-away] *::before, :root[data-away] *::after { animation-play-state: paused !important; }
+/* (round 172) and another app in front (idlecpu.js): look.js' rest() marks what animates, not `:root[data-away] *` */
+[data-anim-rest], [data-anim-rest]::before, [data-anim-rest]::after { animation-play-state: paused !important; }
 
 /* ---------- reduced motion (the OS setting) ---------- */
 @media (prefers-reduced-motion: reduce) {

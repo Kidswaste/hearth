@@ -9,7 +9,8 @@
 /* (gpuload84, idlecpu.js) another app in front for 5 s with no input here: every endless animation pauses where it is
    (spinners, shimmers and pulses included: what they show stays), so the GPU stops drawing the window on every frame of
    the screen. The first input in the window, or Hearth in front again, plays them on. */
-:root[data-blurhush] *, :root[data-blurhush] *::before, :root[data-blurhush] *::after { animation-play-state: paused !important; }
+/* (round 172, restyle172) through look.js' rest(): the elements that animate are marked ([data-anim-rest], look.css);
+   a `:root[data-blurhush] *` rule restyled the whole page each time it came and went */
 
 /* (round 151, perf151) the Lab look's ambient loops (round 148's instrument headers: the live dot, the sweep, the glint
    along the panels, the playhead's breathing halo) pause with the rest of the look when nobody has used the window for

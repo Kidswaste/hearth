@@ -742,7 +742,7 @@ html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdr
 
 /* Alt held (or tapped twice): the tucked buttons come back in place, outlined (declutter.js writes the rules) */
 @keyframes dc-reveal { from { opacity: 0; transform: translateY(3px) scale(.9); } }
-:root[data-motion=off].reveal-alt * { animation: none !important; }
+/* (round 172) with motion off, look.css' `:root[data-motion=off] *` already stops dc-reveal (a `.reveal-alt *` rule here restyled the whole page on every Alt hold) */
 :root.reveal-latched #keys-btn { opacity: 1; color: var(--ui-gold, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-gold, var(--accent)) 50%, transparent); }
 
 /* Ctrl held: a key badge under every button that has one (placed once, on a layer of its own) */

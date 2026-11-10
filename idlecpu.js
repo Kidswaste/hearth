@@ -33,13 +33,15 @@ const IdleCpu = (() => {
   // move again on the first input here, or the moment Hearth is the window in front again. Never while recording.
   const BLUR_MS = (() => { try { return Number(localStorage.getItem('idlecpu.blurMs')) || 5000; } catch { return 5000; } })();
   let focused = document.hasFocus(); let blurT = 0; let blurHushed = false;
-  const blurWake = () => { clearTimeout(blurT); blurT = 0; if (blurHushed) { blurHushed = false; root.removeAttribute('data-blurhush'); } };
+  // (round 172, restyle172) the pause itself: look.js marks the elements that animate (no page-wide `*` rule)
+  const rest = (on) => { if (typeof Look !== 'undefined') Look.rest?.('blur', on); };
+  const blurWake = () => { clearTimeout(blurT); blurT = 0; if (blurHushed) { blurHushed = false; root.removeAttribute('data-blurhush'); rest(false); } };
   const blurArm = (ms = BLUR_MS) => {
     clearTimeout(blurT);
     blurT = focused || blurHushed ? 0 : setTimeout(() => {
       blurT = 0; if (focused || recording) return;
       const quiet = performance.now() - last; if (quiet < BLUR_MS - 50) { blurArm(BLUR_MS - quiet); return; }
-      blurHushed = true; st.blurHushes += 1; root.setAttribute('data-blurhush', '');
+      blurHushed = true; st.blurHushes += 1; root.setAttribute('data-blurhush', ''); rest(true);
     }, Math.max(200, ms));
   };
   const setFocused = (on) => { on = Boolean(on); if (on === focused) return; focused = on; if (on) blurWake(); else blurArm(); };
