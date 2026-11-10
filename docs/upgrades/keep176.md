@@ -88,7 +88,14 @@ parked list goes, ≥ 40 % fewer nodes, the window's memory lower) · kept (the 
 scroll place, its draft; a released chat: its draft, whole at its end) · switch (released ≤ 125 % + 60 ms of afresh) ·
 grow (≤ 2× its nodes at open).
 
-RESULTS
+Final run (`--exact keep176 switch170 chat165 mem154 chatcore chat-stream chatkeep fastboot playfix unit:boot-test
+unit:lazymanifest-test chatswitch memory48 idlecpu bigscreen`): **15 / 15 passed** in 25 min (keep176 124 s, switch170
+339 s, chat165 98 s, mem154 92 s, chatcore 21 s, chat-stream 12 s, chatkeep 96 s, fastboot 15 s, playfix 62 s,
+boot-test 1 s, lazymanifest-test 32 s, chatswitch 52 s, memory48 212 s, idlecpu 300 s, bigscreen 71 s); no
+`/tmp/hearth-*` folder left (bigscreen's included). `node dev/whatsnew-test.js`: 49 passed. `node dev/lazy-manifest.js
+--check`: clean; `node dev/trim-weights.js`: sizes unchanged; boot budget: 48 scripts / 1,065 KB of code, 20 sheets /
+364 KB (budget 50 / 1,072 / 20 / 375). origin/main and origin/claude/intelligent-galileo-yaiqem had nothing new to merge
+(both at b6438059, round 175's merge).
 
 ## For the Lab's owner
 
