@@ -82,7 +82,9 @@ async function layers() {
   }
   return null;
 }
-const animLayers = (ls) => (ls || []).filter((l) => /Active(Transform|Opacity|Filter)Animation/.test(l.why) || /section\.surface|^dialog/.test(l.who)).map((l) => `${l.who} ${l.w}x${l.h} ${l.why}`);
+// (round 169, settings169) a plain will-change layer is kept on purpose (Settings' dialog in the plain looks, the board's
+// surface: docs/upgrades/settings169.md); only a layer for an animation, or one kept for no stated reason, counts
+const animLayers = (ls) => (ls || []).filter((l) => /Active(Transform|Opacity|Filter)Animation/.test(l.why) || (/section\.surface|^dialog/.test(l.who) && !/^WillChange(Opacity|Transform)$/.test(l.why))).map((l) => `${l.who} ${l.w}x${l.h} ${l.why}`);
 out.layers = {};
 await replaySurface(); await until(still, 3000);
 out.layers.chat = { still: still(), kept: animLayers(await layers()) };
