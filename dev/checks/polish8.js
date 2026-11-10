@@ -8,6 +8,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { try { if (await fn()) return true; } catch { /* not yet */ } await wait(120); } return false; };
 const vis = (n) => Boolean(n?.checkVisibility?.({ visibilityProperty: true }) && n.getBoundingClientRect().width > 0);
 const out = { menus: {}, fail: [] };
+const rowsOf = {};
 const ok = (c, what) => { if (!c) out.fail.push(what); return c; };
 const rows = () => [...document.querySelectorAll('#menu:not([hidden]) > button')].filter(vis);
 const label = (b) => (b.firstChild?.nodeValue || b.textContent).trim();
@@ -17,6 +18,7 @@ function shape(name) {
   const r = rows();
   const labels = r.map(label);
   out.menus[name] = labels.join(' | ').slice(0, 300);
+  rowsOf[name] = labels; // (round 168, forge168) the whole menu: order checks read it, not the report's first 300 characters
   ok(labels.at(-1) === 'Customise this…', `${name}: ends with Customise this… (${labels.at(-1)})`);
   const more = labels.indexOf('More…');
   if (more >= 0) ok(more >= labels.length - 3, `${name}: More… sits at the end`);
@@ -38,7 +40,9 @@ const it = Board.items().find((i) => i.type === 'image');
 Board.select([it.id]); await wait(200);
 const n = document.querySelector(`.bd-item[data-id="${it.id}"]`); const r = n.getBoundingClientRect();
 await rclick(n, r.left + 20, r.top + 20); shape('board item');
-ok(out.menus['board item'].indexOf('Look') < out.menus['board item'].indexOf('Send vibe'), 'board item: look before send');
+// (round 168) read from the whole menu: round 141's ◎ Match row pushed "Send vibe" past the 300 characters kept in
+// out.menus, where indexOf gave -1 and this failed with Look still before Send vibe
+{ const m = rowsOf['board item'] || []; const look = m.indexOf('Look'); const send = m.findIndex((l) => /^Send vibe/.test(l)); ok(look >= 0 && send >= 0 && look < send, `board item: look before send (Look ${look}, Send vibe ${send})`); }
 const vp = document.querySelector('.bd-vp').getBoundingClientRect();
 Board.select([]); await rclick(document.querySelector('.bd-vp'), vp.left + 30, vp.bottom - 40); shape('board canvas');
 const chip = document.querySelector('.bd-boardbtn'); const cr = chip.getBoundingClientRect();

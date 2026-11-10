@@ -12,7 +12,7 @@
 //            changed by itself between two pictures this way left out)
 //   frame    one frame's GPU-process CPU (a 3 px dot changed 10 times), this way and the old way in turn, 3 times: the
 //            chat ≤ 85 % of the old way, Settings open ≤ 95 %
-//   scroll   30 wheel turns up the chat, this way and the old way in turn, twice: the GPU process' CPU and the window's
+//   scroll   30 wheel turns up the chat, this way and the old way in turn, 3 times: the GPU process' CPU and the window's
 //            paint / raster ms reported; only a regression (> 110 % of the old way's GPU CPU) fails
 //   plain    back in the plain look no lights are drawn
 // window.F168_REPORT = 1: report without failing.
@@ -61,7 +61,8 @@ async function layers() {
   for (let k = 0; k < 3; k++) {
     setTimeout(() => { dot.style.background = '#131313'; }, 250); setTimeout(() => { dot.style.background = '#111'; }, 900);
     const r = await smoke({ layers: true, detail: true }).catch(() => null);
-    if (r && !r.timedOut && r.list) return r.list;
+    if (r && !r.timedOut && r.list?.some((l) => /div\.messages/.test(l.who))) return r.list; // (a partial snapshot: once more)
+    await wait(400);
   }
   return null;
 }
@@ -99,12 +100,12 @@ dot.style.display = 'none';
 out.pixels.chat = await abA();
 await openSettings(); out.pixels.settings = await abA(); await closeDialogs();
 { // the composer grown: the wrap is shorter, the lights placed again
-  const ta = Native.view(claude.id).input; const h0 = wrap.getBoundingClientRect().height;
-  ta.value = 'one\ntwo\nthree\nfour\nfive\nsix'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.blur(); await wait(600);
+  const h0 = wrap.getBoundingClientRect().height;
+  const grow = document.createElement('div'); grow.style.cssText = 'flex: 0 0 140px'; wrap.after(grow); await wait(600); // (as a composer grown by 6 lines)
   const h1 = wrap.getBoundingClientRect().height;
   out.pixels.grown = { ...(await abA()), wrapHeight: `${Math.round(h0)} → ${Math.round(h1)}` };
   if (Math.abs(h1 - h0) < 4) out.cantTell.push(`pixels grown: the composer did not grow (${Math.round(h0)} → ${Math.round(h1)})`);
-  ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.blur(); await wait(600);
+  grow.remove(); await wait(600);
 }
 dot.style.display = '';
 for (const [k, v] of Object.entries(out.pixels)) {
@@ -135,8 +136,9 @@ const r = L.getBoundingClientRect();
 const wheel = (dy) => smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseWheel', x: r.left + r.width / 2, y: r.top + r.height / 2, deltaX: 0, deltaY: dy } });
 const wheelUp = async () => { const s0 = L.scrollTop; for (let i = 0; i < 30; i++) { await wheel(-400); await wait(90); } await wait(800); return Math.round(s0 - L.scrollTop); };
 out.scroll = { now: [], old: [] };
-for (let k = 0; k < 2; k++) {
-  for (const way of ['now', 'old']) {
+await toEnd(); await wheelUp(); // (once to warm up: the older turns drawn the first time)
+for (let k = 0; k < 3; k++) {
+  for (const way of k % 2 ? ['old', 'now'] : ['now', 'old']) {
     oldWay(way === 'old'); await toEnd(); await wait(500);
     const a = await gpuWin(); const moved = await wheelUp(); const b = await gpuWin();
     out.scroll[way].push({ gpuMs: Math.round((b.gpu - a.gpu) * 1000), windowMs: Math.round((b.win - a.win) * 1000), px: moved });
