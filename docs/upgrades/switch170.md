@@ -113,7 +113,18 @@ Lite; pixels as above (≤ 3 levels; Forgeheart mid-entrance ≤ 6); a still fra
 forge168's layer step took a tree with only the list's new will-change layer for a whole one (its "partial snapshot"
 retry looked for any `div.messages` layer); it now waits for the list's scroller.
 
-RUNS
+Final run (`--exact switch170 a11y paint167 settings169 chat165 mem154 qa-keys chatcore fastboot playfix unit:boot-test
+unit:lazymanifest-test forge168 projects makes`): **14 / 15 passed**; chat165 failed its "2000 turns scroll (Forgeheart):
+a task over 50 ms" step (70.7 ms). That task is one style pass over 2,239 elements while older turns wake
+(chat-rest.js), there with or without this round's kept layer (a traced run without it: the same pass, 48 ms; round
+169: 51 ms, under the line); with the layer it measured 56–77 ms across 8 runs (3 standalone runs passed, 3 failed or
+"can't tell" inside full suites), without it 50–55. Worth a look next round (that wake's style pass is near the line
+either way). In the run before: settings169's board frame failed once at 1.25 × (188 → 234 ms, a frame usually ≈ 80:
+a loaded box) and passed on its rerun; chatswitch ("the Lab ↔ a chat: the chat's own scripts", 52 ms vs budget 4) and
+projmenu128 (a "labwin" row with no expectation) fail the same way on round 169 (a5099db8, run from a copy);
+motionpolish fails on the Lab's own stylesheets as in rounds 167–169. `node dev/whatsnew-test.js`: 49 passed.
+`node dev/lazy-manifest.js --check`: clean; `node dev/trim-weights.js` rerun. origin/main and
+origin/claude/intelligent-galileo-yaiqem had nothing new to merge (both at a5099db8).
 
 ## For Codex
 
