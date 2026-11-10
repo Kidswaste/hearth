@@ -442,7 +442,7 @@ async function cdpConnect(dir) {
             let who = l.backendNodeId ? '?' : '(no node)';
             if (l.backendNodeId) { const d = (await send('DOM.describeNode', { backendNodeId: l.backendNodeId })).result?.node; if (d) { const a = d.attributes || []; const ci = a.indexOf('class'); who = `${d.nodeName.toLowerCase()}${d.pseudoType ? `::${d.pseudoType}` : ''}${ci >= 0 ? `.${String(a[ci + 1]).trim().split(/\s+/).slice(0, 3).join('.')}` : ''}`; } }
             const why = (await send('LayerTree.compositingReasons', { layerId: l.layerId })).result?.compositingReasonIds || [];
-            list.push({ who, w: Math.round(l.width), h: Math.round(l.height), draws: Boolean(l.drawsContent), why: why.slice(0, 3).join(',') });
+            list.push({ who, w: Math.round(l.width), h: Math.round(l.height), draws: Boolean(l.drawsContent), why: why.slice(0, 3).join(','), ...(req.detail === 'xy' ? { x: Math.round(l.offsetX || 0), y: Math.round(l.offsetY || 0), why: why.join(',') } : {}) });
           }
           list.sort((a, b) => b.w * b.h - a.w * a.h);
         }
