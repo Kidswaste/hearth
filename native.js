@@ -247,7 +247,12 @@ const Native = (() => {
   }
   {
     const again = () => { backAll(); clearTimeout(again.t); again.t = setTimeout(backAll, 1000); }; // (and once the look has settled)
-    const mo = new MutationObserver(again);
+    // (round 171, wake171) in <head> only style sheets count: the window's <title> changes on every switch (the Lab ↔ a
+    // chat), and each change judged every chat list again in the switch's first frame (a forced style pass of the whole
+    // newly shown page, ≈ 45 ms here, chatswitch's "the chat's own scripts" on the Lab switch)
+    const sheety = (n) => n.nodeType === 1 && (n.tagName === 'STYLE' || n.tagName === 'LINK' || n.querySelector?.('style, link'));
+    const counts = (r) => r.type === 'attributes' || r.target.nodeName === 'STYLE' || r.target.parentNode?.nodeName === 'STYLE' || [...r.addedNodes, ...r.removedNodes].some(sheety);
+    const mo = new MutationObserver((rs) => { if (rs.some(counts)) again(); });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-density', 'data-lablook'] }); // (style: a look's colours are variables on the root)
     if (document.head) mo.observe(document.head, { childList: true, subtree: true });
     document.addEventListener('load', (e) => { if (e.target?.tagName === 'LINK') again(); }, true);
