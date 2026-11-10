@@ -77,7 +77,7 @@ const Native = (() => {
   // (±1 level) and the tints are drawn by its wrap over it, fixed to the window as before (.messages-wrap.tint-back
   // ::before, chatcore.css): the list is an opaque box the compositor scrolls by itself, with subpixel text kept. The
   // tints now lie over the messages instead of under them: at most a few levels on light text (checked: ≤ 8).
-  // → { color, tint } or null (list.backWhy says why)
+  // → { color, tint, tints } or null (list.backWhy says why)
   const COLORS = /rgba?\([^)]*\)|color\(srgb [^)]*\)|transparent/g;
   const rgbOf = (x) => {
     let m = /^rgba?\((\d+(?:\.\d+)?), (\d+(?:\.\d+)?), (\d+(?:\.\d+)?)(?:, ([\d.]+))?\)$/.exec(x);
@@ -117,8 +117,69 @@ const Native = (() => {
     }
     const f = Math.min(1, Math.max(0, (lr.top + lr.height / 2 - r.top) / (r.height || 1)));
     const mix = (k) => Math.round(base.top[k] + (base.bottom[k] - base.top[k]) * f);
-    return { color: `rgb(${mix('r')}, ${mix('g')}, ${mix('b')})`, tint: tints.join(', ') };
+    return { color: `rgb(${mix('r')}, ${mix('g')}, ${mix('b')})`, tint: tints.join(', '), tints };
   }
+  // (round 168, forge168) the lights drawn only where they shine. Over the compositor-scrolled list the wrap's lights are
+  // a GPU layer of their own, drawn again in every frame (on software GL ≈ 25 % of a Forgeheart frame, though nearly all
+  // of it was transparent): Forgeheart's warm light from above reaches ~190 px down the window, its violet ember only the
+  // bottom-right corner. Each radial light now gets a box just around where it isn't transparent (the wrap's ::before and
+  // ::after, still fixed to the window, so the same pixels): two small layers instead of one the size of the chat. A light
+  // of another shape (a linear grid, a repeating gradient) keeps the whole wrap. Placed again when the wrap or the window
+  // changes size (tintObs, below): the box is anchored to the wrap's edges it reaches, so a side panel or the composer
+  // growing changes nothing.
+  // A radial light's box in the window → [left, top, right, bottom], or null: it may shine anywhere
+  const LEN = /^(-?[\d.]+)(%|px)$/;
+  function tintBox(t) {
+    if (!/^radial-gradient\(/.test(t)) return null;
+    const a = args(t);
+    const m = /^(?:ellipse )?(\S+) (\S+) at (\S+) (\S+)$/.exec(a[0]);
+    if (!m) return null;
+    const len = (v, full) => { const q = LEN.exec(v); return !q ? NaN : q[2] === '%' ? (+q[1] / 100) * full : +q[1]; };
+    const rx = len(m[1], innerWidth); const ry = len(m[2], innerHeight); const cx = len(m[3], innerWidth); const cy = len(m[4], innerHeight);
+    if (![rx, ry, cx, cy].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
+    const stops = a.slice(1).map((x) => { const q = /^(.*?)(?: (-?[\d.]+)%)?$/.exec(x); return { c: rgbOf(q[1]), at: q[2] == null ? null : +q[2] / 100 }; });
+    if (stops.length < 2 || stops.some((x) => !x.c)) return null;
+    let k = stops.length; while (k > 0 && stops[k - 1].c.a === 0) k -= 1; // (from stop k on, all transparent)
+    if (k === stops.length || k === 0) return null;
+    let end = stops[k].at ?? (k === stops.length - 1 ? 1 : null);
+    if (end == null) return null;
+    for (let i = 0; i < k; i++) if (stops[i].at != null) end = Math.max(end, stops[i].at); // (a stop never goes back)
+    if (end <= 0) return null;
+    const pad = 2; // (antialiasing room)
+    return [cx - rx * end - pad, cy - ry * end - pad, cx + rx * end + pad, cy + ry * end + pad];
+  }
+  // a box placed in the wrap: { at (inset), w, h }, anchored to each wrap edge it reaches; null when it misses the wrap
+  function tintPlace(box, wr) {
+    if (!box) return { at: '0px', w: 'auto', h: 'auto' };
+    if (Math.min(box[2], wr.right) - Math.max(box[0], wr.left) < 1 || Math.min(box[3], wr.bottom) - Math.max(box[1], wr.top) < 1) return null;
+    const axis = (lo, hi, wlo, whi) => { const a = lo <= wlo; const z = hi >= whi; return a && z ? ['0px', '0px', 'auto'] : a ? ['0px', 'auto', `${Math.ceil(hi - wlo)}px`] : z ? ['auto', '0px', `${Math.ceil(whi - lo)}px`] : [`${Math.floor(lo - wlo)}px`, 'auto', `${Math.ceil(hi - lo) + 1}px`]; };
+    const [T, B, H] = axis(box[1], box[3], wr.top, wr.bottom); const [L, R, W] = axis(box[0], box[2], wr.left, wr.right);
+    return { at: `${T} ${R} ${B} ${L}`, w: W, h: H };
+  }
+  // the wrap's lights placed: at most two layers (::before under ::after); more lights than that share one box around all
+  const TINT_VARS = [['--solid-tint', '--tint-at', '--tint-w', '--tint-h'], ['--solid-tint2', '--tint-at2', '--tint-w2', '--tint-h2']];
+  function placeTints(wrap) {
+    const tints = wrap.tintList || [];
+    let groups = [];
+    if (tints.length) {
+      const wr = wrap.getBoundingClientRect();
+      if (!wr.width || !wr.height) return; // (hidden: placed when shown)
+      const boxes = tints.map(tintBox);
+      if (tints.length <= 2) groups = tints.map((t, i) => ({ img: t, p: tintPlace(boxes[i], wr) })).filter((g) => g.p).reverse(); // (the first light is drawn on top)
+      else {
+        const u = boxes.some((b) => !b) ? null : boxes.reduce((x, b) => [Math.min(x[0], b[0]), Math.min(x[1], b[1]), Math.max(x[2], b[2]), Math.max(x[3], b[3])]);
+        const p = tintPlace(u, wr); if (p) groups = [{ img: tints.join(', '), p }];
+      }
+    }
+    const key = JSON.stringify(groups);
+    if (wrap.tintKey === key) return;
+    wrap.tintKey = key;
+    TINT_VARS.forEach((vs, i) => { const g = groups[i]; const vals = g ? [g.img, g.p.at, g.p.w, g.p.h] : null; vs.forEach((v, j) => { if (vals) wrap.style.setProperty(v, vals[j]); else wrap.style.removeProperty(v); }); });
+    wrap.classList.toggle('tint-two', groups.length > 1);
+    wrap.classList.toggle('tint-back', groups.length > 0);
+  }
+  const tintObs = typeof ResizeObserver === 'function' ? new ResizeObserver((es) => { for (const e of es) if (e.target.tintList?.length) placeTints(e.target); }) : null;
+  addEventListener('resize', () => { for (const v of views.values()) if (v.wrap?.tintList?.length) placeTints(v.wrap); });
   function backdropOf(list) {
     const cs = getComputedStyle(list);
     const mine = list.classList.contains('solid-back');
@@ -160,9 +221,10 @@ const Native = (() => {
     // (round 166, audit166) a gradient ground's lights, drawn by the wrap over the list (nothing written when the same)
     const wrap = list.parentElement?.classList.contains('messages-wrap') ? list.parentElement : null;
     if (wrap && !list.classList.contains('parked')) {
-      const tint = got?.tint || '';
-      if (wrap.style.getPropertyValue('--solid-tint') !== tint) { if (tint) wrap.style.setProperty('--solid-tint', tint); else wrap.style.removeProperty('--solid-tint'); }
-      if (wrap.classList.contains('tint-back') !== Boolean(tint)) wrap.classList.toggle('tint-back', Boolean(tint));
+      const tints = got?.tints || [];
+      if ((wrap.tintList || []).join('|') !== tints.join('|')) wrap.tintList = tints;
+      if (tints.length && tintObs && !wrap.tintSeen) { wrap.tintSeen = true; tintObs.observe(wrap); }
+      placeTints(wrap); // (round 168, forge168: each light in its own small box; nothing written when the same)
     }
     if (c && list.style.getPropertyValue('--solid-back') !== c) list.style.setProperty('--solid-back', c);
     else if (!c && list.style.getPropertyValue('--solid-back')) list.style.removeProperty('--solid-back');

@@ -111,8 +111,12 @@
    box the compositor scrolls, same pixels. Zero specificity: any look that paints the list itself wins */
 :where(.messages.solid-back) { background-color: var(--solid-back); }
 /* (round 166, audit166) over a ground of gradients (the Forgeheart looks) the list takes the ground's plain base and the
-   wrap draws the ground's see-through lights over it, fixed to the window as the ground is */
-.messages-wrap.tint-back::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none; background-image: var(--solid-tint); background-attachment: fixed; }
+   wrap draws the ground's see-through lights over it, fixed to the window as the ground is
+   (round 168, forge168) each light only where it shines: native.js placeTints gives the ::before (and the ::after when
+   there are two lights) a box just around its light, still fixed to the window: two small GPU layers, not one the size
+   of the chat drawn again in every frame */
+.messages-wrap.tint-back::before { content: ''; position: absolute; inset: var(--tint-at, 0); width: var(--tint-w, auto); height: var(--tint-h, auto); z-index: 1; pointer-events: none; background-image: var(--solid-tint); background-attachment: fixed; }
+.messages-wrap.tint-back.tint-two::after { content: ''; position: absolute; inset: var(--tint-at2, 0); width: var(--tint-w2, auto); height: var(--tint-h2, auto); z-index: 1; pointer-events: none; background-image: var(--solid-tint2); background-attachment: fixed; }
 .toast .toast-n { font-weight: 650; opacity: .75; margin-left: 2px; font-variant-numeric: tabular-nums; }
 
 /* (round 19, reach) pages / files a reply made: ▶ Open · Preview · Reveal; clickable paths in replies */
