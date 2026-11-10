@@ -334,6 +334,18 @@
 :root[data-look~=v2] :is(.dash-card, .calc-card, .preset-card, .gallery-item, .kit-format):hover { --hud: var(--fh-gold); }
 :root[data-look~=v2] .settings-section { padding: 10px 12px; border: 1px solid var(--line); }
 :root[data-look~=v2] .settings-section h3 { color: var(--fh-gold); }
+/* (round 169, settings169) in Settings the plate's own colour is 99.6 % opaque (no visible change): fully opaque, each plate
+   was a GPU layer of its own (kept for crisp LCD text on it) and the dialog's cut corners (clip-path) then needed a mask
+   layer over them, drawn again in every frame. Now the dialog draws as one picture, its corners cut in paint */
+:root[data-look~=v2] dialog .settings-section {
+  background:
+    linear-gradient(var(--hud), var(--hud)) top left / 12px 1px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) top left / 1px 12px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 12px 1px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 1px 12px no-repeat,
+    var(--tx-brushed),
+    linear-gradient(180deg, color-mix(in srgb, color-mix(in srgb, var(--fh-strong) 3%, var(--fh-iron-1)) 99.6%, transparent), color-mix(in srgb, var(--fh-iron-2) 99.6%, transparent));
+}
 :root[data-look~=v2] .bar { background: var(--fh-ink); box-shadow: inset 0 1px 2px var(--fh-shade); }
 :root[data-look~=v2] .bar span { background: var(--m-molten); box-shadow: 0 0 calc(8px * var(--glow)) var(--g-ember); }
 :root[data-look~=v2] .kanban-card { background: linear-gradient(180deg, var(--fh-iron-1), var(--fh-iron-2)); box-shadow: var(--m-bevel); }

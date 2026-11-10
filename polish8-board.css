@@ -8,6 +8,11 @@
 .bd-empty { gap: 10px; }
 .bd-empty .p8-ico { width: 44px; height: 44px; color: var(--fh-gold, var(--accent)); opacity: .55; filter: drop-shadow(0 0 calc(14px * var(--glow, 1)) var(--g-gold, transparent)); }
 :root:not([data-motion=off]) .bd-ctrl .bd-quick:not(:empty) { animation: hx-pop .14s var(--ease-out, ease-out) backwards; }
+/* (round 169, settings169) the board's surface keeps a GPU layer of its own, not animated (docs/upgrades/settings169.md). Since
+   round 167 its entrance (polish.css hx-scene) fills backwards, so its layer went when the entrance ended, and the board's
+   own layers under it (its picture layer, the overlay, the HUD) were drawn afresh in that frame: +17 % graphics-process
+   CPU to open the board. A plain layer (not an animated one, as round 166's fill kept) costs ≈ 3 % a frame on the board */
+:root:not([data-motion=off]) .surface.active[data-id="tool:board"] { will-change: opacity; }
 .bd-search:focus-within { border-color: color-mix(in srgb, var(--fh-gold, var(--accent)) 65%, var(--line)); }
 .bd-root:not(.bd-hand) .bd-item:not(.bd-locked):not(.bd-t-link):hover { cursor: grab; }
 .bd-root .bd-item [contenteditable="true"] { cursor: text; }
