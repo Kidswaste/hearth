@@ -619,6 +619,14 @@ svg.hi { width: 1em; height: 1em; display: block; flex: none; overflow: visible;
 :root:not([data-motion=off]) .surface.active { animation: hx-scene var(--dur-slow) var(--ease-out) backwards; } /* (round 167: backwards, above) */
 /* switching chats: the conversation slides up into place */
 :root:not([data-motion=off]) .chat-enter { animation: hx-chat var(--dur-slow) var(--ease-out) both; }
+/* (round 170, switch170) over a solid colour the fade is a cover of that colour clearing over the list (native.js
+   enterAnim): the list only slides, the cover does the fade. Same pixels; no offscreen pass for the whole list every
+   frame of the entrance. The cover is clear by itself (opacity 0), so where animations are off it never shows. */
+@keyframes hx-chat-move { from { transform: translateY(10px); } }
+@keyframes hx-chat-cover { from { opacity: 1; } }
+:root:not([data-motion=off]) .chat-enter.chat-covered { animation-name: hx-chat-move; }
+.chat-cover { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
+:root:not([data-motion=off]) .chat-cover { animation: hx-chat-cover var(--dur-slow) var(--ease-out) backwards; }
 /* the Lab preview: a cover that fades away once the new scene has drawn (see three.js scene-cover) */
 .scene-cover { position: absolute; inset: 0; z-index: 4; pointer-events: none; background: var(--bg, #0b0d10); }
 .scene-cover.out { animation: hx-reveal .35s ease both; }
@@ -838,6 +846,7 @@ html.p8-over-media #menu-fly2 { backdrop-filter: none !important; -webkit-backdr
   @keyframes hx-dialog { from { opacity: 0; } }
   @keyframes hx-scene { from { opacity: 0; } }
   @keyframes hx-chat { from { opacity: 0; } }
+  @keyframes hx-chat-move { from { transform: none; } }
   @keyframes dc-in { from { opacity: 0; } }
   @keyframes dc-back { from { opacity: 0; } }
   @keyframes dc-fly { from { opacity: 0; } }

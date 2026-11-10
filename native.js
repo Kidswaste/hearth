@@ -193,6 +193,7 @@ const Native = (() => {
       if (s.filter !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none') || s.mixBlendMode !== 'normal' || /inset/.test(s.boxShadow)) return no(list, 'a filter, blend or inset shadow', e);
       if (under(e, '::before') || under(e, '::after')) return no(list, 'a pseudo-element under it', e);
       for (let c = e.firstElementChild; c && c !== child; c = c.nextElementSibling) { // drawn before the list's branch: under it
+        if (c.classList.contains('chat-cover')) continue; // (round 170: an entrance's cover is drawn over its own list, and goes)
         const r = c.getBoundingClientRect();
         if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return no(list, 'something drawn under it', c);
       }
@@ -1279,10 +1280,17 @@ const Native = (() => {
     }
     const old = v.panes.get(v.paneKey);
     if (pane) v.panes.delete(key);
-    else { pane = { list: el('div', { class: 'messages parked' }) }; v.jump.before(pane.list); }
+    else {
+      pane = { list: el('div', { class: 'messages parked' }) }; v.jump.before(pane.list);
+      // (round 170, switch170) a new list sits where the one on screen sits, over the same ground: it starts with that
+      // list's solid colour (judged again at the next frame, backSoon), so it is an opaque, compositor-scrolled box from
+      // its first frame and the entrance can use the cover below
+      const was = v.list; const c = was?.classList.contains('solid-back') && was.style.getPropertyValue('--solid-back');
+      if (c) { pane.list.style.setProperty('--solid-back', c); pane.list.classList.add('solid-back'); }
+    }
     v.panes.set(key, pane);
     if (old) {
-      const l = old.list; l.classList.add('parked'); old.size = 0;
+      const l = old.list; l.chatStop?.(); l.classList.add('parked'); old.size = 0; // (round 170: an entrance still running ends, its cover goes)
       // (its fold watch lets go while it's hidden: one observer per chat window, not one per kept list)
       if (l.foldIO) { l.foldWait = [...l.foldWatch]; l.foldIO.disconnect(); l.foldIO = null; l.foldWatch = null; }
     }
@@ -2983,20 +2991,38 @@ const Native = (() => {
     Panel.highlight();
   }
   // a chat you switch to slides into place (polish.css .chat-enter)
+  // (round 170, switch170) Over a solid colour (the list's --solid-back: the plain looks, Forgeheart's ground base) the
+  // fade is drawn by a cover of that colour going from opaque to clear over the list (.chat-cover), and the list itself only
+  // slides (.chat-covered: transform only). The same pixels (α·list + (1−α)·ground either way), but a list that fades
+  // is a group of layers (its box, its scrolled content, its scrollbar) with an opacity: the compositor drew it into an
+  // offscreen picture and then blended that in, every frame of the entrance; a solid cover is one plain quad
+  // (docs/upgrades/switch170.md: ≈ 15 % of a switch's graphics-process CPU on software GL). Anything else fades as before.
   function enterAnim(agentId) {
-    const list = views.get(agentId)?.list;
+    const v = views.get(agentId);
+    const list = v?.list;
     if (!list) return;
     // restart it without forcing a layout of the chat you're leaving (that was a full layout of a long chat per switch)
     // (round 45, chatswitch) asked only when it is sliding already: asking styled the chat inside the click
     if (list.classList.contains('chat-enter')) {
-      const running = list.getAnimations().find((a) => a.animationName === 'hx-chat');
-      if (running) { running.currentTime = 0; running.play(); }
+      for (const a of [...list.getAnimations(), ...(list.chatCover?.getAnimations() || [])]) if (/^hx-chat/.test(a.animationName)) { a.currentTime = 0; a.play(); }
       return; // (or waiting for its end already: /motion off, none comes)
+    }
+    const c = list.classList.contains('solid-back') && list.parentElement === v.wrap && list.style.getPropertyValue('--solid-back');
+    let cover = null;
+    if (c && document.documentElement.dataset.motion !== 'off' && !document.documentElement.hasAttribute('data-lite')) {
+      cover = el('div', { class: 'chat-cover', attrs: { 'aria-hidden': 'true' } });
+      cover.style.backgroundColor = c;
+      list.after(cover); list.chatCover = cover;
+      list.classList.add('chat-covered');
     }
     list.classList.add('chat-enter');
     // (round 36, motionpolish) its own end only: a message's entrance ending inside it bubbled up and cut the slide short
-    const end = (e) => { if (e.target !== list) return; list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); list.classList.remove('chat-enter'); };
+    let left = cover ? 2 : 1; // (with a cover: both ends, so the list and its cover finish together)
+    const stop = () => { list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); cover?.removeEventListener('animationend', end); cover?.removeEventListener('animationcancel', end); list.classList.remove('chat-enter', 'chat-covered'); cover?.remove(); if (list.chatCover === cover) list.chatCover = null; list.chatStop = null; };
+    const end = (e) => { if (e.target !== list && e.target !== cover) return; if (e.type === 'animationcancel' || --left <= 0) stop(); };
+    list.chatStop = () => { list.chatStop = null; stop(); };
     list.addEventListener('animationend', end); list.addEventListener('animationcancel', end);
+    if (cover) { cover.addEventListener('animationend', end); cover.addEventListener('animationcancel', end); }
   }
 
   // A blank chat (＋) isn't saved until its first message, but it shows in the chats list right away as "New chat"
