@@ -1,8 +1,9 @@
-// (round 174, audit174) the round's two fixes (docs/upgrades/audit174.md), ONE check. Its own temp data folder and
+// (round 174, audit174) the round's fixes (docs/upgrades/audit174.md), ONE check. Its own temp data folder and
 // profile (smoke.js), the fake engines; never an owner's data.
 //   wait     smoke.js' wait for the lazy groups answers again: this part starts well before its 30 s limit (since
-//            round 94 it never saw "ready" and every check part waited the full 30 s after --wait), and a group that
-//            follows an on-use group nothing loads (appdialogs after lookpicker) doesn't hold it
+//            round 94 it never saw "ready" and every check part waited the full 30 s after --wait)
+//   settings Settings' dialogs load in an idle moment after the first screen again (appdialogs and the look picker it
+//            needs: since round 160 appdialogs waited for an on-use lookpicker and loaded only on the first open)
 //   graphics Settings › Advanced › Graphics measures the screen's pace once: the first Settings open asks ~40 frames
 //            for it, a second open asks none and shows the same "· N fps" line (round 173: ~43 frames every open)
 //   node dev/run-checks.js --exact audit174
@@ -15,6 +16,8 @@ out.startedAtMs = Math.round(performance.now());
 ok(out.startedAtMs < 26000, `the check starts once the groups are in, not after smoke's 30 s limit (${out.startedAtMs} ms after the page loaded)`);
 const st = Lazy.state();
 out.appdialogs = st.find((g) => g.name === 'appdialogs')?.state;
+out.lookpicker = st.find((g) => g.name === 'lookpicker')?.state;
+ok(out.appdialogs === 'loaded' && out.lookpicker === 'loaded', `Settings' dialogs and the look picker are in before Settings is first opened (appdialogs ${out.appdialogs}, lookpicker ${out.lookpicker})`);
 ok(st.every((g) => g.tier === 'use' || (g.state !== 'stub' && g.state !== 'loading')), `every group that loads by itself is in (${st.filter((g) => g.tier !== 'use' && g.state !== 'loaded').map((g) => `${g.name}:${g.state}`).join(', ')})`);
 
 // ---------- graphics ----------

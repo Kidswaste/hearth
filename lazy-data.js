@@ -205,7 +205,7 @@ const LazyData = (() => {
     { name: 'trim', tier: 'use', at: 'speed-learn.js', files: ['trim-data.js', 'trim.js'], css: ['trim.css'], globals: ['TrimData', 'Trim'] },
     // (round 160, boot160) the Appearance picker (look.js applies the look before the first frame; the picker is read when
     // it first opens, Settings' dialogs load it first): docs/upgrades/boot160.md
-    { name: 'lookpicker', tier: 'use', at: 'look.js', files: ['look-picker.js'], globals: ['LookPicker'] },
+    { name: 'lookpicker', at: 'look.js', files: ['look-picker.js'], globals: ['LookPicker'] }, // (round 174, audit174) loads after the first screen with Settings' dialogs (appdialogs after it), as round 160 meant: as an on-use group it made appdialogs wait for the look picker, so Settings no longer loaded in an idle moment
     // (round 160, boot160) the keys sheet (keys-ui.js keeps the Alt / Ctrl reveal, the keys button and the registry)
     { name: 'keyssheet', tier: 'use', at: 'keys-ui.js', files: ['keys-sheet.js'], globals: ['KeysSheet'] },
     // (round 160, boot160) Apps' work that only runs when asked (routing a download, the downloads dialog, /apps itself, the agents' app tools)
