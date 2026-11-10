@@ -55,6 +55,10 @@ select option { background: var(--sidebar); }
 .ui-modal textarea { resize: vertical; }
 .settings-dialog { width: min(680px, calc(100vw - 32px)); }
 .settings-dialog form { max-height: calc(100vh - 60px); overflow-y: auto; }
+/* (round 169, settings169) where the dialog is one opaque colour (appui-dialogs.js puts .sd-solid): a layer of its own (the
+   backdrop stays a plain dim), and the form scrolls on the compositor as an opaque box of the same colour. Same pixels */
+.settings-dialog.sd-solid[open] { will-change: opacity; }
+.settings-dialog.sd-solid form { background-color: inherit; }
 .settings-section { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .settings-section h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .shortcut-table td { padding: 3px 10px 3px 0; vertical-align: top; }

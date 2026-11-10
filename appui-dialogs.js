@@ -267,8 +267,24 @@ const AppUIDialogs = (() => {
     if (typeof SettingsFind !== 'undefined') try { SettingsFind.mount(form, section, { query }); } catch (err) { console.warn(err); }
     for (const sec of form.querySelectorAll('.settings-section')) if (!sec.querySelector(':scope > :not(h3):not(.sf-slot)')) (sec.closest('details.sc-fold:not(.sc-adv)') || sec).remove(); // a home no switch came to
     paintStates();
-    dialog.addEventListener('close', () => dialog.remove());
+    // (round 169, settings169) cheaper to draw while open (docs/upgrades/settings169.md): where the dialog is one opaque
+    // colour with no clip-path (the plain looks), it gets a GPU layer of its own (so the backdrop stays a plain dim the
+    // compositor fills, not a full-window picture) and its scrolling form takes the dialog's colour (an opaque scroller:
+    // scrolled by the compositor, not repainted). Same pixels. Looked at again when the look changes while it is open.
+    const calm = () => {
+      if (!dialog.isConnected) return;
+      const cs = getComputedStyle(dialog);
+      const m = /^rgba?\(([^)]*)\)$/.exec(cs.backgroundColor); const alpha = m ? parseFloat(m[1].split(',')[3] ?? '1') : 0;
+      const solid = cs.backgroundImage === 'none' && alpha === 1 && cs.clipPath === 'none';
+      if (dialog.classList.contains('sd-solid') !== solid) dialog.classList.toggle('sd-solid', solid);
+    };
+    let calmRaf = 0; const calmSoon = () => { if (!calmRaf) calmRaf = requestAnimationFrame(() => { calmRaf = 0; calm(); }); };
+    const calmMo = new MutationObserver(calmSoon);
+    calmMo.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-skin', 'data-scheme', 'data-look', 'data-lite', 'data-corners'] });
+    if (document.head) calmMo.observe(document.head, { childList: true, subtree: true });
+    dialog.addEventListener('close', () => { calmMo.disconnect(); cancelAnimationFrame(calmRaf); dialog.remove(); });
     document.body.append(dialog);
+    calm();
     dialog.showModal();
   }
 
