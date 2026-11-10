@@ -10,7 +10,11 @@
 const { app, powerMonitor } = require('electron');
 
 const CALM_MS = Number(process.env.HEARTH_CALM_MS) || 12000;
-const CALM_CSS = '*, *::before, *::after { caret-animation: manual !important; }';
+// (round 171, wake171) only what can hold a text cursor (caret-animation is inherited: an editable's insides follow it).
+// It was every element (*, ::before, ::after): putting the rule in or taking it out restyled the whole page, ~2,200
+// elements, 25–45 ms here, and the taking out falls on the first frame of your first scroll / click / key after 12 s
+// still (chat165's long Forgeheart task); now a few boxes
+const CALM_CSS = 'textarea, input, [contenteditable] { caret-animation: manual !important; }';
 let getWin = () => null;
 const state = { hidden: false, battery: false, asleep: false, saver: false, since: Date.now() }; // (round 39, powerwise: saver = Mac Low Power Mode / Windows battery saver, set by powerwisemain.js)
 const subs = new Set();

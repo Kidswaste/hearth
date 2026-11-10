@@ -302,7 +302,7 @@ const Native = (() => {
 
     // (round 45, chatswitch) each recent chat keeps its own list (panes, see usePane): v.list is the one on screen, and
     // the list's listeners sit on the wrap around them (only what happens in the list on screen counts)
-    const list = el('div', { class: 'messages' });
+    const list = tailWatch(el('div', { class: 'messages' }));
     const wrap = el('div', { class: 'messages-wrap' }, list);
     const inList = (e) => v.list.contains(e.target);
     wrap.addEventListener('click', (e) => { if (inList(e)) onListClick(e, agentId); });
@@ -1180,6 +1180,25 @@ const Native = (() => {
     if (sig) next.set(m, { node, sig, text: m.text });
     return node;
   }
+  // (round 171, wake171) the messages and day lines before a list's last 8 children carry .cv-far: out of view, the
+  // browser may skip them (chatcore.css content-visibility); the last 8 are always laid out whole (the chat opens exactly
+  // at its end; the live reply and what's just above it are real). This was a position rule (:nth-last-child(n+9)),
+  // which made every child the list gained or lost restyle the whole list and everything in it (a piece of older turns
+  // waking: 30–45 ms of style here). Marked when the list changes (a MutationObserver: before the next frame) and right
+  // after a draw; only a child whose place crosses the line changes class (it alone is restyled)
+  function tailMark(list) {
+    let i = 0;
+    for (let n = list.lastElementChild; n; n = n.previousElementSibling, i += 1) {
+      const c = n.classList;
+      if (!c.contains('msg') && !c.contains('day-sep')) continue;
+      const far = i >= 8;
+      if (c.contains('cv-far') !== far) c.toggle('cv-far', far);
+    }
+  }
+  function tailWatch(list) {
+    if (!list.tailMO) { list.tailMO = new MutationObserver(() => tailMark(list)); list.tailMO.observe(list, { childList: true }); tailMark(list); }
+    return list;
+  }
   // Makes list's children exactly `nodes`, moving only what is out of place (nodes already there stay untouched).
   function placeChildren(list, nodes) {
     // what goes away goes first, so the nodes that stay are already in order and the new ones slot in between
@@ -1191,6 +1210,7 @@ const Native = (() => {
       list.insertBefore(n, cur);
     }
     while (cur) { const nx = cur.nextSibling; cur.remove(); cur = nx; }
+    tailMark(list); // (round 171: at once, for anything reading the list's layout in this same task)
   }
 
   // Auto-fold of long replies: heights read first, then the folds written (one layout for the batch)
@@ -1285,7 +1305,7 @@ const Native = (() => {
     const old = v.panes.get(v.paneKey);
     if (pane) v.panes.delete(key);
     else {
-      pane = { list: el('div', { class: 'messages parked' }) }; v.jump.before(pane.list);
+      pane = { list: tailWatch(el('div', { class: 'messages parked' })) }; v.jump.before(pane.list);
       // (round 170, switch170) a new list sits where the one on screen sits, over the same ground: it starts with that
       // list's solid colour (judged again at the next frame, backSoon), so it is an opaque, compositor-scrolled box from
       // its first frame and the entrance can use the cover below
