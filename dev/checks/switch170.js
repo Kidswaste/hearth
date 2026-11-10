@@ -4,17 +4,23 @@
 // entrance (polish.css .chat-enter: the list fades and slides up for 240 ms): every frame of it redraws the window,
 // and a list that fades is a group of layers (its box, its scrolled content, its scrollbar) with an opacity, drawn
 // into an offscreen picture and blended in, every frame. Over a solid colour (the list's --solid-back) the fade is now a
-// cover of that colour clearing over the list, and the list only slides: the same pixels, no offscreen pass.
-// Rastering the new chat itself was small (a chat kept from before vs one drawn afresh: ≈ 70 ms of the GPU process).
+// cover of that colour clearing over the list, and the list only slides: the same pixels, no offscreen pass. And the
+// entrance gave the list a layer for 240 ms and took it away: the list's box moved between the window's layer and its
+// own, so the window's layer under the chat was rasterised again twice per switch (in Forgeheart a picture of gradients
+// and grain: ≈ 150 ms each here). The chat on screen over its solid colour keeps its layer now (chatcore.css).
+//   layer    the chat on screen over its solid colour is a layer of its own (will-change), plain and Forgeheart
 //   cover    during an entrance over a solid colour: a cover of the list's colour over exactly the list's box, the list
 //            animates transform only, nothing but the cover animates opacity; the cover is gone once it ends, also when
 //            you switch again mid-entrance; none with /motion off or Lite mode (where nothing animates)
-//   pixels   the window mid-entrance (paused at 3 moments) and after it, this way vs the old way (the old animation put
-//            back with a style), plain and Forgeheart: ≤ 3 levels of 255 anywhere (the scrollbar counted apart)
+//   pixels   the window mid-entrance (paused at 3 moments) and after it, this way vs the old way (the old animation and
+//            no kept layer, put back with a style), plain and Forgeheart: ≤ 3 levels of 255 anywhere (the scrollbar
+//            counted apart; Forgeheart mid-entrance ≤ 6: its ground is a gradient a few levels deep, the cover its base)
 //   switches GPU-process CPU and the window's main-thread task ms per switch: switching between two chats kept from
 //            before, and project switches through 6 chats (each drawn afresh), plain and Forgeheart, this way and the
-//            old way in turn, 2 rounds: all switches ≤ 92 % of the old way's GPU-process CPU (each kind reported,
+//            old way in turn, 2 rounds: all switches ≤ 85 % of the old way's GPU-process CPU (each kind reported,
 //            failing only when > 105 %)
+//   frame    one still frame's GPU-process CPU in the chat (a 3 px dot changed 8 times), this way vs the old way, plain
+//            and Forgeheart: ≤ 110 % (the kept layer costs nothing per frame)
 //   memory   the window's and the GPU process' private memory after the switches, this way vs the old way: reported,
 //            failing when the window grew > 10 MB more than the old way's
 // window.S170_REPORT = 1: report without failing. window.S170_SHOTS = '<dir>': keep the pictures.
@@ -24,8 +30,8 @@ const until = async (fn, ms = 20000, every = 100) => { const t = Date.now(); whi
 const T = (o) => window.hub.power.test(o);
 const out = { problems: [], cantTell: [] };
 const bad = (m) => out.problems.push(m);
-const B = { maxLevels: 3, switches: 0.92, kind: 1.05, memMB: 10 };
-const OLD = ':root:not([data-motion=off]) .chat-enter.chat-covered { animation-name: hx-chat !important; } .chat-cover { display: none !important; }';
+const B = { maxLevels: 3, maxLevelsForgeMid: 6, switches: 0.85, kind: 1.05, frame: 1.1, memMB: 10 };
+const OLD = ':root:not([data-motion=off]) .chat-enter.chat-covered { animation-name: hx-chat !important; } .chat-cover { display: none !important; } .messages-wrap > .messages.solid-back { will-change: auto !important; }';
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 const r2 = (x) => Math.round(x * 100) / 100;
 
@@ -69,10 +75,15 @@ await smoke({ cdp: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 
 const oldStyle = document.createElement('style'); oldStyle.id = 's170-old'; document.head.append(oldStyle);
 const oldWay = (on) => { oldStyle.textContent = on ? OLD : ''; };
 const root = document.documentElement;
-const LOOKS = { plain: () => { delete root.dataset.skin; delete root.dataset.look; }, forge: () => { root.dataset.skin = 'forge'; root.dataset.look = 'v2'; } };
-const was = { skin: root.dataset.skin, look: root.dataset.look };
-const setLook = async (k) => { LOOKS[k](); await wait(1500); };
-const rect = (n) => { const r = n.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(','); };
+// the owner's look, as forge168 puts it on (Forgeheart: the ground's base under the list, its lights over it)
+const themeBefore = H.config.theme ? JSON.parse(JSON.stringify(H.config.theme)) : null;
+const LOOKS = {
+  plain: () => { H.config.theme = themeBefore ? JSON.parse(JSON.stringify(themeBefore)) : {}; applyTheme(document.getElementById('user-theme').textContent); try { window.Look?.applyPreset?.(themeBefore?.preset || 'default', { quiet: true }); } catch { /* the look's own */ } },
+  forge: () => { H.config.theme = { ...(themeBefore || {}), ...AppUI.THEMES.forgeheart, preset: 'forgeheart' }; delete H.config.theme.label; delete H.config.theme.group; applyTheme(document.getElementById('user-theme').textContent); try { window.Look?.applyPreset?.('forgeheart', { quiet: true }); } catch { /* the look's own */ } },
+};
+let lookNow = null;
+const setLook = async (k) => { if (lookNow === k) return; lookNow = k; LOOKS[k](); await wait(2500); out.looks ||= {}; out.looks[k] = { skin: root.dataset.skin || null, look: root.dataset.look || null }; };
+const box = (n) => [n.offsetLeft, n.offsetTop, n.offsetWidth, n.offsetHeight].join(','); // (layout boxes: the list's slide left out)
 
 // ---------- cover: what an entrance is made of ----------
 out.cover = {};
@@ -81,7 +92,7 @@ for (const look of ['plain', 'forge']) {
   const target = all[look === 'plain' ? 4 : 5][1];
   let seen = null;
   Native.open(claude.id, target);
-  await until(() => { const l = list(); if (!l?.classList.contains('chat-enter') || H.activeChat[claude.id] !== target) return false; const c = l.chatCover; seen = { solid: l.classList.contains('solid-back'), cover: Boolean(c?.isConnected), sameBox: c ? rect(c) === rect(l) : false, coverColor: c ? getComputedStyle(c).backgroundColor === getComputedStyle(l).backgroundColor : false, listAnims: l.getAnimations().map((a) => [...new Set(a.effect.getKeyframes().flatMap((f) => Object.keys(f).filter((x) => !['offset', 'computedOffset', 'easing', 'composite'].includes(x))))].join('+')), coverAnims: c ? c.getAnimations().map((a) => a.animationName) : [] }; return true; }, 5000, 5);
+  await until(() => { const l = list(); if (!l?.classList.contains('chat-enter') || H.activeChat[claude.id] !== target) return false; const c = l.chatCover; seen = { solid: l.classList.contains('solid-back'), cover: Boolean(c?.isConnected), sameBox: c ? box(c) === box(l) : false, coverColor: c ? getComputedStyle(c).backgroundColor === getComputedStyle(l).backgroundColor : false, listAnims: l.getAnimations().map((a) => [...new Set(a.effect.getKeyframes().flatMap((f) => Object.keys(f).filter((x) => !['offset', 'computedOffset', 'easing', 'composite'].includes(x))))].join('+')), coverAnims: c ? c.getAnimations().map((a) => a.animationName) : [] }; return true; }, 5000, 5);
   await wait(800);
   out.cover[look] = { ...seen, leftover: document.querySelectorAll('.chat-cover').length, classLeft: list().classList.contains('chat-enter') };
   const s = out.cover[look];
@@ -113,6 +124,35 @@ for (const [name, on, off] of [['/motion off', () => { root.dataset.motion = 'of
   if (n) bad(`cover: ${n} cover(s) with ${name} (nothing animates there)`);
   await openChat(all[4][1], 1200); // (the entrance left from its class: a normal switch puts it right)
 }
+
+// ---------- layer + frame: the chat keeps its layer; a still frame costs the same ----------
+const dot = document.createElement('div'); dot.style.cssText = 'position:fixed;left:2px;bottom:2px;width:3px;height:3px;z-index:2147483647;background:#111;pointer-events:none'; document.body.append(dot);
+const frames = async (n = 8) => { const a = await gpuWin(); for (let i = 0; i < n; i++) { dot.style.background = i % 2 ? '#111' : '#121212'; await wait(300); } return Math.round(((await gpuWin()).gpu - a.gpu) * 1000 / n); };
+async function layers() {
+  for (let k = 0; k < 3; k++) {
+    setTimeout(() => { dot.style.background = '#131313'; }, 250); setTimeout(() => { dot.style.background = '#111'; }, 900);
+    const r = await smoke({ layers: true, detail: true }).catch(() => null);
+    if (r && !r.timedOut && r.list) return r.list;
+  }
+  return null;
+}
+out.layer = {}; out.frame = {};
+for (const look of ['plain', 'forge']) {
+  await setLook(look); await openChat(all[4][1], 1500);
+  const ls = await layers();
+  const mine = ls?.filter((l) => /^div\.messages/.test(l.who) && /WillChangeTransform/.test(l.why)).map((l) => `${l.who} ${l.w}x${l.h}`);
+  out.layer[look] = mine;
+  if (!ls) out.cantTell.push(`layer ${look}: no layer tree came`);
+  else if (!list().classList.contains('solid-back')) out.cantTell.push(`layer ${look}: the list is not over a solid colour (${list().backWhy})`);
+  else if (!mine.length) bad(`layer ${look}: the chat on screen is not a layer of its own (${ls.slice(0, 8).map((l) => `${l.who} ${l.why}`).join('; ')})`);
+  const f = (out.frame[look] = { now: [], old: [] });
+  for (let r = 0; r < 2; r++) for (const way of ['now', 'old']) { oldWay(way === 'old'); await openChat(all[5][1], 300); await openChat(all[4][1], 1500); document.activeElement?.blur?.(); await wait(500); f[way].push(await frames()); }
+  oldWay(false);
+  f.ratio = r2(sum(f.now) / Math.max(1, sum(f.old)));
+  if (f.ratio > B.frame) bad(`frame ${look}: a still frame costs the graphics process ${f.ratio} × the old way (> ${B.frame}): ${JSON.stringify(f)}`);
+}
+dot.remove();
+await setLook('plain');
 
 // ---------- pixels: the same either way, mid-entrance and after ----------
 let shotN = 0;
@@ -151,16 +191,22 @@ out.pixels = {};
 for (const look of ['plain', 'forge']) {
   await setLook(look);
   const [from, target] = [all[4][1], all[5][1]];
+  let endPx = null; const midPx = [];
   for (const at of [...MOMENTS, 'after']) {
     const take = async () => (at === 'after' ? (async () => { await openChat(from, 900); await openChat(target, 1200); document.activeElement?.blur?.(); await wait(400); return shot(); })() : entranceAt(at, target, from));
     oldWay(false); const A = await take();
     oldWay(true); const Bd = await take();
     oldWay(false);
     if (!A || !Bd) { out.cantTell.push(`pixels ${look} ${at}: no entrance to pause`); continue; }
-    const c = compare(await px(A), await px(Bd), innerWidth, barOf());
+    const pa = await px(A);
+    const c = compare(pa, await px(Bd), innerWidth, barOf());
+    if (at === 'after') endPx = pa; else midPx.push([at, pa]);
     out.pixels[`${look} ${at}`] = c;
-    if (c.maxLevels > B.maxLevels) bad(`pixels ${look} ${at === 'after' ? 'after the entrance' : `${at} ms into the entrance`}: differs from the old way (${c.differ} pixels, up to ${c.maxLevels} levels, ${c.overMax} over ${B.maxLevels} in ${c.where})`);
+    const lim = look === 'forge' && at !== 'after' ? B.maxLevelsForgeMid : B.maxLevels; // (Forgeheart's ground is a gradient a few levels deep: the cover is its base colour)
+    if (c.maxLevels > lim) bad(`pixels ${look} ${at === 'after' ? 'after the entrance' : `${at} ms into the entrance`}: differs from the old way (${c.differ} pixels, up to ${c.maxLevels} levels, ${c.overMax} over ${B.maxLevels} in ${c.where})`);
   }
+  // (the pictures mid-entrance really are mid-entrance: each differs from the one after it)
+  for (const [at, p] of midPx) { const d = endPx ? compare(p, endPx, innerWidth, null) : null; out.pixels[`${look} ${at}`].vsEnd = d?.differ ?? null; if (d && d.differ < 20000) out.cantTell.push(`pixels ${look} ${at}: the paused entrance looks like its end (${d.differ} pixels differ)`); }
 }
 await setLook('plain');
 
@@ -200,8 +246,7 @@ if (out.switchesRatio > B.switches) bad(`switches: all of them cost the graphics
   out.memory.winMB = `${m('old', 'winMB')} → ${m('now', 'winMB')}`; out.memory.gpuMB = `${m('old', 'gpuMB')} → ${m('now', 'gpuMB')}`;
   if (m('now', 'winMB') - m('old', 'winMB') > B.memMB) bad(`memory: the window holds ${m('now', 'winMB') - m('old', 'winMB')} MB more than the old way after the switches`);
 }
-if (was.skin == null) delete root.dataset.skin; else root.dataset.skin = was.skin;
-if (was.look == null) delete root.dataset.look; else root.dataset.look = was.look;
+await setLook('plain');
 
 if (window.S170_REPORT) { out.unenforced = out.problems; out.problems = []; }
 out.ok = !out.problems.length;

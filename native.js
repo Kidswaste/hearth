@@ -193,7 +193,11 @@ const Native = (() => {
       if (s.filter !== 'none' || (s.backdropFilter && s.backdropFilter !== 'none') || s.mixBlendMode !== 'normal' || /inset/.test(s.boxShadow)) return no(list, 'a filter, blend or inset shadow', e);
       if (under(e, '::before') || under(e, '::after')) return no(list, 'a pseudo-element under it', e);
       for (let c = e.firstElementChild; c && c !== child; c = c.nextElementSibling) { // drawn before the list's branch: under it
-        if (c.classList.contains('chat-cover')) continue; // (round 170: an entrance's cover is drawn over its own list, and goes)
+        // (round 170, switch170) an entrance's cover is drawn over its own list, and goes; another chat's list in the same
+        // place is never drawn with this one (one shows, the rest are parked): judged while parked, a kept list took the
+        // list on screen for "something drawn under it", so it came back without its solid colour and took it a frame
+        // later, mid-entrance (its content drawn again on a new layer)
+        if (c.classList.contains('chat-cover') || (c.classList.contains('messages') && e.classList.contains('messages-wrap'))) continue;
         const r = c.getBoundingClientRect();
         if (r.width && r.height && r.right > lr.left && r.left < lr.right && r.bottom > lr.top && r.top < lr.bottom && getComputedStyle(c).visibility !== 'hidden') return no(list, 'something drawn under it', c);
       }
@@ -3017,12 +3021,11 @@ const Native = (() => {
     }
     list.classList.add('chat-enter');
     // (round 36, motionpolish) its own end only: a message's entrance ending inside it bubbled up and cut the slide short
-    let left = cover ? 2 : 1; // (with a cover: both ends, so the list and its cover finish together)
-    const stop = () => { list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); cover?.removeEventListener('animationend', end); cover?.removeEventListener('animationcancel', end); list.classList.remove('chat-enter', 'chat-covered'); cover?.remove(); if (list.chatCover === cover) list.chatCover = null; list.chatStop = null; };
-    const end = (e) => { if (e.target !== list && e.target !== cover) return; if (e.type === 'animationcancel' || --left <= 0) stop(); };
-    list.chatStop = () => { list.chatStop = null; stop(); };
+    // (round 170) the list's own end takes its cover with it (the same length and timing: they started in one style pass)
+    const stop = () => { list.removeEventListener('animationend', end); list.removeEventListener('animationcancel', end); list.classList.remove('chat-enter', 'chat-covered'); cover?.remove(); if (list.chatCover === cover) list.chatCover = null; list.chatStop = null; };
+    const end = (e) => { if (e.target === list) stop(); };
+    list.chatStop = stop;
     list.addEventListener('animationend', end); list.addEventListener('animationcancel', end);
-    if (cover) { cover.addEventListener('animationend', end); cover.addEventListener('animationcancel', end); }
   }
 
   // A blank chat (＋) isn't saved until its first message, but it shows in the chats list right away as "New chat"
