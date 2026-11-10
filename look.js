@@ -296,6 +296,29 @@ const Look = (() => {
   });
   init();
 
-  return { apply, applyPreset, setFx, fx, picker, openDialog, resolve, status, setAccent, saveLook, loadLook, deleteLook,
+  // (round 172, restyle172) every CSS animation rests where it is (the window hidden: juice.js; another app in front:
+  // idlecpu.js) by marking the elements that animate, not by a page-wide `:root[data-x] *` rule: adding or removing a
+  // rule set on `*` restyled every element of the page (≈ 650–2,200 here, 17–45 ms) when you came back. Same pause: the
+  // animations found now, and any that starts while resting. rest(why, on): rests while any `why` is on.
+  const rest = (() => {
+    const why = new Set(); const marked = new Set();
+    const mark = (el) => { if (el?.nodeType === 1 && !marked.has(el)) { marked.add(el); el.setAttribute('data-anim-rest', ''); } };
+    const started = (e) => mark(e.target);
+    return (key, on) => {
+      const was = why.size > 0;
+      if (on) why.add(key); else why.delete(key);
+      if (was === why.size > 0) return;
+      if (why.size) {
+        for (const a of document.getAnimations()) if (a instanceof CSSAnimation) mark(a.effect?.target);
+        document.addEventListener('animationstart', started, true);
+      } else {
+        document.removeEventListener('animationstart', started, true);
+        for (const el of marked) el.removeAttribute('data-anim-rest');
+        marked.clear();
+      }
+    };
+  })();
+
+  return { apply, applyPreset, setFx, fx, picker, openDialog, resolve, status, setAccent, saveLook, loadLook, deleteLook, rest,
     _kit: { themes, presetId, preset, fx, setFx, applyPreset, saved, saveLook, loadLook, deleteLook, setAccent, CHOICES, GROUPS, FEATURED, pickers } }; // (look-picker.js)
 })();

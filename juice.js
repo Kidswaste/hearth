@@ -160,7 +160,7 @@ const Juice = (() => {
   retitle(); // (round 40, firstscreen) loaded right after the first frame: the view on screen may be set already
 
   // a hidden window rests every animation (look.css: [data-away])
-  const away = () => root.toggleAttribute('data-away', document.hidden);
+  const away = () => { root.toggleAttribute('data-away', document.hidden); if (typeof Look !== 'undefined') Look.rest?.('away', document.hidden); }; // (round 172: marks what animates, look.js)
   document.addEventListener('visibilitychange', away);
   away();
 
