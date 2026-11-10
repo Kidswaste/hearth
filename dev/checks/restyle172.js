@@ -6,6 +6,8 @@
 //            elements (a `:root[data-blurhush] *` rule restyled the whole page both ways); a busy dot rests while away
 //            and runs again; no CSS animation left running while hushed
 //   hidden   the window hidden and shown (juice.js' data-away): each ≤ B.hush; the dot rests while hidden
+//   hush     a minute without input (idlecpu's data-hush: the look's loops rest), on and off: each ≤ B.idleHush (its
+//            `.tabbar button` reached every button of the page)
 //   first    the first wheel turn after 13 s without input (bgmain's steady caret, round 171): ≤ B.first, no pass over
 //            B.share of a whole-page pass (the old blur way's, measured here)
 //   typing   5 letters typed in the chat box: ≤ B.typing in all
@@ -24,7 +26,7 @@ const T = (o) => window.hub.power.test(o);
 const cdp = (method, params) => smoke({ cdp: method, params });
 const out = { problems: [], cantTell: [], actions: {}, old: {} };
 const bad = (m) => out.problems.push(m);
-const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.65, resize: 300 };
+const B = { hush: 60, first: 400, share: 0.5, typing: 150, rows: 150, menu: 300, alt: 0.65, resize: 300, idleHush: 100 };
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 const mouse = (type, x, y, extra = {}) => cdp('Input.dispatchMouseEvent', { type, x, y, button: 'none', ...extra });
 const key = async (k, code, opts = {}) => { for (const type of ['keyDown', 'keyUp']) await cdp('Input.dispatchKeyEvent', { type, key: k, code, windowsVirtualKeyCode: opts.vk || (k.length === 1 ? k.toUpperCase().charCodeAt(0) : 0), ...(type === 'keyDown' && opts.text ? { text: opts.text } : {}) }); };
@@ -116,6 +118,20 @@ if (typeof Juice === 'undefined' && window.Lazy) await Lazy.load('juice').catch(
   const o = await hiddenCycle(); undo(); out.old.hidden = { hide: o.hide.elements, show: o.show.elements, hideMs: o.hide.styleMs, showMs: o.show.styleMs };
 }
 dot.remove();
+
+// ---------- a minute without input (idlecpu's hush of the look's loops): the attribute both ways ----------
+async function hushCycle() {
+  const root = document.documentElement; const was = root.hasAttribute('data-hush');
+  const on = await restyled(async () => { root.setAttribute('data-hush', ''); });
+  const off = await restyled(async () => { if (!was) root.removeAttribute('data-hush'); });
+  return { on, off };
+}
+{
+  const r = await hushCycle(); out.actions.hush = r;
+  if (r.on.elements > B.idleHush || r.off.elements > B.idleHush) bad(`hush after a minute: ${r.on.elements} / ${r.off.elements} elements restyled (≤ ${B.idleHush})`);
+  const undo = oldRule(':root[data-hush] .tabbar button::before, :root[data-hush] .tabbar button::after { animation-play-state: paused !important; }');
+  const o = await hushCycle(); undo(); out.old.hush = { on: o.on.elements, off: o.off.elements, onMs: o.on.styleMs };
+}
 
 // ---------- the first input after 13 s ----------
 await wait(13500);
