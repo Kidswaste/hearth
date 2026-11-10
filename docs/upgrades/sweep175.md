@@ -101,8 +101,20 @@ director-chips' `.dd-chip`).
 
 ### Zero visual change
 
-`node dev/css159-diff.js shoot` on round 174's copy and on this round, then `compare` (31 views + the final picture):
-RESULT_DIFF
+`node dev/css159-diff.js shoot` on round 174's copy and on this round, then `compare` (31 views + the final picture),
+two shoots of each build (round 174's copy twice: the noise floor; this round twice).
+
+- **Computed styles: identical** on every element in 22 of the 32 views both times (start, chats, the "/" menu, the
+  message menu, the three looks, Settings in four positions, the palette, the keys sheet, the command bar, the Alt
+  hints, the four dialogs, Forgeheart). What differs follows the run, not CSS: Trim Hearth's rows (their KB column: the
+  groups that took sheets weigh ≈ 1 KB more), the progress fills (`i.fb-fill`, also between two runs of round 174), the
+  Lab's state (as round 159 found), and the box's own slowness: in two of the four runs Jank recorded a ≥ 1 s hiccup
+  after the start, which puts the slow dot on the rail's ⋯ (`#rail-more[data-slow]`) and, in the Lab, Lite's "Things are
+  slow" toast; a probe of the first 20 s (2 launches of each build) saw that hiccup on both builds. One run of this
+  round also caught the composer's five elements in another state in views 01–05 (not in the second run).
+- **Pixels:** the reply's clock (the time of the run), the slow dot and the Lite toast above; no other UI pixel.
+- A direct probe of the composer's elements 4 s after start (every computed property, both builds): **0** differences,
+  and the same sheets in the same order apart from the new ones, each right after its old sheet.
 
 ### Not done, and why
 
@@ -135,4 +147,15 @@ RESULT_DIFF
 
 ## Checks
 
-RESULT_CHECKS
+`flock /tmp/hearth-run.lock timeout 2900 node dev/run-checks.js --exact unit:boot-test unit:lazymanifest-test fastboot
+playfix audit174 restyle172 chatcore settingscalm` + the checks this round changed or whose CSS moved (`unit:projperf120-test
+unit:chatwin-scan unit:datasafe-scan unit:winmac49-test unit:errorcalm-scan unit:lazy-groups-test lazy trim153
+apps-windows bigscreen updater`): **16 / 19 passed** in 8 min. The three that fail are only the Lab's remaining findings
+listed above (chatwin-scan: three-labwin / three-refmatch / three-replydiff; datasafe-scan: three-txn.js; errorcalm-scan:
+three-lab-tools.js, three-labwin.js); the parts of them this round owns pass. bigscreen left `/tmp/hearth-bigscreen`
+(4 MB), as before this round.
+
+`node dev/whatsnew-test.js`: 49 passed. `node dev/lazy-manifest.js --check` (in lazymanifest-test) and
+`node dev/trim-weights.js --check`: up to date.
+
+Merges: origin/main and origin/claude/intelligent-galileo-yaiqem fetched: both already in this branch (nothing new).
