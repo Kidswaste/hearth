@@ -293,6 +293,7 @@ window.ProjCreate = (() => {
       const tune = (code) => { try { return typeof InstantCore !== 'undefined' ? InstantCore.tune(code, { palette: st.palette }).code : code; } catch { return code; } };
       x.layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: st.palette.length && !L.filter ? tune(L.code) : L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) }));
       x.code = x.layers[0].code;
+      { const g = typeof ThreeData !== 'undefined' ? ThreeData.formatOf(x.layers) : x.format; if (g) x.format = g; else delete x.format; } // (round 176, gpuaware176) the scene's format follows the layers it was given
       last.steps.push(`layers: ${x.layers.map((L) => L.name).join(', ')}`);
     }
     if (st.palette.length) x.palette = st.palette.slice(0, 16);
@@ -317,6 +318,7 @@ window.ProjCreate = (() => {
     const r = TemplateCore.apply(t, {}, { scan: ThreeTweaks.scan, applyValues: ThreeTweaks.applyValues });
     const fresh = ProjTemplates.freshLayers(r.layers, r.extras);
     x.layers = fresh.layers; x.code = x.layers[0]?.code || x.code;
+    { const g = typeof ThreeData !== 'undefined' ? ThreeData.formatOf(x.layers) : x.format; if (g) x.format = g; else delete x.format; } // (round 176, gpuaware176) the scene's format follows the layers it was given
     const pal = st.palette.length ? st.palette : r.palette || t.project?.palette || [];
     if (pal.length) x.palette = pal.slice(0, 16);
     sc.changed(id);

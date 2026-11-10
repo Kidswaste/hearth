@@ -24,6 +24,7 @@
 // (`smoke` is defined in the page by the harness: it resolves with the CDP result.)
 //
 // Env: ELECTRON (path to the electron binary, default /opt/hearth-electron/electron).
+// SMOKE_SHOW=1 (Windows): show the test copy's windows (by default they stay off screen and silent: dev/smoke-silent.js).
 // Exit code 1 when the page threw or logged errors (known harmless ones are filtered below).
 const fs = require('fs');
 const os = require('os');
@@ -233,7 +234,12 @@ async function cdpConnect(dir) {
   let fakeMic = null;
   if (args.includes('--fake-mic')) fakeMic = fakeMicWav(path.join(runTmp, 'fake-mic.wav'));
   const micFlags = fakeMic ? ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${fakeMic.file}`, '--use-fake-ui-for-media-stream'] : [];
-  const launchArgs = [dir, '--no-sandbox', ...dprFlag, ...micFlags, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
+  // (round 176, silent176) Windows: the test copy's windows stay off the owner's screen, silent and without the keyboard
+  // (dev/smoke-silent.js, loaded into its main process); SMOKE_SHOW=1 shows them as before
+  const silent = winTest && !process.env.SMOKE_SHOW;
+  const silentArgs = silent ? ['-r', path.join(__dirname, 'smoke-silent.js')] : [];
+  const silentFlags = silent ? ['--mute-audio', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-features=CalculateNativeWinOcclusion'] : [];
+  const launchArgs = [...silentArgs, dir, ...silentFlags, '--no-sandbox', ...dprFlag, ...micFlags, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
   // (round 58, ctxloss58) --burn N: N busy CPU processes for the whole run (a loaded computer: dev/checks/ctxloss.js),
   // ended with the run. Only inside the shared run lock: they slow every other agent's checks too
   // (round 65, inspodrop65) --serve-dir DIR: DIR's files over plain http on 127.0.0.1 (a "remote" picture the main

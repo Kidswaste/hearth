@@ -194,7 +194,7 @@ const LabGroups = (() => {
     const full = JSON.parse(JSON.stringify(Ls));
     // inside, each layer as its own eye has it (what the group's eye or a solo did stays on the ◫ layer here)
     const copies = JSON.parse(JSON.stringify(m)).map((L) => { const own = (L.visible === false && !L.hid) || L.soloShown === true; L.visible = !own; delete L.group; delete L.hid; delete L.solo; delete L.soloShown; return L; });
-    const sk = S.create({ name: `${name} (from ${h.sketchName() || 'a scene'})`, code: copies[0].code, layers: copies, frame: S.frameOf(sid) });
+    const sk = S.create({ name: `${name} (from ${h.sketchName() || 'a scene'})`, code: copies[0].code, layers: copies, frame: S.frameOf(sid), format: S.get(sid)?.format });
     const pc = ThreeComp.makeLayer({ sketch: sk.id }, { name });
     pc.slot = Math.max(-1, ...Ls.map((L) => L.slot ?? 0)) + 1;
     pc.fromGroup = true;

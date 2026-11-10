@@ -373,7 +373,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
   }
   // (round 142, panel142) knobs: ONE Layers & knobs panel. knobs(id, selected) → the node shown under an open layer's row
   // (the selected layer's: the Lab's slot with its sliders; a pinned one's: its own sliders), shown(id) after it is placed
-  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo, knobs = null, shown = null }) {
+  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo, knobs = null, shown = null, v2 = null }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -433,8 +433,10 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     });
 
     function addMenu(anchor) {
+      const g2 = Boolean(v2?.()) && typeof ThreeData !== 'undefined'; // (round 176, gpuaware176)
       const items = [
-        'Scene layers',
+        ...(g2 ? ['⚡ Fast layers (v2: drawn by the scene\'s one renderer)', ...ThreeData.V2_LAYERS.map((t) => [t.name.replace(/ \(v2\)$/, ''), t.desc, () => onAdd(t.id)])] : []),
+        g2 ? 'Old-format layers (each its own canvas: heavier)' : 'Scene layers',
         ...TEMPLATES.map((t) => [t.name, t.desc, () => onAdd(t.id)]),
         ['Copy of the selected layer', 'Same code and settings', () => onAdd('copy')],
         ['Ask the Three Director…', 'Describe the layer you want in the chat', () => onAdd('ask')],

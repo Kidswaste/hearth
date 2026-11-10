@@ -524,7 +524,7 @@ const LabTemplates = (() => {
     const prev = sc.currentId();
     const ex = { ...r.extras };
     const frame = ex.frame || null; const timeline = ex.timeline || null;
-    const x = sc.create({ name: uniqueScene(r.name), code: r.layers[0]?.code || '', layers: r.layers, frame, timeline });
+    const x = sc.create({ name: uniqueScene(r.name), code: r.layers[0]?.code || '', layers: r.layers, frame, timeline, format: ThreeData.formatOf(r.layers) }); // (round 176, gpuaware176) a template of v2 layers makes a v2 scene
     delete ex.frame; delete ex.timeline;
     if (Object.keys(ex).length) sc.setExtras?.(x.id, ex);
     d.openSketch(x.id);

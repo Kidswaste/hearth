@@ -927,6 +927,7 @@ ipcMain.handle('bg:state', () => {
 
 app.whenReady().then(async () => {
   bootMark('appReady');
+  require('./volumemain').init({ app, session, ipcMain, webContents: require('electron').webContents, getWin: () => win }); // (round 176, smooth176) the 🔊 playback volume is back (the owner asked for it; round 116 had removed it with the music studio)
   require('./offline-library').register({ protocol: require('electron').protocol, ipcMain, dataDir: store.DATA_DIR });
   // (round 64, twocopies64) a copy with no chats that finds another Hearth folder with chats asks first (one card, before
   // anything empty is on screen): open that one, bring its chats here (copied, never moved), or start fresh
