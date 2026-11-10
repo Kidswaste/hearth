@@ -108,7 +108,14 @@ animation (chat, Settings, board); the same pixels either way; one frame ≤ 85 
 Settings open; typing ≤ 90 %; the three actions reported, failing only on a regression (> 115 % of the old way
 altogether). `dev/checks/diskcalm.js` and `dev/diskcalm-test.js` cover the graphics cache.
 
-CHECK-RESULTS
+Final run (`--exact paint167 idlecpu diskcalm audit166 chat165 settingscalm appcalm playfix fastboot unit:boot-test
+unit:lazymanifest-test unit:diskcalm-test`): **12 / 12 passed** (paint167 in that run: a frame 0.70 × the old way in a
+chat, 0.67 with Settings open, typing 0.74; Settings 3,100 → 2,735 ms, board 2,315 → 2,560, switches 6,815 → 6,140).
+For what the CSS touches: journey-board, board, menucalm, glass240 passed; polish8 ("board item: look before send", a
+menu's order) and motionpolish (Lab stylesheets animating clip-path / box-shadow: three-lab.css, three-regroup.css,
+three-hudstage.css) fail the same way on round 166 (2d0fd2c2, run here through `--app`), nothing this round touched.
+`node dev/whatsnew-test.js`: 49 passed. `node dev/lazy-manifest.js --check`: clean. origin/main and
+origin/claude/intelligent-galileo-yaiqem had nothing new to merge (both at 2d0fd2c2).
 
 ## For Codex
 
