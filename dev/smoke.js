@@ -26,6 +26,7 @@
 //
 // SMOKE_SHOW=1 (Windows): show the test copy's windows (by default they stay off screen and silent: dev/smoke-silent.js).
 // Env: ELECTRON (path to the electron binary, default /opt/hearth-electron/electron).
+// SMOKE_SHOW=1 (Windows): show the test copy's windows (by default they stay off screen and silent: dev/smoke-silent.js).
 // Exit code 1 when the page threw or logged errors (known harmless ones are filtered below).
 const fs = require('fs');
 const os = require('os');

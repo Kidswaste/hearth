@@ -177,7 +177,9 @@ function register(ipcMain, getWin, { settings = () => ({}), dataDir } = {}) {
   // macOS `say` reads stdin (-f -); Windows SAPI via PowerShell reads stdin too: the text never lands in a command line
   function say(o = {}) {
     hush();
-    const text = String(o.text || '').slice(0, 20000); // (round 116, slim116) the playback volume left with the music studio: the system's own volume
+    const master = require('./volumemain').get(); // (round 176, smooth176) the 🔊 playback volume is back (the owner asked for it; round 116 had removed it with the music studio)
+    const text = (IS_MAC ? `[[volm ${master}]]` : '') + String(o.text || '').slice(0, 20000);
+    if (!master) return Promise.resolve({ ok: true });
     if (!text.trim()) return Promise.resolve({ ok: true });
     let cmd; let args;
     const rate = Math.min(2, Math.max(0.5, Number(o.rate) || 1));
@@ -187,7 +189,7 @@ function register(ipcMain, getWin, { settings = () => ({}), dataDir } = {}) {
       const v = String(o.voice || '').replace(/'/g, "''");
       // (windows hourly 6) stdin read as UTF-8: PowerShell 5.1 reads it in the console's OEM code page, so "café" was
       // spoken as "caf├⌐" (every accent mangled)
-      const ps = `[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Rate = ${Math.round((rate - 1) * 8)}; ${v ? `try { $s.SelectVoice('${v}') } catch {}; ` : ''}$t = [Console]::In.ReadToEnd(); $s.Speak($t)`;
+      const ps = `[Console]::InputEncoding = [Text.UTF8Encoding]::new($false); Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.Volume = ${Math.round(master * 100)}; $s.Rate = ${Math.round((rate - 1) * 8)}; ${v ? `try { $s.SelectVoice('${v}') } catch {}; ` : ''}$t = [Console]::In.ReadToEnd(); $s.Speak($t)`;
       args = ['-NoProfile', '-NonInteractive', '-Command', ps];
     } else { cmd = 'spd-say'; args = ['-w', '-r', String(Math.round((rate - 1) * 60)), ...(o.voice ? ['-y', String(o.voice)] : []), '-e']; }
     return new Promise((resolve) => {
@@ -216,6 +218,7 @@ function register(ipcMain, getWin, { settings = () => ({}), dataDir } = {}) {
   ipcMain.handle('voice:cancel', (_e, id) => { const c = jobs.get(String(id)); if (c) { try { c.kill(); } catch { /* gone */ } } return Boolean(c); });
   ipcMain.handle('voice:download', (_e, o) => download(o || {}));
   ipcMain.handle('voice:say', (_e, o) => say(o || {}));
+  require('./volumemain').onChange(n => { if (!n) hush(); });
   ipcMain.handle('voice:hush', () => hush());
   ipcMain.handle('voice:voices', () => voices());
   ipcMain.handle('voice:mic', async () => {

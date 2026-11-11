@@ -2021,6 +2021,7 @@ const ThreeLab = (() => {
     addEventListener('hearth:sketch', () => paintBuilding());
     const tweaksSlot = el('div', { class: 'tw-slot' });
     const layersPanel = ThreeLayers.panel({
+      v2: () => current?.format === 'gpu', // (round 176, gpuaware176) the ＋ menu of a v2 scene leads with v2 layers
       onSolo: (id) => setSolo(soloNow() === id ? null : id),
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
@@ -2171,7 +2172,10 @@ const ThreeLab = (() => {
         L = newLayer({ ...JSON.parse(JSON.stringify(S)), id: ThreeLayers.newId(), name: `${S.name} copy` });
       } else if (code != null) L = newLayer({ name: name || 'Layer', code, ...(props || {}) });
       else {
-        const t = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
+        // (round 176, gpuaware176) in a v2 scene: a v2 layer by its id, and the v2 cube where an old scene gets the first old template
+        // (a named old template / filter is still added as asked: it runs the old way, on its own canvas)
+        const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind);
+        const t = (current.format === 'gpu' ? ThreeData.v2Layer(kind) || (!old || kind === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0];
         L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
       }
       const Ls = layersOf();
@@ -2201,7 +2205,7 @@ const ThreeLab = (() => {
       const keep = was.filter((L) => !gone.includes(L));
       const wasSel = selId;
       let blank = null;
-      if (!keep.length) { blank = newLayer({ name: 'Empty layer', code: ThreeLayers.EMPTY_CODE }); keep.push(blank); }
+      if (!keep.length) { blank = newLayer({ name: 'Empty layer', code: current.format === 'gpu' ? ThreeData.V2_EMPTY_CODE : ThreeLayers.EMPTY_CODE }); /* (round 176, gpuaware176) */ keep.push(blank); }
       current.layers = keep;
       for (const L of gone) {
         controllers.get(L.id)?.destroy?.();
@@ -2221,7 +2225,7 @@ const ThreeLab = (() => {
       const undo = () => {
         if (undone || current !== s) return false;
         undone = true;
-        const drop = blank && blank.code === ThreeLayers.EMPTY_CODE && layerById(blank.id); // (still blank: nobody wrote in it)
+        const drop = blank && (blank.code === ThreeLayers.EMPTY_CODE || blank.code === ThreeData.V2_EMPTY_CODE) && layerById(blank.id); // (still blank: nobody wrote in it)
         if (drop) { current.layers = layersOf().filter((L) => L !== blank); box.send({ type: 'remove-layer', id: blank.id }); controllers.get(blank.id)?.destroy?.(); controllers.delete(blank.id); }
         for (const L of gone) if (!layerById(L.id)) { const at = was.indexOf(L); current.layers.splice(was.slice(0, at).filter((x) => layerById(x.id)).length, 0, L); }
         touch();
@@ -2719,8 +2723,8 @@ const ThreeLab = (() => {
       // sketches
       sketches: () => [...sketches].sort((a, b) => b.updatedAt - a.updatedAt).map((x) => ({ id: x.id, name: x.name, layers: x.layers?.length || 1, current: x.id === current?.id })),
       openSketch: (q) => { const n = String(q || '').toLowerCase(); const hit = sketches.find((x) => x.name.toLowerCase() === n) || sketches.find((x) => x.name.toLowerCase().includes(n)); if (!hit) return null; if (hit.id !== current?.id) openSketch(hit.id); return hit.name; },
-      browse: () => browseSketches(), newSketch: (tpl) => { if (!tpl) { templateGallery(); return null; } const t = ThreeData.TEMPLATES.find((x) => x.name.toLowerCase().includes(String(tpl).toLowerCase())); if (!t) return null; create(t.name, t.code); return t.name; },
-      templates: () => ThreeData.TEMPLATES.map((t) => t.name), duplicate: () => duplicate(), rename: (n) => { if (!current || !n) return null; current.name = n; save(); renderPicker(); return n; },
+      browse: () => browseSketches(), newSketch: (tpl) => { if (!tpl) { templateGallery(); return null; } const q = String(tpl).toLowerCase(); const v = /v2|gpu/.test(q) ? ThreeData.V2_TEMPLATES.find((x) => x.name.toLowerCase().includes(q.replace(/\s*\(?(v2|gpu)\)?\s*/g, ' ').trim())) || ThreeData.V2_TEMPLATES[0] : null; if (v) { const Ls = ThreeData.v2Layers(v); create(v.name.replace(/ \(v2\)$/, ''), Ls[0].code, Ls, { format: 'gpu' }); return v.name; } /* (round 176, gpuaware176) "/sketch new v2 music" */ const t = ThreeData.TEMPLATES.find((x) => x.name.toLowerCase().includes(q)); if (!t) return null; create(t.name, t.code); return t.name; },
+      templates: () => [...ThreeData.V2_TEMPLATES, ...ThreeData.TEMPLATES].map((t) => t.name), duplicate: () => duplicate(), rename: (n) => { if (!current || !n) return null; current.name = n; save(); renderPicker(); return n; },
       // layers
       layers: () => layersOf().map((L) => ({ name: L.name, mask: L.mask || null, visible: L.visible !== false, selected: L.id === selId })).reverse(),
       selectLayer: (q) => { const L = findLayer(q); if (!L) return null; selectLayer(L.id); return L.name; },
@@ -4168,7 +4172,7 @@ const ThreeLab = (() => {
         const s = sketches.find((x) => x.id === id);
         if (!s || sketches.length === 1) return false;
         if (s === current) persist();
-        trash.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, deletedAt: Date.now() });
+        trash.unshift({ id: s.id, name: s.name, code: s.code, layers: s.layers, deletedAt: Date.now(), ...(s.format ? { format: s.format } : {}) });
         trash.length = Math.min(trash.length, 30);
         saveHistory();
         removedIds.add(id);
@@ -4178,7 +4182,7 @@ const ThreeLab = (() => {
         return true;
       },
       // (round 75, versions75) Deleted things › Restore: a deleted scene back under its own id, out of History's deleted list
-      undelete(id) { const t = trash.find((x) => x.id === id); if (!t || sketches.some((x) => x.id === id)) return null; const x = api.scenes.create({ name: t.name, code: t.code ?? t.layers?.[0]?.code ?? '', layers: t.layers || null, id }); trash = trash.filter((y) => y.id !== id); saveHistory(); return x; },
+      undelete(id) { const t = trash.find((x) => x.id === id); if (!t || sketches.some((x) => x.id === id)) return null; const x = api.scenes.create({ name: t.name, code: t.code ?? t.layers?.[0]?.code ?? '', layers: t.layers || null, id, format: ThreeData.formatOf(t.layers || [{ code: t.code }], t.format) }); trash = trash.filter((y) => y.id !== id); saveHistory(); return x; },
       setExtras(id, ex) { if (!sketches.some((x) => x.id === id) || !ex || typeof ex !== 'object') return false; extras[id] = { ...(extras[id] || {}), ...JSON.parse(JSON.stringify(ex)) }; saveExtras(); return true; }, // (round 28, packs) a scene from a .hearthpack: its sliders, looks, song link
       // (round 75, projbundle75) a scene from a .hearthproject or a duplicated project (projbundle.js): the sketch as given
       // under its fresh id, its extras, references, notes, still and timeline cues; saved at once, never over a scene that's there
@@ -4461,7 +4465,7 @@ const ThreeLab = (() => {
     }
     const PROP_KEYS = ['name', 'visible', 'opacity', 'blend', 'in', 'out', 'fadeIn', 'fadeOut', 'x', 'y', 'scale', 'rotate'];
     const director = {
-      getCode: () => ({ sketch: current?.name, layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, ...codeOrOutline(editor.value), ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
+      getCode: () => ({ sketch: current?.name, ...(current?.format === 'gpu' ? { format: 'v2' } : {}), layer: sel()?.name, layers: layersSummary(), frame: stage.size, lines: editor.value.split('\n').length, ...codeOrOutline(editor.value), ...(selCtl()?.controls().length ? { sliders: selCtl().controls() } : {}), ...(selCtl()?.unsaved().length ? { unsavedSliders: selCtl().unsaved(), note: 'The user moved these sliders but has not saved them into the code; keep their values when you rewrite.' } : {}) }),
       media: player,
       assignMedia, songOnScene, ensureTimeline, snapToBars,
       // a layer's code as it is now (the editor's text for the selected one), for diffs and the director's undo
@@ -4480,7 +4484,7 @@ const ThreeLab = (() => {
       // "updated now" and saving every scene: a Lab tool call notes its scene before and after, twice per call
       capture(o = {}) {
         if (o.save === false) { const L = sel(); if (L && current && L.code !== editor.value) persist(); } else persist();
-        return { sketchId: current?.id, sketch: current?.name, selId, layers: JSON.parse(JSON.stringify(layersOf())), errors: errors.length };
+        return { sketchId: current?.id, sketch: current?.name, selId, layers: JSON.parse(JSON.stringify(layersOf())), errors: errors.length, ...(current?.format === 'gpu' ? { format: 'gpu' } : {}) }; // (round 176, gpuaware176) + its format (a snapshot restored as a new scene stays v2)
       },
       async restore(snap, { asNew = null, wait = 2 } = {}) {
         if (player.recording) throw new Error('The user is recording a video right now; wait until they stop.');
@@ -4488,7 +4492,7 @@ const ThreeLab = (() => {
         persist();
         const s = !asNew && sketches.find((x) => x.id === snap.sketchId);
         if (!s) {
-          create(asNew || snap.sketch || 'Restored sketch', snap.layers[0].code, snap.layers);
+          create(asNew || snap.sketch || 'Restored sketch', snap.layers[0].code, snap.layers, { format: ThreeData.formatOf(snap.layers, snap.format) });
         } else {
           if (s === current) snapshot();
           s.layers = JSON.parse(JSON.stringify(snap.layers));
@@ -4517,7 +4521,7 @@ const ThreeLab = (() => {
         return report();
       },
       // ---------- layers ----------
-      layers: () => ({ sketch: current?.name, selected: sel()?.name, ...(editOn && editSel ? { picked: pickedWords() } : {}), layers: layersSummary() }), // (round 92) + the object picked in the scene editor
+      layers: () => ({ sketch: current?.name, ...(current?.format === 'gpu' ? { format: 'v2' } : {}), selected: sel()?.name, ...(editOn && editSel ? { picked: pickedWords() } : {}), layers: layersSummary() }), // (round 92) + the object picked in the scene editor
       // (round 92, labchat92) the owner's last keystroke in a layer (ms, 0 = none here) and whether they're typing now
       handAt: (sketchId, layerId) => hand.at.get(`${sketchId}:${layerId}`) || 0,
       typing: () => typingNow(),
