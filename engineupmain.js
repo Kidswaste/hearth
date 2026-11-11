@@ -161,8 +161,36 @@ function afterStart() {
 async function testHook(op, arg = {}) {
   if (!TEST) throw new Error('Tests only');
   if (op === 'set') { t = { ...t, ...arg }; return true; }
-  if (op === 'reset') { t = {}; job = null; after = null; return true; }
+  if (op === 'reset') { if (job?.tmp) await fsp.rm(job.tmp, { recursive: true, force: true }).catch(() => {}); t = {}; job = null; after = null; return true; }
+  if (op === 'cmdText') return fs.readFileSync(path.join(__dirname, 'Agent Hub.cmd'), 'utf8');
   if (op === 'plan') return restartPlan();
+  if (op === 'fixture') {
+    // a pretend app folder in the temp folder (never a real engine): electron\electron.exe saying "old", Agent Hub.cmd,
+    // and a pretend release zip (electron.exe saying "new" + 1.2 MB that doesn't compress) with its SHA-256
+    const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'hearth-engine177-'));
+    const dir = path.join(root, 'Hearth'); const src = path.join(root, 'zip-src');
+    await fsp.mkdir(path.join(dir, W.CUR), { recursive: true });
+    await fsp.writeFile(path.join(dir, W.CUR, W.EXE), 'old');
+    await fsp.writeFile(path.join(dir, 'Agent Hub.cmd'), '@echo off\r\n');
+    await fsp.mkdir(path.join(src, 'resources'), { recursive: true });
+    await fsp.writeFile(path.join(src, W.EXE), arg.noExe ? 'x' : 'new');
+    if (arg.noExe) await fsp.rename(path.join(src, W.EXE), path.join(src, 'other.exe'));
+    await fsp.writeFile(path.join(src, 'resources', 'blob.bin'), crypto.randomBytes(1200 * 1024));
+    const zip = path.join(root, 'electron-v99.0.0-win32-x64.zip');
+    await require('./zipkit').writeZip(src, zip);
+    const sha = await Core.sha256File(fs, crypto, zip);
+    return { root, appDir: dir, zip, url: require('url').pathToFileURL(zip).href, sha, size: (await fsp.stat(zip)).size };
+  }
+  if (op === 'ls') {
+    const out = {};
+    for (const e of await fsp.readdir(appDir())) {
+      const exe = path.join(appDir(), e, W.EXE);
+      out[e] = fs.existsSync(exe) ? fs.readFileSync(exe, 'utf8') : fs.statSync(path.join(appDir(), e)).isDirectory() ? 'dir' : 'file';
+      if (fs.existsSync(path.join(appDir(), e, W.TRIAL))) out[e] += ' +trial';
+    }
+    return out;
+  }
+  if (op === 'rmFixture') { if (/^hearth-engine177-/.test(path.basename(String(arg.root || ''))) && path.dirname(path.resolve(arg.root)) === path.resolve(os.tmpdir())) await fsp.rm(arg.root, { recursive: true, force: true }); return true; }
   if (op === 'launch') return Core.winLaunch(fs, path, appDir()); // Agent Hub.cmd's steps, on the test folder
   if (op === 'afterStart') { after = null; return afterStart(); }
   throw new Error(`no test op ${op}`);
@@ -172,9 +200,10 @@ function register(ipcMain, opts = {}) {
   o = { ...o, ...opts };
   ipcMain.handle('engineup:state', () => state());
   // (the download runs on; the window follows engineup:progress)
-  ipcMain.handle('engineup:get', () => { if (!state().next) throw plain('No engine update is approved for this computer.'); get().catch(() => {}); return state(); });
+  // (refusals are answers, not thrown: { refused: why })
+  ipcMain.handle('engineup:get', () => { if (!state().next) return { ...state(), refused: 'No engine update is approved for this computer.' }; get().catch(() => {}); return state(); });
   ipcMain.handle('engineup:cancel', () => cancel());
-  ipcMain.handle('engineup:restart', () => restart());
+  ipcMain.handle('engineup:restart', () => { try { return restart(); } catch (err) { return { ok: false, refused: err.message }; } });
   ipcMain.handle('engineup:forget-failed', () => forgetFailed());
   ipcMain.handle('engineup:test', (_e, op, arg) => testHook(op, arg));
 }

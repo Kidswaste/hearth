@@ -9,7 +9,7 @@
 //   · a "/command" shows anywhere in Settings
 //   node dev/smoke.js --fake-engines --check-timeout 300000 --script dev/checks/settingscalm.js --shot /tmp/sc.png
 // Set window.SC_SHOTS = '/dir' (via --eval) to keep a picture of first sight and of everything open.
-const BUDGET = 20; // (round 153, trim153) +1: the Trim Hearth… row in This computer & sync (the owner asked for it: switch off what he doesn't use) · 17 with three looks up front; a fourth tile shows while you're on a look that isn't one of them · (round 53, diskcalm) +1: the folded "Space Hearth uses" line in This computer & sync
+const BUDGET = 21; // (round 177, engine177) +1: "Update the engine" in This computer & sync, shown only while engine.json approves a newer engine for that computer (not in test copies) · (round 153, trim153) +1: the Trim Hearth… row in This computer & sync (the owner asked for it: switch off what he doesn't use) · 17 with three looks up front; a fourth tile shows while you're on a look that isn't one of them · (round 53, diskcalm) +1: the folded "Space Hearth uses" line in This computer & sync
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const until = async (fn, ms = 6000) => { const t = Date.now(); while (Date.now() - t < ms) { try { const v = await fn(); if (v) return v; } catch { /* not yet */ } await wait(60); } return null; };
 const SEL = 'button, select, input:not([type=hidden]), textarea, summary, a[href], [role=button]';

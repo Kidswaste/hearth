@@ -29,8 +29,8 @@ const EngineUp = (() => {
     if (st.failedBack && !st.phase) return { text: 'Remove the failed copy', title: 'Deletes the new engine that didn\'t start (electron-failed). The engine Hearth runs on stays.', go: () => A().forgetFailed().then(refresh) };
     if (st.phase === 'downloading') return { text: 'Stop', title: 'Stops the download; nothing is changed', go: () => A().cancel() };
     if (st.phase === 'checking' || st.phase === 'unpacking') return null;
-    if (st.phase === 'ready') return { text: 'Restart Hearth to finish', title: st.layout === 'mac-app' ? 'Hearth quits, Hearth.app is rebuilt on the new engine (the old app goes to the Trash) and Hearth opens again' : 'Hearth closes and starts again on the new engine; if it can\'t start, the engine before comes back', go: () => A().restart().catch((err) => toast(err.message, { type: 'error' })) };
-    if (st.next) return { text: st.phase === 'error' ? 'Try again' : `Update the engine (${st.next.mb} download)`, title: `Downloads Electron ${st.next.version} from Electron's own releases, checks its checksum, and puts it in place at Hearth's next start. Your chats and settings aren't touched.`, go: () => A().get().then(tell) };
+    if (st.phase === 'ready') return { text: 'Restart Hearth to finish', title: st.layout === 'mac-app' ? 'Hearth quits, Hearth.app is rebuilt on the new engine (the old app goes to the Trash) and Hearth opens again' : 'Hearth closes and starts again on the new engine; if it can\'t start, the engine before comes back', go: () => A().restart().then((r) => { if (r?.refused) toast(r.refused, { type: 'error' }); }) };
+    if (st.next) return { text: st.phase === 'error' ? 'Try again' : `Update the engine (${st.next.mb} download)`, title: `Downloads Electron ${st.next.version} from Electron's own releases, checks its checksum, and puts it in place at Hearth's next start. Your chats and settings aren't touched.`, go: () => A().get().then((r) => { if (r?.refused) toast(r.refused, { type: 'error' }); tell(r); }) };
     return null;
   }
   async function refresh() { hook(); try { tell(await A().state()); } catch { /* no main side */ } return s; }
