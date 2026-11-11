@@ -3296,7 +3296,7 @@ function statsTick() {
   // as it is and the message not spread again by post() (both ways of sending copy it there and then)
   const msg = { source: 'three-sandbox', type: 'stats', fps, worst, quality, ms: FT60[0], calls: i.render.drawCalls ?? i.render.calls, /* (Nov 9, Scenes v2: WebGPU's calls count forever, drawCalls is the frame's) */ triangles: i.render.triangles, points: i.render.points, lines: i.render.lines, geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0,
     p50: statsAt(wn, 0.5), p95: statsAt(wn, 0.95), callsAll: lastCalls, gpuMB: gpuEstimate(), cap: fpsCap, light: lightMode, lite: LITE.on, adapt: adaptInfo(), pace: paceInfo(), note: perfNote,
-    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null, ...(G2.R && G2.list.size ? { gpuMs: G2.gpuMs, gpuApi: G2.backend } : {}) }; // (Nov 9, Scenes v2: the one renderer's GPU time a frame) // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
+    hz: Math.round(1000 / dispMs), fb: FB.on ? fbRows() : null, ...(G2.R && G2.list.size ? { gpuMs: G2.gpuMs, gpuApi: G2.backend, kept: G2.keptHi, v2n: G2.vis } : {}) }; G2.keptHi = 0; // (Nov 9, Scenes v2: the one renderer's GPU time a frame) // (round 64, framebar64: the screen's rate; each layer's share while the bar shows)
   if (window.__stageHost) window.__stageHost.post(msg); else parent.postMessage(msg, '*');
 }
 // (round 80, laberrors80) a layer's camera whose numbers became NaN / Infinity (a division by zero in the code that
@@ -14340,7 +14340,7 @@ function installRunGuards() {
   const alive = (o) => !o.stale && (o.L ? o.L.gen === o.g && (layers.get(o.id) === o.L || o.L.retiring === true) : o.g === gen); // (round 89: a stack being replaced keeps drawing until the new one is ready, see swapLayers)
   // (round 56, labcanvas56) a timer's callback is its layer's too (frameOwner below): a timer or a frame asked for from
   // inside it belongs to that layer with no stack trace read (a game's setTimeout calls read and parsed one each)
-  const within = (o, fn, args) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(...args); } finally { ctxLayer = prev; frameOwner = pf; } };
+  const within = (o, fn, args) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; if (o.g2) o.g2.poke = true; /* (Nov 11, still: a v2 layer's own callback ran: its kept picture is drawn again) */ try { return fn(...args); } finally { ctxLayer = prev; frameOwner = pf; } };
   // (round 21 "labgpu": a layer's frame loop asks for the same function every frame; who owns it is read from the call
   // stack the first time and kept with the function, with its frame callback, until the layer re-runs or goes. Telling
   // the owner from a fresh stack trace every frame was most of the runtime's own allocations per frame.)
@@ -14349,7 +14349,7 @@ function installRunGuards() {
   // asks with a new function every frame (requestAnimationFrame(() => tick())) no longer has a stack trace read and
   // parsed on every frame to find out
   let frameOwner = null;
-  const within1 = (o, fn, a) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; try { return fn(a); } finally { ctxLayer = prev; frameOwner = pf; } };
+  const within1 = (o, fn, a) => { const prev = ctxLayer; const pf = frameOwner; ctxLayer = o.id; frameOwner = o; if (o.g2) o.g2.poke = true; try { return fn(a); } finally { ctxLayer = prev; frameOwner = pf; } };
   // one asked frame: e = { o: its owner, fn, lt: its last frame time (labpace: for f60), run, pooled }
   const rafStep = (e, t) => {
     const o = e.o;
@@ -14966,7 +14966,8 @@ async function runLayer(spec, hot = false) {
 const GPU_PAGE = new URLSearchParams(location.search).get('gpu') === '1';
 const G2 = { W: null, tsl: null, R: null, canvas: null, init: null, list: new Set(), running: false, w: 0, h: 0, pr: 0, size: { width: 1, height: 1, aspect: 1, pixelRatio: 1 },
   gpuMs: null, tsN: 0, tsBusy: false, frames: 0, cpuMs: 0, backend: '', lost: 0, drewE: -1, ts: false, C: null, cc: null, path: '',
-  run: null, own: false, runOff: false, runErr: null, byScene: new WeakMap(), ownN: 0, passN: 0, passes: 0, tsOn: false, tsWant: false }; // (Nov 10, onepass: the pass plain layers share and each layer's own uniform buffers (g2PassHook), GPU passes a frame, the GPU time readings on / asked for)
+  run: null, own: false, runOff: false, runErr: null, byScene: new WeakMap(), ownN: 0, passN: 0, passes: 0, tsOn: false, tsWant: false,
+  keep: false, keepOff: false, wr: 0, cur: null, shown: null, kept: 0, keptHi: 0, vis: 0, keptFrames: 0 }; // (Nov 11, still: draw only what changed, see g2KeepHook) // (Nov 10, onepass: the pass plain layers share and each layer's own uniform buffers (g2PassHook), GPU passes a frame, the GPU time readings on / asked for)
 // (a layer says it is v2 with gpu: true; ?gpu=1 makes every layer of the page v2 unless it says gpu: false. Only code
 // with a default export is a v2 layer: an old layer in a v2 page (a sequence mixing both) runs the old way)
 const G2_DEF = /\bexport\s+default\b/;
@@ -14994,6 +14995,7 @@ function g2Init() {
     G2.ts = Boolean(R.backend?.trackTimestamp);
     if (G2.ts) R.backend.trackTimestamp = false; // (Nov 10, onepass) the GPU time is read only while someone looks at it: see g2Timing
     g2PassHook(R);
+    g2KeepHook(R);
     stage.append(R.domElement);
     document.body.prepend(stage);
     G2.backend = R.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2';
@@ -15012,14 +15014,15 @@ async function g2Mount(L, fn, g) {
   const scene = new W.Scene();
   const camera = new W.PerspectiveCamera(50, G2.size.aspect, 0.1, 1000);
   camera.position.set(0, 0, 5);
-  const S = { L, g, scene, camera, frames: [], last: -1, time: { t: 0, dt: 0, frame: 0 }, dispose: null, ready: false, own: 0, bg: new WeakMap() };
+  const S = { L, g, scene, camera, frames: [], last: -1, time: { t: 0, dt: 0, frame: 0 }, dispose: null, ready: false, own: 0, bg: new WeakMap(),
+    still: null, poke: false, code: false, reads: false, alive: false, aliveAt: -1, quiet: 0, epoch: 0, drawn: 0, calls: -1, tris: -1, wrote: 0, keptNow: false }; // (Nov 11, still: see g2KeepHook)
   // (Nov 10, onepass) what makes this layer's built shaders and shared uniform buffers its own (see g2PassHook)
   if (G2.own) { S.own = (G2.ownN += 1); G2.byScene.set(scene, S); }
   const onFrame = (f) => { if (typeof f === 'function') S.frames.push(f); return () => { const i = S.frames.indexOf(f); if (i >= 0) S.frames.splice(i, 1); }; };
   L.g2 = S;
   let out;
   const prev = ctxLayer; ctxLayer = L.id; // (its tweak() / timers are its own, as a layer's top-level code)
-  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame }); } finally { ctxLayer = prev; }
+  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame, still: (on = true) => { S.still = on !== false; S.poke = true; }, redraw: () => { S.poke = true; } }); } finally { ctxLayer = prev; }
   if (out && typeof out.then === 'function') out = await out;
   if (L.gen !== g || L.g2 !== S) { if (typeof out === 'function') { try { out(); } catch { /* its own */ } } return; }
   if (typeof out === 'function') S.dispose = out;
@@ -15211,10 +15214,86 @@ function g2DepthReset(C) {
   run.on = true; run.target = C.A;
   try { C.dq.render(R); } finally { run.on = false; i.drawCalls = calls; i.triangles = tris; } // (not a draw of the scene: the stats count the layers' own)
 }
-// one layer's scene drawn where the renderer points now
+// ---- (Nov 11, still) draw only what changed: docs/upgrades/still178.md ----
+// A layer whose picture cannot have changed is not drawn again. How the page knows, and it redraws whenever it can't:
+//   WHAT A DRAW SENT. Every draw of a layer is watched (the backend's upload calls: a uniform buffer whose values
+//   changed, vertex / instance data, a texture, new bindings or pipelines, a compute pass, a read of the picture below;
+//   and its draw calls and triangles). A draw that sent nothing new and drew the same set made the same picture as the
+//   one before. This sees everything the graphics card would: a camera that moved, TSL's time, a colour, a slider's
+//   uniform, a loaded texture, an object that moved, hid or arrived.
+//   STILL = G2_QUIET such draws in a row, and no per-frame code of its own: no onFrame callback, no node update callback
+//   it registered (uniform().onRenderUpdate(() => audio.bass): Node.onUpdate called from its code), no object with its
+//   own onBeforeRender, no video texture, no read of the picture below (viewport texture, transmission). A layer with
+//   per-frame code reacts to the song the frame it changes: it is never guessed still.
+//   WOKEN AT ONCE by: its own timer or event callback (the page runs them: within), redraw(), a re-run (a new layer),
+//   and every G2_PROBE-th frame it is drawn anyway and watched: something set from a promise (a texture that finished
+//   loading, a model added) shows at most G2_PROBE frames late, then it is live again.
+//   SAID BY THE LAYER: still() ("I only change when I call redraw()": kept whatever it runs, an onFrame included, and
+//   not guessed at; it is still drawn whenever the frame under or around it has to be) and still(false) ("always
+//   draw me").
+// What is kept: the bottom run of still layers, merges included, as ONE picture (C.K, no MSAA, made when a layer above
+// them moves: one full-size texture however many layers); the frame starts from it. When every layer is still the
+// frame draws nothing at all (the canvas keeps what it shows; a picture read between frames is drawn again). A still
+// layer ABOVE a moving one is drawn as before: its picture alone could not be laid over exactly (additive materials).
+// The kept picture is the resolved one: a moving layer's antialiased edge crossing an edge of the still layers under
+// it blends with the pixel's colour, not its 4 samples, as it already does over any merged layer.
+// Changed size / quality, opacity, blend, move, mask, order, visibility: the kept picture is made again (its
+// signature, g2Sig). Never in renders, recordings, stills (fullRes), offline frames or an export page: all drawn.
+const G2_QUIET = 3; const G2_PROBE = 20;
+function g2KeepHook(R) {
+  const be = R.backend; const W = G2.W;
+  if (!be?.isWebGPUBackend) return;
+  let n = 0;
+  for (const k of ['updateBinding', 'updateBindings', 'createBindings', 'updateAttribute', 'createAttribute', 'createIndexAttribute', 'createStorageAttribute', 'createIndirectStorageAttribute', 'updateTexture', 'createTexture', 'createRenderPipeline', 'beginCompute', 'copyTextureToTexture']) {
+    const f = be[k]; if (typeof f !== 'function') continue;
+    be[k] = function g2Sent(...a) { G2.wr += 1; return f.apply(this, a); }; n += 1;
+  }
+  const cf = be.copyFramebufferToTexture;
+  if (typeof cf === 'function') be.copyFramebufferToTexture = function g2Reads(...a) { G2.wr += 1; if (G2.cur) G2.cur.reads = true; return cf.apply(this, a); };
+  const ou = W.Node?.prototype?.onUpdate;
+  if (n < 8 || typeof ou !== 'function' || typeof cf !== 'function') return; // (another three.js: every layer drawn every frame, as before)
+  W.Node.prototype.onUpdate = function g2NodeCode(callback, updateType) { // (a node update callback registered by a layer's code is per-frame code of that layer)
+    const L = ctxLayer != null ? layers.get(ctxLayer) : null; if (L?.g2) L.g2.code = true;
+    return ou.call(this, callback, updateType);
+  };
+  G2.keep = true;
+}
+// may this layer's finished picture be reused this frame? (probe: the frame that draws the guessed ones anyway)
+function g2Kept(S, probe) {
+  if (S.poke || !S.drawn) return false;
+  if (S.still === true) return true;
+  if (probe || S.still === false || S.code || S.reads || S.frames.length || S.quiet < G2_QUIET) return false;
+  if (S.aliveAt !== S.epoch) { // once per quiet spell: anything in it that runs or changes by itself
+    S.aliveAt = S.epoch; let alive = false; const base = G2.W.Object3D.prototype;
+    S.scene.traverse((o) => {
+      if (alive) return;
+      if (o.onBeforeRender !== base.onBeforeRender || o.onAfterRender !== base.onAfterRender || o.onBeforeShadow !== base.onBeforeShadow) { alive = true; return; }
+      for (const m of [].concat(o.material || [])) for (const v of Object.values(m)) if (v?.isVideoTexture) alive = true;
+    });
+    S.alive = alive;
+  }
+  return !S.alive;
+}
+// what a kept picture of the n bottom layers (or the whole frame) depends on, beside the layers' own scenes
+function g2Sig(vis, n) {
+  const cv = G2.R.domElement;
+  let s = `${cv.width}x${cv.height}|${G2.rtKind || ''}|${n}`;
+  for (let i = 0; i < n; i += 1) {
+    const L = vis[i]; const S = L.g2; const p = L.props; const x = xform(L); const bg = S.scene.background;
+    s += `|${L.id}.${L.gen}.${S.epoch}.${layerMix(L)}.${p.blend || ''}.${x.x},${x.y},${x.scale},${x.rotate}.${p.mask?.points?.length ? JSON.stringify(p.mask.points) : ''}.${bg?.isColor ? bg.getHex() : ''}`;
+  }
+  return s;
+}
+// one layer's scene drawn where the renderer points now, and what the draw sent to the graphics card
 function g2Render(L, S) {
-  const R = G2.R; const cd = R._callDepth;
-  try { R.render(S.scene, S.camera); } catch (err) { if (typeof cd === 'number') R._callDepth = cd; /* (three.js leaves its count of renders inside renders one up when a render throws: the next layers would not find the open pass) */ g2Threw(L, err); }
+  const R = G2.R; const cd = R._callDepth; const i = R.info.render;
+  const w0 = G2.wr; const c0 = i.drawCalls; const t0 = i.triangles; let threw = false;
+  G2.cur = S;
+  try { R.render(S.scene, S.camera); } catch (err) { threw = true; if (typeof cd === 'number') R._callDepth = cd; /* (three.js leaves its count of renders inside renders one up when a render throws: the next layers would not find the open pass) */ g2Threw(L, err); } finally { G2.cur = null; }
+  const calls = i.drawCalls - c0; const tris = i.triangles - t0; const wrote = G2.wr - w0;
+  const same = !threw && !S.poke && wrote === 0 && calls === S.calls && tris === S.tris;
+  S.calls = calls; S.tris = tris; S.wrote = wrote; S.drawn += 1; S.poke = false;
+  if (same) S.quiet += 1; else { S.quiet = 0; S.epoch += 1; }
 }
 // ---- (Nov 9, Scenes v2 phase 2) layers as pictures: opacity, blend modes, moves, masks ----
 // A v2 layer drawn plainly (full opacity, normal blend, not moved, no mask) goes straight onto the scene's picture. One
@@ -15301,6 +15380,17 @@ function g2CompInit() {
     return m;
   };
   C.copy = quadMat(tex('A', C.A.texture, screenUV));
+  // (Nov 11, still) the still bottom layers' kept picture: the resolved colours, no MSAA, no depth; made on first use
+  C.K = null; C.kmat = null;
+  C.keepPicture = (sig) => {
+    const R = G2.R;
+    if (!C.K) { C.K = new W.RenderTarget(C.w, C.h, { type: rt8 ? W.UnsignedByteType : W.HalfFloatType, samples: 0, depthBuffer: false, generateMipmaps: false }); if (rt8) C.K.texture.colorSpace = W.SRGBColorSpace; C.kmat = quadMat(texture(C.K.texture, screenUV)); }
+    if (C.K.width !== C.w || C.K.height !== C.h) C.K.setSize(C.w, C.h);
+    for (const n of C.nodes.A) n.value = C.A.texture;
+    C.quad.material = C.copy; R.setRenderTarget(C.K); R.autoClearColor = true; C.quad.render(R);
+    C.K.sig = sig; C.K.used = G2.frames;
+  };
+  C.dropPicture = () => { if (C.K) { C.K.dispose(); C.kmat.dispose(); C.K = null; C.kmat = null; } };
   G2.C = C;
   return C;
 }
@@ -15347,7 +15437,7 @@ function g2Merge(C, L, S) {
 const G2VIS = [];
 function g2Draw(t, run) {
   const R = G2.R;
-  g2Size();
+  if (g2Size()) G2.shown = null;
   R.info.reset(); G2.passN = 0;
   const vis = G2VIS; vis.length = 0;
   for (const L of ordered()) {
@@ -15364,7 +15454,18 @@ function g2Draw(t, run) {
     }
   }
   R.autoClear = true; R.autoClearDepth = true; R.autoClearStencil = true;
-  if (vis.length === 1 && g2Plain(vis[0])) {
+  // (Nov 11, still) the bottom n layers whose pictures cannot have changed; never where the result must be exact
+  const keeping = G2.keep && !G2.keepOff && !XP_PAGE && !SQ.off && !fullRes();
+  const probe = keeping && run && G2.frames % G2_PROBE === G2_PROBE - 1;
+  let n = 0;
+  if (keeping) while (n < vis.length && g2Kept(vis[n].g2, probe)) n += 1;
+  for (let k = 0; k < vis.length; k += 1) vis[k].g2.keptNow = k < n;
+  const all = n > 0 && n === vis.length ? g2Sig(vis, n) : null;
+  G2.vis = vis.length; G2.kept = 0;
+  if (all !== null && run && G2.shown === all) {
+    // nothing in the scene changed: the canvas already shows this frame, nothing is drawn
+    G2.kept = n; G2.keptFrames += 1; G2.path = 'kept';
+  } else if (vis.length === 1 && g2Plain(vis[0])) {
     R.setRenderTarget(null); R.autoClearColor = true;
     g2Render(vis[0], vis[0].g2);
     G2.path = 'direct';
@@ -15375,25 +15476,35 @@ function g2Draw(t, run) {
     const C = g2CompInit(); g2CompSize(C);
     // (Nov 10, onepass) a run of plain layers shares one pass on the picture (see g2PassHook); sh null: a pass each
     const sh = G2.run && G2.own && !G2.runOff && R.getClearDepth() === 1 && !R.reversedDepthBuffer ? G2.run : null;
-    let fresh = true;
+    let fresh = true; let dz = false; // dz: a layer drew into the open pass (its depth is in the way of the next one)
+    // (Nov 11, still) the still bottom layers under a moving one: their one kept picture starts the frame, or is made now
+    const sigK = all === null && n > 0 ? g2Sig(vis, n) : null;
+    let from = 0;
+    if (sigK !== null && C.K && C.K.sig === sigK) {
+      R.setRenderTarget(C.A); C.quad.material = C.kmat; R.autoClearColor = true;
+      if (sh) { sh.on = true; sh.target = C.A; }
+      try { C.quad.render(R); } finally { if (sh) sh.on = false; }
+      fresh = false; from = n; G2.kept = n; C.K.used = G2.frames;
+    } else if (C.K && G2.frames - C.K.used > 600) C.dropPicture(); // (not used for a while: its memory goes)
     try {
-      for (const L of vis) {
-        const S = L.g2;
+      for (let k = from; k < vis.length; k += 1) {
+        const L = vis[k]; const S = L.g2;
         if (g2Plain(L)) {
           const clears = fresh || Boolean(S.scene.background?.isColor); fresh = false; // (a plain layer with a colour background covers what's under it: it clears with its colour)
           R.setRenderTarget(C.A);
-          if (sh && S.own) { if (sh.head && !clears) g2DepthReset(C); sh.on = true; sh.target = C.A; } else if (sh) g2RunEnd();
+          if (sh && S.own) { if (sh.head && !clears && dz) g2DepthReset(C); sh.on = true; sh.target = C.A; } else if (sh) g2RunEnd();
           R.autoClearColor = clears;
-          g2Render(L, S);
+          g2Render(L, S); dz = true;
           if (sh) sh.on = false;
-          continue;
+        } else {
+          if (sh) g2RunEnd();
+          if (fresh) { R.setRenderTarget(C.A); R.clear(); fresh = false; }
+          R.getClearColor(G2.cc); const ca = R.getClearAlpha();
+          R.setRenderTarget(C.Ly); R.setClearColor(0x000000, 0); R.autoClearColor = true;
+          try { g2Render(L, S); } finally { R.setClearColor(G2.cc, ca); }
+          g2Merge(C, L, S); dz = false;
         }
-        if (sh) g2RunEnd();
-        if (fresh) { R.setRenderTarget(C.A); R.clear(); fresh = false; }
-        R.getClearColor(G2.cc); const ca = R.getClearAlpha();
-        R.setRenderTarget(C.Ly); R.setClearColor(0x000000, 0); R.autoClearColor = true;
-        try { g2Render(L, S); } finally { R.setClearColor(G2.cc, ca); }
-        g2Merge(C, L, S);
+        if (sigK !== null && from === 0 && k === n - 1) { if (sh) g2RunEnd(); dz = false; C.keepPicture(sigK); } // (the picture so far is the still layers': kept)
       }
     } finally { if (sh) { sh.on = false; g2RunEnd(); } }
     R.setRenderTarget(null);
@@ -15401,7 +15512,11 @@ function g2Draw(t, run) {
     C.quad.material = C.copy; C.quad.render(R);
     G2.path = 'merged';
   }
-  G2.passes = G2.passN;
+  if (G2.path !== 'kept') {
+    G2.passes = G2.passN; G2.shown = all; // (what the canvas shows now: the whole still scene, or a frame that will change)
+    if (probe && all === null) { let m = 0; while (m < vis.length && g2Kept(vis[m].g2, false)) m += 1; if (m > 0 && m === vis.length) G2.shown = g2Sig(vis, m); } // (the frame that drew the guessed ones anyway found them unchanged: still what the canvas shows)
+  } else G2.passes = 0;
+  if (G2.kept > G2.keptHi) G2.keptHi = G2.kept;
   if (run) for (const L of vis) { L.drewTick = frameTick; if (L.drawnGen !== L.gen) layerDrew(L, true); }
   G2.drewE = FR.inRaf ? FR.E : -1;
 }
@@ -15433,9 +15548,19 @@ function g2Threw(L, err) {
 window.__labG2 = {
   // (checks) the one renderer's ceiling: n frames of the scenes as they are, back to back, until the graphics card has
   // finished them → ms a frame (CPU submit + GPU work, nothing else of the page in it)
-  rt: (k) => { G2.rtWant = String(k); const C = G2.C; if (C) { for (const t of [C.A, C.B, C.Ly]) t.dispose(); for (const m of C.mats.values()) m.dispose(); C.copy.dispose(); C.dqMat?.dispose(); G2.C = null; } return G2.rtWant; },
+  rt: (k) => { G2.rtWant = String(k); const C = G2.C; if (C) { for (const t of [C.A, C.B, C.Ly]) t.dispose(); for (const m of C.mats.values()) m.dispose(); C.copy.dispose(); C.dqMat?.dispose(); C.dropPicture(); G2.C = null; } G2.shown = null; return G2.rtWant; },
   // (checks, Nov 10) one frame drawn as the scenes are, watched by the graphics card: what it refused (null: nothing)
   gpuError: async () => { const dev = G2.R?.backend?.device; if (!dev || !G2.list.size) return null; dev.pushErrorScope('validation'); try { g2Draw(0, false); } catch (err) { await dev.popErrorScope(); return 'threw: ' + String(err?.message || err); } const e = await dev.popErrorScope(); return e ? String(e.message) : null; },
+  // (checks, Nov 11) still layers' pictures kept (the default) / every layer drawn every frame as before
+  keep: (on) => { G2.keepOff = !on; G2.shown = null; return G2.keep && !G2.keepOff; },
+  // the picture with the kept pictures and with every layer drawn, now, w × h: how far apart (as ab)
+  kab: (w = 480, h = 270) => {
+    const was = G2.keepOff; const grab = (off) => { G2.keepOff = off; const d = composite(null, 0, { w, h }).getContext('2d').getImageData(0, 0, w, h).data; return { d, kept: G2.kept, passes: G2.passes }; };
+    const a = grab(false); const b = grab(true); const c = grab(true); G2.keepOff = was;
+    const far = (p, q) => { let max = 0; let differing = 0; let at = null; for (let i = 0; i < p.length; i += 4) { const m = Math.max(Math.abs(p[i] - q[i]), Math.abs(p[i + 1] - q[i + 1]), Math.abs(p[i + 2] - q[i + 2]), Math.abs(p[i + 3] - q[i + 3])); if (m) { differing += 1; if (!at) at = [(i / 4) % w, Math.floor(i / 4 / w), [p[i], p[i + 1], p[i + 2]], [q[i], q[i + 1], q[i + 2]]]; } if (m > max) max = m; } return { max, differing, at }; };
+    let lit = 0; for (let i = 0; i < a.d.length; i += 4) if (a.d[i] + a.d[i + 1] + a.d[i + 2] > 30) lit += 1;
+    return { ...far(a.d, b.d), noise: far(b.d, c.d), lit, of: w * h, kept: a.kept, passes: [a.passes, b.passes] };
+  },
   // (checks, Nov 10) a run of plain layers in one pass (the default) / a pass each as before
   onepass: (on) => { G2.runOff = !on; return Boolean(G2.run) && G2.own && !G2.runOff; },
   // the picture drawn both ways, now, w × h: how far apart the two are (max 0: the same pixels), where the first
@@ -15461,7 +15586,8 @@ window.__labG2 = {
   pixel: (fx, fy) => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(Math.min(63, Math.floor(fx * 64)), Math.min(35, Math.floor(fy * 36)), 1, 1).data; return [d[0], d[1], d[2]]; },
   // the merged picture as a still would read it now (composite), small: how much of it is lit
   lit: () => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(0, 0, 64, 36).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 30) n += 1; return { lit: n, of: 64 * 36 }; },
-  state: () => ({ on: Boolean(G2.R), page: GPU_PAGE, backend: G2.backend, layers: [...G2.list].map((S) => ({ id: S.L.id, compileMs: S.compileMs, objects: S.scene.children.length, frames: S.frames.length, t: Math.round(S.time.t * 100) / 100 })), frames: G2.frames, cpuMs: Math.round(G2.cpuMs * 100) / 100, gpuMs: G2.gpuMs == null ? null : Math.round(G2.gpuMs * 100) / 100, w: G2.w, h: G2.h, pr: G2.pr, calls: G2.R?.info.render.drawCalls ?? null, ts: Boolean(G2.ts), triangles: G2.R?.info.render.triangles ?? null, contexts: glAlive(), lost: G2.lost, path: G2.path, rt: G2.rtKind || null, err: G2.err || null, merges: G2.C?.merges ?? 0, passes: G2.passes, onepass: Boolean(G2.run) && G2.own && !G2.runOff, onepassErr: G2.runErr, timing: G2.tsOn }) };
+  state: () => ({ on: Boolean(G2.R), page: GPU_PAGE, backend: G2.backend, layers: [...G2.list].map((S) => ({ id: S.L.id, compileMs: S.compileMs, objects: S.scene.children.length, frames: S.frames.length, t: Math.round(S.time.t * 100) / 100, kept: S.keptNow, drawn: S.drawn, quiet: S.quiet, sent: S.wrote, still: S.still, code: S.code, reads: S.reads, alive: S.alive })),
+    keep: G2.keep && !G2.keepOff, kept: G2.kept, visible: G2.vis, keptFrames: G2.keptFrames, keptPicture: Boolean(G2.C?.K), frames: G2.frames, cpuMs: Math.round(G2.cpuMs * 100) / 100, gpuMs: G2.gpuMs == null ? null : Math.round(G2.gpuMs * 100) / 100, w: G2.w, h: G2.h, pr: G2.pr, calls: G2.R?.info.render.drawCalls ?? null, ts: Boolean(G2.ts), triangles: G2.R?.info.render.triangles ?? null, contexts: glAlive(), lost: G2.lost, path: G2.path, rt: G2.rtKind || null, err: G2.err || null, merges: G2.C?.merges ?? 0, passes: G2.passes, onepass: Boolean(G2.run) && G2.own && !G2.runOff, onepassErr: G2.runErr, timing: G2.tsOn }) };
 // All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
   swapDrop(0); // (round 89: an old stack still fading out goes now)

@@ -2708,7 +2708,7 @@ const ThreeLab = (() => {
       fps: (v) => { fpsSel.value = String(v); fpsSel.dispatchEvent(new Event('change')); return v; },
       // round 16 "labperf": the numbers (/lab perf), the HUD, Light mode
       // (kept out of lastStats: the director's reports stay as short as they were)
-      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.gpuApi ? { gpuMs: lastStatsMsg.gpuMs == null ? null : Math.round(lastStatsMsg.gpuMs * 100) / 100, gpuApi: lastStatsMsg.gpuApi } : {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, pace: { readout: paceOn, text: paceText(paceLast), battery: onBattery, ...(paceLast || {}) }, line: perfLine(lastStatsMsg) }),
+      perf: () => ({ ...(lastStats || {}), ...(lastStatsMsg?.gpuApi ? { gpuMs: lastStatsMsg.gpuMs == null ? null : Math.round(lastStatsMsg.gpuMs * 100) / 100, gpuApi: lastStatsMsg.gpuApi, stillLayers: lastStatsMsg.kept || 0, v2Layers: lastStatsMsg.v2n || 0 } : {}), ...(lastStatsMsg?.p50 != null ? { frameMsP50: lastStatsMsg.p50, frameMsP95: lastStatsMsg.p95, drawCallsAll: lastStatsMsg.callsAll, gpuMB: lastStatsMsg.gpuMB, quality: lastStatsMsg.quality, fpsCap: lastStatsMsg.cap || 'screen', saved: lastStatsMsg.note } : {}), parked: parkedNow, focused: winFocused, fpsSetting: (FPS_OPTS.find(([v]) => v === String(fpsPref())) || FPS_OPTS[0])[1], light: lightOn, hud: perfHudOn, adapt: { on: adaptOn, ...(adaptLast || {}), note: !adaptNote.hidden }, pace: { readout: paceOn, text: paceText(paceLast), battery: onBattery, ...(paceLast || {}) }, line: perfLine(lastStatsMsg) }),
       pace: (on) => (on == null ? paceOn : setPaceOn(on)), // (round 33 "labpace") the Frame pace readout
       adapt: (on) => (on == null ? adaptOn : setAdaptOn(on)),
       perfHud: (on) => setPerfHud(on ?? !perfHudOn), light: (on) => (on == null || on !== lightOn ? setLight(on ?? !lightOn) : lightOn),
@@ -2951,7 +2951,7 @@ const ThreeLab = (() => {
       return qChip;
     }
     function paintStats(msg) {
-      const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}|${msg.gpuMs == null ? '' : msg.gpuMs.toFixed(1)}`;
+      const sig = `${Math.round(msg.fps)}|${msg.quality}|${adaptOn}|${Math.round(msg.worst || 0)}|${msg.ms.toFixed(1)}|${msg.calls}|${msg.triangles}|${msg.points}|${msg.geometries}|${msg.textures}|${msg.programs}|${msg.gpuMs == null ? '' : msg.gpuMs.toFixed(1)}|${msg.kept || 0}`;
       if (sig === statsSig) return;
       statsSig = sig;
       // (round 73, startfast73) the line's parts are made once and their words changed in place: a new line every stats
@@ -2968,7 +2968,7 @@ const ThreeLab = (() => {
       qualityChip(msg);
       put(P.fps, `${Math.round(msg.fps)} fps`, msg.fps < 30 ? 'bad' : msg.fps < 55 ? 'warn' : 'ok');
       P.worst.hidden = !msg.worst; if (msg.worst) put(P.worst, `worst ${Math.round(msg.worst)} ms`, msg.worst > 40 ? 'bad' : msg.worst > 24 ? 'warn' : 'ok');
-      put(P.ms, msg.gpuApi ? `${msg.ms.toFixed(1)} ms render · ${msg.gpuMs == null ? '–' : msg.gpuMs.toFixed(1)} ms GPU (WebGPU)` : `${msg.ms.toFixed(1)} ms render`); // (Nov 9, Scenes v2: a v2 scene's one renderer says its GPU time) put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
+      put(P.ms, msg.gpuApi ? `${msg.ms.toFixed(1)} ms render · ${msg.gpuMs == null ? '–' : msg.gpuMs.toFixed(1)} ms GPU (WebGPU)${msg.kept ? ` · ${msg.kept} of ${msg.v2n} layers still (not redrawn)` : ''}` : `${msg.ms.toFixed(1)} ms render`); // (Nov 11, still178: a v2 scene's layers whose pictures were reused) // (Nov 9, Scenes v2: a v2 scene's one renderer says its GPU time) put(P.calls, `${msg.calls} draw calls`); put(P.tris, `${msg.triangles.toLocaleString()} tris`);
       P.points.hidden = !msg.points; if (msg.points) put(P.points, `${msg.points.toLocaleString()} points`);
       put(P.geo, `${msg.geometries} geo · ${msg.textures} tex · ${msg.programs} shaders`);
       window.LabRegroup?.stats?.(msg, qChip.textContent); // (round 148, look148) the preview's instrument header: fps · quality (only when the line changed)
