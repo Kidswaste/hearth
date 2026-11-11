@@ -245,7 +245,7 @@ const LabPacks = (() => {
       const layers = (Array.isArray(s.sketch.layers) && s.sketch.layers.length ? s.sketch.layers : [{ id: 'main', name: s.sketch.name, code: s.sketch.code || '' }]).map((L, i) => ({ ...L, id: L.id || (i ? ThreeLayers.newId() : 'main'), name: String(L.name || `Layer ${i + 1}`), code: String(L.code || '') }));
       const ex = s.extras && typeof s.extras === 'object' ? s.extras : {};
       if (ex.media && !ex.media.path) delete ex.media;
-      const x = sc.create({ name: uniqueName(s.sketch.name || m.name), code: layers[0].code, layers, frame: ex.frame || null, timeline: ex.timeline || null });
+      const x = sc.create({ name: uniqueName(s.sketch.name || m.name), code: layers[0].code, layers, frame: ex.frame || null, timeline: ex.timeline || null, format: (typeof ThreeData !== 'undefined' ? ThreeData.formatOf(layers, s.sketch.format) : s.sketch.format) }); // (round 176, gpuaware176) a v2 scene in a pack opens as v2
       sc.setExtras?.(x.id, ex);
       ids.set(s.key, { id: x.id, s });
     }

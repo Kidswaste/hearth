@@ -518,5 +518,11 @@ void main() {
   // (Nov 9) code written as a v2 layer (a default export, no renderer of its own): a director's new scene takes the v2
   // format then; old-style code (its own WebGLRenderer / animation loop) keeps the old format, so it still runs
   const isV2Code = (code) => /\bexport\s+default\b/.test(String(code || '')) && !/\bWebGL1?Renderer\b|\bsetAnimationLoop\b/.test(String(code || ''));
-  return { isV2Code, TEMPLATES, SNIPPETS, SHADERS, V2_LAYERS, V2_TEMPLATES, v2Layers, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
+  // (round 176, gpuaware176) what a v2 scene gets where an old scene got an old template: its empty layer, a v2 layer by id ("v2-knot" or
+  // "knot"; none named = the cube), and a scene's format from its layers when nothing recorded it (a restored / unpacked /
+  // templated scene: any v2 layer makes it a v2 scene, old layers in it still run the old way)
+  const V2_EMPTY_CODE = V2_HEAD + '// Empty: the scene\'s layers were deleted. Describe what you want, or add a layer.\nexport default () => {};\n';
+  const v2Layer = (id) => { const k = String(id || '').toLowerCase(); const L = V2_LAYERS.find((x) => x.id === k || x.id === `v2-${k}`); return L ? { ...L, name: L.name.replace(/ \(v2\)$/, '') } : null; };
+  const formatOf = (layers, was) => (was === 'gpu' || (Array.isArray(layers) && layers.some((L) => isV2Code(L?.code))) ? 'gpu' : null);
+  return { V2_EMPTY_CODE, v2Layer, formatOf, isV2Code, TEMPLATES, SNIPPETS, SHADERS, V2_LAYERS, V2_TEMPLATES, v2Layers, VERSIONS: ['0.186.1', '0.180.0', '0.175.0', '0.170.0', '0.160.1'] };
 })();
