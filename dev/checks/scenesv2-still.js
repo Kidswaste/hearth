@@ -95,7 +95,7 @@ try {
 
   // ---- every layer still: nothing drawn ----
   await props('l3', { ...RESET, visible: false }); await wait(1500);
-  const b0 = await st(); await wait(1500); const b1 = await st();
+  const b0 = await st(); await wait(1500); const b1 = await until(async () => { const s = await st(); return s.path === 'kept' ? s : null; }, 2000, 60) || await st(); // (not the probe's frame: 1 in 20 draws)
   const FB_ = b1.frames - b0.frames;
   step('every layer still: the frame draws nothing (0 passes), frame after frame', b1.path === 'kept' && b1.passes === 0 && b1.keptFrames - b0.keptFrames >= FB_ * 0.85, { path: b1.path, passes: b1.passes, frames: FB_, notDrawn: b1.keptFrames - b0.keptFrames });
   const lit = await pj('window.__labG2.lit()'); const k4 = await pj('window.__labG2.kab(1920, 1080)');

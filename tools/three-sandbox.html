@@ -2182,7 +2182,7 @@ const AD_USE = { fx: () => [...layers.values()].some((L) => L.fx && !L.fxSkip &&
 // (round 38, bigscreen) the pixels the preview draws per frame (every visible renderer's canvas): over ≈ 6 million (a
 // preview filling a 4K / 5K screen) a slow moment steps the resolution down after one window instead of two
 const AD_BIG_PX = 6e6;
-const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } return px > AD_BIG_PX; };
+const adBigPx = () => { let px = 0; for (const r of renderers) { const c = r.domElement; if (c && !r.__stale && adShows(r.__layer)) px += (c.width || 0) * (c.height || 0); } if (G2.R && G2.list.size) px += G2.canvas.width * G2.canvas.height; /* (Nov 11, governor178: a v2 scene's one canvas) */ return px > AD_BIG_PX; };
 const SAFEOPEN = { on: false }; // (round 147, safeopen147) held at the lowest step (see the 'safe-open' message)
 const AD = { on: !XP_PAGE, core: adaptCore({ useful: (k) => Boolean(AD_USE[k]?.()), quick: adBigPx }), cull: 0, mode: 'smooth', qWant: 1, qAt: 0, half: null, halfN: 0, aaWish: false, tierAt: 0, tierBack: 20000, tiers: 0, log: [] };
 const ADW = new Float64Array(1); // (round 142, smooth142) the last drawn frame's work (ms of render calls; −1: none), for Smooth's budget
@@ -15551,6 +15551,9 @@ window.__labG2 = {
   rt: (k) => { G2.rtWant = String(k); const C = G2.C; if (C) { for (const t of [C.A, C.B, C.Ly]) t.dispose(); for (const m of C.mats.values()) m.dispose(); C.copy.dispose(); C.dqMat?.dispose(); C.dropPicture(); G2.C = null; } G2.shown = null; return G2.rtWant; },
   // (checks, Nov 10) one frame drawn as the scenes are, watched by the graphics card: what it refused (null: nothing)
   gpuError: async () => { const dev = G2.R?.backend?.device; if (!dev || !G2.list.size) return null; dev.pushErrorScope('validation'); try { g2Draw(0, false); } catch (err) { await dev.popErrorScope(); return 'threw: ' + String(err?.message || err); } const e = await dev.popErrorScope(); return e ? String(e.message) : null; },
+  // (checks, Nov 11, governor178) the one renderer's pixel ratio now (QUALITY › Smooth may have lowered it) and the one a
+  // still or a recording is drawn at (fullRes: the scene's own)
+  stillPr: () => { if (!G2.R) return null; g2Size(); const now = G2.pr; shotFull += 1; let still; try { g2Size(); still = G2.pr; } finally { shotFull -= 1; g2Size(); } return { now, still }; },
   // (checks, Nov 11) still layers' pictures kept (the default) / every layer drawn every frame as before
   keep: (on) => { G2.keepOff = !on; G2.shown = null; return G2.keep && !G2.keepOff; },
   // the picture with the kept pictures and with every layer drawn, now, w × h: how far apart (as ab)

@@ -22,3 +22,15 @@
 - If a layer changes in a way Hearth can't see coming (a picture that finishes loading late), it shows up to a third
   of a second later than before.
 - Old-format scenes are untouched.
+
+## Slow scenes lighten themselves: checked for new scenes
+
+- You asked for Hearth to watch how long frames take and lower the resolution when a scene falls behind. It already
+  does: it is the Lab's QUALITY › Smooth, the default. This round checked that it works for new-format scenes too.
+- Measured on a deliberately heavy new-format scene at 4K: 12 frames a second with Force high quality; with Smooth the
+  resolution went down in steps to half and the scene ran at 27 frames a second (30 was the most it could show
+  there). When the load went away, the resolution came back by itself, a step at a time. A light scene was left alone.
+- You see it in the stats line ("Quality: auto · 85 %") and can turn it off in the same menu (Force high quality).
+  Stills, recordings and renders are always made at full quality.
+- One thing old scenes have that new ones don't yet: drawing the single heaviest layer every other frame as a last
+  resort.
