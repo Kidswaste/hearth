@@ -79,6 +79,7 @@ fixed at the source; if it ever came back the owner would have to pick IN-APP by
 |---|---|---|---|
 | Nov 10, on screen (a game also on the GPU) | 225 fps | 195 fps (worst frame 133 ms) | 44 fps (192 ms) |
 | Nov 11, silent, the player as the default | 211 fps | 210 fps (71 ms) | 26 fps (200 ms) |
+| Nov 11, on screen, the player as the default | 150 fps | 213 fps (96 ms) | 22 fps (138 ms) |
 
 The step asserts ≥ 70 % of idle with the scene in the player; the in-window number is reported next to it.
 
@@ -86,17 +87,30 @@ The step asserts ≥ 70 % of idle with the scene in the player; the in-window nu
 
     HEARTH_LP_DEFAULT=1 SMOKE_GPU_FLAGS="--ignore-gpu-blocklist" ELECTRON="$PWD/electron/electron.exe" node dev/smoke.js --check-timeout 450000 --script dev/checks/labplayer.js
 
-36 steps, all passing, silent (nothing on screen, no sound): the default, both formats, the table above, the fallback
+36 steps, all passing, silent (nothing on screen, no sound) and once on screen: the default, both formats, the table above, the fallback
 (the player's page is crashed on purpose: the scene is back in the frame, the words are on screen, Try again works),
 the heavy scene. Also: `dev/checks/motion-in.js` in-window (camera code touched): all steps but "/webcam file", which
 writes to `/tmp/…` and so cannot pass on Windows; `node dev/boot-test.js`, `node dev/slim116-test.js`.
 
-**Waiting on an on-screen run (needs the owner's OK, `--show`)**: everything in this round. Silent runs keep the
-windows far off the screen, where labplayer2's black-window bug does not happen, so they cannot show that the picture
-is really on the desktop. The Nov 10 on-screen runs proved that for the fix itself; since then `labplayer/main.js`
-changed (zoom re-applied on every place, volume, the muted test player) and all of labplayer3 was added. What the
-on-screen run would confirm: the scene visible over the frame after these changes, the still under a menu looking
-right (no black flash, the right size at an exact frame size), and how the window follows a drag.
+**The on-screen run** (Nov 11, the owner said "Yes, show them"; one run, `--show`, the player as the default): 36 of 36.
+No other app's window was over the player during it, so the desktop's own pixels were read at every look:
+
+| look | frames a second the page got | above Hearth's window | the desktop's pixels at the frame |
+|---|---|---|---|
+| old-format scene | 112 | yes | 100 % lit, 17 colours |
+| after hidden and shown again | 110 | yes | 100 % lit |
+| after a fresh restart | 114 | yes | 100 % lit |
+| exact 1920 × 1080 frame (the page read 1919 × 1080) | 107 | yes | 100 % lit |
+| v2 scene (WebGPU) | 91 | yes | 100 % lit, 28 colours |
+| heavy scene | 15 | yes | 100 % lit |
+
+What that run proved, with everything of labplayer2 and labplayer3 in: the scene is really on the desktop, in both
+formats, after each way the window gets shown again (a menu, a restart, the Stage window, the fallback and Try again);
+an exact frame size is exact on screen (the silent run's 1967 × 1103 is the off-screen artifact); Hearth's window held
+213 fps with the heavy scene in the player against 22 with it in Hearth's frame (150 idle in that run: the owner was
+using the computer).
+Still not shown by any run: how the still under a menu looks (the check sees that it is there, not that it is free of a
+black flash or the right size at an exact frame size), and how the window follows a drag. Those need eyes.
 
 ## Files
 
