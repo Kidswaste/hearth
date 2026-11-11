@@ -127,9 +127,12 @@ come out lighter:
 
 ## Check
 
-Final run on 44.5.1 (this branch, after the merge): `--exact fastboot playfix settingscalm unit:boot-test unit:lazymanifest-test`
-**5 / 5 passed**; `node dev/whatsnew-test.js` 49 passed; `node dev/lazy-manifest.js --check` clean; `node dev/trim-weights.js`
-sizes unchanged. (engine177 is on the parked branch, not on this one.)
+Final run on 44.5.1, after merging origin/main (round 176's smooth176; origin/claude/intelligent-galileo-yaiqem had
+nothing new): `--exact fastboot playfix settingscalm unit:boot-test unit:lazymanifest-test playback-volume` **6 / 6
+passed**; on 45.3.0 the merge's new checks `playback-volume gpuaware176` **2 / 2 passed** (its new `volume-preload.js`
+is 45-safe: it requires only `electron`). `node dev/whatsnew-test.js` 49 passed; `node dev/lazy-manifest.js --check`
+clean; `node dev/trim-weights.js` rewrote the merge's sizes; boot-test (the boot budget) passed. engine177 is on the
+parked branch, not this one: 40 / 40 there on both engines.
 
 ## For the Lab's owner
 
