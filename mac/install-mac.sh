@@ -7,25 +7,17 @@
 #   start that folder. It shows up in Launchpad, Spotlight and the Dock like any other app.
 # - Moves the old setup-mac.sh pieces (the ~/Applications launcher, the electron-mac folder) to the Trash.
 # Running it again rebuilds the app; your data stays where it is.
-# (round 177, engine177) Settings › This computer & sync › Update the engine runs this script too, after Hearth checked
-# the download: HEARTH_ELECTRON_ZIP (the zip), HEARTH_ELECTRON_SHA256 (its checksum from engine.json, checked again here),
-# HEARTH_ELECTRON_VERSION, HEARTH_WAIT_QUIT=1 (wait up to a minute for Hearth to finish quitting). The old Hearth.app
-# goes to the Trash as on every rebuild.
 set -e
 
 main() {
   local src dest version arch apps app tmp base
   src="$(cd "$(dirname "$0")/.." && pwd)"
   dest="$HOME/Library/Application Support/Hearth"
-  version="${HEARTH_ELECTRON_VERSION:-44.5.1}"
+  version="44.5.1"
   case "$(uname -m)" in arm64) arch=arm64 ;; *) arch=x64 ;; esac
 
   if [ ! -f "$src/main.js" ] || [ ! -f "$src/store.js" ]; then
     echo "This script has to stay in the mac/ folder inside the Hearth folder."; exit 1
-  fi
-  if [ "${HEARTH_WAIT_QUIT:-}" = "1" ]; then
-    local w=0
-    while pgrep -f "Hearth.app/Contents/MacOS/Electron" >/dev/null && [ $w -lt 60 ]; do sleep 1; w=$((w + 1)); done
   fi
   if pgrep -f "Hearth.app/Contents/MacOS/Electron" >/dev/null; then
     echo "Hearth is open. Quit it first (⌘Q), then run this again."; exit 1
@@ -45,17 +37,7 @@ main() {
 
   # 2. Electron, renamed to Hearth: reuse the one setup-mac.sh downloaded, or download it.
   tmp="$(mktemp -d)"
-  if [ -n "${HEARTH_ELECTRON_ZIP:-}" ]; then
-    # (round 177) the engine update Hearth downloaded: used only if its checksum is still the approved one
-    local got
-    got="$(shasum -a 256 "$HEARTH_ELECTRON_ZIP" | awk '{print $1}')"
-    if [ -z "${HEARTH_ELECTRON_SHA256:-}" ] || [ "$got" != "$HEARTH_ELECTRON_SHA256" ]; then
-      echo "The engine download doesn't match its checksum; nothing was changed."; rm -rf "$tmp"; open -a "Hearth" 2>/dev/null || true; exit 1
-    fi
-    echo "Using the checked Electron $version download…"
-    ditto -x -k "$HEARTH_ELECTRON_ZIP" "$tmp/unzipped"
-    mv "$tmp/unzipped/Electron.app" "$tmp/Hearth.app"
-  elif [ -d "$dest/electron-mac/Hearth.app" ]; then
+  if [ -d "$dest/electron-mac/Hearth.app" ]; then
     mv "$dest/electron-mac/Hearth.app" "$tmp/Hearth.app"
   else
     echo "Downloading Electron $version for this Mac ($arch)…"

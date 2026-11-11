@@ -139,8 +139,6 @@ const AppUIDialogs = (() => {
       (() => { if (window.BackupAuto) return BackupAuto.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('backupauto').then(() => { if (window.BackupAuto) slot.replaceWith(BackupAuto.line()); }).catch(() => {}); return slot; })(),
       // (round 53, diskcalm) "Space Hearth uses: 2.4 GB: backups 1.2 GB · game cache 600 MB · …" with Free up per cache (diskcalm.js)
       (() => { if (window.DiskCalm) return DiskCalm.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('diskcalm').then(() => { if (window.DiskCalm) slot.replaceWith(DiskCalm.line()); }).catch(() => {}); return slot; })(),
-      // (round 177, engine177) "Engine: Electron 44.5.1 …": the engine Hearth runs on, and one button only when engine.json approves a newer one (engineup.js)
-      (() => { if (window.EngineUp) return EngineUp.line(); const slot = el('span', { class: 'sf-slot' }); window.Lazy?.load?.('engineup').then(() => { if (window.EngineUp) slot.replaceWith(EngineUp.line()); }).catch(() => {}); return slot; })(),
       // (round 90, devices90) "Your computers": each computer Hearth knows, Forget this computer…, very long chats' pieces' space (devices90.js; shown while sync is on)
       (() => { if (!syncSec) return el('span'); if (window.Devices90) return Devices90.line(); const slot = el('span', { class: 'dv-slot' }); window.Lazy?.load?.('devices90').then(() => { if (window.Devices90) slot.replaceWith(Devices90.line()); }).catch(() => {}); return slot; })(),
       el('div', { class: 'button-row', title: 'Claude, Codex, ffmpeg, sync, folders from the other computer, permissions, updates: one list, one button each' },

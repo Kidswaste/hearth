@@ -1,3 +1,2 @@
 *.sh text eol=lf
 mac/*.icns binary
-*.cmd text eol=crlf

@@ -794,11 +794,6 @@ function registerAfterWindow() {
   // (caps, provable leftovers, to the Trash) every 6 h on powerwise's schedule, the first 10 min after the start (not in test runs)
   const diskcalmIpc = lazyIpc('diskcalmmain.js', (m, ipc) => m.register(ipc, { dataDir: store.DATA_DIR, getWin: () => win, store, settings }));
   if (!process.env.HEARTH_TEST_SAVE_DIR) { try { powerwise.every('diskcalm', 6 * 3600e3, () => { diskcalmIpc.load(); return require('./diskcalmmain').tick(); }, { hidden: 'run', first: 10 * 60e3 }); } catch { /* no schedule: tidies when asked */ } }
-  // (round 177, engine177) the engine update (Settings › This computer & sync; on a click only). On Windows, after the first
-  // screen and only when a trial mark or the engine kept from before is there (two stats): a new engine's first start
-  // confirmed, or, a start later, the engine before removed (docs/upgrades/engine177.md)
-  const engineupIpc = lazyIpc('engineupmain.js', (m, ipc) => m.register(ipc, { getWin: () => win }));
-  if (process.platform === 'win32') afterFirstScreen(() => { if (fs.existsSync(path.join(__dirname, 'electron', '.hearth-trial')) || fs.existsSync(path.join(__dirname, 'electron-old'))) { engineupIpc.load(); require('./engineupmain').afterStart(); } });
   lazyIpc('adobemain.js', (m, ipc) => m.register(ipc, () => win, settings)); // Photoshop, Illustrator, Premiere, Media Encoder, InDesign scripting
   lazyIpc('deploymain.js', (m, ipc) => m.register(ipc, () => win, settings)); // publish on Vercel / Netlify / Cloudflare Pages / GitHub Pages
   const gameIpc = lazyIpc('gamemodemain.js', (m, ipc) => m.register(ipc, { getWin: () => win, powerwise, dataDir: store.DATA_DIR })); // (round 52) ▶ Play: a game in its own full-screen window
