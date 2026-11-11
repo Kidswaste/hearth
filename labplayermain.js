@@ -2,7 +2,7 @@
 // with its own graphics process, laid exactly over the Lab's preview area. Opt-in (the Lab dock's PLAYER switch); the
 // Lab drives it as it drives the Stage window (tools/three.js sandboxFrame target 'player'), through here.
 //   labplayer:open { query, fresh } → the page loaded (the app started the first time, again when fresh)
-//   labplayer:to msg → the page · labplayer:rect { x, y, width, height, visible } (CSS px in the Lab's window) → placed
+//   labplayer:to msg → the page · labplayer:rect { x, y, width, height, visible, scale } (CSS px in the Lab's window; scale: an exact frame size shown smaller) → placed
 //   labplayer:close → the app goes · events: labplayer:from msg, labplayer:closed (it ended: the Lab takes the preview back)
 // The window follows Hearth's: moved, resized, minimised (hidden), focused again (kept just above it, moveAbove).
 const { app, BrowserWindow, ipcMain } = require('electron');
@@ -15,10 +15,11 @@ const SANDBOX = pathToFileURL(path.join(__dirname, 'tools', 'three-sandbox.html'
 const SWITCHES = ['use-angle', 'use-gl', 'enable-features', 'disable-features', 'force_high_performance_gpu', 'force_low_power_gpu', 'ignore-gpu-blocklist'];
 
 let child = null; let ready = null; let owner = null; let ownerWin = null;
-let rect = null; let visible = false; let lastBounds = null; let lastWhy = 'not placed yet';
+let rect = null; let visible = false; let lastBounds = null; let lastWhy = 'not placed yet'; let scale = 1;
 const toOwner = (ch, msg) => { try { if (owner && !owner.isDestroyed()) owner.send(ch, msg); } catch { /* window gone */ } };
 const post = (m) => { try { child?.connected && child.send(m); } catch { /* ended */ } };
 
+const dbgLog = []; const dbgWait = new Map(); let dbgN = 0;
 function start() {
   if (child) return ready;
   const env = { ...process.env };
@@ -33,7 +34,9 @@ function start() {
     c.on('message', (m) => {
       if (m?.op === 'ready') { clearTimeout(t); resolve(true); place(); return; }
       if (m?.op === 'from') { toOwner('labplayer:from', m.msg); return; }
-      if (m?.op === 'gone') { toOwner('labplayer:closed', { why: m.why }); }
+      if (m?.op === 'gone') { toOwner('labplayer:closed', { why: m.why }); return; }
+      if (m?.op === 'console') { if (dbgLog.length < 2000) dbgLog.push(`${m.level} ${m.text}`); return; } // (HEARTH_LP_DEBUG=1: the page's console)
+      if (m?.op === 'debug') { const fn = dbgWait.get(m.id); dbgWait.delete(m.id); fn?.(m.result); }
     });
     c.on('exit', () => { clearTimeout(t); resolve(false); if (child === c) { child = null; ready = null; toOwner('labplayer:closed', { why: 'exit' }); } });
     c.on('error', () => { clearTimeout(t); resolve(false); });
@@ -55,7 +58,7 @@ function place() {
   const bounds = { x: cb.x + rect.x * zf, y: cb.y + rect.y * zf, width: rect.width * zf, height: rect.height * zf };
   let above = null; try { above = w.getMediaSourceId(); } catch { /* none */ }
   lastBounds = bounds;
-  post({ op: 'place', bounds, above });
+  post({ op: 'place', bounds, above, zoom: zf * scale }); // (Nov 10: zoom = Hearth's own × the frame's scale, so the page sees the frame's size)
 }
 let placeT = 0;
 const placeSoon = () => { clearTimeout(placeT); placeT = setTimeout(place, 0); };
@@ -81,10 +84,18 @@ function register() {
   ipcMain.on('labplayer:rect', (e, r) => {
     owner = e.sender; follow(BrowserWindow.fromWebContents(e.sender));
     visible = Boolean(r?.visible); rect = visible ? { x: r.x, y: r.y, width: r.width, height: r.height } : rect;
+    if (visible) scale = r.scale > 0.01 && r.scale < 100 ? r.scale : 1;
     placeSoon();
   });
   ipcMain.handle('labplayer:close', () => { visible = false; stop(); return true; });
-  ipcMain.handle('labplayer:state', () => ({ running: Boolean(child), pid: child?.pid || null, visible, rect, bounds: lastBounds, why: lastWhy, owner: ownerWin && !ownerWin.isDestroyed() ? ownerWin.getBounds() : null }));
+  ipcMain.handle('labplayer:state', () => ({ running: Boolean(child), pid: child?.pid || null, visible, rect, scale, bounds: lastBounds, why: lastWhy, owner: ownerWin && !ownerWin.isDestroyed() ? ownerWin.getBounds() : null }));
+  // (HEARTH_LP_DEBUG=1, checks only) ask the player: { kind: 'eval', code } · 'capture' (what its window shows) · 'seen' (what
+  // arrived for the page) · 'console' (the page's console so far)
+  if (process.env.HEARTH_LP_DEBUG) ipcMain.handle('labplayer:debug', (_e, q = {}) => {
+    if (q.kind === 'console') return dbgLog.splice(0);
+    if (!child?.connected) return { error: 'not running' };
+    return new Promise((resolve) => { const id = ++dbgN; dbgWait.set(id, resolve); setTimeout(() => { if (dbgWait.delete(id)) resolve({ error: 'no answer' }); }, 15000); post({ op: 'debug', id, ...q }); });
+  });
   app.on('before-quit', stop);
 }
 

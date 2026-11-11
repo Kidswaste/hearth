@@ -99,7 +99,7 @@ const ThreeLab = (() => {
     let stageSize = () => null; // → { width, height } for exact frame sizes (read at every load)
     // (capturefix2) a frame taken off the page (the Lab closed, the preview remade) has no window: what arrives for it
     // late (a library file loaded for /still) goes nowhere instead of throwing
-    const deliver = (m) => (target === 'stage' ? window.hub.stageSend(m) : target === 'player' ? window.hub.labPlayer?.send(m) : frame.contentWindow?.postMessage(m, '*')); // (Nov 9, labplayer: 'player' = the preview in its own app)
+    const deliver = (m) => { window.__labTap?.(target, m); return (target === 'stage' ? window.hub.stageSend(m) : target === 'player' ? window.hub.labPlayer?.send(m) : frame.contentWindow?.postMessage(m, '*')); }; // (Nov 9, labplayer: 'player' = the preview in its own app)
     let coverShot = null; // resolves with the picture the page answered for the cover
     // (round 43, glrecover) the GPU took the page's WebGL contexts ('gpu-lost'): the page rebuilds its layers in place
     // when they come back ('gpu-restored'). None back within GL_WAIT: the owner is told ('gpu-stuck') and, unless it
@@ -320,12 +320,16 @@ const ThreeLab = (() => {
     const coveredByUi = () => Boolean(document.querySelector('#menu:not([hidden]), .mb-menu.lab-pop, dialog[open], body > .palette'));
     function sendRect() {
       if (target !== 'player') return;
-      const r = parent.getBoundingClientRect();
+      // (Nov 10, labplayer2) the frame's own place, not its host's: an exact frame size (1080p shown smaller) is laid out
+      // scaled inside the host (tools/three-media.js layout); the player's page is zoomed by that scale, so the scene
+      // sees the same width and height as in Hearth's frame
+      const r = frame.isConnected ? frame.getBoundingClientRect() : parent.getBoundingClientRect();
+      const scale = frame.offsetWidth > 2 ? r.width / frame.offsetWidth : 1;
       const vis = document.visibilityState === 'visible' && parent.isConnected && parent.checkVisibility?.({ visibilityProperty: true }) !== false && r.width > 2 && r.height > 2 && !coveredByUi();
-      const key = vis ? `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}` : 'off';
+      const key = vis ? `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)},${scale.toFixed(4)}` : 'off';
       if (key === playerSent) return;
       playerSent = key;
-      window.hub.labPlayer.rect({ x: r.left, y: r.top, width: r.width, height: r.height, visible: vis });
+      window.hub.labPlayer.rect({ x: r.left, y: r.top, width: r.width, height: r.height, visible: vis, scale });
     }
     const playerTick = () => { clearInterval(playerT); playerT = 0; if (target === 'player' && document.visibilityState === 'visible') playerT = setInterval(sendRect, 250); sendRect(); };
     function usePlayer(on) {
@@ -2777,7 +2781,7 @@ const ThreeLab = (() => {
     // (round 23, labaudio) audio features: the live worklet, whole-song features, the preview's requests (tools/three-audio.js)
     if (typeof ThreeAudio !== 'undefined') ThreeAudio.attach({ player, send: (m) => box.send(m), selCtl, layers: () => layersOf().map((L) => ({ id: L.id, name: L.name, ctl: ctlFor(L) })), live: { kind: () => liveKind, io: () => liveIo(), setIo: (p) => setLiveIo(p), start: (k) => setLive(k) } });
     // (round 25, motion) the camera as a live input: frames to the preview, its tracking, the ● Camera pill (tools/three-motion-in.js)
-    if (typeof LabMotionIn !== 'undefined') LabMotionIn.attach({ send: (m) => box.send(m), frame: () => box.frame, onStage: () => box.onStage, ready: () => box.ready, host: previewHost });
+    if (typeof LabMotionIn !== 'undefined') LabMotionIn.attach({ send: (m) => box.send(m), frame: () => box.frame, onStage: () => box.onStage || box.onPlayer /* (Nov 10: the player takes messages through the main process, as the Stage does) */, ready: () => box.ready, host: previewHost });
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
@@ -2889,15 +2893,17 @@ const ThreeLab = (() => {
     const fWrap = el('div', { class: 'dock-group', dataset: { feature: 'Preview fps' } }, el('span', { class: 'dock-label', text: 'FPS' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Preview frame rate' } }, fBtns));
     // (Nov 9, labplayer) PLAYER: IN-APP (Hearth's own frame) or SEPARATE (its own app and graphics process: a heavy scene
     // can't make Hearth's interface wait). Kept; the preview's overlays (the size pill, guides) wait under it while on.
-    // (Nov 9, retired) SEPARATE rendered scenes black / partly on Quentin's machine: the preview stays in Hearth's own
-    // window. A stored 'separate' is cleared; the PLAYER control is off the dock (labplayer/ kept, nothing starts it).
-    if (store.get('three.player', 'app') === 'separate') store.set('three.player', 'app');
-    const playerPref = () => 'app';
+    // (Nov 9, retired) SEPARATE rendered scenes black / partly on Quentin's machine: the control came off the dock and a
+    // stored 'separate' was cleared.
+    // (Nov 10, labplayer2) the cause is found and fixed (the player's window was shown behind Chromium's back: labplayer/
+    // main.js 'place'; docs/upgrades/labplayer2.md): the control is back, opt-in. IN-APP stays the default, and nobody
+    // has 'separate' stored (it was cleared), so the player only starts for who picks it.
+    const playerPref = () => (window.hub.labPlayer && store.get('three.player', 'app') === 'separate' ? 'separate' : 'app');
     const pBtns = [['app', 'IN-APP', 'The preview in Hearth\'s own window (as before)'], ['separate', 'SEPARATE', 'The preview in its own app and graphics process: a heavy scene can\'t slow Hearth down. The size pill and guides over the picture wait while it\'s on.']]
       .map(([v, t, title]) => segBtn(t, title, () => setPlayer(v)));
     const pWrap = el('div', { class: 'dock-group', dataset: { feature: 'Lab player' } }, el('span', { class: 'dock-label', text: 'PLAYER' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Lab player' } }, pBtns));
     function setPlayer(v) {
-      if (v !== 'app') return playerPref();
+      if (v !== 'app' && v !== 'separate') return playerPref();
       store.set('three.player', v);
       if (box.onStage) setStage(false);
       box.usePlayer(v === 'separate');
@@ -2907,7 +2913,7 @@ const ThreeLab = (() => {
     }
     box.onPlayerClosed = () => { if (playerPref() === 'separate') toast('The separate Lab player stopped: the preview is back in Hearth\'s window.', { type: 'warn' }); paintLevel(); };
     if (playerPref() === 'separate') queueMicrotask(() => { box.usePlayer(true); paintLevel(); });
-    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap);
+    labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap, pWrap);
     function paintLevel() {
       const i = previewLevel(); const forced = qMode() === 'high';
       qBtns.forEach((b, k) => { const on = k === i; if (b.classList.contains('on') !== on) { b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); } });
