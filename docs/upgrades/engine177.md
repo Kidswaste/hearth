@@ -70,6 +70,7 @@ That is "heavier", if only by 3–7 %.
 
 ## Compatibility
 
+
 Electron 45's breaking changes (docs/breaking-changes.md, 45.0), each looked up in Hearth's code:
 
 | Change in 45 | Hearth |
@@ -86,7 +87,19 @@ Electron 45's breaking changes (docs/breaking-changes.md, 45.0), each looked up 
 
 Checks run on 45.3.0 (`ELECTRON=/opt/hearth-electron-45/electron`, `HEARTH_THREE_DIR` set):
 
-CHECKS-45
+- `node dev/run-checks.js qa core` (the release group's app checks): **25 / 25 passed** (qa-commands, qa-keys, qa-mac,
+  polish, lazy, fastboot, access-chat, access-astra, aicheck, collab-appserver, datasafe, crashsafe, chatcore,
+  chat-new-row, chatsafe55, connections, appsearch, firstrun, calmstart, labboot, keptaside94, guardloss78, devices90,
+  projects, sync) in 13 min.
+- `--exact playfix smooth142 play149 labwin153 lite153 mem154 keep176 chat165 restyle172`: **9 / 9 passed** in 14 min.
+- `node dev/run-checks.js unit` (the release group's Node tests): **249 / 259**. The 10 that fail (`datasafe-test`,
+  `datasafe-scan`, `errorcalm-scan`, `promptdiet-test`, `directorfrugal-test`, `chatsafe-scan`, `storeack-scan`,
+  `chatwin-scan`, `emptyread104-test`, `scene-recording-test`) are Node-only and fail **the same way on 44** (rerun: 0 / 10):
+  all about the Lab's files being changed right now (`tools/three-txn.js`'s new `labtxn-replies` store,
+  `tools/three-critique.js`, `tools/three-labwin.js`, `tools/three-lab-tools.js`, `tools/three-sandbox.html`, the Three
+  Director's prompt size): pre-existing, not the engine's, listed for the Lab's owner below.
+- No deprecation warning and no new page or main-process error in any log on 45.
+- **Real incompatibilities found: none.** Nothing needed fixing for Hearth to run on both 44 and 45.
 
 ## The decision
 
@@ -108,14 +121,27 @@ come out lighter:
   Windows line ends (`.gitattributes` `*.cmd text eol=crlf`)
 - `mac/install-mac.sh`: `HEARTH_ELECTRON_ZIP` / `_SHA256` (checked again) / `_VERSION` / `HEARTH_WAIT_QUIT`
 - `dev/checks/engine177.js`: manifest refusals, checksum on a pretend zip, swap / confirm / tidy / rollback in a temp
-  folder (never a real engine folder), the Mac plan, the .cmd's steps in order — **38 / 39** on its last run (the one
-  miss was the check's own text search, fixed after). To ship it later: merge that branch, point `engine.json` at the
+  folder (never a real engine folder), the Mac plan, the .cmd's steps in order — **40 / 40 on 44.5.1 and on 45.3.0** (with settingscalm
+  passing beside it, its budget +1 for the button). To ship it later: merge that branch, point `engine.json` at the
   new version with its checksums, and run the check on Windows once (the .cmd can't run here).
+
+## Check
+
+Final run on 44.5.1 (this branch, after the merge): `--exact fastboot playfix settingscalm unit:boot-test unit:lazymanifest-test`
+**5 / 5 passed**; `node dev/whatsnew-test.js` 49 passed; `node dev/lazy-manifest.js --check` clean; `node dev/trim-weights.js`
+sizes unchanged. (engine177 is on the parked branch, not on this one.)
 
 ## For the Lab's owner
 
 - Nothing in the Lab changed. On 45 the Lab's checks (playfix, smooth142, play149, labwin153, lite153) ran as listed
   above; the software-GL fixture drew ≈ 20 % more frames on 45.
+- Ten Node tests fail today on both engines, all on the Lab's files in flux: `tools/three-txn.js` reads / saves the
+  new `labtxn-replies` store without DataSafe.load / save and without a StoreAck.hold declaration (datasafe-scan,
+  emptyread104, storeack-scan); `tools/three-critique.js:144` sets `S.agentId` (chatsafe-scan); `tools/three-labwin.js`
+  reads `.messages` outside chatwin-scan's AUDIT; `tools/three-lab-tools.js:140` and `tools/three-labwin.js` show a raw
+  error (errorcalm-scan: wrap in calmError); the Three Director's full prompt is 8,630 tokens a message (budget 7,940,
+  promptdiet) and a camera move 19,352 input tokens (budget 7,300, directorfrugal); `scene-recording-test` (asserts one
+  recorder owner in `tools/three-sandbox.html`, finds 2).
 - **three.js 0.187.0 is out** (the Lab pins 0.186.1): not changed here; worth a look by the Lab's owner.
 
 ## For Codex
