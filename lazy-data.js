@@ -171,6 +171,7 @@ const LazyData = (() => {
     { name: 'historylean', tier: 'use', after: ['handoff'], at: 'offline.js', files: ['historylean-core.js', 'historylean.js'], globals: ['HistoryLeanCore', 'HistoryLean'] }, // (round 50) · docs/lazy-groups.md
     { name: 'quickidea', tier: 'use', at: 'offline.js', files: ['quickidea-core.js', 'quickidea.js'], css: ['quickidea.css'], globals: ['QuickIdeaCore', 'QuickIdeas'] }, // (quickidea71)
     { name: 'localanswers', at: 'offline.js', files: ['localanswers-core.js', 'localanswers.js'], css: ['localanswers.css'], globals: ['LocalAnswersCore', 'LocalAnswers'] }, // (round 45) · docs/lazy-groups.md
+    { name: 'engineup', tier: 'use', at: 'updater.js', files: ['engineup-core.js', 'engineup.js'], globals: ['EngineUpCore', 'EngineUp'] }, // (round 177, engine177) the engine update line in Settings › This computer & sync (loaded when Settings opens)
     { name: 'diskcalm', at: 'updater.js', files: ['diskcalm-core.js', 'diskcalm.js'], css: ['diskcalm.css'], globals: ['DiskCalmCore', 'DiskCalm'] }, // (round 53) · docs/lazy-groups.md
     { name: 'chatsafe', tier: 'use', at: 'offline.js', files: ['chatsafe.js'], css: ['chatsafe.css'], globals: ['ChatSafe'] }, // (round 55, chatsafe55) · docs/lazy-groups.md
     { name: 'scenelink', asap: true, at: 'chat-context.js', files: ['chat-scenelink.js'], css: ['chat-scenelink.css'], globals: ['SceneLink'] }, // (round 72, labbridge72) · docs/lazy-groups.md

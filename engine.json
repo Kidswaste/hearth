@@ -1,0 +1,28 @@
+{
+  "about": "(round 177, engine177) The engine Hearth runs on (Electron) that Hearth may offer in Settings › This computer & sync. Only a version listed here is ever offered; each file's SHA-256 was computed from Electron's official release zip and matches its SHASUMS256.txt. Nothing downloads without a click. See docs/upgrades/engine177.md.",
+  "version": "45.3.0",
+  "approved": "2026-11-11",
+  "why": "Measured on Hearth against 44.5.1: lighter, every check passes on it.",
+  "files": {
+    "win32-x64": {
+      "url": "https://github.com/electron/electron/releases/download/v45.3.0/electron-v45.3.0-win32-x64.zip",
+      "sha256": "b43b532e712a4323f4224627b73808a039c9769fdf7ba1dbc3cb49c1dbfa350b",
+      "size": 158018881
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/electron/electron/releases/download/v45.3.0/electron-v45.3.0-darwin-arm64.zip",
+      "sha256": "b0c7cbb70f98ff72beffa98b4c449a7d92d8b51d3d25817cfcdcb6ee2d61711a",
+      "size": 121100277
+    },
+    "darwin-x64": {
+      "url": "https://github.com/electron/electron/releases/download/v45.3.0/electron-v45.3.0-darwin-x64.zip",
+      "sha256": "17b39cede4bd26ec9a125ffa405f324e9eb6c5c2ae2aa8a6060c310d518134a1",
+      "size": 124992519
+    },
+    "linux-x64": {
+      "url": "https://github.com/electron/electron/releases/download/v45.3.0/electron-v45.3.0-linux-x64.zip",
+      "sha256": "4930ece46f988e5874df77e943d98a10655d3da9e268e66ed86c1250bdca089c",
+      "size": 123825417
+    }
+  }
+}
