@@ -55,6 +55,15 @@ function make() {
 }
 
 ipcMain.on('lp:from', (_e, msg) => send({ op: 'from', msg }));
+// (Nov 11, labplayer3) Hearth's 🔊 playback volume (round 176): the same page script as in Hearth (volume-preload.js, in
+// every frame of this app's pages), told the level at start and at each change
+let volume = Number(process.env.HEARTH_LP_VOLUME); if (!(volume >= 0 && volume <= 1)) volume = 1;
+ipcMain.on('volume:initial', (e) => { e.returnValue = volume; });
+function setVolume(v) {
+  if (!(v >= 0 && v <= 1)) return;
+  volume = v;
+  try { for (const f of win?.webContents.mainFrame.framesInSubtree || []) { try { f.send('volume:changed', volume); } catch { /* going */ } } } catch { /* no page */ }
+}
 
 // (HEARTH_LP_DEBUG=1) what arrived for the page, in short (type, keys, size), and two questions a check may ask: run an
 // expression in the page ('eval'), and what the window really shows ('capture': its composited picture, counted)
@@ -63,7 +72,8 @@ const brief = (v, d = 0) => (v == null ? String(v) : ArrayBuffer.isView(v) ? `${
 async function debug(m) {
   if (m.kind === 'seen') return seen.splice(0);
   if (!win) return { error: 'no window' };
-  if (m.kind === 'info') return { pid: process.pid, visible: win.isVisible(), bounds: win.getBounds(), content: win.getContentBounds(), zoom: win.webContents.getZoomFactor(), wanted: zoom, gpu: app.getGPUFeatureStatus(), features: app.commandLine.getSwitchValue('disable-features'), hwnd: win.getNativeWindowHandle().readUInt32LE(0) };
+  if (m.kind === 'info') return { volume, muted: win.webContents.isAudioMuted(), pid: process.pid, visible: win.isVisible(), bounds: win.getBounds(), content: win.getContentBounds(), zoom: win.webContents.getZoomFactor(), wanted: zoom, gpu: app.getGPUFeatureStatus(), features: app.commandLine.getSwitchValue('disable-features'), hwnd: win.getNativeWindowHandle().readUInt32LE(0) };
+  if (m.kind === 'crash') { win.webContents.forcefullyCrashRenderer(); return { crashed: true }; } // (a check: the page's process dies, Hearth must take the scene back)
   if (m.kind === 'eval') return win.webContents.executeJavaScript(m.code, true).then((value) => ({ value }), (err) => ({ error: String(err?.message || err) }));
   if (m.kind === 'capture') {
     const img = await win.webContents.capturePage(); const { width, height } = img.getSize(); const b = img.toBitmap();
@@ -78,6 +88,7 @@ async function debug(m) {
 process.on('message', (m) => {
   if (!m || typeof m !== 'object') return;
   if (m.op === 'quit') { app.quit(); return; }
+  if (m.op === 'volume') { setVolume(Number(m.value)); return; }
   if (m.op === 'debug') { if (DBG) debug(m).then((result) => send({ op: 'debug', id: m.id, result }), (err) => send({ op: 'debug', id: m.id, result: { error: String(err?.message || err) } })); return; }
   if (DBG && m.op === 'to' && seen.length < 4000) seen.push(brief(m.msg));
   if (!win) return;
@@ -111,5 +122,6 @@ app.whenReady().then(() => {
     const lib = require('../offline-library').create({ dataDir: process.env.HEARTH_LP_DATA || path.join(__dirname, '..', 'data'), fetcher: (url, opts) => net.fetch(url, opts), localDir: process.env.HEARTH_THREE_DIR || '' });
     protocol.handle('hearth-three', (req) => lib.response(req));
   } catch (err) { send({ op: 'console', level: 'error', text: `three.js library: ${err.message}` }); }
+  try { require('electron').session.defaultSession.registerPreloadScript({ type: 'frame', filePath: path.join(__dirname, '..', 'volume-preload.js') }); } catch (err) { send({ op: 'console', level: 'error', text: `volume: ${err.message}` }); }
   make(); send({ op: 'ready', pid: process.pid });
 });

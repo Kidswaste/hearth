@@ -24,6 +24,7 @@ function start() {
   if (child) return ready;
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
+  try { env.HEARTH_LP_VOLUME = String(require('./volumemain').get()); } catch { /* full */ } // (Nov 11, labplayer3) Hearth's 🔊 playback volume, and its changes below
   env.HEARTH_LP_SWITCHES = JSON.stringify(SWITCHES.filter((n) => app.commandLine.hasSwitch(n)).map((n) => [n, app.commandLine.getSwitchValue(n)]));
   try { env.HEARTH_LP_DATA = require('./store').DATA_DIR; } catch { /* the default: data/ next to the app */ } // (the player serves three.js from Hearth's kept copies)
   const c = cp.spawn(process.execPath, [path.join(__dirname, 'labplayer')], { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], serialization: 'advanced', env, windowsHide: true });
@@ -96,6 +97,7 @@ function register() {
     if (!child?.connected) return { error: 'not running' };
     return new Promise((resolve) => { const id = ++dbgN; dbgWait.set(id, resolve); setTimeout(() => { if (dbgWait.delete(id)) resolve({ error: 'no answer' }); }, 15000); post({ op: 'debug', id, ...q }); });
   });
+  try { require('./volumemain').onChange((v) => post({ op: 'volume', value: v })); } catch { /* no volume control in this build */ }
   app.on('before-quit', stop);
 }
 

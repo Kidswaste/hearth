@@ -190,6 +190,7 @@ const ThreeLab = (() => {
         for (const m of queue) deliver(m);
         queue = [];
       }
+      if (data.type === 'stack-drawn') { clearTimeout(drawDog); drawDog = 0; if (target === 'player') dispatchEvent(new Event('hearth:lab-player-drew')); }
       if (data.type === 'stack-drawn' && !data.noGl) gl.noneRow = 0; // (round 51) a page that drew with a context: the GPU is there
       if (data.type === 'stack-drawn' && ready && !cover.classList.contains('out')) requestAnimationFrame(uncover);
       onMessage(data);
@@ -199,6 +200,7 @@ const ThreeLab = (() => {
     const RUNS = /^(run-layers|swap-layers)$/;
     const post = (m) => {
       live.sent(name, m.type, m.layer?.id);
+      if (target === 'player' && RUNS.test(m.type) && !drawDog) { const mine = nonce; drawDog = setTimeout(() => { drawDog = 0; if (nonce === mine && ready) playerFail('nodraw'); }, 25000); } // (Nov 11: a run the player never drew)
       if (ready) { deliver(m); return; }
       // a newer whole run replaces the runs still waiting for the page (each would run every layer again)
       if (RUNS.test(m.type)) queue = queue.filter((x) => !RUNS.test(x.type) && x.type !== 'hot-layer' && x.type !== 'remove-layer');
@@ -274,7 +276,11 @@ const ThreeLab = (() => {
       const go = () => {
         if (nonce !== mine) return; // a newer load took over while the picture came
         if (target === 'stage') window.hub.stageOpen({ query: `${query}${sz ? `&fw=${sz.width}&fh=${sz.height}` : ''}`, width: sz?.width, height: sz?.height, fresh });
-        else if (target === 'player') window.hub.labPlayer.open({ query, fresh }).then((ok) => { if (!ok && target === 'player') usePlayer(false); }); // (Nov 9: it didn't start: back in Hearth's frame)
+        else if (target === 'player') {
+          // (Nov 9: it didn't start: back in Hearth's frame · Nov 11: and its page must say ready within 15 s)
+          window.hub.labPlayer.open({ query, fresh }).then((ok) => { if (!ok && nonce === mine) playerFail('start'); }, () => { if (nonce === mine) playerFail('start'); });
+          clearTimeout(playerDog); playerDog = setTimeout(() => { if (!ready && nonce === mine) playerFail('silent'); }, 15000);
+        }
         else {
           if (fresh && frame.parentNode) { const p = frame.parentNode; const next = frame.nextSibling; frame.remove(); p.insertBefore(frame, next); }
           frame.src = `${SANDBOX}${query}`;
@@ -309,6 +315,7 @@ const ThreeLab = (() => {
         window.hub.onStageClosed(() => { if (target !== 'stage') return; target = 'frame'; load(); onStageClosed?.(); });
       }
       stageSize = sizeFn;
+      if (on && target === 'player') { clearInterval(playerT); playerT = 0; playerRO?.disconnect(); playerRO = null; playerSent = ''; clearTimeout(playerDog); clearTimeout(drawDog); playerStill(false); window.hub.labPlayer?.close(); } // (Nov 11)
       if (on) { target = 'stage'; frame.src = 'about:blank'; } else { target = 'frame'; window.hub.stageClose(); }
       load();
     }
@@ -317,7 +324,36 @@ const ThreeLab = (() => {
     // (the Lab's panels move); hidden while a menu or dialog is open over the picture (the player's window is above
     // Hearth's: it would cover them), the Lab off screen or Hearth's window hidden. Off: back in this frame.
     let playerWired = false; let playerT = 0; let playerRO = null; let playerSent = ''; let onPlayerClosed = null;
-    const coveredByUi = () => Boolean(document.querySelector('#menu:not([hidden]), .mb-menu.lab-pop, dialog[open], body > .palette'));
+    // (Nov 11, labplayer3) the player is the normal way a scene runs: what follows keeps it honest.
+    //   playerHide: the Lab says the picture isn't the live preview right now (▶ Play, a baked preview)
+    //   over the picture: a menu, popover or palette that really overlaps the frame (a dialog always: its backdrop
+    //     dims the whole window); the player's window steps aside and a still of the scene stays in the frame
+    //   playerFail(why): its app didn't start ('start'), ended ('ended'), its page never said ready ('silent') or a run
+    //     never drew ('nodraw': a healthy page says 'stack-drawn' within 1.8 s whatever the scene) → back in Hearth's
+    //     frame, and the Lab is told why (it tells the owner in plain words)
+    let playerHide = () => false; let playerDog = 0; let drawDog = 0; let stillFor = '';
+    const UI_OVER = '#menu:not([hidden]), .mb-menu.lab-pop, dialog[open], body > .palette, .lab-pop:not([hidden]), .tw-menu';
+    const coveredByUi = (r) => {
+      for (const n of document.querySelectorAll(UI_OVER)) {
+        if (n.matches('dialog')) return true;
+        const b = n.getBoundingClientRect();
+        if (b.width > 0 && b.height > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) return true;
+      }
+      return false;
+    };
+    const playerStill = (on) => {
+      if (!on) { if (stillFor) { stillFor = ''; uncover(); } return; }
+      if (stillFor || !ready) return;
+      const mine = stillFor = nonce;
+      const prev = coverShot;
+      coverShot = (url) => { prev?.(url); if (stillFor !== mine || target !== 'player' || !url) return; cover.style.backgroundImage = `url("${url}")`; cover.classList.add('snap'); cover.dataset.own = '1'; cover.classList.remove('out'); clearTimeout(coverT); };
+      try { deliver({ target: 'three-sandbox', type: 'screenshot', tag: 'cover' }); } catch { /* no still: the frame shows black for that moment */ }
+    };
+    function playerFail(why) {
+      if (target !== 'player') return;
+      console.warn(`Lab player: ${why}; the preview goes back into Hearth's window`);
+      usePlayer(false); onPlayerClosed?.({ why });
+    }
     function sendRect() {
       if (target !== 'player') return;
       // (Nov 10, labplayer2) the frame's own place, not its host's: an exact frame size (1080p shown smaller) is laid out
@@ -325,7 +361,10 @@ const ThreeLab = (() => {
       // sees the same width and height as in Hearth's frame
       const r = frame.isConnected ? frame.getBoundingClientRect() : parent.getBoundingClientRect();
       const scale = frame.offsetWidth > 2 ? r.width / frame.offsetWidth : 1;
-      const vis = document.visibilityState === 'visible' && parent.isConnected && parent.checkVisibility?.({ visibilityProperty: true }) !== false && r.width > 2 && r.height > 2 && !coveredByUi();
+      const seen = document.visibilityState === 'visible' && parent.isConnected && parent.checkVisibility?.({ visibilityProperty: true }) !== false && r.width > 2 && r.height > 2 && !playerHide();
+      const under = seen && coveredByUi(r);
+      const vis = seen && !under;
+      playerStill(under);
       const key = vis ? `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)},${scale.toFixed(4)}` : 'off';
       if (key === playerSent) return;
       playerSent = key;
@@ -337,10 +376,14 @@ const ThreeLab = (() => {
       if (!playerWired) {
         playerWired = true;
         window.hub.labPlayer.onMessage((data) => { if (target === 'player') handle(data); });
-        window.hub.labPlayer.onClosed(() => { if (target !== 'player') return; usePlayer(false); onPlayerClosed?.(); });
+        window.hub.labPlayer.onClosed(() => playerFail('ended'));
         document.addEventListener('visibilitychange', playerTick); // (nothing ticks while Hearth's window is hidden)
+        // (Nov 11) a menu opens on a click or a key: looked at right then (and once it is drawn), not at the next 250 ms tick
+        const soon = () => { if (target !== 'player') return; setTimeout(sendRect, 0); setTimeout(sendRect, 80); };
+        for (const ev of ['pointerdown', 'pointerup', 'contextmenu', 'keydown']) document.addEventListener(ev, soon, true);
       }
       clearInterval(playerT); playerT = 0; playerRO?.disconnect(); playerRO = null; playerSent = '';
+      clearTimeout(playerDog); clearTimeout(drawDog); playerStill(false);
       if (on) {
         if (target === 'stage') window.hub.stageClose();
         target = 'player'; frame.src = 'about:blank';
@@ -353,6 +396,7 @@ const ThreeLab = (() => {
     if (!lazy) load();
     return {
       frame, send, reload: (fresh) => load(Boolean(fresh)), useStage, usePlayer, set onPlayerClosed(fn) { onPlayerClosed = fn; },
+      set playerHide(fn) { playerHide = fn; }, placePlayer: () => sendRect(), // (Nov 11, labplayer3)
       // (round 74, projdesk74) hold(true) right after a load: its 'ready' waits; hold(false) lets it through (now, if it came)
       // While held, the frame is drawn though its Lab is hidden (visible, transparent, click-through, like LabBoot's warm
       // page): Chromium throttles a frame inside a hidden surface, and a page loaded that way came up slower than a new one
@@ -364,7 +408,7 @@ const ThreeLab = (() => {
         cancelAnimationFrame(tweakRaf); clearTimeout(tweakTimer); tweaks.clear(); tweakRaf = 0;
         const port = life; life = null; port?.close();
         if (target === 'stage') { target = 'frame'; window.hub.stageClose(); }
-        if (target === 'player') { target = 'frame'; clearInterval(playerT); playerRO?.disconnect(); window.hub.labPlayer?.close(); } // (Nov 9, labplayer)
+        if (target === 'player') { target = 'frame'; clearInterval(playerT); playerRO?.disconnect(); clearTimeout(playerDog); clearTimeout(drawDog); stillFor = ''; window.hub.labPlayer?.close(); } // (Nov 9, labplayer)
         frame.src = 'about:blank'; uncover();
       },
       // (round 161, fix161) for good (ThreeLab.drop): released, and its window listener gone (a new Lab makes a new one)
@@ -384,7 +428,7 @@ const ThreeLab = (() => {
       // (round 29, bugbash) the picture on screen now as a small JPEG the page makes at once (the cover's own shot: no
       // waiting for a frame, no full-size PNG), for chat switching's cross-fade (chat-scenes.js); null if not up in time
       cover: (ms = 700) => new Promise((resolve) => {
-        if (target !== 'frame' || !ready) { resolve(null); return; }
+        if ((target !== 'frame' && target !== 'player') || !ready) { resolve(null); return; } // (Nov 11: the player's page answers the same way)
         let done = false;
         const fin = (url) => { if (!done) { done = true; resolve(url || null); } };
         const prev = coverShot;
@@ -1207,6 +1251,7 @@ const ThreeLab = (() => {
       el('div', { class: 'button-row' }, btn('Show it', 'Bring the Stage window to the front', () => window.hub.stageFocus()), btn('↩ Bring it back here', 'Close the Stage window and run the preview here again', () => setStage(false))));
     function setStage(on) {
       box.useStage(on, () => { const o = window.ThreeStage?.outputSize?.(); if (o !== undefined) return o; const z = stage.size; return z.id !== 'fit' ? { width: z.width, height: z.height } : null; });
+      if (!on && playerWanted() && !box.onPlayer) box.usePlayer(true); // (Nov 11, labplayer3) back from the Stage window: the player again
       stageBtn.classList.toggle('on', on);
       stageNote.hidden = !on;
       previewHost.classList.toggle('on-stage', on);
@@ -2550,7 +2595,7 @@ const ThreeLab = (() => {
     let stage = null;
     const box = sandboxFrame(previewHost, 'sketch', onMessage, () => stage?.params || '', { lazy: true, pretty: true, name: 'preview' });
     previewHost.append(buildPill);
-    box.onStageClosed = () => { dispatchEvent(new Event('hearth:stage-closed')); stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); run(); };
+    box.onStageClosed = () => { dispatchEvent(new Event('hearth:stage-closed')); stageBtn.classList.remove('on'); stageNote.hidden = true; previewHost.classList.remove('on-stage'); if (playerWanted() && !box.onPlayer) box.usePlayer(true); /* (Nov 11, labplayer3) */ run(); };
     queueMicrotask(() => { stage?.pill?.prepend(freezeBtn, compareBtn); stage?.pill?.append(stillBtn, previewMoreBtn); });
     stage = ThreeMedia.stage(previewHost, box.frame, { onChange: ({ id, reload }) => {
       // (the Lab sequence on screen: the swap is the sequence's shape, not the scene's own frame size: seqguard)
@@ -2785,7 +2830,7 @@ const ThreeLab = (() => {
     // (round 23, labaudio) audio features: the live worklet, whole-song features, the preview's requests (tools/three-audio.js)
     if (typeof ThreeAudio !== 'undefined') ThreeAudio.attach({ player, send: (m) => box.send(m), selCtl, layers: () => layersOf().map((L) => ({ id: L.id, name: L.name, ctl: ctlFor(L) })), live: { kind: () => liveKind, io: () => liveIo(), setIo: (p) => setLiveIo(p), start: (k) => setLive(k) } });
     // (round 25, motion) the camera as a live input: frames to the preview, its tracking, the ● Camera pill (tools/three-motion-in.js)
-    if (typeof LabMotionIn !== 'undefined') LabMotionIn.attach({ send: (m) => box.send(m), frame: () => box.frame, onStage: () => box.onStage || box.onPlayer /* (Nov 10: the player takes messages through the main process, as the Stage does) */, ready: () => box.ready, host: previewHost });
+    if (typeof LabMotionIn !== 'undefined') LabMotionIn.attach({ send: (m) => box.send(m), frame: () => box.frame, onStage: () => box.onStage, relay: () => box.onPlayer /* (Nov 11, labplayer3: the player gets camera frames as JPEGs through the main process; nothing can be transferred to it) */, ready: () => box.ready, host: previewHost });
     // video footage on the timeline: exact frames, the cut list the sketch plays (tools/three-frames.js)
     if (typeof ThreeFrames !== 'undefined') ThreeFrames.attach({ player, send: (msg) => box.send(msg), sketchId: () => current?.id });
     // the Lab's Sequence: the timeline as a video timeline of scenes, footage, titles and the song (tools/three-seq.js)
@@ -2900,23 +2945,47 @@ const ThreeLab = (() => {
     // (Nov 9, retired) SEPARATE rendered scenes black / partly on Quentin's machine: the control came off the dock and a
     // stored 'separate' was cleared.
     // (Nov 10, labplayer2) the cause is found and fixed (the player's window was shown behind Chromium's back: labplayer/
-    // main.js 'place'; docs/upgrades/labplayer2.md): the control is back, opt-in. IN-APP stays the default, and nobody
-    // has 'separate' stored (it was cleared), so the player only starts for who picks it.
-    const playerPref = () => (window.hub.labPlayer && store.get('three.player', 'app') === 'separate' ? 'separate' : 'app');
-    const pBtns = [['app', 'IN-APP', 'The preview in Hearth\'s own window (as before)'], ['separate', 'SEPARATE', 'The preview in its own app and graphics process: a heavy scene can\'t slow Hearth down. The size pill and guides over the picture wait while it\'s on.']]
+    // main.js 'place'; docs/upgrades/labplayer2.md): the control is back.
+    // (Nov 11, labplayer3) SEPARATE is the normal way a scene runs (docs/upgrades/labplayer3.md): the default where it is
+    // proven (LabBoot.playerDefault: Windows; a test copy only when its check asks), kept in 'three.runIn' ('player' /
+    // 'window'; the old 'three.player' key is not read: the retirement had written 'app' into it). The main window's
+    // Lab only (a Lab window keeps its own frame: there is one player). playerDown: it failed in this session, the
+    // scene runs in Hearth's frame until the owner tries again or Hearth restarts.
+    let playerDown = '';
+    const playerCan = () => Boolean(window.hub.labPlayer) && !window.hub?.labwin?.scene;
+    const playerPref = () => (playerCan() && (store.get('three.runIn') || (window.LabBoot?.playerDefault?.() ? 'player' : 'window')) === 'player' ? 'separate' : 'app');
+    const playerWanted = () => playerPref() === 'separate' && !playerDown;
+    const pBtns = [['app', 'IN-APP', 'The scene runs inside Hearth\'s own window. A heavy scene can slow the rest of Hearth down.'], ['separate', 'SEPARATE', 'The scene runs in its own app, laid over this frame: a heavy scene can\'t slow Hearth down (the usual way). The size pill and guides over the picture wait under it.']]
       .map(([v, t, title]) => segBtn(t, title, () => setPlayer(v)));
     const pWrap = el('div', { class: 'dock-group', dataset: { feature: 'Lab player' } }, el('span', { class: 'dock-label', text: 'PLAYER' }), el('div', { class: 'dock-seg', attrs: { role: 'radiogroup', 'aria-label': 'Lab player' } }, pBtns));
     function setPlayer(v) {
       if (v !== 'app' && v !== 'separate') return playerPref();
-      store.set('three.player', v);
+      if (v === 'separate' && !playerCan()) return playerPref();
+      store.set('three.runIn', v === 'separate' ? 'player' : 'window');
+      playerDown = ''; store.set('three.runIn.fails', 0);
       if (box.onStage) setStage(false);
       box.usePlayer(v === 'separate');
       if (current) run({ reload: true, quiet: true });
       paintLevel();
       return v;
     }
-    box.onPlayerClosed = () => { if (playerPref() === 'separate') toast('The separate Lab player stopped: the preview is back in Hearth\'s window.', { type: 'warn' }); paintLevel(); };
-    if (playerPref() === 'separate') queueMicrotask(() => { box.usePlayer(true); paintLevel(); });
+    // (Nov 11, labplayer3) the player failed: the scene is already back in Hearth's frame (sandboxFrame playerFail); the
+    // owner is told what happened in plain words, with a way to try again. Three sessions in a row: switched off (the
+    // setting says IN-APP), so a computer where it can't work isn't told the same thing at every start.
+    const PLAYER_WHY = { start: 'couldn\'t start', ended: 'stopped unexpectedly', silent: 'didn\'t answer', nodraw: 'didn\'t draw the scene' };
+    box.onPlayerClosed = ({ why = 'ended' } = {}) => {
+      playerDown = why;
+      const fails = Number(store.get('three.runIn.fails', 0)) + 1;
+      const giveUp = fails >= 3;
+      store.set('three.runIn.fails', giveUp ? 0 : fails);
+      if (giveUp) store.set('three.runIn', 'window');
+      toast(`The scene's separate player ${PLAYER_WHY[why] || PLAYER_WHY.ended}, so the scene now runs inside Hearth's own window. Everything works as before; a heavy scene can slow Hearth down again. ${giveUp ? 'It failed three times in a row, so Hearth switched it off: PLAYER › SEPARATE on the Lab\'s dock turns it back on.' : 'Hearth tries the player again at its next start.'}`, { type: 'warn', timeout: 14000, action: { label: 'Try the player again', fn: () => setPlayer('separate') } });
+      if (current) run({ reload: true, quiet: true });
+      paintLevel();
+    };
+    addEventListener('hearth:lab-player-drew', () => { if (Number(store.get('three.runIn.fails', 0))) store.set('three.runIn.fails', 0); });
+    box.playerHide = () => previewHost.classList.contains('pr-baked') || document.documentElement.classList.contains('gm-playing');
+    if (playerWanted()) queueMicrotask(() => { box.usePlayer(true); paintLevel(); });
     labDock.append(el('span', { class: 'dock-spacer' }), qWrap, fWrap, pWrap);
     function paintLevel() {
       const i = previewLevel(); const forced = qMode() === 'high';

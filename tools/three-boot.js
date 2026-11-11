@@ -67,9 +67,14 @@ const LabBoot = (() => {
     w = null; st.dropped += 1; st.skipped = why;
   }
 
+  // (Nov 11, labplayer3) is the separate player the default way a scene runs here? Windows, where it is proven
+  // (dev/checks/labplayer.js); a test copy only when its check asks (window.hub.labPlayer.byDefault: preload.js)
+  const playerDefault = () => Boolean(window.hub?.labPlayer?.byDefault);
+  const inPlayer = () => Boolean(window.hub?.labPlayer) && (store.get('three.runIn') || (playerDefault() ? 'player' : 'window')) === 'player';
   async function warm() {
     if (started) return;
     started = true;
+    if (inPlayer()) { st.skipped = 'the scene runs in the player'; return; } // (no page warmed in Hearth's window for a scene that won't run there)
     const f = flag();
     // (round 39, powerwise) no warm page on battery / battery saver: the Lab opens the usual way
     const why = f === '0' ? 'off' : !can() ? 'no moveBefore' : labUp() ? 'lab already up' : (f !== '1' && !usedRecently()) ? 'lab not used lately' : (f !== '1' && window.Power?.warm?.() === false) ? 'on battery' : null;
@@ -202,6 +207,6 @@ const LabBoot = (() => {
   }
   fromHead();
 
-  return { take, used, ran, warm, state: () => ({ ...st, up: Boolean(w), ready: Boolean(w?.ready), drawn: Boolean(w?.drawn), sketch: w?.sketch || null }) };
+  return { playerDefault, take, used, ran, warm, state: () => ({ ...st, up: Boolean(w), ready: Boolean(w?.ready), drawn: Boolean(w?.drawn), sketch: w?.sketch || null }) };
 })();
 window.LabBoot = LabBoot;

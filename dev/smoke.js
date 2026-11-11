@@ -186,6 +186,9 @@ async function cdpConnect(dir) {
   // (Nov 10, labplayer2) the separate Lab player of a test copy: its own profile folder (never the owner's), and it answers a check's questions (labplayer:debug)
   if (!env.HEARTH_LP_USERDATA) env.HEARTH_LP_USERDATA = TmpOwn.mkdtemp('hearth-smoke-lp-');
   env.HEARTH_LP_DEBUG = '1';
+  // (Nov 11, labplayer3) the player is the default way a scene runs in the owner's app; a test copy keeps its scenes in
+  // its own window (every Lab check reads the preview's frame) unless the run asks: HEARTH_LP_DEFAULT=1 (dev/checks/labplayer.js)
+  if (env.HEARTH_LP_DEFAULT == null) env.HEARTH_LP_DEFAULT = '0';
   // --fake-meshy: a local fake of Meshy's API, Poly Haven's API and test web pages (dev/fake-meshy.js) for the apps
   // checks; the app finds it through HEARTH_MESHY_BASE (checks read it back with hub.apps.status().testBase)
   if (args.includes('--fake-meshy')) {

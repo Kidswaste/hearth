@@ -120,8 +120,19 @@ try {
 
   // ---------- the default ----------
   await until(() => dockBtn(1), 10000);
-  const st0 = await LP.state();
-  step('default: the dock has PLAYER, IN-APP is on, the player is not running', Boolean(dockBtn(0)?.classList.contains('on')) && !dockBtn(1)?.classList.contains('on') && st0.running === false && !box.onPlayer, { running: st0.running });
+  const byDefault = Boolean(LP.byDefault); // (HEARTH_LP_DEFAULT=1: as in the owner's app on Windows)
+  out.byDefault = byDefault;
+  if (byDefault) {
+    ThreeLab.scenes.create({ name: 'Player check (default)', code: OLD[0].code, layers: OLD, open: true });
+    const up = await until(async () => box.onPlayer && box.ready && (await LP.state()).running, 40000);
+    const drew = await until(async () => { const p = await lpEval('window.__probe || null'); return p && p.n > 5 ? p : null; }, 30000, 300);
+    step('default: SEPARATE is on without a click, a new scene runs in the player', Boolean(up) && Boolean(drew) && dockBtn(1).classList.contains('on') && window.LabBoot?.state?.().skipped === 'the scene runs in the player', { state: await LP.state(), warm: window.LabBoot?.state?.().skipped });
+    dockBtn(0).click(); // (in Hearth's frame first: what the Lab sends a frame is recorded below)
+    await until(async () => !box.onPlayer && !(await LP.state()).running, 20000);
+  } else {
+    const st0 = await LP.state();
+    step('a test copy without HEARTH_LP_DEFAULT=1: IN-APP is on, the player is not running', Boolean(dockBtn(0)?.classList.contains('on')) && !dockBtn(1)?.classList.contains('on') && st0.running === false && !box.onPlayer, { running: st0.running });
+  }
 
   // ---------- an old-format scene: in Hearth's frame first (what the Lab sends it), then in the player ----------
   ThreeLab.scenes.create({ name: 'Player check (old)', code: OLD[0].code, layers: OLD, open: true });
@@ -158,6 +169,91 @@ try {
   const missing = [...sentFrame].filter((t) => !sentPlayer.some((x) => x.type === t) && !['screenshot', 'eval', 'park', 'fps-cap', 'ping', 'dpr', 'life'].includes(t));
   step('messages: everything the Lab sent the player arrived in its app, all of it copyable', Array.isArray(seen) && seen.length >= sentPlayer.length && sentPlayer.every((x) => x.clone), { sent: sentPlayer.length, arrived: seen?.length, notCopyable: sentPlayer.filter((x) => !x.clone).map((x) => x.type) });
   step('messages: the kinds the frame got for this scene, the player got too', missing.length === 0, { missing, frame: [...sentFrame].sort().join(' '), player: [...new Set(sentPlayer.map((x) => x.type))].sort().join(' ') });
+
+  // ---------- working on the live scene, through the player ----------
+  const health = () => lpEval('window.__labHealth ? window.__labHealth() : null');
+  await D().updateLayer('l2', { code: `${OLD[1].code}\nwindow.__edited = (window.__edited || 0) + 1;` }, 1.5);
+  step('a live code edit of a layer runs in the player', Boolean(await until(async () => (await lpEval('window.__edited || 0')) >= 1, 8000, 200)), await lpEval('window.__edited || 0'));
+  const added = await D().addLayer({ name: 'Extra', code: `${OLD_HEAD}window.__extra = 1;\nrenderer.setAnimationLoop(() => renderer.render(scene, camera));` }, 1.5);
+  const h3 = await until(async () => { const h = await health(); return h?.layers === 3 ? h : null; }, 8000, 200);
+  step('a layer added in the Lab runs in the player', Boolean(h3) && (await lpEval('window.__extra || 0')) === 1, { added: added && (added.id || added.layer || Object.keys(added)), layers: (await health())?.layers });
+  let rmErr = null; try { await D().removeLayer(added?.id || added?.layer?.id || 'Extra'); } catch (err) { rmErr = String(err.message || err); }
+  const h2 = await until(async () => { const h = await health(); return h?.layers === 2 ? h : null; }, 8000, 200);
+  step('a layer removed in the Lab is gone from the player', Boolean(h2), { layers: (await health())?.layers, rmErr });
+  const shot = await D().shot().catch((err) => ({ error: String(err.message || err) }));
+  const shotLen = typeof shot === 'string' ? shot.length : String(shot?.dataUrl || shot?.url || shot?.image || '').length;
+  step('the AI\'s picture of the scene (three_shot) comes from the player', shotLen > 2000, { type: typeof shot, keys: shot && typeof shot === 'object' ? Object.keys(shot) : null, length: shotLen, error: shot?.error });
+  await D().updateLayer('l2', { code: `${OLD_HEAD}renderer.setAnimationLoop(() => { throw new Error('labplayer check: thrown on purpose'); });` }, 1.5);
+  const errSeen = await until(() => { const e = D().report?.()?.errors || []; return e.length && /thrown on purpose/.test(JSON.stringify(e)) ? e : null; }, 8000, 200);
+  step('a layer\'s error in the player reaches the Lab\'s report (what the AIs read)', Boolean(errSeen), (errSeen || D().report?.()?.errors || []).slice(0, 2));
+  await D().updateLayer('l2', { code: OLD[1].code }, 1.5);
+  const pf = c.perf();
+  step('the Lab\'s stats line gets the player\'s frame rate', pf?.fps > 0, { fps: pf?.fps, frameMsP50: pf?.frameMsP50, quality: pf?.quality });
+  // Hearth's 🔊 playback volume
+  const vol0 = await window.hub.volume.get();
+  const i0 = await LP.debug({ kind: 'info' });
+  await window.hub.volume.set(0.3); await wait(400);
+  const i1 = await LP.debug({ kind: 'info' });
+  const pageVol = await lpEval('window.__hearthVolume ? true : false');
+  await window.hub.volume.set(vol0);
+  step('sound: the player follows Hearth\'s volume (at start and when it changes)', Math.abs(i0.volume - vol0) < 1e-6 && Math.abs(i1.volume - 0.3) < 1e-6 && pageVol === true, { atStart: i0.volume, hearth: vol0, afterSet: i1.volume, pageScript: pageVol, mutedForTheTest: i1.muted });
+  // a menu over the picture: the player steps aside, a still of the scene stays in the frame
+  const fr0 = box.frame.getBoundingClientRect();
+  popMenu(fr0.left + 40, fr0.top + 40, ['Player check', ['Nothing', 'A menu over the picture', () => {}]]);
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  const aside = await until(async () => (await LP.state()).why === 'the Lab says hidden', 5000, 100);
+  const still = await until(() => { const cv = box.frame.parentNode.querySelector('.scene-cover'); return cv && !cv.classList.contains('out') && /url\(/.test(cv.style.backgroundImage) ? true : null; }, 4000, 100);
+  document.querySelectorAll('.mb-menu.lab-pop').forEach((n) => n.remove());
+  document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  const backUp = await until(async () => (await LP.state()).why === '' && (await LP.debug({ kind: 'info' })).visible, 5000, 100);
+  step('a menu over the picture: the player steps aside, a still of the scene stays in the frame, then it is back', Boolean(aside) && Boolean(still) && Boolean(backUp), { aside: Boolean(aside), still: Boolean(still), back: Boolean(backUp) });
+  // a menu that is NOT over the picture leaves the player where it is
+  popMenu(4, innerHeight - 60, ['Player check', ['Nothing', 'A menu beside the picture', () => {}]]);
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); await wait(500);
+  const beside = (await LP.state()).why;
+  const menuBox = document.querySelector('.mb-menu.lab-pop')?.getBoundingClientRect();
+  document.querySelectorAll('.mb-menu.lab-pop').forEach((n) => n.remove()); document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  const fr1 = box.frame.getBoundingClientRect();
+  const overlaps = menuBox && menuBox.left < fr1.right && menuBox.right > fr1.left && menuBox.top < fr1.bottom && menuBox.bottom > fr1.top;
+  step('a menu beside the picture leaves the player on screen', overlaps ? true : beside === '', { why: beside, overlaps: Boolean(overlaps) });
+  // 📷 Camera in: a made-up camera (a white square sweeping on a dark picture), its frames reach the player as JPEGs
+  try {
+    const camC = document.createElement('canvas'); camC.width = 320; camC.height = 240; const cg = camC.getContext('2d'); const t0 = performance.now();
+    const camT = setInterval(() => { const t = (performance.now() - t0) / 1000; cg.fillStyle = '#121218'; cg.fillRect(0, 0, 320, 240); cg.fillStyle = '#f2f2f2'; cg.fillRect((0.5 + 0.35 * Math.sin(t * 1.6)) * 320 - 28, 92, 56, 56); }, 30);
+    const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices); const enu = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async () => camC.captureStream(30);
+    navigator.mediaDevices.enumerateDevices = async () => [{ kind: 'videoinput', deviceId: 'cam-1', label: 'Test Camera', groupId: 'a' }];
+    await LabMotionIn.start();
+    const got = await until(() => LabMotionIn.state.frames > 10, 10000, 200);
+    let moved = null;
+    for (let i = 0; i < 25 && !moved; i += 1) { const v = (await LabMotionIn.probe())?.values || {}; const top = Object.entries(v).filter(([, x]) => typeof x === 'number' && x > 0.02); if (top.length) moved = Object.fromEntries(top.slice(0, 4)); else await wait(200); }
+    step('📷 Camera in: frames reach the player and its tracker sees the movement', Boolean(got) && Boolean(moved), { sent: LabMotionIn.state.frames, values: moved, error: LabMotionIn.state.error });
+    await LabMotionIn.stop(); clearInterval(camT); navigator.mediaDevices.getUserMedia = gum; navigator.mediaDevices.enumerateDevices = enu;
+  } catch (err) { step('📷 Camera in: frames reach the player and its tracker sees the movement', false, String(err?.message || err)); }
+  // a recorded clip of the scene
+  try {
+    const take = await Promise.race([c.recordClip({ seconds: 1.5 }), wait(30000).then(() => ({ timeout: true }))]);
+    const size = take?.size ?? take?.bytes?.length ?? take?.blob?.size ?? take?.buffer?.byteLength ?? 0;
+    step('⏺ a recorded clip of the scene comes back from the player', Boolean(take) && !take.timeout && !take.error && (size > 2000 || Boolean(take.path || take.file || take.url)), take && typeof take === 'object' ? { keys: Object.keys(take).slice(0, 12), size, path: take.path || take.file || null, error: take.error, timeout: take.timeout } : take);
+  } catch (err) { step('⏺ a recorded clip of the scene comes back from the player', false, String(err?.message || err)); }
+  // the Stage window takes the scene, and gives it back to the player
+  ThreeLab.stageHooks.setStage(true);
+  const onStage = await until(async () => box.onStage && box.ready && !(await LP.state()).running, 30000);
+  ThreeLab.stageHooks.setStage(false);
+  const offStage = await until(async () => box.onPlayer && box.ready && (await LP.state()).running, 30000);
+  await until(async () => { const p = await lpEval('window.__probe || null'); return p && p.n > 5 ? p : null; }, 30000, 300);
+  step('🖥 the Stage window takes the scene (the player ends) and gives it back', Boolean(onStage) && Boolean(offStage), { onStage: Boolean(onStage), back: Boolean(offStage) });
+  // the player's page dies: the scene is back in Hearth's frame, and the owner is told
+  await LP.debug({ kind: 'crash' });
+  const fell = await until(() => !box.onPlayer && box.ready, 30000);
+  const told = await until(() => (/separate player (stopped unexpectedly|didn)/.test(document.body.innerText) ? document.body.innerText.match(/The scene's separate player[^\n]{0,260}/)?.[0] : null), 5000, 200);
+  const inFrameAgain = await until(async () => { const p = await pj('window.__probe || null'); return p && p.n > 5 ? p : null; }, 30000, 300);
+  step('the player\'s page crashes: the scene runs in Hearth\'s frame again and the owner is told in words', Boolean(fell) && Boolean(told) && Boolean(inFrameAgain) && dockBtn(0).classList.contains('on'), { told, inFrame: Boolean(inFrameAgain) });
+  [...document.querySelectorAll('button')].find((b2) => /Try the player again/.test(b2.textContent))?.click();
+  const again = await until(async () => box.onPlayer && box.ready && (await LP.state()).running, 30000);
+  await until(async () => { const p = await lpEval('window.__probe || null'); return p && p.n > 5 ? p : null; }, 30000, 300);
+  step('"Try the player again" puts the scene back in the player', Boolean(again) && dockBtn(1).classList.contains('on'), await LP.state());
+  await playSong(); await wait(1000);
 
   // ---------- under a menu and back; a fresh restart ----------
   const r0 = (await LP.state()).rect; const sc0 = (await LP.state()).scale;
