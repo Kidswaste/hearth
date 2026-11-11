@@ -14983,6 +14983,9 @@ function g2Init() {
     document.body.prepend(stage);
     G2.backend = R.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2';
     G2.R = R; G2.canvas = R.domElement;
+    // (Nov 10, fastkit) a draw the graphics card refused (a validation error: three.js drops that pass without a word): counted for
+    // the checks (__labG2.state().gpuErrors) and said once in the console
+    try { R.backend?.device?.addEventListener?.('uncapturederror', (e) => { G2.gpuErrs = (G2.gpuErrs || 0) + 1; if (!G2.gpuErr) { G2.gpuErr = String(e?.error?.message || e).slice(0, 300); post({ type: 'console', level: 'warn', text: `v2 scene: the graphics card refused a draw (${G2.gpuErr})` }); } }); } catch { /* no device (WebGL 2 backend) */ }
     try { R.backend?.device?.lost?.then((info) => { if (G2.R !== R) return; G2.lost += 1; post({ type: 'console', level: 'warn', text: `The graphics card let go of the v2 scene's drawing (${info?.reason || 'lost'}): ⟲ Restart the preview brings it back.` }); }); } catch { /* no device (WebGL 2 backend) */ }
     return G2;
   })();
@@ -15027,7 +15030,10 @@ function g2Unmount(L) {
   // what it made goes from the graphics card now (geometries, materials, their textures), not whenever it's collected
   const seen = new Set();
   S.scene.traverse((o) => {
-    if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); try { o.geometry.dispose(); } catch { /* gone */ } }
+    // (Nov 10, fastkit) not a Sprite's: every THREE.Sprite shares ONE geometry inside three.js, and disposing it destroyed the
+    // buffers another layer's sprites were drawing with ("Buffer used in submit while destroyed": that layer's whole
+    // draw, its clear included, was dropped until the next re-run: a scene switch between two sprite scenes)
+    if (o.geometry && !o.isSprite && !seen.has(o.geometry)) { seen.add(o.geometry); try { o.geometry.dispose(); } catch { /* gone */ } }
     for (const m of [].concat(o.material || [])) {
       if (seen.has(m)) continue; seen.add(m);
       for (const v of Object.values(m)) if (v?.isTexture && !seen.has(v)) { seen.add(v); try { v.dispose(); } catch { /* gone */ } }
@@ -15082,7 +15088,10 @@ function g2Frame(t) {
   // the frames' GPU time (timestamp queries: every pass since the last read, per frame here)
   if (R.backend?.trackTimestamp && !G2.tsBusy && !G2.tsOff) {
     G2.tsBusy = true; const n = G2.tsN; G2.tsN = 0;
-    R.resolveTimestampsAsync('render').then((v) => { if (Number.isFinite(v) && v > 0 && n > 0) { const per = v / n; G2.gpuMs = G2.gpuMs == null ? per : G2.gpuMs * 0.8 + per * 0.2; } }, () => {}).finally(() => { G2.tsBusy = false; });
+    // (Nov 10, fastkit) a layer's compute passes (a particle simulation) are timed in their own pool: read too, so it
+    // never fills up, and counted in the frame's GPU time
+    const cq = R.info.compute.calls > 0 ? R.resolveTimestampsAsync('compute').catch(() => 0) : 0;
+    Promise.all([R.resolveTimestampsAsync('render'), cq]).then(([rv, cv]) => (Number.isFinite(rv) ? rv + (Number.isFinite(cv) ? cv : 0) : rv)).then((v) => { if (Number.isFinite(v) && v > 0 && n > 0) { const per = v / n; G2.gpuMs = G2.gpuMs == null ? per : G2.gpuMs * 0.8 + per * 0.2; } }, () => {}).finally(() => { G2.tsBusy = false; });
   }
 }
 // ---- (Nov 9, Scenes v2 phase 2) layers as pictures: opacity, blend modes, moves, masks ----
@@ -15305,7 +15314,7 @@ window.__labG2 = {
   pixel: (fx, fy) => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(Math.min(63, Math.floor(fx * 64)), Math.min(35, Math.floor(fy * 36)), 1, 1).data; return [d[0], d[1], d[2]]; },
   // the merged picture as a still would read it now (composite), small: how much of it is lit
   lit: () => { const c = composite(null, 0, { w: 64, h: 36 }); const d = c.getContext('2d').getImageData(0, 0, 64, 36).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] + d[i + 1] + d[i + 2] > 30) n += 1; return { lit: n, of: 64 * 36 }; },
-  state: () => ({ on: Boolean(G2.R), page: GPU_PAGE, backend: G2.backend, layers: [...G2.list].map((S) => ({ id: S.L.id, compileMs: S.compileMs, objects: S.scene.children.length, frames: S.frames.length, t: Math.round(S.time.t * 100) / 100 })), frames: G2.frames, cpuMs: Math.round(G2.cpuMs * 100) / 100, gpuMs: G2.gpuMs == null ? null : Math.round(G2.gpuMs * 100) / 100, w: G2.w, h: G2.h, pr: G2.pr, calls: G2.R?.info.render.drawCalls ?? null, ts: Boolean(G2.ts), triangles: G2.R?.info.render.triangles ?? null, contexts: glAlive(), lost: G2.lost, path: G2.path, rt: G2.rtKind || null, err: G2.err || null, merges: G2.C?.merges ?? 0 }) };
+  state: () => ({ on: Boolean(G2.R), page: GPU_PAGE, backend: G2.backend, layers: [...G2.list].map((S) => ({ id: S.L.id, compileMs: S.compileMs, objects: S.scene.children.length, frames: S.frames.length, t: Math.round(S.time.t * 100) / 100 })), frames: G2.frames, cpuMs: Math.round(G2.cpuMs * 100) / 100, gpuMs: G2.gpuMs == null ? null : Math.round(G2.gpuMs * 100) / 100, w: G2.w, h: G2.h, pr: G2.pr, calls: G2.R?.info.render.drawCalls ?? null, ts: Boolean(G2.ts), triangles: G2.R?.info.render.triangles ?? null, contexts: glAlive(), lost: G2.lost, gpuErrors: G2.gpuErrs || 0, gpuError: G2.gpuErr || null, path: G2.path, rt: G2.rtKind || null, err: G2.err || null, merges: G2.C?.merges ?? 0 }) };
 // All layers, bottom first (a fresh page). A layer that already runs is torn down first (a run sent twice).
 function runLayers(specs) {
   swapDrop(0); // (round 89: an old stack still fading out goes now)

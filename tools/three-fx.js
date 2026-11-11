@@ -35,6 +35,8 @@ const ThreeFX = (() => {
     const out = [];
     const want = (k) => kind === 'all' || kind === k || (kind === 'add' && (k === 'layer' || k === 'filter'));
     for (const x of EXT) if (kind === 'all' || kind === x.kind || kind === x.tab?.[0]) { try { out.push(...x.items()); } catch { /* a pack that failed to list */ } }
+    // (Nov 10, fastkit) in a v2 scene: its fast layers (ThreeData.V2_LAYERS) lead the list
+    if (want('layer') && (() => { try { return ThreeLab.scenes.get(ThreeLab.scenes.currentId())?.format === 'gpu'; } catch { return false; } })()) for (const t of ThreeData.V2_LAYERS || []) out.push({ kind: 'layer', id: t.id, name: `⚡ ${t.name.replace(/ \(v2\)$/, '')}`, cat: 'Fast (v2)', desc: t.desc, tags: 'v2 fast webgpu gpu one draw', colors: (t.code.match(/#[0-9a-f]{6}\b/gi) || []).slice(0, 3) });
     if (want('layer')) for (const t of ThreeLayers.TEMPLATES.filter((x) => !EXT.some((e) => e.kind === x.pack))) out.push({ kind: 'layer', id: t.id, name: t.name, cat: t.cat || 'Shapes', desc: t.desc, tags: t.tags || '', colors: (t.code.match(/#[0-9a-f]{6}\b/gi) || []).slice(0, 3) });
     if (want('filter')) for (const t of ThreeLayers.FILTERS) out.push({ kind: 'filter', id: t.id, name: t.name, cat: t.cat || 'Stylize', desc: t.desc, tags: t.tags || '', type: t.type });
     if (want('look')) for (const l of ThreeFXData.LOOKS) out.push({ kind: 'look', id: l.name, name: l.name, cat: l.cat, desc: l.desc, tags: l.fx.map((f) => f.id).join(' '), colors: l.colors, look: l });

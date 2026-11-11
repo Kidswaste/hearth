@@ -2021,6 +2021,7 @@ const ThreeLab = (() => {
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
+      v2: () => current?.format === 'gpu', // (Nov 10, fastkit: a v2 scene's ＋ Layer menu lists the v2 layers first)
       onMoodboard: id => layerStudio.moodboard(id),
       onMaskTrack: id => layerStudio.generate({maskSource:id}),
       onPaste: (copies) => { for (const copy of copies) { const { id, slot, group, solo, ...props } = copy; addLayer('paste', { code: copy.code, props: { ...props, name: `${copy.name} copy` } }); } },
@@ -2167,7 +2168,10 @@ const ThreeLab = (() => {
         L = newLayer({ ...JSON.parse(JSON.stringify(S)), id: ThreeLayers.newId(), name: `${S.name} copy` });
       } else if (code != null) L = newLayer({ name: name || 'Layer', code, ...(props || {}) });
       else {
-        const t = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
+        // (Nov 10, fastkit) a v2 layer by its id (ThreeData.V2_LAYERS: the fast kit…): only a v2 scene can run one
+        const f = ThreeData.v2Layer?.(kind);
+        if (f && current.format !== 'gpu') throw new Error(`"${kind}" is a v2 layer: it runs in a v2 scene only (a new scene is one; this scene is the old format).`);
+        const t = f ? { name: f.name.replace(/ \(v2\)$/, ''), code: f.code } : [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind) || ThreeLayers.TEMPLATES[0];
         L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
       }
       const Ls = layersOf();

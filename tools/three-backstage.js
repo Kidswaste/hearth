@@ -429,7 +429,9 @@ function makeBackstage(opts = {}) {
       async setCode(code, wait = 2.5) { return d.updateLayer(null, { code }, wait); },
       async addLayer({ name, code, template, props = {} }, wait = 2.5) {
         const Ls = layersOf(s());
-        const t = code == null ? ([...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template) || ThreeLayers.TEMPLATES[0]) : null;
+        const f = code == null ? ThreeData.v2Layer?.(template) : null; // (Nov 10, fastkit: a v2 layer by its id, in a v2 scene only)
+        if (f && s().format !== 'gpu') throw new Error(`"${template}" is a v2 layer: it runs in a v2 scene only (this scene is the old format).`);
+        const t = f ? { name: f.name.replace(/ \(v2\)$/, ''), code: f.code } : code == null ? ([...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template) || ThreeLayers.TEMPLATES[0]) : null;
         const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
         let nm = name || t?.name || 'Layer'; let n = 2;
         while (Ls.some((L) => L.name === nm)) { nm = `${name || t?.name || 'Layer'} ${n}`; n += 1; }

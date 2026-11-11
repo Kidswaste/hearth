@@ -14,7 +14,7 @@ TIME FIRST (like After Effects): motion from time, easing, keyframes (three_do k
 WORK LOOP: build, fix the errors results report (three_do undo reverts yours), refine. A change that shows comes with a small picture (more: three_screenshot; song: three_do contact_sheet). State and code come once, then changes: no extra checks; batch steps.
 Broad asks (a whole visual, a new scene): read three_do brief and the moodboard / refs, say a 2–4 line plan, then build.
 Don't paste code into the chat unless asked; say what you made.
-V2 SCENES (reports say format: "v2"): different layer code (one WebGPU renderer, TSL shaders): read three_do help v2 before writing one.
+V2 SCENES (reports say format: "v2"): different layer code (one WebGPU renderer, TSL): read three_do help v2 first; ready fast layers: help fast.
 Help: three_do help {topic}: any cmd or tool, v2, audio, sliders, layers, filters, timeline, refs, frame, footage, bigcode…`;
 
 const TOPICS = {
@@ -36,7 +36,7 @@ const TOPICS = {
   THREE is three.webgpu.js: the node materials (MeshBasicNodeMaterial, MeshStandardNodeMaterial, MeshPhysicalNodeMaterial, PointsNodeMaterial, SpriteNodeMaterial, LineBasicNodeMaterial, NodeMaterial) with colorNode, opacityNode, emissiveNode, positionNode, normalNode, roughnessNode, scaleNode; plain MeshStandardMaterial etc. still work. Uniforms: uniform(v) → set .value in onFrame (numbers, THREE.Color, Vector2/3). Fn(([a, b]) => …) for reusable shader functions; If / Loop inside Fn. tsl.time is seconds; texture(tex, uv()) samples.
   Backgrounds: scene.background = new THREE.Color(…) or scene.backgroundNode = mix(color('#05060c'), color('#2a0f3a'), screenUV.y) for a gradient / shader backdrop. Many particles: one Sprite / Mesh with .count = N and SpriteNodeMaterial positionNode from instanceIndex + hash(…) (GPU), or InstancedMesh; compute shaders (Fn(…)().compute(N)) are available for simulations.
   Layers stack bottom first on the one renderer: each upper layer draws over the ones below (only a layer with scene.background covers them); opacity, blend modes, x/y/scale/rotate, masks and in/out fades from update_layer work as before (the Lab merges them on the GPU). No glow pass per layer: glow comes from emissive / additive materials (blending: THREE.AdditiveBlending, depthWrite: false).
-  tweak(), audio.*, onHit, refs / refTexture, keyframes, looks, cues, renders and stills work as in old scenes. Templates, filter layers (three_add_layer template) and three_nodes make OLD-format code: in a v2 scene write the layer yourself.`,
+  tweak(), audio.*, onHit, refs / refTexture, keyframes, looks, cues, renders and stills work as in old scenes. Templates, filter layers (three_add_layer template) and three_nodes make OLD-format code: in a v2 scene write the layer yourself or add a ready one (help fast).`,
   audio: `MUSIC (when the owner wants it to react; until then animate on the timeline): the user loads an mp3/mp4 in the Lab (or you: three_do load_media). Sketch globals:
   audio.bass / mid / treble / level — 0..1 now. audio.beat — 1 on each beat (Lab beat tracker), fading ~150 ms.
   audio.spectrum — Uint8Array(1024) FFT (0..255); audio.waveform — Float32Array(2048) -1..1; audio.band(lowHz, highHz) — 0..1 (e.g. band(40, 90) for kicks).
@@ -100,11 +100,30 @@ const NODES_LINE = 'NODES (the owner wants them): build and edit visual layers w
 // (round 49, directorfrugal) "help camera" answered the motion kit (the camera as an INPUT), so a camera move cost a second
 // lookup: it now names the 🎥 camera moves first (on demand only: not in FULL, nothing added to any prompt)
 const CAMERA = `CAMERA MOVES (keyframed moves of each layer's own camera on the timeline; renders match): three_do run {command: "/camera-moves push in"} — push in, pull out, orbit left / right ¼ ½ full, dolly zoom, crane up / down, handheld shake, whip pan, slow drift, punch in on each kick / beat / bar; then [whole | loop | here | after] [2s to 8s] [cine | smooth | in | out | linear | snap] [60%]; list · undo · clear. Over a song section: add "on the drop" (any section or cue name, "the loop"). A drawn path (one move, its points are keyframes; round 133): "/camera-moves path 0 0 1, 0 -5 0.7, 120 -20 0.5 over the drop" (each point: yaw° pitch° distance, 1 = the scene's camera, < 1 closer) [snap bars | per section | no snap] [smooth | linear | hold] [shake 40%] (shake on each kick). E.g. a slow push-in that orbits on the drop: "/camera-moves push in whole cine" then "/camera-moves orbit right half on the drop". The owner draws one with 🎥 › ✎ Draw a camera path. Your own camera code: drive it from a slider and keyframe that. The webcam as an input: help webcam; the motion-design kit: help motion.`;
+// (Nov 10, fastkit) "help fast": the ready v2 layers (ThreeData.V2_LAYERS with fast: true, tools/three-data.js) and the rules
+// they are written by. On demand only (not in FULL, as CAMERA): CORE's v2 line names it in three words.
+const FAST = `FAST KIT (v2 scenes only): ready layers for the expensive things, each ONE draw on the scene's one renderer. Add one with three_add_layer { template: "<id>" } (the owner: ＋ Layer › ⚡ Fast layers), then set its sliders (three_sliders). Before writing something similar, read one (three_read_code) and keep its shape.
+  v2-spectrum  the song as bars | ring | wave (slider Style): one instanced quad, the levels (audio.spectrum / audio.waveform) in a 512 × 1 data texture refilled once a frame.
+  v2-swarm     150,000 to 1,000,000 particles simulated by a TSL compute shader (instancedArray + Fn(…)().compute(N)), swirl, burst on the kick; one draw.
+  v2-glow      glowing orbs | rings | stars: core + soft halo in the same shader, added to the picture (a bloom look, no pass).
+  v2-tracking  Camera in: webcam.feat (hands | body | face | movement) → one uniformArray → instanced markers with trails; moves by itself while the camera is off.
+  v2-footage   a reference picture / clip, the song's video or the camera as the scene's background (scene.backgroundNode), filled or fitted and graded in one shader.
+  Together: the gallery's "Fast visualizer (v2)" = backdrop + swarm + glow + spectrum, four draws.
+THE RULES THEY FOLLOW (keep them in every v2 layer you write):
+  ONE DRAW PER EFFECT: many pieces = ONE Mesh / Sprite with .count = N, each piece placed in positionNode from instanceIndex (+ hash(i), time). Never a mesh per piece; no setMatrixAt loop every frame for more than ~100 pieces.
+  DATA ONCE A FRAME: a DataTexture (refill its array, tex.needsUpdate = true) or uniformArray([Vector4…]) made at setup and refilled in onFrame; sliders go to uniform(x).value. Never a canvas / CanvasTexture redrawn every frame.
+  NOTHING MADE IN onFrame: no new THREE.*, no arrays, objects, closures or built strings there; typed arrays, vectors and colours are made once and set (color.set(P.tint), v.set(x, y, z, w)).
+  MOTION ON THE GPU: time, hash, sin in TSL instead of per-vertex / per-piece JS. A real simulation = a compute shader stepped from the layer's own draw: obj.onBeforeRender = (renderer) => { renderer.compute(tick); } (a layer gets no renderer otherwise); return () => tick.dispose().
+  GLOW WITHOUT A PASS: a bright core + a soft falloff in colorNode with { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }. No EffectComposer, no bloom pass, no render target per layer.
+  COUNTS: one that only changes .count or a uniform is read every frame (no rebuild); one that sizes a buffer (particles) is read at setup.
+  PICTURES / VIDEO / CAMERA: refTexture(name), media.texture(), webcam.texture() sampled with texture(tex, uv) (uploaded only when a new frame comes); not drawn through a canvas.
+  CHECK: three_do perf: the draw calls must not grow when a count slider goes up.`;
 const CAMERA_WORDS = new Set(['camera', 'cameras', 'cameramove', 'cameramoves', 'camerapath', 'pushin', 'pullout', 'orbit', 'dolly', 'dollyzoom', 'crane', 'whippan']);
 
 function help(topic) {
   const t = String(topic || '').toLowerCase().replace(/[^a-z]/g, '');
   if (CAMERA_WORDS.has(t)) return CAMERA;
+  if (/^(fast|fastkit|kit|optimi[sz]ed?|performance|premade|visuali[sz]ers?|spectrum|compute|bloom|swarm)$/.test(t)) return FAST;
   const alias = { frames: 'footage', cuts: 'footage', pacing: 'footage', timecode: 'footage', music: 'audio', sound: 'audio', slider: 'sliders', tweak: 'sliders', layer: 'layers', filter: 'filters', keys: 'keyframes', animate: 'keyframes', lanes: 'keyframes', cues: 'timeline', grid: 'timeline', markers: 'timeline', references: 'refs', palette: 'refs', note: 'notes', placements: 'scene', game: 'games', eval: 'games', input: 'games', size: 'frame', code: 'bigcode', edits: 'bigcode', edit: 'bigcode', diff: 'bigcode', look: 'looks', variations: 'looks', perfectloop: 'loop', loops: 'loop', seamless: 'loop', looping: 'loop', clink: 'games' };
   if (/^(v2|webgpu|tsl|scenesv2|newformat|gpu|v2scene|v2scenes)$/.test(String(topic || '').toLowerCase().replace(/[^a-z0-9]/g, ''))) return TOPICS.v2; // (Nov 9, Scenes v2: its name keeps its digit)
   const key = TOPICS[t] ? t : alias[t];
@@ -115,4 +134,4 @@ function help(topic) {
   return `Topics: ${[...Object.keys(MAP.TOPICS), ...Object.keys(TOPICS)].join(', ')} (or "all").`;
 }
 
-module.exports = { CORE, TOPICS, FULL, NODES_LINE, help };
+module.exports = { CORE, TOPICS, FULL, FAST, NODES_LINE, help };

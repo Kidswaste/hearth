@@ -31,6 +31,11 @@ const BUDGET = { claude: 305, astra: 165, director: 2100, directorFull: 7940, di
   check(rows.every((r, i) => r.text === again[i].text && r.tools === again[i].tools), 'the same prompts and tool lists, byte for byte, measured twice (the prompt cache holds)');
   check(!/\b\d{4}-\d\d-\d\d\b|\b\d\d:\d\d\b/.test(rows.map((r) => r.text).join('\n').replace(/\d\d:\d\d:\d\d:\d\d/g, '')), 'no dates or times in any prompt (the guide\'s timecode example aside)');
   const row = (k) => rows.find((r) => r.key === k);
+  // (Nov 10, fastkit) "help fast" is on demand only (in no prompt) and names every fast v2 layer of tools/three-data.js
+  const TG = require('../mcp/three-guide'); const TD = new Function(`${fs.readFileSync(path.join(__dirname, '..', 'tools', 'three-data.js'), 'utf8')};return ThreeData;`)();
+  const kit = TD.V2_LAYERS.filter((L) => L.fast);
+  check(kit.length >= 5 && kit.every((L) => TG.help('fast').includes(L.id)) && TG.help('fast') === TG.FAST && !TG.FULL.includes('FAST KIT') && /help fast/.test(TG.CORE), `help fast: the ${kit.length} fast v2 layers by id (${kit.map((L) => L.id).join(', ')}), in no prompt; the core's v2 line names it`);
+  check(kit.every((L) => { const n = (L.code.match(/\blabel:/g) || []).length; return n >= 6 && n <= 12 && !L.desc.includes(String.fromCharCode(10)) && TD.isV2Code(L.code); }), 'every fast layer: 6–12 sliders, a one-line description, v2 code');
   // ---------- 2. nothing said twice, nothing lost ----------
   const lean = row('director').text; const full = row('directorFull').text;
   check((lean.match(/You are /g) || []).length === 1 && (full.match(/You are /g) || []).length === 1, 'one "You are…" line in lean and full');

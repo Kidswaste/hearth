@@ -373,7 +373,7 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
   }
   // (round 142, panel142) knobs: ONE Layers & knobs panel. knobs(id, selected) → the node shown under an open layer's row
   // (the selected layer's: the Lab's slot with its sliders; a pinned one's: its own sliders), shown(id) after it is placed
-  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo, knobs = null, shown = null }) {
+  function panel({ onSelect, onChange, onAdd, onPaste, onMoodboard, onMaskTrack, onRemove, onReorder, now, duration, loop, keyState, toggleKey, valueAt, onPreset, onSolo, knobs = null, shown = null, v2 = null }) {
     const { fmtMs, parseTime } = ThreeMedia._test;
     let layers = [];
     let selectedId = null;
@@ -433,8 +433,10 @@ renderer.setAnimationLoop(()=>{material.color.set(P.color);mesh.scale.setScalar(
     });
 
     function addMenu(anchor) {
+      // (Nov 10, fastkit) a v2 scene: its own layers first (ThreeData.V2_LAYERS, the fast kit: one renderer, one draw each)
+      const fast = v2?.() && typeof ThreeData !== 'undefined' ? ThreeData.V2_LAYERS || [] : [];
       const items = [
-        'Scene layers',
+        ...(fast.length ? ['⚡ Fast layers (v2: one renderer, one draw each)', ...fast.map((t) => [t.name.replace(/ \(v2\)$/, ''), t.desc, () => onAdd(t.id)]), 'Old-format layers (a canvas each: heavier)'] : ['Scene layers']),
         ...TEMPLATES.map((t) => [t.name, t.desc, () => onAdd(t.id)]),
         ['Copy of the selected layer', 'Same code and settings', () => onAdd('copy')],
         ['Ask the Three Director…', 'Describe the layer you want in the chat', () => onAdd('ask')],
