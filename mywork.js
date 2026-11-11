@@ -76,7 +76,7 @@ window.MyWork = (() => {
     const src = sc.get(item.sceneId);
     if (!src) throw Error('That scene isn’t here anymore.');
     const f = C.freshLayers(sc.layersOf(src), sc.extrasOf(src.id) || {}, ThreeLayers.newId);
-    const x = sc.create({ name: uniqueName(sc, `${src.name} · new`), code: f.layers[0]?.code || src.code || '', layers: f.layers, frame: sc.frameOf(src.id), timeline: sc.timelineOf(src.id) });
+    const x = sc.create({ name: uniqueName(sc, `${src.name} · new`), code: f.layers[0]?.code || src.code || '', layers: f.layers, frame: sc.frameOf(src.id), timeline: sc.timelineOf(src.id), format: src.format });
     const ex = { ...f.extras, ...(sc.songOf(src.id) ? { media: { path: sc.songOf(src.id) } } : {}) };
     if (Object.keys(ex).length) sc.setExtras(x.id, ex);
     if (C.colors(src.palette).length) { x.palette = C.colors(src.palette); sc.changed(x.id); }
@@ -305,6 +305,7 @@ window.MyWork = (() => {
       if (!st.song && !st.footage && sc.songOf(src.id)) sc.setExtras(x.id, { media: { path: sc.songOf(src.id) } });
     }
     x.code = x.layers[0]?.code || x.code;
+    { const g = typeof ThreeData !== 'undefined' ? ThreeData.formatOf(x.layers) : src.format; if (g) x.format = g; else delete x.format; } // (round 176, gpuaware176) the new project's scene takes the format of the work it starts from
     if (!pal.length && C.colors(src.palette).length) x.palette = C.colors(src.palette);
     sc.changed(x.id);
     last.started = { id: x.id, from: src.id, name: x.name, project: p.id, kind: pick.kind };

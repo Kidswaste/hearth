@@ -2,6 +2,18 @@
 <html>
 <head>
 <meta charset="utf-8">
+<script data-hearth-playback>
+// Opaque scene frames cannot load local scripts. Only their owning Hearth parent can supply this playback hook.
+if (parent !== window) {
+  const receiveVolume = e => {
+    if (e.source !== parent || e.data?.type !== 'hearth-volume-state' || typeof e.data.install !== 'string') return;
+    if (!window.__hearthVolume) (new Function('return (' + e.data.install + ')'))()(e.data.value);
+    removeEventListener('message', receiveVolume);
+  };
+  addEventListener('message', receiveVolume);
+  parent.postMessage({ type: 'hearth-volume-read' }, '*');
+}
+</script>
 <!-- Runs untrusted sketch code: it may load three.js and addons from CDNs, nothing from the hub. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https: hearth-three: blob:; img-src * data: blob:; connect-src * data: blob: hearth-three:; worker-src 'self' blob: https: hearth-three:; style-src 'self' 'unsafe-inline' https:">
 <style>

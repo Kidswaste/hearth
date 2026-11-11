@@ -103,7 +103,7 @@ const ThreeCrew = (() => {
   function briefFor(c, h) {
     const names = c.base.layers.map((L) => `${L.name}${L.id === c.base.selId ? ' (selected)' : ''}`).join(', ');
     return `Crew of ${c.n} helpers: variations of one scene, in parallel, each on its own copy.
-Scene "${c.base.name}" · ${c.base.frame || 'fit'} · layers (bottom first): ${names}. It already runs on your own copy (${c.live && c.base.song ? 'on the scene\'s song, silent' : 'no music there: a demo beat'}).
+Scene "${c.base.name}" · ${c.base.frame || 'fit'}${c.base.format === 'gpu' ? ' · format v2 (WebGPU: keep every layer a v2 layer)' : ''} · layers (bottom first): ${names}. It already runs on your own copy (${c.live && c.base.song ? 'on the scene\'s song, silent' : 'no music there: a demo beat'}).
 The owner's brief: ${c.brief || 'make it more striking'}
 ${c.extra ? `${c.extra}\n` : ''}Make ONE clear, good-looking variation along your angle (below; the other helpers take other angles); keep the layers and their sliders working.
 Budget: at most ${CALLS} tool calls, then one line saying what you changed.
@@ -144,12 +144,12 @@ Your angle: ${h.angle}.`;
     const pick = Array.isArray(angles) && angles.length ? angles.map((a) => cap(a, 160)) : [];
     const c = {
       id, chatId: chatId || null, agent, brief: cap(brief, 400), n, by, status: 'plan', at: Date.now(), ui: ui !== false, live: Boolean(live), extra: String(extra || '').slice(0, 1600),
-      base: { sketchId, name: x.name, frame: S.frameOf(sketchId) || 'fit', layers: snap.layers, selId: snap.selId, ...(live ? { song: S.songOf?.(sketchId) || null, timeline: deep(S.timelineOf?.(sketchId) || null) } : {}) },
+      base: { sketchId, name: x.name, ...(x.format === 'gpu' ? { format: 'gpu' } : {}), frame: S.frameOf(sketchId) || 'fit', layers: snap.layers, selId: snap.selId, ...(live ? { song: S.songOf?.(sketchId) || null, timeline: deep(S.timelineOf?.(sketchId) || null) } : {}) },
       helpers: [], picked: null, kept: [], pickTokens: 0, notes: [],
     };
     c.helpers = Array.from({ length: n }, (_, i) => ({
       n: i + 1, id: `crew-${id}-${i + 1}`, angle: pick[i] || ANGLES[i % ANGLES.length], status: 'waiting', crew: c,
-      sketch: { id: `crew_${id}_${i + 1}`, name: `${x.name} · crew #${i + 1}`, layers: deep(snap.layers), code: snap.layers[0]?.code || '' },
+      sketch: { id: `crew_${id}_${i + 1}`, name: `${x.name} · crew #${i + 1}`, layers: deep(snap.layers), code: snap.layers[0]?.code || '', ...(x.format === 'gpu' ? { format: 'gpu' } : {}) }, // (round 176, gpuaware176) a v2 scene's helpers run and keep v2
       selId: snap.selId, calls: 0, estIn: 0, estOut: 0, ctx: 0, real: null, text: '', tool: null, thumb: null, changed: 0, errors: 0, at: 0, ms: 0,
     }));
     const fx = await fixed(agent);
@@ -334,7 +334,7 @@ Your angle: ${h.angle}.`;
     const made = [];
     for (const h of list) {
       if (h.keptAs && S.get(h.keptAs)) continue;
-      const x = S.create({ name: h.sketch.name, code: h.sketch.layers[0]?.code || '', layers: h.sketch.layers, frame: c.base.frame !== 'fit' ? c.base.frame : null });
+      const x = S.create({ name: h.sketch.name, code: h.sketch.layers[0]?.code || '', layers: h.sketch.layers, frame: c.base.frame !== 'fit' ? c.base.frame : null, format: c.base.format });
       h.keptAs = x.id; c.kept.push(x.id); made.push(x.name);
     }
     Panel.paint();
