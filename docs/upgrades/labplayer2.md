@@ -1,5 +1,7 @@
 # labplayer2 (Nov 10): why the separate Lab player drew black, and the fix
 
+(Nov 11: the player is now the default way a scene runs on Windows, not an opt-in: `docs/upgrades/labplayer3.md`.)
+
 The separate Lab player (Nov 9: `labplayer/`, `labplayermain.js`, the Lab dock's PLAYER › SEPARATE) runs the Lab preview
 in its own Electron app, so a heavy scene has its own graphics process and Hearth's interface keeps its frame rate. It
 was retired the same day (868f192c) because scenes "rendered black or partly"; nobody recorded why. This round finds the

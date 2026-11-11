@@ -42,6 +42,10 @@ owner-facing notes.
 - The Lab's sandbox `tools/three-sandbox.html`: an iframe with `allow-scripts` and no same-origin, so scene code (which
   chats write) can never reach `window.hub`. The same page opens as the Stage window (`stage:open` in `main.js`) and
   as the backstage that runs a chat's scene off screen (`tools/three-backstage.js`).
+  (Nov 11, labplayer3) On Windows the Lab's live preview runs that page in the **Lab player**: a child Electron app
+  (`labplayer/`, started by `labplayermain.js`) with its own graphics process, its window laid over the preview's
+  frame; the Lab drives it through `sandboxFrame`'s target `'player'` (`tools/three.js`), falls back to the iframe by
+  itself and says so. Setting: the dock's PLAYER. `docs/upgrades/labplayer2.md`, `docs/upgrades/labplayer3.md`.
 - App windows (`appsmain.js`, `apps-window.html`), ▶ Play's game window (`gamemodemain.js`), the board's offscreen
   snapshots (`boardmain.js`), the capture indicator (`capturemain.js`), the phone remote page served over the LAN
   (`remotemain.js`, `remote-page.html`), a render or the live preview on the owner's phone (`phoneviewmain.js`,

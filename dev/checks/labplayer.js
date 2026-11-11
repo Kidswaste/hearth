@@ -2,7 +2,11 @@
 // graphics process, labplayer/ + labplayermain.js), proven on the real GPU with the windows really on screen.
 // docs/upgrades/labplayer2.md has the diagnosis this check guards: the player's window was on screen but its page
 // never presented to it (black, 1–5 frames a second) because it was shown behind Chromium's back.
-//   - the default is IN-APP and nothing starts the player
+//   - (Nov 11, labplayer3) the player is the DEFAULT way a scene runs (HEARTH_LP_DEFAULT=1, as the owner's app on
+//     Windows; a plain test copy keeps IN-APP); live edits, layers added / removed, the AI's picture, errors and stats,
+//     Hearth's volume, a menu over the picture (the player steps aside, a still stays), 📷 Camera in, a recorded clip,
+//     the Stage window taking the scene and giving it back, and the fallback: its page crashed on purpose, the scene
+//     is back in Hearth's frame and the owner is told in words (docs/upgrades/labplayer3.md)
 //   - SEPARATE: an old-format scene and a v2 scene (format 'gpu') draw in the player: its window is visible, where the
 //     Lab's frame is, above Hearth's window; Chromium gives its page frames (≥ 20 a second; the bug gave 1–5); what the
 //     window shows is not black; the scene's sliders, song and clock arrive; every message the Lab sent arrived
@@ -18,7 +22,7 @@
 //   --show: the copy's window ON SCREEN without the focus, about 2 minutes: ask the owner first (their rule: test
 //     copies stay out of sight). Only this proves the fix: the bug needs a window really on screen. Hearth's window may be behind another app's, so its occlusion check is off for the run (its frame rate
 // is measured):
-//   SMOKE_GPU_FLAGS="--ignore-gpu-blocklist --disable-features=CalculateNativeWinOcclusion" ELECTRON="$PWD/electron/electron.exe" node dev/smoke.js [--show] --check-timeout 400000 --script dev/checks/labplayer.js
+//   HEARTH_LP_DEFAULT=1 SMOKE_GPU_FLAGS="--ignore-gpu-blocklist --disable-features=CalculateNativeWinOcclusion" ELECTRON="$PWD/electron/electron.exe" node dev/smoke.js [--show] --check-timeout 400000 --script dev/checks/labplayer.js
 const out = { steps: [], measure: {} };
 const step = (name, ok, info) => { out.steps.push(`${ok ? '✓' : '✖'} ${name}${info === undefined ? '' : ` · ${typeof info === 'string' ? info : JSON.stringify(info)}`}`); if (!ok) (out.problems ||= []).push(name); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
