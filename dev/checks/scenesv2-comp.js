@@ -26,7 +26,7 @@ try {
   step('plain: the green top covers the red', isG(r0), r0);
   await props({ ...RESET, opacity: 0.5 }); await wait(300);
   const r1 = await px(0.5, 0.5); const s1 = await pj('window.__labG2.state()');
-  step('opacity 0.5: half red, half green, merged by the TSL pass (≈ 188, 188: blended in linear)', r1 && Math.abs(r1[0] - 188) <= 4 && Math.abs(r1[1] - 188) <= 4 && s1.path === 'merged', { px: r1, path: s1.path, rt: s1.rt, merges: s1.merges });
+  step('opacity 0.5: half red, half green, merged by the TSL pass (≈ 188, 188: blended in linear)', r1 && Math.abs(r1[0] - 188) <= 4 && Math.abs(r1[1] - 188) <= 4 && (s1.path === 'merged' || s1.path === 'kept') /* (Nov 11, still178: two still layers, the merged frame is drawn once then nothing) */, { px: r1, path: s1.path, rt: s1.rt, merges: s1.merges });
   await props({ ...RESET, blend: 'multiply' }); await wait(300);
   const r2 = await px(0.5, 0.5);
   step('multiply: red × green is black', r2 && r2[0] < 30 && r2[1] < 30, r2);

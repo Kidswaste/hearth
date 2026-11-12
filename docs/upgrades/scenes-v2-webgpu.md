@@ -107,9 +107,11 @@ messages, pacing and stats are shared; v2 layers only change how a layer runs an
 - Renders: a 640×360 45-frame MP4 of the v2 template at ≈ 2× real time.
 
 ### Open
-- Per-layer passes cost at 4K (MSAA store + resolve each). Next: draw consecutive plain layers in fewer passes, or MSAA
-  only on the final picture.
+- Done Nov 10 (docs/upgrades/onepass.md): consecutive plain layers draw in one pass on the picture (one store, one
+  MSAA resolve, one submit; 6 layers 8 → 3 passes a frame, 20 layers 22 → 3), and the GPU time is read only while the
+  stats line shows or a check asks. Left: the copy to the screen is 2 passes of three.js; a layer with opacity /
+  blend / move / mask still costs its own picture and a merge pass.
 - Not v2-aware yet: the scene editor (✥), Direct manipulation outlines, look-around views, ▶ Play's merge, the Lab
   player window, filter-layer templates / three_nodes (old-format code), precomps of v2 scenes.
 - Checks: dev/checks/scenesv2.js (runtime + A/B), scenesv2-comp.js (merging), scenesv2-lists.js, scenesv2-render.js,
-  scenesv2-many.js, scenesv2-bench.js, scenesv2-rate.js (all with SMOKE_GPU_FLAGS="--ignore-gpu-blocklist").
+  scenesv2-many.js, scenesv2-bench.js, scenesv2-rate.js, scenesv2-onepass.js (all with SMOKE_GPU_FLAGS="--ignore-gpu-blocklist").

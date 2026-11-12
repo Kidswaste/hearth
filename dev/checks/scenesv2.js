@@ -123,6 +123,7 @@ async function measureAt(label) {
 }
 async function measure(label, ms = 8000) {
   const c = await ThreeLab.cmd();
+  await pj('window.__labG2 ? window.__labG2.timing(true) : null'); // (Nov 10, onepass: the GPU time is read only while the stats line shows or a check asks)
   await wait(4000); // (shaders, first uploads, the adaptive quality settling)
   const fps = []; const gpu = []; const p50 = [];
   const t0 = Date.now();
@@ -177,6 +178,9 @@ try {
   step('v2: the song audio values move in onFrame', pr && pr.distinct > 3, { song: out.song, ...pr });
   step('v2: the Lab\'s stats get fps and the GPU time', m2.fps > 0 && m2.gpuMs != null, { fps: m2.fps, gpuMs: m2.gpuMs });
   c.play(false); await wait(500);
+  // (Nov 10, onepass) the six plain layers share one pass: a frame of it is not refused by the graphics card, and the page never had to fall back
+  const ge = await pj('await window.__labG2.gpuError()'); const g9 = await pj('window.__labG2.state()');
+  step('v2: the layers share one pass and the graphics card takes it', ge === null && g9.onepass === true && !g9.onepassErr, { gpuError: ge, onepass: g9.onepass, fellBack: g9.onepassErr, passes: g9.passes });
   const px = await pj('window.__labG2.lit()');
   step('v2: a still merged between frames reads a picture (not black)', px && px.lit > 64 * 36 * 0.2, px);
 
