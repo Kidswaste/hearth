@@ -12,7 +12,8 @@ about old stuff being slow".
   (bloom, render targets), which the merge excludes. Only 4–5 scenes would merge.
 - A heavy scene in Hearth's graphics process makes the whole interface wait (166 → 84 fps). The experimental separate
   Lab player (round of Nov 9, `labplayer/`) fixes the interface (238 fps) but scenes render black / partly there: kept
-  opt-in (PLAYER › IN-APP by default), not developed further for now.
+  opt-in (PLAYER › IN-APP by default), not developed further for now. (Nov 10: cause found and fixed, v2 scenes run
+  in it: docs/upgrades/labplayer2.md.)
 - WebGPU is available here: `navigator.gpu` on Hearth's `file://` pages, adapter nvidia / lovelace, device OK.
 
 ## The format
@@ -111,7 +112,7 @@ messages, pacing and stats are shared; v2 layers only change how a layer runs an
   MSAA resolve, one submit; 6 layers 8 → 3 passes a frame, 20 layers 22 → 3), and the GPU time is read only while the
   stats line shows or a check asks. Left: the copy to the screen is 2 passes of three.js; a layer with opacity /
   blend / move / mask still costs its own picture and a merge pass.
-- Not v2-aware yet: the scene editor (✥), Direct manipulation outlines, look-around views, ▶ Play's merge, the Lab
-  player window, filter-layer templates / three_nodes (old-format code), precomps of v2 scenes.
+- Not v2-aware yet: the scene editor (✥), Direct manipulation outlines, look-around views, ▶ Play's merge,
+  filter-layer templates / three_nodes (old-format code), precomps of v2 scenes.
 - Checks: dev/checks/scenesv2.js (runtime + A/B), scenesv2-comp.js (merging), scenesv2-lists.js, scenesv2-render.js,
   scenesv2-many.js, scenesv2-bench.js, scenesv2-rate.js, scenesv2-onepass.js (all with SMOKE_GPU_FLAGS="--ignore-gpu-blocklist").

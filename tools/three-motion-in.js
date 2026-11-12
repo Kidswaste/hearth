@@ -30,7 +30,7 @@ const LabMotionIn = (() => {
   addEventListener('hearth:lab-drop', (e) => { if (e.detail?.dropped) { st.lab = null; } }); // (round 161, fix161) Hearth's Lab let go entirely (ThreeLab.drop): back to before the Lab mounted (a new Lab attaches again)
 
   // ---------- the preview (tools/three.js attaches it) ----------
-  // o: { send(msg), frame: () => iframe, onStage: () => bool, ready: () => bool, host: preview element }
+  // o: { send(msg), frame: () => iframe, onStage: () => bool, relay: () => bool (Nov 11: the separate player), ready: () => bool, host: preview element }
   function attach(o) {
     st.lab = o; st.coreSent = false; st.filesSent = false;
     for (const ev of ['hearth:view', 'hearth:activate']) addEventListener(ev, () => setTimeout(syncShown, 0));
@@ -39,7 +39,7 @@ const LabMotionIn = (() => {
   }
   // straight to the iframe with a transfer list (frames are moved, not copied); null when it can't take them now
   function deliver(msg, transfer = []) {
-    const l = S(); if (!l || !l.ready() || l.onStage()) return false;
+    const l = S(); if (!l || !l.ready() || l.onStage() || l.relay?.()) return false;
     const f = l.frame(); if (!f?.contentWindow) return false;
     f.contentWindow.postMessage({ target: 'three-sandbox', ...msg }, '*', transfer);
     return true;
@@ -164,8 +164,18 @@ const LabMotionIn = (() => {
       const cap = (RES[prefs().res] || RES[720])[0];
       const w = Math.min(vw, cap); const h = Math.round((vh * w) / vw);
       const sw = Math.min(vw, 256); const sh = Math.round((vh * sw) / vw);
-      const [bmp, small] = await Promise.all([createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' }), createImageBitmap(v, { resizeWidth: sw, resizeHeight: sh, resizeQuality: 'low' })]);
       const p = prefs();
+      // (Nov 11, labplayer3) the separate player: nothing can be transferred to another app, so the two pictures go as
+      // JPEGs through the main process (≈ 40–90 KB a frame at 720p) and its page decodes them
+      if (l.relay?.()) {
+        const jpg = async (cw, ch, q) => { const c = (st.jc ||= new OffscreenCanvas(2, 2)); c.width = cw; c.height = ch; c.getContext('2d').drawImage(v, 0, 0, cw, ch); return new Uint8Array(await (await c.convertToBlob({ type: 'image/jpeg', quality: q })).arrayBuffer()); };
+        const big = await jpg(w, h, 0.82); const sm = await jpg(sw, sh, 0.7);
+        if (!st.on) return;
+        send({ type: 'motionin-frame', jpg: big, smallJpg: sm, at: t, mirror: st.mirror, cfg: { engine: p.engine, hue: p.hue, trail: p.trail } });
+        st.frames += 1;
+        return;
+      }
+      const [bmp, small] = await Promise.all([createImageBitmap(v, { resizeWidth: w, resizeHeight: h, resizeQuality: 'medium' }), createImageBitmap(v, { resizeWidth: sw, resizeHeight: sh, resizeQuality: 'low' })]);
       if (!st.on || !deliver({ type: 'motionin-frame', bmp, small, at: t, mirror: st.mirror, cfg: { engine: p.engine, hue: p.hue, trail: p.trail } }, [bmp, small])) { bmp.close(); small.close(); return; }
       st.frames += 1;
     } catch (err) { if (st.frames === 0) console.warn('Camera frame:', err.message); } finally { st.busy = false; }

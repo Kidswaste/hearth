@@ -344,6 +344,13 @@ const webcam = (() => {
     for (const t of S.mtexs) t.needsUpdate = Boolean(maskCanvas());
   }
   // ---- frames from the hub ----
+  // (Nov 11, labplayer3) in the separate player the two pictures come as JPEGs (nothing can be transferred to another app)
+  let jpegBusy = false;
+  async function fromJpeg(m) {
+    if (jpegBusy) return; // (a frame still decoding: this one is skipped, as a busy tracker skips)
+    jpegBusy = true;
+    try { const [bmp, small] = await Promise.all([createImageBitmap(new Blob([m.jpg], { type: 'image/jpeg' })), createImageBitmap(new Blob([m.smallJpg], { type: 'image/jpeg' }))]); onFrame({ ...m, bmp, small }); } catch { /* a broken frame: the next one */ } finally { jpegBusy = false; }
+  }
   function onFrame(msg) {
     S.live = true; S.mirror = msg.mirror !== false; S.cfg = msg.cfg || S.cfg;
     S.old?.close?.(); S.old = S.bmp; S.bmp = msg.bmp; S.gen += 1; S.at = now();
@@ -367,7 +374,7 @@ const webcam = (() => {
     const m = e.data || {};
     if (m.target !== 'three-sandbox' || typeof m.type !== 'string' || !m.type.startsWith('motionin-')) return;
     if (m.type === 'motionin-core') start(m.src);
-    else if (m.type === 'motionin-frame') onFrame(m);
+    else if (m.type === 'motionin-frame') { if (m.jpg) fromJpeg(m); else onFrame(m); }
     else if (m.type === 'motionin-off') off();
     else if (m.type === 'motionin-share') S.share = Boolean(m.on);
     else if (m.type === 'motionin-mp') S.w?.postMessage({ t: 'mp', files: m.files }, Object.values(m.files).filter((b) => b instanceof ArrayBuffer));

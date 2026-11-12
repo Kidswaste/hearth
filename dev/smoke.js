@@ -15,6 +15,7 @@
 //   node dev/smoke.js --fake-mic --script dev/checks/beatload110.js   # (round 110) the microphone is a looping drum file (Chromium's fake capture)
 //   node dev/smoke.js --pw-chrome --script dev/checks/chrome.js     # Hearth's Chrome: Playwright's Chromium as "Chrome", test pages
 //   node dev/smoke.js --screen 3840x2160 --dpr 2 --script dev/checks/bigscreen.js   # (round 38) a 4K screen at 200 %
+//   node dev/smoke.js --show --script dev/checks/labplayer.js      # (Nov 10) Windows: the copy's window on screen, without the focus
 //   node dev/smoke.js --coverage /tmp/cov.json --script dev/checks/trim-drive.js   # JS function + CSS rule coverage of the
 //       page from the first byte (CDP Profiler precise coverage, CSS rule usage), written as JSON (dev/coverage-report.js reads it)
 //
@@ -23,6 +24,7 @@
 //   await smoke({ shot: '/tmp/step3.png' })            // full-window screenshot now
 // (`smoke` is defined in the page by the harness: it resolves with the CDP result.)
 //
+// SMOKE_SHOW=1 (Windows): show the test copy's windows (by default they stay off screen and silent: dev/smoke-silent.js).
 // Env: ELECTRON (path to the electron binary, default /opt/hearth-electron/electron).
 // SMOKE_SHOW=1 (Windows): show the test copy's windows (by default they stay off screen and silent: dev/smoke-silent.js).
 // Exit code 1 when the page threw or logged errors (known harmless ones are filtered below).
@@ -181,6 +183,12 @@ async function cdpConnect(dir) {
   // The fake engines' scenarios run through the exec transport (still the agent's codexTransport: 'exec'); the
   // app-server path has its own fixture (dev/fake-codex-server.js: astra-connect / astra-workspace smokes, codex-server-test).
   if (args.includes('--fake-engines') && !env.HEARTH_CODEX_TRANSPORT) env.HEARTH_CODEX_TRANSPORT = 'exec';
+  // (Nov 10, labplayer2) the separate Lab player of a test copy: its own profile folder (never the owner's), and it answers a check's questions (labplayer:debug)
+  if (!env.HEARTH_LP_USERDATA) env.HEARTH_LP_USERDATA = TmpOwn.mkdtemp('hearth-smoke-lp-');
+  env.HEARTH_LP_DEBUG = '1';
+  // (Nov 11, labplayer3) the player is the default way a scene runs in the owner's app; a test copy keeps its scenes in
+  // its own window (every Lab check reads the preview's frame) unless the run asks: HEARTH_LP_DEFAULT=1 (dev/checks/labplayer.js)
+  if (env.HEARTH_LP_DEFAULT == null) env.HEARTH_LP_DEFAULT = '0';
   // --fake-meshy: a local fake of Meshy's API, Poly Haven's API and test web pages (dev/fake-meshy.js) for the apps
   // checks; the app finds it through HEARTH_MESHY_BASE (checks read it back with hub.apps.status().testBase)
   if (args.includes('--fake-meshy')) {
@@ -236,9 +244,11 @@ async function cdpConnect(dir) {
   const micFlags = fakeMic ? ['--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${fakeMic.file}`, '--use-fake-ui-for-media-stream'] : [];
   // (round 176, silent176) Windows: the test copy's windows stay off the owner's screen, silent and without the keyboard
   // (dev/smoke-silent.js, loaded into its main process); SMOKE_SHOW=1 shows them as before
-  const silent = winTest && !process.env.SMOKE_SHOW;
+  // (Nov 10, labplayer2) --show is the one other way to have them on screen (dev/checks/labplayer.js: ask the owner first)
+  const silent = winTest && !process.env.SMOKE_SHOW && !args.includes('--show');
   const silentArgs = silent ? ['-r', path.join(__dirname, 'smoke-silent.js')] : [];
   const silentFlags = silent ? ['--mute-audio', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-features=CalculateNativeWinOcclusion'] : [];
+  if (winTest) env.HEARTH_LP_MUTE = '1'; // (Nov 10, labplayer2) a test copy's separate Lab player never plays the song aloud
   const launchArgs = [...silentArgs, dir, ...silentFlags, '--no-sandbox', ...dprFlag, ...micFlags, `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`, ...(process.env.SMOKE_GPU_FLAGS || '--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist').split(' ').filter(Boolean)];
   // (round 58, ctxloss58) --burn N: N busy CPU processes for the whole run (a loaded computer: dev/checks/ctxloss.js),
   // ended with the run. Only inside the shared run lock: they slow every other agent's checks too
@@ -289,7 +299,13 @@ async function cdpConnect(dir) {
   const deadline = Number(opt('--check-timeout', 90000)) * Math.max(1, parts) + 300000;
   setTimeout(() => { console.log(`\n1 problem(s):\nharness: still running after ${Math.round(deadline / 1000)} s (a call the page never answered)`); process.exit(1); }, deadline).unref();
   try {
-    const ws = new WebSocket(await cdpConnect(dir));
+    const wsUrl = await cdpConnect(dir);
+    // (Nov 10, labplayer2) --show: the copy's window really on screen, without the focus (Windows: started hidden, the
+    // app's own first show is ignored; dev/win-show.ps1 shows it). For checks of what is laid over the window.
+    if (args.includes('--show') && winTest) {
+      for (let i = 0; i < 20; i += 1) { let n = '0'; try { n = String(execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-show.ps1'), String(child.pid)], { windowsHide: true })).trim(); } catch { /* next try */ } if (Number(n) > 0) break; await new Promise((r) => setTimeout(r, 500)); }
+    }
+    const ws = new WebSocket(wsUrl);
     await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
     let id = 0; const pending = new Map(); const attached = []; const frameScripts = [];
     ws.onmessage = (m) => {
@@ -463,6 +479,10 @@ async function cdpConnect(dir) {
         const ok = bases.has(path.dirname(d)) && /^hearth-[\w.-]+$/.test(path.basename(d));
         if (ok) fs.rmSync(d, { recursive: true, force: true });
         result = { removed: ok ? d : null };
+      } else if (req.windows) { // (Nov 10, labplayer2) { windows: [pid…] }: the visible top-level windows, front first (dev/win-list.ps1; + this copy's own pid)
+        try { result = { hearth: child.pid, list: String(execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-list.ps1'), String(child.pid), ...req.windows.map(String)], { windowsHide: true })).split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l)) }; } catch (err) { result = { error: String(err.message).slice(0, 300) }; }
+      } else if (req.screen) { // (Nov 10, labplayer2) { screen: file, rect: { x, y, width, height } }: what the desktop really shows there (physical px, Windows)
+        try { const r = req.rect; const o = execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'win-shot.ps1'), String(Math.round(r.x)), String(Math.round(r.y)), String(Math.round(r.width)), String(Math.round(r.height)), req.screen], { windowsHide: true }); result = { saved: req.screen, ...JSON.parse(String(o).trim().split(/\n/).pop()) }; } catch (err) { result = { error: String(err.message).slice(0, 300) }; }
       } else if (req.shot) {
         const img = await send('Page.captureScreenshot', { format: 'png' });
         if (img.result?.data) { fs.mkdirSync(path.dirname(req.shot), { recursive: true }); fs.writeFileSync(req.shot, Buffer.from(img.result.data, 'base64')); }

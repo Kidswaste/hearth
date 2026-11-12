@@ -135,7 +135,7 @@ contextBridge.exposeInMainWorld('hub', {
   onStageMessage: on('stage:from'),
   onStageClosed: on('stage:closed'),
   // (Nov 9, labplayer) the Lab preview in its own app and graphics process, laid over the preview area (labplayermain.js)
-  labPlayer: { open: call('labplayer:open'), close: call('labplayer:close'), state: call('labplayer:state'), send: (msg) => ipcRenderer.send('labplayer:to', msg), rect: (r) => ipcRenderer.send('labplayer:rect', r), onMessage: on('labplayer:from'), onClosed: on('labplayer:closed') },
+  labPlayer: { byDefault: process.platform === 'win32' && process.env.HEARTH_LP_DEFAULT !== '0', open: call('labplayer:open'), close: call('labplayer:close'), state: call('labplayer:state'), debug: call('labplayer:debug'), send: (msg) => ipcRenderer.send('labplayer:to', msg), rect: (r) => ipcRenderer.send('labplayer:rect', r), onMessage: on('labplayer:from'), onClosed: on('labplayer:closed') },
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),
   pathForFile: (file) => webUtils.getPathForFile(file),
