@@ -2022,6 +2022,7 @@ const ThreeLab = (() => {
       onSelect: (id) => selectLayer(id),
       onChange: (id, patch, { live }) => editLayer(id, patch, { live }),
       onAdd: (kind) => addLayer(kind),
+      v2: () => current?.format === 'gpu', // (Nov 10, fastkit: a v2 scene's ＋ Layer menu lists the v2 layers first)
       onMoodboard: id => layerStudio.moodboard(id),
       onMaskTrack: id => layerStudio.generate({maskSource:id}),
       onPaste: (copies) => { for (const copy of copies) { const { id, slot, group, solo, ...props } = copy; addLayer('paste', { code: copy.code, props: { ...props, name: `${copy.name} copy` } }); } },
@@ -2171,6 +2172,7 @@ const ThreeLab = (() => {
         // (round 176, gpuaware176) in a v2 scene: a v2 layer by its id, and the v2 cube where an old scene gets the first old template
         // (a named old template / filter is still added as asked: it runs the old way, on its own canvas)
         const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind);
+        if (!old && current.format !== 'gpu' && ThreeData.v2Layer(kind)) throw new Error(`"${kind}" is a v2 layer: it runs in a v2 scene only (a new scene is one; this scene is the old format).`); // (Nov 10, fastkit)
         const t = (current.format === 'gpu' ? ThreeData.v2Layer(kind) || (!old || kind === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0];
         L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
       }

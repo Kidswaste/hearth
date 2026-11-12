@@ -431,6 +431,7 @@ function makeBackstage(opts = {}) {
       async addLayer({ name, code, template, props = {} }, wait = 2.5) {
         const Ls = layersOf(s());
         const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template); // (round 176, gpuaware176) a v2 scene: v2 layers, as on screen
+        if (code == null && !old && s().format !== 'gpu' && ThreeData.v2Layer(template)) throw new Error(`"${template}" is a v2 layer: it runs in a v2 scene only (this scene is the old format).`); // (Nov 10, fastkit)
         const t = code == null ? ((s().format === 'gpu' ? ThreeData.v2Layer(template) || (!old || template === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0]) : null;
         const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
         let nm = name || t?.name || 'Layer'; let n = 2;

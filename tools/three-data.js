@@ -512,6 +512,335 @@ void main() {
 };
 `,
   });
+  // (Nov 10, fastkit) The fast kit: ready v2 layers for the expensive things (a spectrum visualizer, a particle
+  // simulation, glow, camera tracking, footage), each written the cheap way: ONE draw call however many pieces, the
+  // work in the shader (TSL) or a compute shader, data handed to the graphics card once a frame (a data texture / a
+  // uniform array), nothing made inside onFrame (typed arrays and vectors are made once and refilled). The rules are
+  // the director's `three_do help fast` (mcp/three-guide.js); the check is dev/checks/fastkit.js.
+  V2_LAYERS.push(
+    {
+      id: 'v2-spectrum', fast: true, name: 'Spectrum (v2)', desc: 'The song as bars, a ring or a waveform: up to 512 pieces in one draw, fed by one small data texture a frame',
+      code: `${V2_HEAD}// Fast: ONE instanced quad. The levels go to the graphics card once a frame as a 512 × 1 data texture; the shader places every piece.
+export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { uniform, texture, instanceIndex, positionGeometry, float, vec2, vec3, mix, sin, cos, varying } = tsl;
+  const P = tweak({
+    style: { value: 'bars', options: ['bars', 'ring', 'wave'], label: 'Style', group: 'Shape' },
+    bars: { value: 96, min: 8, max: 512, step: 1, label: 'How many', group: 'Shape' },
+    size: { value: 1, min: 0.2, max: 2.5, label: 'Size', group: 'Shape' },
+    height: { value: 1, min: 0, max: 3, label: 'Height', group: 'Shape' },
+    thick: { value: 0.7, min: 0.05, max: 1, label: 'Thickness', group: 'Shape' },
+    mirror: { value: true, label: 'Mirror up and down', group: 'Shape' },
+    low: { value: '#ff3cac', label: 'Low notes', group: 'Color' },
+    high: { value: '#48ddff', label: 'High notes', group: 'Color' },
+    glow: { value: 1.2, min: 0, max: 4, label: 'Glow', group: 'Color' },
+    smooth: { value: 0.6, min: 0, max: 0.95, label: 'Smoothing', group: 'Music', hint: 'Higher = calmer, slower to fall' },
+    punch: { value: 0.5, min: 0, max: 2, label: 'Punch on bass', group: 'Music' },
+    spin: { value: 0, min: -2, max: 2, label: 'Spin', group: 'Motion' },
+  });
+  const MAX = 512; const W = 6; const R = 1.3;
+  // made once, refilled every frame
+  const lv = new Float32Array(MAX); const px = new Uint8Array(MAX); const edge = new Uint16Array(MAX + 1);
+  const tex = new THREE.DataTexture(px, MAX, 1, THREE.RedFormat);
+  tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+  const n = uniform(96); const ring = uniform(0); const wave = uniform(0); const mir = uniform(1);
+  const hgt = uniform(1); const thick = uniform(0.7); const glow = uniform(1);
+  const low = uniform(new THREE.Color(P.low)); const high = uniform(new THREE.Color(P.high));
+  const i = float(instanceIndex); const u = i.add(0.5).div(n);
+  const at = (k) => texture(tex, vec2(k.add(0.5).div(MAX), 0.5)).r;
+  const a = at(i); const b = at(i.add(1).min(n.sub(1))); const a1 = a.add(0.015);
+  const q = positionGeometry; const step = float(W).div(n); const x = u.sub(0.5).mul(W);
+  // the three styles, all from the piece's number: the style sliders only mix them
+  const bars = vec3(x.add(q.x.mul(step).mul(thick)), mix(q.y.add(0.5).mul(a1).mul(hgt).sub(1.2), q.y.mul(2).mul(a1).mul(hgt), mir), 0);
+  const ang = u.mul(6.2832); const rr = float(R).add(mix(q.y.add(0.5), q.y, mir).mul(a1).mul(hgt)); const tt = q.x.mul(6.2832 * R).div(n).mul(thick);
+  const rings = vec3(cos(ang).mul(rr).sub(sin(ang).mul(tt)), sin(ang).mul(rr).add(cos(ang).mul(tt)), 0);
+  const line = vec3(x.add(q.x.mul(step)), mix(a, b, q.x.add(0.5)).sub(0.5).mul(2).mul(hgt).add(q.y.mul(thick).mul(0.12)), 0);
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.positionNode = mix(mix(bars, rings, ring), line, wave);
+  mat.colorNode = mix(low, high, varying(u)).mul(varying(mix(a, float(1), wave)).mul(glow).add(0.25));
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  mesh.count = 96; mesh.frustumCulled = false;
+  scene.add(mesh);
+  camera.position.set(0, 0, 6);
+  let lastN = 0;
+  onFrame((t, dt) => {
+    const N = Math.max(8, Math.min(MAX, Math.round(P.bars)));
+    if (N !== lastN) { lastN = N; for (let k = 0; k <= N; k += 1) edge[k] = Math.min(1023, Math.round(2 * Math.pow(360, k / N))); } // (bars spaced like notes: ≈ 40 Hz … 15 kHz)
+    const isWave = P.style === 'wave'; const fall = 1 - Math.pow(P.smooth, dt * 60);
+    if (isWave) {
+      const w = audio.waveform; const st = w.length / N;
+      for (let k = 0; k < N; k += 1) { lv[k] += (w[(k * st) | 0] - lv[k]) * Math.max(fall, 0.05); px[k] = 128 + Math.max(-127, Math.min(127, lv[k] * 127)); }
+    } else {
+      const s = audio.spectrum;
+      for (let k = 0; k < N; k += 1) {
+        const lo = edge[k]; const hi = Math.max(lo + 1, edge[k + 1]); let m = 0;
+        for (let j = lo; j < hi; j += 1) m += s[j];
+        const v = m / ((hi - lo) * 255);
+        lv[k] = v > lv[k] ? v : lv[k] + (v - lv[k]) * fall; // (up at once, down smoothly)
+        px[k] = lv[k] * 255;
+      }
+    }
+    tex.needsUpdate = true; // one 512-byte upload a frame
+    mesh.count = N; n.value = N;
+    ring.value = P.style === 'ring' ? 1 : 0; wave.value = isWave ? 1 : 0; mir.value = P.mirror ? 1 : 0;
+    hgt.value = P.height; thick.value = P.thick; glow.value = P.glow;
+    low.value.set(P.low); high.value.set(P.high);
+    mesh.scale.setScalar(P.size * (1 + audio.bass * P.punch * 0.25));
+    mesh.rotation.z += dt * P.spin;
+  });
+  return () => tex.dispose();
+};
+`,
+    },
+    {
+      id: 'v2-swarm', fast: true, name: 'Particle swarm (v2)', desc: '150,000+ particles simulated on the graphics card (a compute shader): they swirl, burst on the kick, one draw',
+      code: `${V2_HEAD}// Fast: the simulation is a compute shader (every particle moved on the graphics card), drawn as ONE instanced quad.
+export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { Fn, If, uniform, instancedArray, instanceIndex, hash, float, vec3, vec4, sin, cos, mix, uv, positionGeometry, modelViewMatrix, cameraProjectionMatrix } = tsl;
+  const P = tweak({
+    count: { value: 150, min: 10, max: 1000, step: 10, label: 'Particles (thousands)', group: 'Look', hint: 'Still one draw: the graphics card moves them' },
+    size: { value: 0.02, min: 0.004, max: 0.1, label: 'Size', group: 'Look' },
+    bright: { value: 0.6, min: 0, max: 3, label: 'Brightness', group: 'Look' },
+    slow: { value: '#3a6bff', label: 'Slow ones', group: 'Color' },
+    fast: { value: '#ffd9a0', label: 'Fast ones', group: 'Color' },
+    spread: { value: 2.5, min: 0.5, max: 6, label: 'Spread', group: 'Motion' },
+    speed: { value: 1, min: 0, max: 3, label: 'Speed', group: 'Motion' },
+    swirl: { value: 1, min: 0, max: 4, label: 'Swirl', group: 'Motion' },
+    pull: { value: 0.5, min: 0, max: 3, label: 'Pull to the centre', group: 'Motion' },
+    life: { value: 6, min: 1, max: 20, label: 'Life (seconds)', group: 'Motion' },
+    burst: { value: 1.5, min: 0, max: 5, label: 'Burst on kick', group: 'Music' },
+    bass: { value: 0.6, min: 0, max: 3, label: 'Swirl on bass', group: 'Music' },
+  });
+  const N = Math.round(P.count * 1000);
+  // each particle: where it is + the life it has left · how fast it goes (kept on the graphics card)
+  const pos = instancedArray(N, 'vec4'); const vel = instancedArray(N, 'vec4');
+  const A = pos.value.array; const r0 = P.spread;
+  for (let k = 0; k < N; k += 1) {
+    const a = Math.random() * 6.2832; const b = Math.random() * 2 - 1; const c = Math.sqrt(1 - b * b); const r = r0 * Math.cbrt(Math.random());
+    A[k * 4] = c * Math.cos(a) * r; A[k * 4 + 1] = b * r; A[k * 4 + 2] = c * Math.sin(a) * r; A[k * 4 + 3] = Math.random();
+  }
+  const step = uniform(0); const seed = uniform(0); const flowT = uniform(0); const life = uniform(6); const spread = uniform(2.5);
+  const swirl = uniform(1); const pull = uniform(0.5); const kick = uniform(0); const drag = uniform(1);
+  const tick = Fn(() => {
+    const p = pos.element(instanceIndex); const v = vel.element(instanceIndex); const id = float(instanceIndex);
+    const left = p.w.sub(step.div(life).mul(hash(id).mul(0.6).add(0.7))).toVar();
+    If(left.lessThanEqual(0), () => { // born again somewhere on a ball
+      const s = id.add(seed);
+      const a = hash(s).mul(6.2832); const b = hash(s.add(7.1)).mul(2).sub(1); const c = b.mul(b).oneMinus().sqrt();
+      const dir = vec3(c.mul(cos(a)), b, c.mul(sin(a))).toVar();
+      p.assign(vec4(dir.mul(spread).mul(hash(s.add(3.3)).mul(0.7).add(0.3)), 1));
+      v.assign(vec4(dir.mul(0.15), 0));
+    }).Else(() => {
+      const q = p.xyz.mul(0.9).add(flowT);
+      const flow = vec3(sin(q.z).add(cos(q.y)), sin(q.x).add(cos(q.z)), sin(q.y).add(cos(q.x)));
+      const out = p.xyz.div(p.xyz.length().max(0.001));
+      const nv = v.xyz.add(flow.mul(swirl).sub(p.xyz.mul(pull)).add(out.mul(kick)).mul(step)).mul(drag).toVar();
+      v.assign(vec4(nv, 0));
+      p.assign(vec4(p.xyz.add(nv.mul(step)), left));
+    });
+  })().compute(N);
+  const slow = uniform(new THREE.Color(P.slow)); const fast = uniform(new THREE.Color(P.fast)); const bright = uniform(P.bright); const size = uniform(P.size);
+  const pa = pos.toAttribute(); const va = vel.toAttribute();
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.vertexNode = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(pa.xyz, 1)).add(vec4(positionGeometry.xy.mul(size), 0, 0))); // each one a small square facing the camera
+  mat.colorNode = mix(slow, fast, va.xyz.length().mul(0.5).clamp(0, 1)).mul(bright);
+  mat.opacityNode = uv().sub(0.5).length().mul(2).oneMinus().clamp(0, 1).pow(2).mul(pa.w.mul(pa.w.oneMinus()).mul(4).clamp(0, 1)); // (a soft dot, fading in and out over its life)
+  const pts = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat); pts.count = N; pts.frustumCulled = false; // (its own geometry: gone with the layer, buffers and all)
+  pts.onBeforeRender = (renderer) => { renderer.compute(tick); }; // the simulation's step, on the scene's one renderer, just before its draw
+  scene.add(pts);
+  camera.position.set(0, 0, 7);
+  let env = 0; let frame = 0;
+  onFrame((t, dt) => {
+    const h = Math.min(dt, 1 / 30) * P.speed;
+    env = Math.max(env * Math.exp(-dt * 8), audio.kick || audio.bass);
+    frame = (frame + 1) % 4096;
+    step.value = h; seed.value = frame * 1.37; flowT.value = t * 0.25; life.value = P.life; spread.value = P.spread;
+    swirl.value = P.swirl * (1 + audio.bass * P.bass); pull.value = P.pull; kick.value = env * P.burst * 4; drag.value = Math.exp(-h * 2.5);
+    slow.value.set(P.slow); fast.value.set(P.fast); bright.value = P.bright; size.value = P.size;
+    pts.rotation.y += dt * 0.05;
+  });
+  return () => tick.dispose();
+};
+`,
+    },
+    {
+      id: 'v2-glow', fast: true, name: 'Glow lights (v2)', desc: 'Glowing orbs, rings or stars with their soft light drawn in the same pass: a bloom look with no bloom pass, one draw',
+      code: `${V2_HEAD}// Fast: the glow is part of each shape's own shader (a bright core + a soft halo, added to the picture): no bloom pass, no composer, ONE draw.
+export default ({ THREE, tsl, scene, camera, tweak, audio, onFrame }) => {
+  const { uniform, instanceIndex, positionGeometry, hash, float, vec3, mix, sin, uv, time, abs, exp, smoothstep, varying } = tsl;
+  const P = tweak({
+    shape: { value: 'orbs', options: ['orbs', 'rings', 'stars'], label: 'Shape', group: 'Shape' },
+    count: { value: 60, min: 1, max: 2000, step: 1, label: 'How many', group: 'Shape' },
+    size: { value: 0.3, min: 0.05, max: 3, label: 'Size', group: 'Shape' },
+    spread: { value: 3, min: 0, max: 8, label: 'Spread', group: 'Shape' },
+    depth: { value: 2, min: 0, max: 8, label: 'Depth', group: 'Shape' },
+    halo: { value: 1, min: 0, max: 3, label: 'Glow', group: 'Look', hint: 'The soft light around each shape' },
+    bright: { value: 1, min: 0, max: 4, label: 'Brightness', group: 'Look' },
+    a: { value: '#ff9a3c', label: 'Colour', group: 'Look' },
+    b: { value: '#7c5cff', label: 'Second colour', group: 'Look' },
+    drift: { value: 0.4, min: 0, max: 3, label: 'Drift', group: 'Motion' },
+    twinkle: { value: 0.3, min: 0, max: 1, label: 'Twinkle', group: 'Motion' },
+    flare: { value: 1, min: 0, max: 4, label: 'Flare on kick', group: 'Music' },
+  });
+  const ring = uniform(0); const star = uniform(0); const size = uniform(P.size); const spread = uniform(P.spread); const depth = uniform(P.depth);
+  const halo = uniform(P.halo); const bright = uniform(P.bright); const ca = uniform(new THREE.Color(P.a)); const cb = uniform(new THREE.Color(P.b));
+  const drift = uniform(P.drift); const twinkle = uniform(P.twinkle); const kick = uniform(0);
+  const i = float(instanceIndex); const h1 = hash(i); const h2 = hash(i.add(1.7)); const h3 = hash(i.add(5.3)); const h4 = hash(i.add(9.1));
+  const ph = time.mul(drift).mul(h4.mul(0.6).add(0.4));
+  const centre = vec3(h1.sub(0.5).mul(spread).mul(2).add(sin(ph.add(h2.mul(40))).mul(0.4)), h2.sub(0.5).mul(spread).mul(2).add(sin(ph.mul(0.8).add(h3.mul(40))).mul(0.4)), h3.sub(0.5).mul(depth));
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.positionNode = centre.add(positionGeometry.mul(size.mul(h4.mul(0.8).add(0.4)).mul(kick.mul(0.25).add(1)).mul(4))); // (the quad is 4 × the shape: room for its halo)
+  // the picture of one light, from the middle of its quad outwards
+  const c = uv().sub(0.5).mul(2); const d = c.length(); const edge = d.oneMinus().clamp(0, 1);
+  const orbCore = smoothstep(0.1, 0.16, d).oneMinus();
+  const e = abs(d.sub(0.4)); const ringCore = smoothstep(0.015, 0.035, e).oneMinus(); const ringHalo = exp(e.mul(e).mul(-90)).mul(edge.sqrt());
+  const streak = exp(abs(c.y).mul(-70)).mul(exp(abs(c.x).mul(-5))).add(exp(abs(c.x).mul(-70)).mul(exp(abs(c.y).mul(-5))));
+  const core = mix(mix(orbCore, ringCore, ring), streak.add(smoothstep(0.05, 0.1, d).oneMinus()).min(1), star);
+  const soft = mix(edge.pow(3), ringHalo, ring);
+  const tw = varying(sin(time.mul(h1.mul(4).add(1)).add(h4.mul(40))).mul(0.5).add(0.5).mul(twinkle).oneMinus());
+  const tint = varying(mix(ca, cb, h2));
+  mat.colorNode = mix(tint, vec3(1, 1, 1), core.mul(0.45)).mul(core.add(soft.mul(halo).mul(0.5))).mul(bright).mul(tw).mul(kick.mul(0.6).add(1));
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  mesh.count = Math.round(P.count); mesh.frustumCulled = false;
+  scene.add(mesh);
+  camera.position.set(0, 0, 7);
+  onFrame((t, dt) => {
+    mesh.count = Math.max(1, Math.round(P.count));
+    ring.value = P.shape === 'rings' ? 1 : 0; star.value = P.shape === 'stars' ? 1 : 0;
+    size.value = P.size; spread.value = P.spread; depth.value = P.depth; halo.value = P.halo; bright.value = P.bright;
+    ca.value.set(P.a); cb.value.set(P.b); drift.value = P.drift; twinkle.value = P.twinkle;
+    kick.value = Math.max(kick.value * Math.exp(-dt * 7), (audio.kick || audio.bass) * P.flare);
+  });
+};
+`,
+    },
+    {
+      id: 'v2-tracking', fast: true, name: 'Camera tracking (v2)', desc: 'Glowing markers with trails that follow your hands, body, face or movement from Camera in (they move by themselves while the camera is off)',
+      code: `${V2_HEAD}// Fast: the tracked points are read once a frame into one uniform array (made once, refilled); every marker and its trail is ONE instanced quad.
+// Needs Camera in (right-click the preview › 📷 Camera); hands / body / face need its tracking download. Off: the markers move by themselves.
+export default ({ THREE, tsl, scene, camera, tweak, audio, size, onFrame }) => {
+  const { uniform, uniformArray, instanceIndex, positionGeometry, float, vec3, mix, uv, varying, smoothstep } = tsl;
+  const P = tweak({
+    track: { value: 'hands', options: ['hands', 'body', 'face', 'movement', 'everything'], label: 'Follow', group: 'Tracking', hint: 'Only what you pick is tracked: fewer = lighter' },
+    steady: { value: 0.5, min: 0, max: 0.95, label: 'Steadiness', group: 'Tracking', hint: 'Higher = smoother, a little later' },
+    reach: { value: 1, min: 0.5, max: 1.5, label: 'Reach', group: 'Tracking', hint: 'How far across the frame the markers travel' },
+    demo: { value: true, label: 'Move by itself while the camera is off', group: 'Tracking' },
+    size: { value: 0.5, min: 0.05, max: 1.5, label: 'Marker size', group: 'Look' },
+    trail: { value: 16, min: 1, max: 32, step: 1, label: 'Trail length', group: 'Look' },
+    color: { value: '#48ddff', label: 'Colour', group: 'Look' },
+    tail: { value: '#ff3cac', label: 'Trail colour', group: 'Look' },
+    glow: { value: 1.2, min: 0, max: 4, label: 'Glow', group: 'Look' },
+    grow: { value: 1, min: 0, max: 3, label: 'Grow on pinch / open mouth', group: 'Reactions' },
+    pulse: { value: 0.3, min: 0, max: 2, label: 'Pulse on bass', group: 'Reactions' },
+  });
+  // [x, y, the feature that says it is seen, above what] per point; the sets say which are read (the tracker runs only those)
+  const PTS = [['handX', 'handY', 'hands', 0.25], ['hand2X', 'hand2Y', 'hands', 0.75], ['headX', 'headY', 'person', 0.3], ['wristLX', 'wristLY', 'person', 0.3], ['wristRX', 'wristRY', 'person', 0.3], ['bodyX', 'bodyY', 'person', 0.3], ['faceX', 'faceY', '', 0], ['camX', 'camY', 'camMotion', 0.01]];
+  const SETS = { hands: [0, 1], body: [2, 3, 4, 5], face: [6], movement: [7], everything: [0, 1, 2, 3, 4, 5, 6, 7] };
+  const NP = PTS.length; const T = 32;
+  // made once, refilled: each point now (x, y, seen) and its trail (the newest first)
+  const now = new Float32Array(NP * 3); for (let k = 0; k < NP; k += 1) { now[k * 3] = 0.5; now[k * 3 + 1] = 0.5; }
+  const hist = Array.from({ length: NP * T }, () => new THREE.Vector4(0.5, 0.5, 0, 0));
+  const H = uniformArray(hist, 'vec4');
+  const halfW = uniform(1); const halfH = uniform(1); const sz = uniform(P.size); const len = uniform(P.trail); const glow = uniform(P.glow);
+  const col = uniform(new THREE.Color(P.color)); const tail = uniform(new THREE.Color(P.tail));
+  const i = float(instanceIndex); const age = i.sub(i.div(T).floor().mul(T)); const fade = age.div(len).oneMinus().clamp(0, 1);
+  const h = H.element(instanceIndex);
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  mat.positionNode = vec3(h.x.sub(0.5).mul(2).mul(halfW), h.y.sub(0.5).mul(2).mul(halfH), 0).add(positionGeometry.mul(sz.mul(fade.mul(0.7).add(0.3))));
+  const d = uv().sub(0.5).length().mul(2); const edge = d.oneMinus().clamp(0, 1);
+  const light = varying(h.z.mul(fade));
+  mat.colorNode = mix(tail, col, varying(fade)).mul(smoothstep(0.2, 0.3, d).oneMinus().mul(1.4).add(edge.pow(3).mul(glow))).mul(light);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+  mesh.count = NP * T; mesh.frustumCulled = false;
+  scene.add(mesh);
+  camera.position.set(0, 0, 5);
+  const cam = globalThis.webcam || null; const F = cam ? cam.feat : null;
+  let acc = 0;
+  onFrame((t, dt) => {
+    const set = SETS[P.track] || SETS.hands; const live = Boolean(cam && cam.on); const k0 = 1 - Math.pow(P.steady, dt * 60);
+    for (let k = 0; k < NP; k += 1) now[k * 3 + 2] = 0;
+    for (let j = 0; j < set.length; j += 1) {
+      const k = set[j]; const p = PTS[k]; let x = now[k * 3]; let y = now[k * 3 + 1]; let on = 0;
+      if (live) { x = F[p[0]]; y = F[p[1]]; on = p[2] ? (F[p[2]] > p[3] ? 1 : 0) : 1; }
+      else if (P.demo) { x = 0.5 + 0.32 * Math.sin(t * (0.7 + k * 0.13) + k * 2.1); y = 0.5 + 0.28 * Math.cos(t * (0.9 + k * 0.11) + k); on = 1; }
+      now[k * 3] += (x - now[k * 3]) * k0; now[k * 3 + 1] += (y - now[k * 3 + 1]) * k0; now[k * 3 + 2] = on;
+    }
+    // the trails move on 60 times a second, whatever the screen's rate
+    acc = Math.min(acc + dt, 0.1);
+    while (acc >= 1 / 60) {
+      acc -= 1 / 60;
+      for (let k = 0; k < NP; k += 1) { const o = k * T; for (let a = T - 1; a > 0; a -= 1) hist[o + a].copy(hist[o + a - 1]); }
+    }
+    for (let k = 0; k < NP; k += 1) hist[k * T].set((now[k * 3] - 0.5) * P.reach + 0.5, (now[k * 3 + 1] - 0.5) * P.reach + 0.5, now[k * 3 + 2], 0);
+    let big = 0;
+    if (live && (P.track === 'hands' || P.track === 'everything')) big = F.pinch;
+    if (live && (P.track === 'face' || P.track === 'everything')) big = Math.max(big, F.mouthOpen);
+    halfH.value = Math.tan((camera.fov * Math.PI) / 360) * camera.position.z; halfW.value = halfH.value * size.aspect;
+    sz.value = P.size * (1 + big * P.grow + audio.bass * P.pulse); len.value = P.trail; glow.value = P.glow;
+    col.value.set(P.color); tail.value.set(P.tail);
+  });
+};
+`,
+    },
+    {
+      id: 'v2-footage', fast: true, name: 'Footage backdrop (v2)', desc: 'A picture, a clip from References, the song\'s video or the camera filling the frame behind everything, graded in the same pass',
+      code: `${V2_HEAD}// Fast: the picture IS the scene's background (one texture read per pixel, graded in the same shader): no canvas, no copy per frame.
+// A video uploads a frame only when a new one is decoded.
+export default ({ THREE, tsl, scene, tweak, audio, size, onFrame }) => {
+  const { uniform, texture, screenUV, vec2, vec3, mix, luminance, smoothstep, step } = tsl;
+  const names = Object.keys(globalThis.refs || {});
+  const P = tweak({
+    source: { value: 'auto', options: ['auto', 'song video', 'camera', ...names], label: 'Show', group: 'Picture', hint: 'auto: the song\\'s video, else the first picture or clip in References' },
+    fit: { value: 'fill', options: ['fill', 'fit'], label: 'Fill or fit', group: 'Picture' },
+    zoom: { value: 1, min: 0.5, max: 4, label: 'Zoom', group: 'Picture' },
+    x: { value: 0, min: -1, max: 1, label: 'Left / right', group: 'Picture' },
+    y: { value: 0, min: -1, max: 1, label: 'Up / down', group: 'Picture' },
+    bright: { value: 1, min: 0, max: 2, label: 'Brightness', group: 'Look' },
+    contrast: { value: 1, min: 0, max: 2, label: 'Contrast', group: 'Look' },
+    sat: { value: 1, min: 0, max: 2, label: 'Colour amount', group: 'Look' },
+    tint: { value: '#ffffff', label: 'Tint', group: 'Look' },
+    edges: { value: 0.3, min: 0, max: 1, label: 'Darker edges', group: 'Look' },
+    punch: { value: 0, min: 0, max: 0.5, label: 'Zoom on kick', group: 'Music' },
+    flash: { value: 0, min: 0, max: 1, label: 'Flash on kick', group: 'Music' },
+  });
+  const blank = new THREE.DataTexture(new Uint8Array([10, 12, 20, 255]), 1, 1); blank.colorSpace = THREE.SRGBColorSpace; blank.needsUpdate = true;
+  const scale = uniform(new THREE.Vector2(1, 1)); const off = uniform(new THREE.Vector2(0, 0));
+  const bright = uniform(1); const contrast = uniform(1); const sat = uniform(1); const tint = uniform(new THREE.Color(P.tint)); const edges = uniform(0.3); const flash = uniform(0);
+  const p = vec2(screenUV.x, screenUV.y.oneMinus()).sub(0.5).mul(scale).add(0.5).sub(off);
+  const pic = texture(blank, p);
+  const inside = step(0, p.x).mul(step(p.x, 1)).mul(step(0, p.y)).mul(step(p.y, 1)); // (fit: black outside the picture)
+  const c1 = pic.rgb.sub(0.5).mul(contrast).add(0.5).mul(bright);
+  const c2 = mix(vec3(luminance(c1)), c1, sat).mul(tint).mul(inside);
+  scene.backgroundNode = c2.mul(smoothstep(0.35, 1, screenUV.sub(0.5).length().mul(1.4)).mul(edges).oneMinus()).add(flash).max(0);
+  const cam = globalThis.webcam || null;
+  let key = -2; let mine = null; let kick = 0;
+  // which picture (0 the camera · 1 the song's video · 2… a reference · else none): asked again only when the choice (or what is loaded) changes
+  const pick = (k) => {
+    if (mine) { mine.dispose(); mine = null; }
+    try {
+      if (k === 0) { mine = cam ? cam.texture() : null; return mine; }
+      if (k === 1) return media.texture();
+      return k >= 2 ? refTexture(names[k - 2]) : null;
+    } catch { return null; }
+  };
+  onFrame((t, dt) => {
+    const s = P.source; const vid = Boolean(media.video);
+    const k = s === 'camera' ? 0 : (s === 'auto' || s === 'song video') && vid ? 1 : s === 'auto' ? (names.length ? 2 : -1) : 2 + names.indexOf(s);
+    if (k !== key) { key = k; pic.value = pick(k) || blank; }
+    const img = pic.value.image; const iw = (img && (img.videoWidth || img.width)) || 1; const ih = (img && (img.videoHeight || img.height)) || 1;
+    kick = Math.max(kick * Math.exp(-dt * 7), audio.kick || audio.bass);
+    const r = size.aspect / (iw / ih); const fill = P.fit !== 'fit'; const z = 1 / (Math.max(0.05, P.zoom) * (1 + kick * P.punch));
+    // fill: the picture covers the frame (cropped) · fit: all of it shows
+    if (r > 1 === fill) scale.value.set(z, z / r); else scale.value.set(z * r, z);
+    off.value.set(P.x * 0.5, P.y * 0.5);
+    bright.value = P.bright; contrast.value = P.contrast; sat.value = P.sat; tint.value.set(P.tint); edges.value = P.edges; flash.value = kick * P.flash;
+  });
+  return () => { if (mine) mine.dispose(); blank.dispose(); };
+};
+`,
+    },
+  );
+  V2_TEMPLATES.splice(1, 0, { id: 'v2-fast', name: 'Fast visualizer (v2)', desc: 'The fast kit together: backdrop, 150,000 simulated particles, glow lights and a spectrum, four draws', layers: ['v2-backdrop', 'v2-swarm', 'v2-glow', 'v2-spectrum'] });
+
   // a v2 template's layers as a scene's layers ({ id, name, code, slot })
   const v2Layers = (tpl) => (tpl?.layers || []).map((id, i) => { const L = V2_LAYERS.find((x) => x.id === id); return L ? { id: i ? `l${i + 1}` : 'main', name: L.name.replace(/ \(v2\)$/, ''), code: L.code, slot: i } : null; }).filter(Boolean);
 
