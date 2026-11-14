@@ -15032,7 +15032,7 @@ async function g2Mount(L, fn, g) {
   L.g2 = S;
   let out;
   const prev = ctxLayer; ctxLayer = L.id; // (its tweak() / timers are its own, as a layer's top-level code)
-  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame, still: (on = true) => { S.still = on !== false; S.poke = true; }, redraw: () => { S.poke = true; } }); } finally { ctxLayer = prev; }
+  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame, still: (on = true) => { S.still = on !== false; S.poke = true; }, redraw: () => { S.poke = true; }, below: (uv) => g2Below(S, uv), filter: (type, P) => g2Filter(S, L, type, P) }); } finally { ctxLayer = prev; }
   if (out && typeof out.then === 'function') out = await out;
   if (L.gen !== g || L.g2 !== S) { if (typeof out === 'function') { try { out(); } catch { /* its own */ } } return; }
   if (typeof out === 'function') S.dispose = out;
@@ -15054,6 +15054,8 @@ function g2Unmount(L) {
   if (!G2.list.size && G2.canvas) G2.canvas.parentNode.hidden = true; // (an old scene next in this page: no v2 picture left under it)
   if (S.dispose) { const prev = ctxLayer; ctxLayer = L.id; try { S.dispose(); } catch { /* its own */ } finally { ctxLayer = prev; } }
   S.frames.length = 0;
+  if (S.fx) { try { S.fx.prev?.dispose(); S.fx.glyph?.dispose(); } catch { /* gone */ } S.fx = null; }
+  S.below = null;
   // what it made goes from the graphics card now (geometries, materials, their textures), not whenever it's collected
   const seen = new Set();
   S.scene.traverse((o) => {
@@ -15308,6 +15310,142 @@ function g2Render(L, S) {
   S.calls = calls; S.tris = tris; S.wrote = wrote; S.drawn += 1; S.poke = false;
   if (same) S.quiet += 1; else { S.quiet = 0; S.epoch += 1; }
 }
+// ---- (round 179, v2filter179) filter layers in a v2 scene: docs/upgrades/v2filter179.md ----
+// A v2 layer can restyle the picture under it. below(uv?) gives the picture so far (the layers under this one, merged)
+// as a TSL texture node, linear colours, screenUV by default; a layer that asked for it is drawn into a picture of its
+// own and merged like any layer with opacity (its opacity mixes the effect with the original; in / out, blend and a
+// mask work as on any layer). Hand-written: scene.backgroundNode = below().rgb.oneMinus() inverts everything under it.
+// filter(type, P) is the old filter() for a v2 scene: the SAME shaders (FILTER_DEFS, GLSL) run on the scene's one
+// WebGPU renderer, translated once per type by three.js's own transpiler (three/addons/transpiler: GLSL → TSL, fetched
+// with the library like any addon), with the same sliders (P), music inputs and time. What is changed for it:
+//   · colours: the old filters worked on the canvas's display values (sRGB); the v2 picture is linear, so the picture
+//     is handed over as display values and the result is turned back (the same look as in an old scene);
+//   · vUv keeps its old sense (0,0 bottom left); the picture's own coordinates start top left: flipped where sampled;
+//   · locals are made variables (.toVar(): the translator leaves them constant, and GLSL code assigns to them);
+//   · musicOf(): one expression (its early returns inside if () do not translate).
+// Feedback filters (trails, echo, datamosh…) keep their last output in a picture of their own (uPrev). A filter whose
+// strength is 0 (FX_IDENTITY) is not drawn at all. Not there: the REC overlay of "vhs" (a 2D canvas), filters merged
+// into one pass (the old fuse), ⚡ Lite. A type whose shader does not translate throws the reason at the layer.
+const G2FX = { tools: null, built: new Map(), copy: null };
+const G2FX_MUSIC = 'float musicOf(float i) { return i < 0.5 ? uKick : i < 1.5 ? uSnare : i < 2.5 ? uBass : i < 3.5 ? uLevel : i < 4.5 ? uBeat : i < 5.5 ? uHit : i < 6.5 ? uHats : i < 7.5 ? uDrop : 0.0; }';
+// the GLSL made ready for the translator: what it gets wrong, written the way it gets right (the same shader)
+//   · float a = 1.0, b = 2.0;  → a statement each (it keeps only the first name)
+//   · (-0.1 + x)               → ((0.0 - 0.1) + x)  (it writes -0.1.add(x): not JavaScript)
+function g2FxGlsl(src) {
+  let s = src.replace(/float musicOf\(float i\) \{[\s\S]*?\n\}/, G2FX_MUSIC);
+  s = s.replace(/(?<=^|[;{}])(\s*)((?:const\s+)?(?:float|int|bool|vec[234]|mat[234])\s+)([^;{}]+);/g, (m, pre, type, body) => {
+    const parts = []; let d = 0; let cur = '';
+    for (const ch of body) { if (ch === '(' || ch === '[') d += 1; else if (ch === ')' || ch === ']') d -= 1; if (ch === ',' && d === 0) { parts.push(cur); cur = ''; } else cur += ch; }
+    parts.push(cur);
+    if (parts.length < 2 || d !== 0) return m;
+    return pre + parts.map((p) => type + p.trim() + ';').join(' ');
+  });
+  s = s.replace(/([(,=?:]\s*)-(\d+\.?\d*)(\s*[+\-*/])/g, '$1(0.0 - $2)$3');
+  return s;
+}
+function g2Below(S, uv) {
+  const C = g2CompInit(); const { tsl } = G2;
+  const n = tsl.texture(C.white, uv ?? tsl.screenUV);
+  (S.below ||= []).push(n); S.filter = true; S.reads = true;
+  return n;
+}
+function g2FxTools() {
+  if (!G2FX.tools) {
+    G2FX.tools = Promise.all(['Transpiler', 'GLSLDecoder', 'TSLEncoder'].map((n) => import('three/addons/transpiler/' + n + '.js'))).then(([a, b, c]) => ({ Transpiler: a.default, GLSLDecoder: b.default, TSLEncoder: c.default }));
+    G2FX.tools.catch(() => { G2FX.tools = null; });
+  }
+  return G2FX.tools;
+}
+// one type's shader as a module: { make(U) → the main function's node, uniforms: [[name, kind]] }; made once per type
+// (and per set of sliders the shader leaves undeclared)
+function g2FxBuild(type, def, P) {
+  const decl = [];
+  for (const k of Object.keys(P)) {
+    const name = 'u_' + k;
+    if (!new RegExp('\\b' + name + '\\b').test(def.frag) || new RegExp('uniform\\s+\\w+\\s+' + name + '\\b').test(def.frag)) continue;
+    decl.push('uniform ' + (typeof P[k] === 'string' && P[k].startsWith('#') ? 'vec3' : 'float') + ' ' + name + ';');
+  }
+  const key = type + '|' + decl.join('');
+  let p = G2FX.built.get(key);
+  if (p) return p;
+  p = (async () => {
+    const T = await g2FxTools();
+    if (def.extra || def.frame) throw new Error('The "' + type + '" filter can\'t run in a v2 scene yet (it brings textures of its own).');
+    const glsl = g2FxGlsl(FILTER_HEAD + decl.join('\n') + '\n' + (def.lib || '') + def.frag);
+    let js;
+    try { js = new T.Transpiler(new T.GLSLDecoder(), new T.TSLEncoder()).parse(glsl); } catch (err) { throw new Error('The "' + type + '" filter can\'t run in a v2 scene yet (its shader did not translate: ' + String(err?.message || err).slice(0, 140) + ').'); }
+    const imp = /^import \{[^}]*\} from 'three\/tsl';$/m.exec(js);
+    if (!imp) throw new Error('The "' + type + '" filter did not translate (no TSL came back).');
+    let body = js.slice(imp.index + imp[0].length);
+    const names = [];
+    body = body.replace(/^const (\w+) = (?:(texture)\( \/\* <THREE\.Texture> \*\/ \)|uniform\( '(\w+)' \)|(varying)\( [^;\n]*\));\n/gm, (m, n, a, b, c) => { names.push([n, a || b || c]); return ''; });
+    body = body.replace(/^export const /gm, 'const ');
+    body = body.replace(/^(\t+const \w+ = )(.+);$/gm, (m, a, b) => (/\.toVar\(\)$/.test(b) ? m : a + '__v( ' + b + ' );'));
+    const mi = body.indexOf('const main = ');
+    const open = mi < 0 ? -1 : body.indexOf('=> {\n', mi);
+    const tail = "}, { return: 'void' } );";
+    const end = open < 0 ? -1 : body.indexOf(tail, open);
+    if (end < 0) throw new Error('The "' + type + '" filter did not translate (no main()).');
+    body = body.slice(0, open + 5) + '\tconst gl_FragColor = __vec4( 0, 0, 0, 1 ).toVar();\n' + body.slice(open + 5, end) + '\treturn gl_FragColor;\n} );' + body.slice(end + tail.length);
+    const src = imp[0] + "\nimport { vec4 as __vec4, float as __float } from 'three/tsl';\nconst __v = (x) => (typeof x === 'number' ? __float(x).toVar() : x && typeof x.toVar === 'function' ? x.toVar() : x);\nexport const uniforms = " + JSON.stringify(names) + ';\nexport const make = (U) => {\nconst { ' + names.map((n) => n[0]).join(', ') + ' } = U;\n' + body + '\nreturn main;\n};\n';
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    try { const mod = await import(url); return { make: mod.make, uniforms: mod.uniforms, src }; } finally { URL.revokeObjectURL(url); }
+  })();
+  G2FX.built.set(key, p); p.catch(() => G2FX.built.delete(key));
+  return p;
+}
+async function g2Filter(S, L, type, P = {}) {
+  const def = FILTER_DEFS[type];
+  if (!def) throw new Error('Unknown filter "' + type + '". Filters: ' + Object.keys(FILTER_DEFS).join(', '));
+  if (S.fx) throw new Error('One filter() per layer: put the second one in its own layer.');
+  const { W, tsl } = G2;
+  const mod = await g2FxBuild(type, def, P);
+  if (L.g2 !== S) return null;
+  const C = g2CompInit();
+  const flip = (uv) => { const p = tsl.vec2(uv); return tsl.vec2(p.x, p.y.oneMinus()); };
+  const toS = (c) => { const x = tsl.max(c, 0); return tsl.mix(x.mul(12.92), x.pow(1 / 2.4).mul(1.055).sub(0.055), tsl.step(0.0031308, x)); };
+  const toL = (c) => { const x = tsl.max(c, 0); return tsl.mix(x.div(12.92), x.add(0.055).div(1.055).pow(2.4), tsl.step(0.04045, x)); };
+  const pic = (base) => ({ sample: (uv) => tsl.vec4(toS(base.sample(flip(uv)).rgb), 1) });
+  const fx = { type, def, P, idKey: !def.feedback ? FX_IDENTITY[type] ?? null : null, prev: null, glyph: null };
+  const U = {};
+  for (const [n, kind] of mod.uniforms) {
+    if (n === 'uSrc') { const s = tsl.texture(C.white); (S.below ||= []).push(s); U[n] = pic(s); }
+    else if (n === 'uPrev') {
+      const s = tsl.texture(C.white);
+      if (def.feedback) { fx.prev = new W.RenderTarget(1, 1, { type: W.HalfFloatType, depthBuffer: false, samples: 0, generateMipmaps: false }); s.value = fx.prev.texture; }
+      U[n] = pic(s);
+    } else if (n === 'uGlyph') {
+      if (def.glyphs) { const old = glyphAtlas(def.glyphs); fx.glyph = new W.CanvasTexture(old.image); fx.glyph.minFilter = W.LinearFilter; fx.glyph.generateMipmaps = false; old.dispose(); }
+      U[n] = tsl.texture(fx.glyph || C.white);
+    } else if (kind === 'varying') U[n] = flip(tsl.screenUV);
+    else if (kind === 'texture') U[n] = tsl.texture(C.white);
+    else U[n] = tsl.uniform(kind === 'vec2' ? new W.Vector2() : kind === 'vec3' ? new W.Vector3() : kind === 'vec4' ? new W.Vector4() : 0);
+  }
+  if (U.uGlyphCount) U.uGlyphCount.value = def.glyphs ? [...def.glyphs].length : 1;
+  const out = mod.make(U)();
+  const m = new W.NodeMaterial();
+  m.fragmentNode = tsl.vec4(toL(out.rgb), 1);
+  m.vertexNode = tsl.vec4(tsl.positionGeometry.xy, 0, 1); // (straight to the frame: no camera)
+  m.depthTest = false; m.depthWrite = false; m.blending = W.NoBlending; m.transparent = false;
+  const quad = new W.Mesh(new W.PlaneGeometry(2, 2), m); quad.frustumCulled = false;
+  S.scene.add(quad);
+  const refs = fxRefs(P, U); const size = new W.Vector2();
+  S.frames.push((t) => {
+    G2.R.getDrawingBufferSize(size); U.uRes.value.copy(size);
+    setFilterMusic(U, mediaEl ? songNow() : t);
+    setFxParams(def, P, refs);
+  });
+  S.filter = true; S.reads = true; S.fx = fx;
+  return fx;
+}
+// a feedback filter's output (in C.Ly) kept for its next frame
+function g2FxKeep(C, S) {
+  const R = G2.R; const { W, tsl } = G2; const p = S.fx.prev;
+  if (p.width !== C.w || p.height !== C.h) p.setSize(C.w, C.h);
+  if (!G2FX.copy || G2FX.copyOf !== C) { const m = new W.NodeMaterial(); m.fragmentNode = tsl.texture(C.Ly.texture, tsl.screenUV); m.depthTest = false; m.depthWrite = false; m.blending = W.NoBlending; m.transparent = false; G2FX.copy = m; G2FX.copyOf = C; }
+  C.quad.material = G2FX.copy;
+  R.setRenderTarget(p); R.autoClearColor = true; C.quad.render(R);
+}
 // ---- (Nov 9, Scenes v2 phase 2) layers as pictures: opacity, blend modes, moves, masks ----
 // A v2 layer drawn plainly (full opacity, normal blend, not moved, no mask) goes straight onto the scene's picture. One
 // that isn't is drawn into its own render target, then merged onto the picture below it by a TSL pass: its opacity (the
@@ -15319,6 +15457,7 @@ function g2Render(L, S) {
 // render into its own buffer, then copies it out). A single plain layer still draws straight to the screen.
 const g2Plain = (L) => {
   const p = L.props;
+  if (L.g2?.filter) return false; // (round 179, v2filter179: it reads the picture so far, so it is drawn into its own and merged)
   if (layerMix(L) < 0.999 || (p.blend && p.blend !== 'normal') || p.mask?.points?.length) return false;
   const t = xform(L);
   return !t.x && !t.y && t.scale === 1 && !t.rotate;
@@ -15457,6 +15596,7 @@ function g2Draw(t, run) {
     const S = L.g2;
     if (!S || !S.ready || L.props.pcOf) continue;
     if (layerMix(L) <= 0) continue;
+    if (S.fx && S.fx.idKey != null && S.fx.P[S.fx.idKey] === 0) continue; // (round 179, v2filter179: a filter at 0 changes nothing: not drawn)
     vis.push(L);
     if (run && L.errPaused !== L.gen) {
       const lt = g2Clock(L, t) / 1000;
@@ -15514,7 +15654,9 @@ function g2Draw(t, run) {
           if (fresh) { R.setRenderTarget(C.A); R.clear(); fresh = false; }
           R.getClearColor(G2.cc); const ca = R.getClearAlpha();
           R.setRenderTarget(C.Ly); R.setClearColor(0x000000, 0); R.autoClearColor = true;
+          if (S.below) for (let i = 0; i < S.below.length; i += 1) S.below[i].value = C.A.texture; // (round 179, v2filter179: the picture so far, for a layer that restyles it)
           try { g2Render(L, S); } finally { R.setClearColor(G2.cc, ca); }
+          if (S.fx?.prev) g2FxKeep(C, S);
           g2Merge(C, L, S); dz = false;
         }
         if (sigK !== null && from === 0 && k === n - 1) { if (sh) g2RunEnd(); dz = false; C.keepPicture(sigK); } // (the picture so far is the still layers': kept)
@@ -15559,6 +15701,7 @@ function g2Threw(L, err) {
 }
 // checks / the Lab: the v2 runtime now
 window.__labG2 = {
+  fx: { types: () => Object.keys(FILTER_DEFS), src: async (type, P = {}) => (await g2FxBuild(type, FILTER_DEFS[type], P)).src, feedback: (type) => Boolean(FILTER_DEFS[type]?.feedback) }, // (round 179, v2filter179)
   // (checks) the one renderer's ceiling: n frames of the scenes as they are, back to back, until the graphics card has
   // finished them → ms a frame (CPU submit + GPU work, nothing else of the page in it)
   rt: (k) => { G2.rtWant = String(k); const C = G2.C; if (C) { for (const t of [C.A, C.B, C.Ly]) t.dispose(); for (const m of C.mats.values()) m.dispose(); C.copy.dispose(); C.dqMat?.dispose(); C.dropPicture(); G2.C = null; } G2.shown = null; return G2.rtWant; },

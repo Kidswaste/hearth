@@ -2216,14 +2216,14 @@ const ThreeLab = (() => {
       if (kind === 'copy') {
         const S = sel();
         L = newLayer({ ...JSON.parse(JSON.stringify(S)), id: ThreeLayers.newId(), name: `${S.name} copy` });
-      } else if (code != null) L = newLayer({ name: name || 'Layer', code, ...(props || {}) });
+      } else if (code != null) L = newLayer({ name: name || 'Layer', code: current.format === 'gpu' ? ThreeLayers.v2Filter(code) : code, ...(props || {}) }); // (round 179, v2filter179: a plain filter layer's code becomes its v2 form in a v2 scene)
       else {
         // (round 176, gpuaware176) in a v2 scene: a v2 layer by its id, and the v2 cube where an old scene gets the first old template
         // (a named old template / filter is still added as asked: it runs the old way, on its own canvas)
         const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === kind);
         if (!old && current.format !== 'gpu' && ThreeData.v2Layer(kind)) throw new Error(`"${kind}" is a v2 layer: it runs in a v2 scene only (a new scene is one; this scene is the old format).`); // (Nov 10, fastkit)
-        const t = (current.format === 'gpu' ? ThreeData.v2Layer(kind) || (!old || kind === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0];
-        L = newLayer({ name: name || t.name, code: t.code, ...(props || {}) });
+        const t = (current.format === 'gpu' && !ThreeLayers.FILTERS.some((x) => x.id === kind) ? ThreeData.v2Layer(kind) || (!old || kind === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0];
+        L = newLayer({ name: name || t.name, code: current.format === 'gpu' ? ThreeLayers.v2Filter(t.code) : t.code, ...(props || {}) });
       }
       const Ls = layersOf();
       Ls.splice(index == null ? Ls.length : Math.max(0, Math.min(Ls.length, index)), 0, L);
