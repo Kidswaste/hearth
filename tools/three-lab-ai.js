@@ -3,7 +3,7 @@
 // it reads inside the Lab (ThreeLab: its state, helpers, the other parts' stand-ins) go through K0.
 (window.LabParts ||= {}).ai = (K0) => {
   // the director's rarer Lab tools (triggers, eval, input, the timeline and keyframes, notes, contact sheet, references)
-  async function labCallMore(tool, args, d) {
+  async function labCallMore(tool, args, d, ctx = {}) {
     if (tool === 'three_triggers') return { ok: true, value: { triggers: d.triggers(args.set || null), note: 'thr is the bar (0..1 of the analyser level), gap the shortest time between two triggers in ms, lo / hi the band in Hz' } };
     if (tool === 'three_eval') {
       const r = await d.evalInSketch(String(args.code || ''));
@@ -61,6 +61,10 @@
         const p = String(args.path || '');
         const dir = await window.hub.attachmentsDir();
         if (!p.toLowerCase().startsWith(dir.toLowerCase())) return { ok: false, error: 'You can only add files the user attached in this chat (their path is in the hub\'s attachments folder). Ask the user to drop the file in the chat or in the Lab\'s References.' };
+        // (round 179, moodread179) a moodboard picture that isn't marked as the owner's own stays a reference (moodread.js refGate)
+        if (window.Lazy && !Lazy.loaded('projectbrief')) await Lazy.load('projectbrief').catch(() => {});
+        const no = window.MoodRead ? await MoodRead.refGate(p, args, ctx) : null;
+        if (no) return { ok: false, error: no };
         const r = await R.add(p, args.name);
         return { ok: true, value: { added: r.key, kind: r.kind, use: R.use(r), note: 'Available in code right away; run the sketch (three_set_code / three_update_layer) to use it.' } };
       }

@@ -713,6 +713,10 @@ function makeBackstage(opts = {}) {
       const p = String(args.path || '');
       const dir = await window.hub.attachmentsDir();
       if (!p.toLowerCase().startsWith(dir.toLowerCase())) return { ok: false, error: 'You can only add files the owner attached in this chat (their path is in the hub\'s attachments folder). Ask them to drop the file in the chat.' };
+      // (round 179, moodread179) a moodboard picture that isn't marked as the owner's own stays a reference (moodread.js refGate)
+      if (window.Lazy && !Lazy.loaded('projectbrief')) await Lazy.load('projectbrief').catch(() => {});
+      const no = window.MoodRead ? await MoodRead.refGate(p, args, { chatId: route.chatId || null }) : null;
+      if (no) return { ok: false, error: no };
       const r = await ThreeLab.addReference(p, { key: args.name || undefined, sketchId: route.sketchId });
       return { ok: true, value: { added: r.key, kind: r.kind, scene: x.name, use: r.kind === 'image' || r.kind === 'video' ? `refTexture('${r.key}')` : `refs.${r.key}`, note: 'Saved with this scene and usable in its code right away.' } };
     }

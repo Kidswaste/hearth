@@ -398,6 +398,21 @@ function presetPlan(msg) {
 
 function plan(prompt, engine = 'claude') {
   const msg = userPart(prompt);
+  // (round 179, moodread179) the mood read's passes (moodread-core.js): three looks at one picture, a second opinion,
+  // then the whole board. Each says how many pictures it was given; the board pass counts the pictures it was handed.
+  if (msg.startsWith('Mood read')) {
+    const seen = ((prompt.split(/\[Attached image[^\]]*\]/)[1] || '').split('\n').filter((l) => /^([a-zA-Z]:[\\/]|\/)/.test(l.trim()))).length;
+    const claims = { key: 'low', contrast: 'hard', warmth: 'warm', saturation: 'saturated', grain: 'fine', detail: 'some' };
+    const j = (o) => ({ p: {}, thinking: '', text: JSON.stringify(o) });
+    if (msg.startsWith('Mood read, look 1')) return j({ seen: `a test picture (pictures seen: ${seen})`, colour: 'ember orange carrying the frame, a thin cold accent held at the edge', light: 'one low source, blacks left deep, highlights blooming', texture: 'fine grain with a soft halation', claims });
+    if (msg.startsWith('Mood read, look 2')) return j({ shape: 'soft, rounded masses with one hard line', composition: 'weight low and off-centre, half the frame left empty', depth: 'two planes in haze, the viewer close', motion: 'a slow drift, held breath' });
+    if (msg.startsWith('Mood read, look 3')) return j({ era: 'late-90s DV, faithfully', echoes: 'slow cinema, ambient record sleeves', feeling: `Warm but withheld${/owner likes/.test(msg) ? ', read through what the owner likes' : ''}. It waits rather than performs.`, words: ['ember', 'withheld', 'hazy', 'nocturnal'], take: 'One warm source against deep blacks, most of the frame left quiet.' });
+    if (msg.startsWith('Mood read, second opinion')) return j({ feeling: 'Quiet heat in the dark.', words: ['ember', 'still', 'hazy'], claims: { ...claims, contrast: 'soft' } });
+    if (msg.startsWith('Mood read, the whole board')) {
+      const n = (msg.match(/^PICTURE \d+/gm) || []).length;
+      return j({ mood: `ember light held back in the dark (${n} pictures)`, essence: 'The board reaches for warmth that never fully arrives. Light is rationed; emptiness does the work.', shared: ['one warm source', 'deep blacks', 'fine grain'], threads: [{ name: 'Ember haze', feel: 'warm glow dissolving into dark', pictures: [1] }], tensions: /CORRECTIONS/.test(msg) ? ['the owner\'s corrections were read'] : [], not: ['neon', 'crisp daylight'], colour: 'orange over black, a rare cold accent', light: 'low, single-source', texture: 'fine grain, halation', shape: 'soft masses', space: 'half empty, shallow', motion: 'slow drift', era: 'late-90s DV', make: ['Ration the light', 'Leave half the frame quiet'] });
+    }
+  }
   if (msg.startsWith('Give a useful second opinion and directions for ONE small improvement round.')) return {p:{},thinking:'',text:JSON.stringify({...(/Review stage: survey\./.test(msg) ? {inspect:[{after:3,before:4,reason:'Check the foreground transition'},{after:8,before:9,reason:'Check the later pose'}]} : {}),summary:'The foreground shape needs a clearer silhouette.',keep:'Keep the existing palette and overall composition.',issues:[{title:'The main shape blends into the background',evidence:[1,2],observation:'The edge and its backdrop have similar brightness in these frames.',why:'The main subject is harder to spot.',change:'Try a restrained rim light around the main silhouette.',check:'Compare the same camera angle before and after.',confidence:'tentative'}],limits:'Synthetic test response: sampled images only; audio and smoothness were not reviewed.'})};
   // (round 132, explain132) ✦ Explain this layer (tools/three-explain-core.js): the explanation names the first
   // `const NAME = <number>;` and the first quoted '#rrggbb' of the numbered code as hard-coded values, the first two
