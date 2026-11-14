@@ -99,8 +99,10 @@ const LabChatLink = (() => {
   const said = (r) => (r && r.ok === false ? String(r.error || 'It failed.') : null);
   async function apply(agentId, chatId, code, sceneId, { layerId = null, add = false, link = false, msgAt = 0 } = {}) {
     if (!C()?.wholeLayer(code)) throw new Error('That block isn\'t a whole layer (an ES module that imports three and draws), so it can\'t replace one.');
-    if (link && CS()) { CS().linkGuest(chatId, sceneId, { why: 'apply' }); stats.linked += 1; }
     const sk = S().get(sceneId);
+    // (round 179, v2only179) a v2 layer draws nothing in an old-format scene (no renderer of its own): said, not tried
+    if (C().v2Layer(code) && sk && sk.format !== 'gpu') throw new Error(`This is a new-format (fast) layer and “${sk.name}” is an old-format scene, where it would draw nothing. Use “Open it as a new sketch”, or apply it to a new scene.`);
+    if (link && CS()) { CS().linkGuest(chatId, sceneId, { why: 'apply' }); stats.linked += 1; }
     let L = layerId ? layerOf(sceneId, layerId) : null;
     if (!add && !L) throw new Error('That layer isn\'t in the scene any more.');
     let before = null;

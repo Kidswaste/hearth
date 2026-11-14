@@ -4338,7 +4338,7 @@ const ThreeLab = (() => {
       unquiet() { api.tm.quiet = false; },
       persist: () => persist(),
     };
-    api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code);
+    api.openCode = (code) => create(`From chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, code, undefined, { format: ThreeData.isV2Code(code) ? 'gpu' : null }); // (round 179, v2only179: v2 code opens as a v2 scene; it drew nothing in an old one)
 
     // What the Three Director (Claude) uses to build scenes from the user's prompts.
     // (round 21, labdirector) its waits after a run end at the preview's first new frame (tools/three-director.js settle)

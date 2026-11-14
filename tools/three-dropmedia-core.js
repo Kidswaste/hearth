@@ -89,8 +89,49 @@ const DropMediaCore = (() => {
   }
   const hexes = (cols) => (cols || []).map((x) => (typeof x === 'string' ? x : x?.hex || x?.value || x?.color || '')).filter((x) => rgb(x)).map((x) => (x.startsWith('#') ? x : `#${x}`));
 
-  function footageCode(key, from = 0) {
+  // (round 179, v2only179) in a v2 scene the same clip as a v2 layer: one quad drawn by the scene's one renderer
+  function footageCodeV2(k, from) {
+    return `// v2 layer (WebGPU): a clip dropped on the timeline, refTexture('${k}') (🖼 References). Its own time follows the timeline from "Starts at".
+export default ({ THREE, tsl, scene, tweak, audio, size, onFrame }) => {
+  const { uniform, texture, uv, vec4, positionGeometry } = tsl;
+  const P = tweak({
+    fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Clip' },
+    zoom: { value: 1, min: 0.25, max: 4, label: 'Zoom', group: 'Clip' },
+    from: { value: ${r4(Math.max(0, Number(from) || 0))}, min: 0, max: 3600, step: 0.01, label: 'Starts at (s)', group: 'Clip' },
+  });
+  const tex = refTexture('${k}', { loop: false });
+  const v = tex.video;
+  const scale = uniform(new THREE.Vector2(1, 1));
+  const pic = texture(tex, uv());
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthTest: false, depthWrite: false });
+  mat.colorNode = pic.rgb; mat.opacityNode = pic.a;
+  mat.vertexNode = vec4(positionGeometry.xy.mul(scale), 0, 1); // (straight to the frame: no camera)
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  scene.add(quad);
+  let lastT = null;
+  onFrame(() => {
+    const now = audio.time;
+    if (v && v.readyState >= 1) {
+      const end = v.duration && isFinite(v.duration) ? v.duration - 0.03 : Infinity;
+      const want = Math.max(0, Math.min(end, now - P.from));
+      const rolling = lastT != null && now > lastT && now - lastT < 0.2;
+      if (rolling && now - P.from >= 0 && want < end) { if (v.paused) v.play().catch(() => {}); if (Math.abs(v.currentTime - want) > 0.25) v.currentTime = want; }
+      else { if (!v.paused) v.pause(); if (Math.abs(v.currentTime - want) > 0.02) v.currentTime = want; }
+    }
+    lastT = now;
+    const img = tex.image; const iw = img?.videoWidth || 1; const ih = img?.videoHeight || 1;
+    const ra = size.aspect; const ia = iw / ih;
+    let sx = 1; let sy = 1;
+    if (P.fit === 'cover') { if (ra > ia) sy = ra / ia; else sx = ia / ra; } else if (P.fit === 'fit') { if (ra > ia) sx = ia / ra; else sy = ra / ia; }
+    scale.value.set(sx * P.zoom, sy * P.zoom);
+  });
+  return () => { quad.geometry.dispose(); mat.dispose(); };
+};
+`;
+  }
+  function footageCode(key, from = 0, { v2 = false } = {}) {
     const k = String(key).replace(/[^\w$]/g, '_');
+    if (v2) return footageCodeV2(k, from);
     return `import * as THREE from 'three';
 
 // A clip dropped on the timeline: refTexture('${k}') (🖼 References). Its own time follows the timeline from "Starts at".

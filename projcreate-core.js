@@ -5,15 +5,17 @@
 // The window side is projcreate.js (lazy group "projcreate"); docs/upgrades/projcreate128.md.
 (function (root, make) { if (typeof module === 'object') module.exports = make(); else root.ProjCreateCore = make(); })(typeof self !== 'undefined' ? self : this, () => {
   // what a project starts from: `start` is a gallery starting point's id, `layers` a gallery-style recipe
-  // ({ t: ThreeLayers template id } | { f: filter id }); `need` is a file the start uses when given
+  // ({ t: ThreeLayers template id } | { f: filter id }); `need` is a file the start uses when given.
+  // (round 179, v2only179) `v2`: the same start as fast v2 layers (ThreeData.V2_LAYERS ids), used when there (a start
+  // without it has no v2 counterpart yet and still makes an old-format scene)
   const STARTS = [
     { id: 'empty', icon: '◻', label: 'Empty scene', hint: 'A fresh animated scene, nothing in it yet' },
-    { id: 'visualizer', icon: '〰', label: 'Audio visualizer', hint: 'A 3D crown of spectrum bars that follows the music', start: 'spectrum-crown' },
-    { id: 'particles', icon: '✦', label: 'Particles', hint: '30,000 particles that burst on every kick', start: 'beat-burst' },
+    { id: 'visualizer', icon: '〰', label: 'Audio visualizer', hint: 'The song as bars, a ring or a wave, with glow lights behind', start: 'spectrum-crown', v2: ['v2-backdrop', 'v2-glow', 'v2-spectrum'] },
+    { id: 'particles', icon: '✦', label: 'Particles', hint: '150,000 particles that swirl and burst on every kick', start: 'beat-burst', v2: ['v2-backdrop', 'v2-swarm'] },
     { id: 'shader', icon: '◇', label: 'Shader art', hint: 'An endless zoom into a fractal, with a soft bloom', start: 'fractal' },
     { id: 'type', icon: '🅰', label: 'Kinetic type', hint: 'One big word per beat, letters rising in', start: 'kinetic-opener' },
     { id: 'model', icon: '🧊', label: '3D model showcase', hint: 'A turning object in studio light; pick your own .glb to show it instead', start: 'chrome-knot', withModel: [{ t: 'mesh-gradient' }], need: 'model' },
-    { id: 'footage', icon: '🎞', label: 'Footage + effects', hint: 'Your video full frame, with a film look on top', layers: [{ t: 'footage-fill' }, { f: 'film' }], need: 'footage' },
+    { id: 'footage', icon: '🎞', label: 'Footage + effects', hint: 'Your video full frame, graded, ready for layers on top', layers: [{ t: 'footage-fill' }, { f: 'film' }], v2: ['v2-footage'], need: 'footage' },
   ];
   const startOf = (id) => STARTS.find((s) => s.id === id) || STARTS[0];
   // frame sizes: ids of tools/three-media.js SIZES (what the scene's frame is set to)
