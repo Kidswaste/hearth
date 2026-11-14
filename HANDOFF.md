@@ -46,6 +46,9 @@ owner-facing notes.
   (`labplayer/`, started by `labplayermain.js`) with its own graphics process, its window laid over the preview's
   frame; the Lab drives it through `sandboxFrame`'s target `'player'` (`tools/three.js`), falls back to the iframe by
   itself and says so. Setting: the dock's PLAYER. `docs/upgrades/labplayer2.md`, `docs/upgrades/labplayer3.md`.
+  (round 180, gamekit) A v2 layer of a game also gets `input`, `onStep` and `save` from that page; a game's saves
+  live under `<data>/game-saves/<game>/` (`gamesavesmain.js`, asked through `game:save` / `game:saves`); a project
+  is a game when `workspace.kind === 'game'`. `docs/upgrades/gamekit180.md`.
 - App windows (`appsmain.js`, `apps-window.html`), ▶ Play's game window (`gamemodemain.js`), the board's offscreen
   snapshots (`boardmain.js`), the capture indicator (`capturemain.js`), the phone remote page served over the LAN
   (`remotemain.js`, `remote-page.html`), a render or the live preview on the owner's phone (`phoneviewmain.js`,

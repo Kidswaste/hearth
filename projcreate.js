@@ -273,7 +273,7 @@ window.ProjCreate = (() => {
   async function prepare(p, st) {
     const sc = ThreeLab.scenes; const id = p.workspace.sceneId; const x = sc.get(id);
     if (!x) return;
-    let Ls = null;
+    let Ls = null; let game = false; // (round 180, gamekit) game: the Game start
     if (st.start === 'projtemplate') { await fromProjTemplate(p, st, x); return; } // (round 129, next129)
     if (st.start === 'mywork') { await Lazy.load('mywork'); const r = await MyWork.into(p, x, st.myWork, st); last.steps.push(`my work: ${r.kind} · ${x.layers.map((L) => L.name).join(', ')}`); } // (round 134, starters134) a copy, fresh ids
     if (st.start === 'mytemplate') {
@@ -282,7 +282,8 @@ window.ProjCreate = (() => {
       if (t) { const r = TemplateCore.apply(t, {}); Ls = r.layers; if (r.palette?.length && !st.palette.length) x.palette = r.palette; }
     } else {
       const s = C.startOf(st.start);
-      if (s.start || s.layers) {
+      if (s.game && st.start === s.id && typeof GameKitCore !== 'undefined') { Ls = GameKitCore.layers(); game = true; } // (round 180, gamekit) the game's four layers, v2
+      else if (s.start || s.layers) {
         await Lazy.load('gallery');
         const G = LabGalleryData;
         const spec = s.id === 'model' && st.model ? { layers: s.withModel } : s.layers ? { layers: s.layers } : G.STARTS.find((z) => z.id === s.start);
@@ -291,7 +292,7 @@ window.ProjCreate = (() => {
     }
     if (Ls?.length) {
       const tune = (code) => { try { return typeof InstantCore !== 'undefined' ? InstantCore.tune(code, { palette: st.palette }).code : code; } catch { return code; } };
-      x.layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: st.palette.length && !L.filter ? tune(L.code) : L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) }));
+      x.layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: st.palette.length && !L.filter && !game ? tune(L.code) : L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) }));
       x.code = x.layers[0].code;
       { const g = typeof ThreeData !== 'undefined' ? ThreeData.formatOf(x.layers) : x.format; if (g) x.format = g; else delete x.format; } // (round 176, gpuaware176) the scene's format follows the layers it was given
       last.steps.push(`layers: ${x.layers.map((L) => L.name).join(', ')}`);
@@ -305,7 +306,7 @@ window.ProjCreate = (() => {
     if (st.footage && (st.start === 'footage' || !st.song)) sc.setExtras(id, { media: { path: st.footage } });
     // (round 128) the size, frame rate and AI are also the project's settings (p.prefs: the project menu, the Lab and Render read them)
     p.prefs = { ...(p.prefs && typeof p.prefs === 'object' ? p.prefs : {}), aspect: st.frame, fps: st.fps, ...(st.agentId ? { agentId: st.agentId } : {}) };
-    P().setWorkspace(p, { start: st.start, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(st.palette.length ? { palette: st.palette.slice(0, 16) } : {}) });
+    P().setWorkspace(p, { start: st.start, frame: st.frame, fps: st.fps, aiSeesMoodboard: Boolean(st.consent), ...(st.palette.length ? { palette: st.palette.slice(0, 16) } : {}), ...(game ? { kind: 'game' } : {}) }); // (round 180, gamekit) kind: 'game' = a game project (the Lab shows ▶ Playtest and Saves, its report tells the AI)
   }
   // (round 129, next129) a project saved as a template: its scene (layers with fresh ids, sliders, music links), its
   // palette, size and frame rate, its song or footage when it kept one, its moodboard's notes and pictures, its brief's

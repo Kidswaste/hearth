@@ -14974,13 +14974,137 @@ const GPU_PAGE = new URLSearchParams(location.search).get('gpu') === '1';
 const G2 = { W: null, tsl: null, R: null, canvas: null, init: null, list: new Set(), running: false, w: 0, h: 0, pr: 0, size: { width: 1, height: 1, aspect: 1, pixelRatio: 1 },
   gpuMs: null, tsN: 0, tsBusy: false, frames: 0, cpuMs: 0, backend: '', lost: 0, drewE: -1, ts: false, C: null, cc: null, path: '',
   run: null, own: false, runOff: false, runErr: null, byScene: new WeakMap(), ownN: 0, passN: 0, passes: 0, tsOn: false, tsWant: false,
-  keep: false, keepOff: false, wr: 0, cur: null, shown: null, kept: 0, keptHi: 0, vis: 0, keptFrames: 0 }; // (Nov 11, still: draw only what changed, see g2KeepHook) // (Nov 10, onepass: the pass plain layers share and each layer's own uniform buffers (g2PassHook), GPU passes a frame, the GPU time readings on / asked for)
+  keep: false, keepOff: false, wr: 0, cur: null, shown: null, kept: 0, keptHi: 0, vis: 0, keptFrames: 0,
+  stepLast: -1, stepAcc: 0, stepT: 0, stepN: 0 }; // (round 180, gamekit: the fixed step's clock, see g2Steps) // (Nov 11, still: draw only what changed, see g2KeepHook) // (Nov 10, onepass: the pass plain layers share and each layer's own uniform buffers (g2PassHook), GPU passes a frame, the GPU time readings on / asked for)
 // (a layer says it is v2 with gpu: true; ?gpu=1 makes every layer of the page v2 unless it says gpu: false. Only code
 // with a default export is a v2 layer: an old layer in a v2 page (a sequence mixing both) runs the old way)
 const G2_DEF = /\bexport\s+default\b/;
 const g2Is = (spec) => (spec.gpu === true || (GPU_PAGE && spec.gpu !== false)) && mode === 'sketch' && !spec.precomp && !spec.card && G2_DEF.test(String(spec.code || ''));
 // its `three` imports read the WebGPU build (the same line count: errors keep their lines)
 const g2Code = (code) => String(code).replace(/(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])three\2/g, '$1$2three/webgpu$2');
+// ======== (round 180, gamekit) what a v2 layer of a game gets besides its scene: input, save, onStep ========
+// (docs/upgrades/gamekit180.md · the guide the AI reads: three_do help games)
+//   input   the keyboard, the mouse, gamepads, read each frame (made at the first read: a scene that never asks for it
+//           has no listener of it). Codes are the keys' places (KeyboardEvent.code: 'KeyW', 'Space', 'ArrowLeft') and
+//           'Mouse0' (left) · 'Mouse1' (middle) · 'Mouse2' (right).
+//             input.held(code) · input.pressed(code) (went down since the last frame / step) · input.released(code)
+//             input.axis(neg, pos) → -1 | 0 | 1 · input.mouse { x, y, dx, dy, wheel, left, middle, right, locked }
+//             input.pad(i = 0) → { connected, lx, ly, rx, ry, buttons: [true…], axes } · input.lock() / input.unlock()
+//   onStep(fn)  fn(dt, t) at a fixed 60 a second whatever the frame rate (dt is always 1/60): the game's rules. Before
+//           the frame's onFrame. pressed() / released() inside it are true for one step.
+//   save    this game's saves, kept by Hearth per game (a published page: the browser's own storage). All answer later
+//           (await): save.write(slot, data) · save.read(slot) → data | null · save.list() → [{ slot, at, bytes }] ·
+//           save.remove(slot) · save.get(key, fallback) / save.set(key, value) (small settings, no slot) ·
+//           save.start() → the slot the owner asked this playtest to start from, or null
+let G2IN = null;
+function g2Input() {
+  if (G2IN) return G2IN.api;
+  const held = new Set(); const down = new Set(); const up = new Set(); const sdown = new Set(); const sup = new Set();
+  const mouse = { x: 0, y: 0, dx: 0, dy: 0, wheel: 0, left: false, middle: false, right: false, locked: false };
+  const acc = { dx: 0, dy: 0, wheel: 0 };
+  const typing = (e) => { const t = e.target; return Boolean(t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))); };
+  const press = (c) => { if (!held.has(c)) { held.add(c); down.add(c); sdown.add(c); } };
+  const lift = (c) => { if (held.delete(c)) { up.add(c); sup.add(c); } };
+  const o = { capture: true, passive: true };
+  addEventListener('keydown', (e) => { if (!typing(e)) press(e.code); }, o);
+  addEventListener('keyup', (e) => lift(e.code), o);
+  addEventListener('mousedown', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; press(`Mouse${e.button}`); }, o);
+  addEventListener('mouseup', (e) => lift(`Mouse${e.button}`), o);
+  addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; acc.dx += e.movementX || 0; acc.dy += e.movementY || 0; }, o);
+  addEventListener('wheel', (e) => { acc.wheel += e.deltaY || 0; }, o);
+  addEventListener('blur', () => { for (const c of [...held]) lift(c); });
+  document.addEventListener('pointerlockchange', () => { mouse.locked = Boolean(document.pointerLockElement); });
+  const dz = (v) => (Math.abs(v) < 0.12 ? 0 : v);
+  const NOPAD = { connected: false, lx: 0, ly: 0, rx: 0, ry: 0, buttons: [], axes: [] };
+  const api = {
+    held: (c) => held.has(c),
+    pressed: (c) => (G2IN.inStep ? sdown : down).has(c),
+    released: (c) => (G2IN.inStep ? sup : up).has(c),
+    axis: (neg, pos) => (held.has(pos) ? 1 : 0) - (held.has(neg) ? 1 : 0),
+    mouse,
+    pad(i = 0) {
+      let p = null; try { p = navigator.getGamepads?.()[i] || null; } catch { /* not allowed here */ }
+      if (!p || !p.connected) return NOPAD;
+      const a = p.axes || [];
+      return { connected: true, id: p.id, lx: dz(a[0] || 0), ly: dz(a[1] || 0), rx: dz(a[2] || 0), ry: dz(a[3] || 0), buttons: (p.buttons || []).map((b) => Boolean(b.pressed)), axes: [...a] };
+    },
+    lock() { try { const p = document.body.requestPointerLock(); if (p && p.catch) p.catch(() => {}); return true; } catch { return false; } },
+    unlock() { try { document.exitPointerLock(); } catch { /* not captured */ } },
+  };
+  G2IN = { api, inStep: false,
+    begin() { mouse.dx = acc.dx; mouse.dy = acc.dy; mouse.wheel = acc.wheel; acc.dx = 0; acc.dy = 0; acc.wheel = 0; mouse.left = held.has('Mouse0'); mouse.middle = held.has('Mouse1'); mouse.right = held.has('Mouse2'); },
+    stepEnd() { sdown.clear(); sup.clear(); },
+    end() { down.clear(); up.clear(); },
+    state: () => ({ held: [...held], pressed: [...down] }) };
+  return api;
+}
+// the fixed step: every v2 layer's onStep callbacks in lockstep, 60 a second of the frame's time (at most 5 steps a
+// frame: after a long stall the game goes on from here, it doesn't fast-forward); one step for a frame stepped while paused
+const G2_STEP = 1 / 60;
+function g2Steps(t) {
+  let any = false; for (const S of G2.list) if (S.steps.length) { any = true; break; }
+  if (!any) { G2.stepLast = -1; return; }
+  let n = 1;
+  if (!stepping && G2.stepLast >= 0) {
+    G2.stepAcc += Math.max(0, Math.min(0.25, (t - G2.stepLast) / 1000));
+    n = Math.min(5, Math.floor(G2.stepAcc / G2_STEP + 1e-6));
+    G2.stepAcc -= n * G2_STEP; if (G2.stepAcc > G2_STEP) G2.stepAcc = 0;
+  }
+  G2.stepLast = t;
+  for (let i = 0; i < n; i += 1) {
+    if (G2IN) G2IN.inStep = true;
+    G2.stepT += G2_STEP; G2.stepN += 1;
+    for (const S of G2.list) {
+      if (!S.steps.length || !S.ready || S.L.errPaused === S.L.gen) continue;
+      const prev = ctxLayer; ctxLayer = S.L.id;
+      try { for (let k = 0; k < S.steps.length; k += 1) S.steps[k](G2_STEP, G2.stepT); } catch (err) { g2Threw(S.L, err); } finally { ctxLayer = prev; }
+    }
+    if (G2IN) { G2IN.stepEnd(); G2IN.inStep = false; }
+  }
+}
+// saves: ▶ Play's window asks Hearth directly (game-preload.js: hearthGame.save), the Lab's preview through the Lab
+// (a 'game-save' message, answered with 'game-save-result'); a page with no Hearth (published) keeps them in the
+// browser's own storage, in memory where that is refused
+const G2SV = { n: 0, wait: new Map(), local: false, mem: null };
+function g2SaveLocal(r) {
+  const K = `hearth-save:${location.pathname}`;
+  let all = G2SV.mem;
+  if (!all) { try { all = JSON.parse(localStorage.getItem(K) || 'null'); } catch { all = null; } }
+  if (!all || typeof all !== 'object') all = { slots: {}, settings: {} };
+  G2SV.mem = all;
+  const put = () => { try { localStorage.setItem(K, JSON.stringify(all)); } catch { /* kept in memory only */ } return { ok: true }; };
+  if (r.op === 'write') { all.slots[r.slot] = { at: Date.now(), data: r.data ?? null }; return put(); }
+  if (r.op === 'read') return { ok: true, data: all.slots[r.slot]?.data ?? null };
+  if (r.op === 'list') return { ok: true, slots: Object.entries(all.slots).map(([slot, v]) => ({ slot, at: v.at, bytes: JSON.stringify(v.data ?? null).length })).sort((a, b) => b.at - a.at) };
+  if (r.op === 'remove') { const had = r.slot in all.slots; delete all.slots[r.slot]; put(); return { ok: true, removed: had }; }
+  if (r.op === 'get') return { ok: true, has: r.key in all.settings, value: all.settings[r.key] ?? null };
+  if (r.op === 'set') { if (r.value == null) delete all.settings[r.key]; else all.settings[r.key] = r.value; return put(); }
+  if (r.op === 'start') return { ok: true, slot: null };
+  return { ok: false, why: 'unknown' };
+}
+function g2SaveAsk(req) {
+  let r;
+  try { r = JSON.parse(JSON.stringify(req)); } catch (err) { return Promise.resolve({ ok: false, why: `this can't be saved as data (${err.message})` }); }
+  if (window.hearthGame?.save) return Promise.resolve(window.hearthGame.save(r)).catch((err) => ({ ok: false, why: String(err?.message || err) }));
+  if (!G2SV.local && (window.__stageHost || parent !== window)) {
+    return new Promise((res) => {
+      const id = `sv${G2SV.n += 1}`;
+      G2SV.wait.set(id, res);
+      post({ type: 'game-save', id, req: r });
+      realSetTimeout(() => { if (G2SV.wait.delete(id)) { G2SV.local = true; res(g2SaveLocal(r)); } }, 4000); // (no Hearth around this page: its own storage from now on)
+    });
+  }
+  return Promise.resolve(g2SaveLocal(r));
+}
+const g2Save = {
+  write: (slot, data, note) => g2SaveAsk({ op: 'write', slot, data, note }).then((r) => { if (!r?.ok) throw new Error(`save.write: ${r?.why || 'not saved'}`); return true; }),
+  read: (slot) => g2SaveAsk({ op: 'read', slot }).then((r) => (r?.ok ? r.data ?? null : null)),
+  list: () => g2SaveAsk({ op: 'list' }).then((r) => r?.slots || []),
+  remove: (slot) => g2SaveAsk({ op: 'remove', slot }).then((r) => Boolean(r?.ok && r.removed)),
+  get: (key, fallback = null) => g2SaveAsk({ op: 'get', key }).then((r) => (r?.ok && r.has ? r.value : fallback)),
+  set: (key, value) => g2SaveAsk({ op: 'set', key, value }).then((r) => Boolean(r?.ok)),
+  start: () => g2SaveAsk({ op: 'start' }).then((r) => r?.slot || null),
+};
 function g2Init() {
   if (G2.init) return G2.init;
   G2.init = (async () => {
@@ -15024,15 +15148,16 @@ async function g2Mount(L, fn, g) {
   const scene = new W.Scene();
   const camera = new W.PerspectiveCamera(50, G2.size.aspect, 0.1, 1000);
   camera.position.set(0, 0, 5);
-  const S = { L, g, scene, camera, frames: [], last: -1, time: { t: 0, dt: 0, frame: 0 }, dispose: null, ready: false, own: 0, bg: new WeakMap(),
+  const S = { L, g, scene, camera, frames: [], steps: [], last: -1, time: { t: 0, dt: 0, frame: 0 }, dispose: null, ready: false, own: 0, bg: new WeakMap(),
     still: null, poke: false, code: false, reads: false, alive: false, aliveAt: -1, quiet: 0, epoch: 0, drawn: 0, calls: -1, tris: -1, wrote: 0, keptNow: false }; // (Nov 11, still: see g2KeepHook)
   // (Nov 10, onepass) what makes this layer's built shaders and shared uniform buffers its own (see g2PassHook)
   if (G2.own) { S.own = (G2.ownN += 1); G2.byScene.set(scene, S); }
   const onFrame = (f) => { if (typeof f === 'function') S.frames.push(f); return () => { const i = S.frames.indexOf(f); if (i >= 0) S.frames.splice(i, 1); }; };
+  const onStep = (f) => { if (typeof f === 'function') S.steps.push(f); return () => { const i = S.steps.indexOf(f); if (i >= 0) S.steps.splice(i, 1); }; }; // (round 180, gamekit)
   L.g2 = S;
   let out;
   const prev = ctxLayer; ctxLayer = L.id; // (its tweak() / timers are its own, as a layer's top-level code)
-  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame, still: (on = true) => { S.still = on !== false; S.poke = true; }, redraw: () => { S.poke = true; } }); } finally { ctxLayer = prev; }
+  try { out = fn({ THREE: W, tsl, scene, camera, tweak: globalThis.tweak, audio: globalThis.audio, time: S.time, size: G2.size, onFrame, still: (on = true) => { S.still = on !== false; S.poke = true; }, redraw: () => { S.poke = true; }, onStep, save: g2Save, get input() { return g2Input(); } }); } finally { ctxLayer = prev; } // (round 180, gamekit: onStep, save, input)
   if (out && typeof out.then === 'function') out = await out;
   if (L.gen !== g || L.g2 !== S) { if (typeof out === 'function') { try { out(); } catch { /* its own */ } } return; }
   if (typeof out === 'function') S.dispose = out;
@@ -15053,7 +15178,7 @@ function g2Unmount(L) {
   G2.list.delete(S);
   if (!G2.list.size && G2.canvas) G2.canvas.parentNode.hidden = true; // (an old scene next in this page: no v2 picture left under it)
   if (S.dispose) { const prev = ctxLayer; ctxLayer = L.id; try { S.dispose(); } catch { /* its own */ } finally { ctxLayer = prev; } }
-  S.frames.length = 0;
+  S.frames.length = 0; S.steps.length = 0;
   // what it made goes from the graphics card now (geometries, materials, their textures), not whenever it's collected
   const seen = new Set();
   S.scene.traverse((o) => {
@@ -15275,7 +15400,7 @@ function g2KeepHook(R) {
 function g2Kept(S, probe) {
   if (S.poke || !S.drawn) return false;
   if (S.still === true) return true;
-  if (probe || S.still === false || S.code || S.reads || S.frames.length || S.quiet < G2_QUIET) return false;
+  if (probe || S.still === false || S.code || S.reads || S.frames.length || S.steps.length || S.quiet < G2_QUIET) return false;
   if (S.aliveAt !== S.epoch) { // once per quiet spell: anything in it that runs or changes by itself
     S.aliveAt = S.epoch; let alive = false; const base = G2.W.Object3D.prototype;
     S.scene.traverse((o) => {
@@ -15453,6 +15578,7 @@ function g2Draw(t, run) {
   if (g2Size()) G2.shown = null;
   R.info.reset(); G2.passN = 0;
   const vis = G2VIS; vis.length = 0;
+  if (run) { if (G2IN) G2IN.begin(); g2Steps(t); } // (round 180, gamekit) the frame's input, then the game's fixed steps
   for (const L of ordered()) {
     const S = L.g2;
     if (!S || !S.ready || L.props.pcOf) continue;
@@ -15466,6 +15592,7 @@ function g2Draw(t, run) {
       try { for (let i = 0; i < S.frames.length; i += 1) S.frames[i](lt, dt); } catch (err) { g2Threw(L, err); } finally { ctxLayer = prev; }
     }
   }
+  if (run && G2IN) G2IN.end();
   R.autoClear = true; R.autoClearDepth = true; R.autoClearStencil = true;
   // (Nov 11, still) the bottom n layers whose pictures cannot have changed; never where the result must be exact
   const keeping = G2.keep && !G2.keepOff && !XP_PAGE && !SQ.off && !fullRes();
@@ -17387,6 +17514,7 @@ addEventListener('message', async (e) => {
   if (msg.type === 'adapt') setAdapt(msg.on !== false); // (round 31 "labadapt": the Lab's right-click, View › Lighten to stay smooth)
   if (msg.type === 'quality') { setQualityMode(msg.mode); return; } // (round 142, smooth142) Smooth (auto) · Balanced · Force high quality
   if (msg.type === 'eval') runEval(msg);
+  if (msg.type === 'game-save-result') { const f = G2SV.wait.get(msg.id); if (f) { G2SV.wait.delete(msg.id); f(msg.res || { ok: false, why: 'no answer' }); } } // (round 180, gamekit)
   if (msg.type === 'edit') editCommand(msg);
   if (msg.type === 'view') lvCommand(msg); // (round 34 "labgestures") Z frames, Shift+Z resets, keep this view
   if (msg.type === 'gl-sim') { window.__glRecover.lose(msg); return; } // (round 43, glrecover: checks lose the contexts of a page they can't eval in, the export page)

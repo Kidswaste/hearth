@@ -136,7 +136,7 @@ async function warm() {
 function displays() {
   const { screen } = require('electron');
   const hub = ctx.getWin(); const mine = hub && !hub.isDestroyed() ? screen.getDisplayMatching(hub.getBounds()).id : null;
-  return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Screen ${i + 1}`, w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), scale: d.scaleFactor, hz: Math.round(d.displayFrequency || 0) || 60, primary: d.id === screen.getPrimaryDisplay().id, hub: d.id === mine, bounds: d.bounds }));
+  return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Screen ${i + 1}`, w: Math.round(d.size.width * d.scaleFactor), h: Math.round(d.size.height * d.scaleFactor), scale: d.scaleFactor, hz: Math.round(d.displayFrequency || 0) || 60, primary: d.id === screen.getPrimaryDisplay().id, hub: d.id === mine, bounds: d.bounds, workArea: d.workArea }));
 }
 
 // ---------- a Lab scene as a standalone page ----------
@@ -190,7 +190,9 @@ function hostScript(S) {
   });
   // games want the mouse: a click captures it (raw movement where the system has it: game-preload.js asks for it, with
   // the plain kind as the fallback); Esc gives it back
-  addEventListener('mousedown', function () {
+  // (round 180, gamekit) a v2 scene's game captures the mouse itself (input.lock()): a game played with the pointer
+  // (menus, units, a map) keeps it
+  if (!S.gpu) addEventListener('mousedown', function () {
     if (document.pointerLockElement) return;
     try { var p = document.body.requestPointerLock(); if (p && p.catch) p.catch(function () {}); } catch (e) { /* not now */ }
   }, true);
@@ -224,7 +226,7 @@ async function buildScene(spec) {
   const models = await Promise.all((spec.refs || []).map((r) => (r.path ? deploy.modelFiles(r.path, r.kind).catch(() => null) : null)));
   const refStamps = await Promise.all((spec.refs || []).map(async (r, i) => (r.path ? `${await stampOf(r.path)}${models[i] ? `+${(await Promise.all(models[i].files.map((x) => stampOf(x.abs)))).join(',')}` : ''}` : '-')));
   const [songStamp, sandboxStamp, meStamp] = await Promise.all([spec.song?.path ? stampOf(spec.song.path) : null, stampOf(sandbox), stampOf(__filename)]);
-  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r, i) => [r.key, r.path, refStamps[i], ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, songStamp] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: sandboxStamp, me: meStamp })).digest('hex').slice(0, 16);
+  const key = crypto.createHash('sha1').update(JSON.stringify({ layers, refs: (spec.refs || []).map((r, i) => [r.key, r.path, refStamps[i], ready()?.swapFor?.(r.path) || '', ready()?.texFor?.(r.path)?.out || '']), song: spec.song?.path ? [spec.song.path, songStamp] : null, palette: spec.palette, values: spec.values, plan: spec.plan, version, sandbox: sandboxStamp, me: meStamp, format: spec.format || '' })).digest('hex').slice(0, 16);
   const metaFile = path.join(dir, 'hearth-play.json');
   let was = null;
   try { was = JSON.parse(await P.readFile(metaFile, 'utf8')); if (was.key === key && await there(path.join(dir, 'play.html'))) return { dir, version, cached: true, notes: was.notes || [] }; } catch { /* a new build */ }
@@ -242,6 +244,9 @@ async function buildScene(spec) {
   // (round 53, gametex) compressed (KTX2) copies in use: three's KTX2Loader and its Basis transcoder go with the page
   const ktx = (spec.refs || []).some((r) => r.path && (ready()?.texFor?.(r.path) || ready()?.swapFor?.(r.path)));
   if (ktx) libCodes.push("import 'three/addons/loaders/KTX2Loader.js';");
+  // (round 180, gamekit) a v2 (WebGPU) scene: three.webgpu.js and three.tsl.js too (the page's 'three/webgpu', 'three/tsl')
+  const v2 = spec.format === 'gpu';
+  if (v2) libCodes.push("import 'three/build/three.webgpu.js'; import 'three/build/three.tsl.js';");
   const v = await deploy.vendorThree(version, [...layers.map((L) => L.code), ...libCodes], path.join(dir, 'three'), {});
   if (v.missing.length) notes.push(`Not found for three.js ${version}: ${v.missing.join(', ')}`);
   if (ktx) { try { await ready().vendorKtx(path.join(dir, 'three'), version); } catch (err) { notes.push(`Compressed textures: ${err.message} (the originals are used)`); } }
@@ -282,17 +287,19 @@ async function buildScene(spec) {
   }
   // (round 56, readyspeed) three.js fetched and compiled while the page starts (the layers import it only once the
   // pictures are in): the same addresses the player imports, so it's one module
-  const pre = (await Promise.all(['three.module.js', 'three.core.js'].map(async (f) => ((await there(path.join(dir, 'three', 'build', f))) ? f : null)))).filter(Boolean).map((f) => `<link rel="modulepreload" href="three/build/${f}">`).join('');
-  const page = (await labPageOnce()).replace(/<head[^>]*>/i, (m) => `${m}${pre}`).replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} } })}</body>`);
+  const pre = (await Promise.all(['three.module.js', 'three.core.js', ...(v2 ? ['three.webgpu.js', 'three.tsl.js'] : [])].map(async (f) => ((await there(path.join(dir, 'three', 'build', f))) ? f : null)))).filter(Boolean).map((f) => `<link rel="modulepreload" href="three/build/${f}">`).join('');
+  const page = (await labPageOnce()).replace(/<head[^>]*>/i, (m) => `${m}${pre}`).replace('</body>', () => `${hostScript({ layers, refs, song, palette: spec.palette || [], values: spec.values || {}, analysis: spec.analysis || null, plan: spec.plan || { merge: [], why: {} }, gpu: v2 })}</body>`);
   await P.writeFile(path.join(dir, 'play.html'), page);
   await P.writeFile(metaFile, JSON.stringify({ key, name: spec.name || id, at: Date.now(), version, notes, ...(ktx ? { ktx: true } : {}) }, null, 2));
   return { dir, version, cached: false, notes };
 }
+// (round 180, gamekit) a game's saves (gamesavesmain.js): deletes go to the system Trash
+const saves = (game, req) => require('./gamesavesmain').op(ctx.dataDir, game, req, { trash: (p) => require('electron').shell.trashItem(p) });
 
 // ---------- the window ----------
 function info() {
   if (!G) return { playing: false, warm: { ...warmState, steps: [...warmState.steps] } };
-  return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, latency: PL.brief(PL.last(G.win)), fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url };
+  return { playing: true, timing: G.timing || null, budget: G.budget ? { off: G.budget.off, last: G.budget.last } : null, source: G.source, title: G.source.title, route: G.route, how: G.how, display: G.display ? { id: G.display.id, label: G.display.label, w: G.display.w, h: G.display.h, scale: G.display.scale, hz: G.display.hz } : null, hz: G.hz, fidelity: G.fidelity, pid: G.pid || null, priority: G.priority || null, separate: Boolean(G.pid && G.pid !== ctx.getWin()?.webContents.getOSProcessId?.()), started: G.started, notes: G.notes || [], input: G.input || null, latency: PL.brief(PL.last(G.win)), fullscreen: G.win && !G.win.isDestroyed() ? (G.win.isFullScreen() || G.win.isSimpleFullScreen?.() || false) : false, url: G.url, windowed: Boolean(G.windowed), size: G.win && !G.win.isDestroyed() ? G.win.getContentSize() : null, format: G.format || '', paused: Boolean(G.paused) };
 }
 function leave(why = 'left') {
   if (!G) return false;
@@ -345,9 +352,9 @@ async function play(_e, req = {}) {
     root = b.dir; notes = b.notes; route = 'page';
     const plan = req.scene.plan || { merge: [] };
     const n = (req.scene.layers || []).length;
-    how = plan.merge.length > 1 ? `one canvas (${plan.merge.length} of ${n} layers)` : plan.merge.length ? `one canvas` : `${n} canvases`;
+    how = req.scene.format === 'gpu' ? `WebGPU, one canvas (${n} layer${n === 1 ? '' : 's'})` : plan.merge.length > 1 ? `one canvas (${plan.merge.length} of ${n} layers)` : plan.merge.length ? `one canvas` : `${n} canvases`;
     how += b.cached ? ' · page (ready)' : ' · page';
-    entry = `play.html?mode=sketch&v=${encodeURIComponent(b.version)}&n=1&game=1&cap=0${req.input?.lowLatency ? '&lowlat=1' : ''}`;
+    entry = `play.html?mode=sketch&v=${encodeURIComponent(b.version)}&n=1&game=1&cap=0${req.input?.lowLatency ? '&lowlat=1' : ''}${req.scene.format === 'gpu' ? '&gpu=1' : ''}`;
   } else {
     let p = path.resolve(source.path);
     let st; try { st = await P.stat(p); } catch { throw new Error(`Not found: ${source.path}`); }
@@ -359,13 +366,17 @@ async function play(_e, req = {}) {
   playedNow();
   const mac = process.platform === 'darwin';
   const bounds = d?.bounds || { x: 0, y: 0, width: 1280, height: 720 };
+  // (round 180, gamekit) "Play in": full screen (as ever), or a window of a set size (in the screen's own pixels) in the
+  // middle of the chosen screen, with its title bar, resizable
+  const wp = C.windowPlan(d, req.window);
   const win = new BrowserWindow({
-    x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, show: false, frame: false, backgroundColor: '#000000',
-    title: source.title, autoHideMenuBar: true, fullscreenable: true, fullscreen: !mac, thickFrame: false, roundedCorners: false,
+    ...(wp ? { x: wp.x, y: wp.y, width: wp.width, height: wp.height, useContentSize: true, frame: true, fullscreen: false, resizable: true, minWidth: 320, minHeight: 200 } : { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, frame: false, fullscreen: !mac, thickFrame: false, roundedCorners: false }),
+    show: false, backgroundColor: '#000000', title: source.title, autoHideMenuBar: true, fullscreenable: true,
     webPreferences: { session: s, preload: path.join(__dirname, 'game-preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false, spellcheck: false, webSecurity: true, autoplayPolicy: 'no-user-gesture-required', disableHtmlFullscreenWindowResize: true /* (round 53) a game's own requestFullscreen never resizes or re-animates the window */, additionalArguments: [`--hearth-game=${encodeURIComponent(JSON.stringify({ title: source.title, how, hz: fid.hz, kind: source.kind, lowLatency: Boolean(req.input?.lowLatency), look: fid.look, quality: req.quality === 'full' ? 'full' : 'auto', ...(noteKey ? { notesKey: noteKey } : {}), ...(hitchOn ? { hitch: true } : {}), ...(was.shadow && fid.look === 'best' ? { shadow: was.shadow } : {}) }))}`] }, // (round 56, shadowready) shadow: the size chosen while getting ready last time
   });
   if (!mac) win.setMenu(null);
-  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') }, hitch: hitchOn };
+  if (wp) { try { win.setContentSize(wp.width, wp.height); } catch { /* as made */ } } // (round 180, gamekit: the picture itself is the size asked, the title bar outside it)
+  const g = G = { win, source, root, token, display: d, hz: fid.hz, fidelity: fid, route, how, started: Date.now(), notes, url: `${SCHEME}://${token}/${entry}`, audioOff: Boolean(req.audio?.off) || offs.has('audio'), stream: { off: Boolean(req.stream?.off), skip: offs.has('stream') }, hitch: hitchOn, windowed: Boolean(wp), format: req.scene?.format || '', saveStart: req.saveStart ? String(req.saveStart).slice(0, 40) : null };
   g.budget = { hz: fid.hz, title: source.title, off: [...offs], was, last: null };
   g.timing = { asked: T0, built: built?.at || null, cached: built?.cached ?? null, session: tSession, warm: Boolean(warmWas), window: Date.now(), loaded: null };
   g.release = ctx.powerwise.hold('present', { label: `${source.title} is playing` });
@@ -374,7 +385,7 @@ async function play(_e, req = {}) {
   wc.setWindowOpenHandler(() => ({ action: 'deny' }));
   wc.on('will-navigate', (e, url) => { if (!url.startsWith(`${SCHEME}://${token}/`)) e.preventDefault(); });
   // (round 53, gameinput) the window's input: focus on open, the keys held for the game, no selection / drag ghosts
-  g.input = GI.attach(win, { lowLatency: Boolean(req.input?.lowLatency), macFullscreen: req.macFullscreen, leave: (why) => { if (G === g) leave(why); } }).state;
+  g.input = GI.attach(win, { lowLatency: Boolean(req.input?.lowLatency), macFullscreen: wp ? 'simple' : req.macFullscreen, statsKey: g.format === 'gpu' ? 'f3' : 'f', leave: (why) => { if (G === g) leave(why); } }).state; // (round 180, gamekit) a v2 scene's F is the game's: its stats chip is F3
   // the keys: Esc → the "Back to Hearth" card (Esc again / Enter leave; F the stats chip: gameinputmain.key); ⌘Q / ⌘W,
   // Ctrl+W leave; no other ⌘ shortcut reaches Hearth's menu
   // (round 56, playlatency) every key of the game passes here (the main process) before its page gets it: kept to a few
@@ -383,6 +394,7 @@ async function play(_e, req = {}) {
     if (input.type !== 'keyDown') return;
     if (NM && NM.key(e, input)) return; // (round 62, playnotes62) F8: a playtest note; its words box takes the keys while open
     if (GI.key(e, input)) return;
+    if (playKey(g, e, input)) return; // (round 180, gamekit) F5 restart · F6 pause · F7 one frame
     const L = loop();
     const k = L?.letter ? L.letter(input) : String(input.key || '').toLowerCase(); // (round 54: by the key's letter on any layout)
     if (L?.key?.(input)) { e.preventDefault(); return; } // (round 53, playloop) Ctrl/⌘+P: back to editing, the game kept (after gameinput's keys)
@@ -405,7 +417,8 @@ async function play(_e, req = {}) {
   win.once('ready-to-show', () => {
     if (win.isDestroyed()) return;
     win.show();
-    if (mac) { if (req.macFullscreen === 'simple') win.setSimpleFullScreen(true); else win.setFullScreen(true); } // the Mac: its own full-screen space (instant with "simple")
+    if (wp) { try { win.setContentSize(wp.width, wp.height); } catch { /* as made */ } } // (round 180, gamekit: again once shown, when Windows has given it its title bar)
+    if (mac && !wp) { if (req.macFullscreen === 'simple') win.setSimpleFullScreen(true); else win.setFullScreen(true); } // the Mac: its own full-screen space (instant with "simple")
     win.focus();
   });
   const hub = ctx.getWin();
@@ -414,6 +427,24 @@ async function play(_e, req = {}) {
   await win.loadURL(g.url);
   g.timing.loaded = Date.now();
   return info();
+}
+
+// (round 180, gamekit) the playtest keys of a Lab scene's game, read here (the main process) like Esc: F5 starts the
+// game again from the start with the code as it is now (the hub does it: playloop.js restart), F6 pauses / resumes
+// (the Lab player's freeze), F7 draws one frame while paused. Not sent on to the game.
+function playKey(g, e, input) {
+  if (g.source.kind !== 'lab' || input.control || input.meta || input.alt || input.shift) return false;
+  const k = String(input.key || '').toLowerCase();
+  if (k !== 'f5' && k !== 'f6' && k !== 'f7') return false;
+  e.preventDefault();
+  if (input.isAutoRepeat && k !== 'f7') return true;
+  const post = (m) => g.win.webContents.executeJavaScript(`void window.postMessage(${JSON.stringify({ target: 'three-sandbox', ...m })}, '*')`, true).catch(() => {});
+  const blip = (text) => { try { g.win.webContents.send('game:blip', { text, clear: false }); } catch { /* gone */ } };
+  if (k === 'f5') { g.paused = false; try { ctx.getWin()?.webContents.send('game:loop-ev', { type: 'key', what: 'restart' }); } catch { /* gone */ } return true; }
+  if (k === 'f6') { g.paused = !g.paused; post({ type: 'freeze', on: g.paused }); blip(g.paused ? 'Paused · F6 resumes · F7 one frame' : 'Playing'); return true; }
+  if (!g.paused) { g.paused = true; post({ type: 'freeze', on: true }); blip('Paused · F7 one frame · F6 resumes'); return true; }
+  post({ type: 'step' });
+  return true;
 }
 
 function register(ipcMain, c) {
@@ -426,8 +457,21 @@ function register(ipcMain, c) {
   ipcMain.handle('game:play', hub(async (e, req) => { try { return await play(e, req); } catch (err) { if (err?.calm) return { playing: false, error: err.message, offline: Boolean(err.offline) }; throw err; } }));
   ipcMain.handle('game:leave', hub(() => leave('asked')));
   ipcMain.handle('game:state', hub(() => info()));
-  ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, ...d }) => d)));
+  ipcMain.handle('game:displays', hub(() => displays().map(({ bounds, workArea, ...d }) => d)));
   ipcMain.handle('game:info', (e) => (mine(e) ? info() : null));
+  // (round 180, gamekit) saves: the game window's own (the game playing, never named by the page; 'start' = the save the
+  // owner asked this playtest to start from) · the hub's (the Lab's preview and the Saves menu: any game by its source)
+  ipcMain.handle('game:save', (e, req = {}) => {
+    if (!mine(e)) return { ok: false, why: 'not the game playing' };
+    if (req?.op === 'start') return { ok: true, slot: G.saveStart || null };
+    if (!['write', 'read', 'list', 'remove', 'get', 'set'].includes(req?.op)) return { ok: false, why: 'not for a game to ask' };
+    return saves(G.source, req);
+  });
+  ipcMain.handle('game:saves', hub(async (_e, req = {}) => {
+    const r = await saves(req.game, req);
+    if (req.op === 'dir' && req.show && r.ok) { const fs2 = require('fs'); if (fs2.existsSync(r.dir)) require('electron').shell.openPath(r.dir); else r.empty = true; }
+    return r;
+  }));
   ipcMain.on('game:back', (e) => { if (mine(e)) leave('back'); });
   // (round 55, playbudget) the page switched a helper off (game-preload.js relays window.__hearthBudget.pub()): kept
   // for this game; the hub asks what's kept (get) or forgets it (reset: the doctor's "Turn them back on", /game helpers on)
@@ -482,9 +526,9 @@ function register(ipcMain, c) {
     for (const type of ['keyDown', 'char', 'keyUp']) { if (type === 'char' && key.length !== 1) continue; G.win.webContents.sendInputEvent({ type, keyCode: key, modifiers: mods }); }
     return true;
   }));
-  ipcMain.handle('game:click', hub((_e, { x = 100, y = 100 } = {}) => {
+  ipcMain.handle('game:click', hub((_e, { x = 100, y = 100, button = 'left' } = {}) => { // (round 180, gamekit: button 'left' | 'right' | 'middle', for the checks)
     if (!G?.win || G.win.isDestroyed()) return false;
-    for (const type of ['mouseDown', 'mouseUp']) G.win.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1 });
+    for (const type of ['mouseDown', 'mouseUp']) G.win.webContents.sendInputEvent({ type, x, y, button: ['right', 'middle'].includes(button) ? button : 'left', clickCount: 1 });
     return true;
   }));
 }

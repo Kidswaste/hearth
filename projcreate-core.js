@@ -13,6 +13,8 @@
     { id: 'shader', icon: '◇', label: 'Shader art', hint: 'An endless zoom into a fractal, with a soft bloom', start: 'fractal' },
     { id: 'type', icon: '🅰', label: 'Kinetic type', hint: 'One big word per beat, letters rising in', start: 'kinetic-opener' },
     { id: 'model', icon: '🧊', label: '3D model showcase', hint: 'A turning object in studio light; pick your own .glb to show it instead', start: 'chrome-knot', withModel: [{ t: 'mesh-gradient' }], need: 'model' },
+    // (round 180, gamekit) a game: its layers are code (gamekit-core.js), the project is marked as a game
+    { id: 'game', icon: '🎮', label: 'Game', hint: 'A small playable game to grow from: move, jump, collect coins, with saves. ▶ Playtest runs it in its own window', game: true },
     { id: 'footage', icon: '🎞', label: 'Footage + effects', hint: 'Your video full frame, with a film look on top', layers: [{ t: 'footage-fill' }, { f: 'film' }], need: 'footage' },
   ];
   const startOf = (id) => STARTS.find((s) => s.id === id) || STARTS[0];

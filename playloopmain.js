@@ -58,7 +58,7 @@ function wake() {
   park(g, false);
   try { api.ctx().powerwise.quiet(true); } catch { /* fine */ }
   g.win.show();
-  if (mac) { if (S.simple) g.win.setSimpleFullScreen(true); else g.win.setFullScreen(true); } else if (!g.win.isFullScreen()) g.win.setFullScreen(true);
+  if (g.windowed) { /* (round 180, gamekit) a playtest in a window stays one */ } else if (mac) { if (S.simple) g.win.setSimpleFullScreen(true); else g.win.setFullScreen(true); } else if (!g.win.isFullScreen()) g.win.setFullScreen(true);
   g.win.focus();
   tell({ type: 'woke' });
   return state();
@@ -69,6 +69,7 @@ function side(on, displayId = null) {
   const g = G();
   if (!g) return state();
   if (S.resting && S.side) wake();
+  if (S.side && g.windowed) { focusHub(); return state(); } // (round 180, gamekit) a playtest in a window is where you put it
   if (S.side) {
     const { screen } = require('electron');
     const hub = hubWin(); const mine = hub ? screen.getDisplayMatching(hub.getBounds()).id : null;

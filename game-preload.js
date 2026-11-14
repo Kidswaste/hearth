@@ -19,6 +19,8 @@ let I = {}; try { I = JSON.parse(decodeURIComponent(arg ? arg.slice(14) : '%7B%7
 contextBridge.exposeInMainWorld('hearthGame', {
   leave: () => ipcRenderer.send('game:back'),
   info: () => ipcRenderer.invoke('game:info').then((x) => (x ? { title: x.title, hz: x.hz, how: x.how, display: x.display } : null)),
+  // (round 180, gamekit) this game's saves, kept by Hearth (gamesavesmain.js): { op: 'write' | 'read' | 'list' | 'remove' | 'get' | 'set' | 'start', … }
+  save: (req) => ipcRenderer.invoke('game:save', req && typeof req === 'object' ? req : {}),
 });
 
 // before the game's own scripts, in its world:

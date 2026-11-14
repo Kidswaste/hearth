@@ -119,6 +119,22 @@
     return { level: 'max', pixelRatio: Number(d?.scale) || 1, antialias: true, msaa: true, powerPreference: 'high-performance', cap: 0, adapt: false, hz: Number(d?.hz) || 60, look: look(lk) };
   }
   const hzLabel = (hz) => `${Math.round(Number(hz) || 60)} Hz`;
+  // (round 180, gamekit) "Play in": 'full' (the whole screen) or a window whose picture is w × h of the screen's own
+  // pixels ('720' = 1280 × 720, '1080' = 1920 × 1080), in the middle of the screen, never bigger than its free area.
+  // d: a screen with bounds / workArea (points) and scale. → null (full screen) | { x, y, width, height } (points)
+  const WINDOWS = { 720: [1280, 720], 1080: [1920, 1080] };
+  const windowMode = (v) => (WINDOWS[String(v)] ? String(v) : 'full');
+  function windowPlan(d, want) {
+    const m = windowMode(want);
+    if (m === 'full') return null;
+    const [pw, ph] = WINDOWS[m];
+    const sc = Number(d?.scale) || 1;
+    const area = d?.workArea || d?.bounds || { x: 0, y: 0, width: 1280, height: 720 };
+    const room = { w: Math.max(320, area.width - 16), h: Math.max(200, area.height - 48) }; // (its title bar and edges)
+    const k = Math.min(1, room.w / (pw / sc), room.h / (ph / sc));
+    const width = Math.round((pw / sc) * k); const height = Math.round((ph / sc) * k);
+    return { x: Math.round(area.x + (area.width - width) / 2), y: Math.round(area.y + Math.max(0, (area.height - height - 32) / 2)), width, height, fits: k === 1 };
+  }
   // ---------- the protocol's files ----------
   function safePath(rootDir, urlPath, sep = '/') {
     let p;
@@ -142,5 +158,5 @@
     if (s.how) parts.push(s.how);
     return parts.join(' · ');
   }
-  return { source, sameSource, remember, mergePlan, fastCanvas, whyNot, route, pickDisplay, fidelity, look, hzLabel, safePath, mimeOf, chipLine };
+  return { source, sameSource, remember, mergePlan, fastCanvas, whyNot, route, pickDisplay, fidelity, look, hzLabel, windowMode, windowPlan, WINDOWS, safePath, mimeOf, chipLine };
 }));

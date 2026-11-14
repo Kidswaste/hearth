@@ -889,6 +889,18 @@ const ThreeLab = (() => {
     const playBtn = btn('▶ Play', `Play it as a game: its own full-screen window, max quality, smooth (${typeof WinMac !== 'undefined' ? WinMac.keyLabel('Ctrl+P') : 'Ctrl+P'} · Esc there: Back to Hearth) · right-click: the playtest log, the hitch map, other games`, () => playGame()); // (round 53, playloop: Ctrl/⌘+P plays / goes back to editing)
     playBtn.dataset.feature = 'Play';
     playBtn.addEventListener('contextmenu', (e) => { e.preventDefault(); gameDo((G) => G.menu(e.clientX, e.clientY)); });
+    // (round 180, gamekit) a scene of a game project (its workspace says kind: 'game'): ▶ Play reads "Playtest" and the
+    // game's saves are one click away (the same list as ▶ Play's right-click › Saves)
+    const gameProject = (sk = current) => Boolean(sk && typeof Projects !== 'undefined' && Projects.ofItem && Projects.ofItem('scene', sk.id).some((p) => p?.workspace?.kind === 'game'));
+    const savesBtn = btn('💾 Saves', 'This game\'s saves: play from one, delete one, clear them all', (e) => { const r = e.currentTarget.getBoundingClientRect(); const sk = current; if (sk) gameDo(async (G) => showMenu(r.left, r.bottom + 4, await G.saves.items({ kind: 'lab', id: sk.id, title: sk.name }))); }, 'ghost small');
+    savesBtn.dataset.feature = 'Game saves'; savesBtn.hidden = true;
+    function gameUi() {
+      const on = gameProject();
+      savesBtn.hidden = !on;
+      const tx = playBtn.querySelector('.tb-tx'); const label = on ? 'Playtest' : 'Play';
+      if (tx) tx.textContent = ` ${label}`; else playBtn.textContent = `▶ ${label}`;
+      playBtn.setAttribute('aria-label', label);
+    }
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
     // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
     const presentHud = el('div', { class: 'present-hud', hidden: true });
@@ -1680,6 +1692,7 @@ const ThreeLab = (() => {
       paletteBox.replaceChildren(paletteBtn, ...pal.map((c) => { const b = el('button', { class: 'lab-swatch', title: `${c}: click to copy`, on: { click: () => { navigator.clipboard.writeText(c); toast(`Copied ${c}`, { timeout: 1000 }); } } }); b.style.background = c; return b; }),
         ...(pal.length ? [btn('Recolor', 'Put these colors into the selected layer\'s color sliders', () => recolor())] : []));
       projLook(); // (round 129, looks129)
+      gameUi(); // (round 180, gamekit)
     }
     // (round 129, looks129) the project's look: a strip by 🎨 when the scene is in a project with a palette (Apply, the
     // moodboard's colors, save as a look): tools/three-projlook.js, lazy group "projlook", loaded for a project's scene
@@ -3200,6 +3213,16 @@ const ThreeLab = (() => {
       // the sequence's own messages (and a realtime render's recording) go to tools/three-seq.js
       if (!String(msg.recordId || '').startsWith('feedback-') && typeof ThreeSeq !== 'undefined' && (ThreeSeq.onMessage(msg) || ThreeSeq.takeRecording(msg))) return;
       // a key pressed while the picture had focus: the Lab's shortcuts handle it as if pressed here
+      // (round 180, gamekit) a game in the preview asks for its saves: the open scene's, kept by Hearth (gamesavesmain.js)
+      if (msg.type === 'game-save') {
+        const req = msg.req || {}; const id = current?.id;
+        const ask = req.op === 'start' ? Promise.resolve({ ok: true, slot: null })
+          : !id ? Promise.resolve({ ok: false, why: 'no scene is open' })
+            : !['write', 'read', 'list', 'remove', 'get', 'set'].includes(req.op) ? Promise.resolve({ ok: false, why: 'not for a game to ask' })
+              : window.hub.game.saves({ ...req, game: { kind: 'lab', id } });
+        ask.catch((err) => ({ ok: false, why: String(err?.message || err) })).then((res) => box.send({ type: 'game-save-result', id: msg.id, res }));
+        return;
+      }
       if (msg.type === 'host-key') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keydown', { ...k, bubbles: true, cancelable: true })); return; }
       if (msg.type === 'host-keyup') { const { type: _t, source: _s, ...k } = msg; pane.dispatchEvent(new KeyboardEvent('keyup', { ...k, bubbles: true, cancelable: true })); return; } // (round 37: B held over the picture)
       if (msg.type === 'console') log(msg.level, msg.text, null, msg.layer);
@@ -3907,7 +3930,7 @@ const ThreeLab = (() => {
       toolbar.replaceChildren(
         // round 4: New, ▦ and ⟲ moved into Sketch ▾ (Ctrl+Shift+Enter still restarts)
         group('Sketch', picker, sketchMenuBtn, runBtn),
-        group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present'], [playBtn, '▶', 'Play']])),
+        group('View', ...LabCalmBar([[slidersBtn, '⚡', 'Sliders'], [codeBtn, '</>', 'Code'], [consoleBtn, '›_', 'Console'], [editBtn, '✥', 'Edit'], [presentBtn, '▣', 'Present'], [playBtn, '▶', 'Play']]), savesBtn),
         group('Code', liveLabel),
         el('span', { class: 'spacer' }),
         group('Assets', paletteBox, projLookBox, refsBtn, stageBtn, ...(typeof LabSearchHook !== 'undefined' ? [LabSearchHook.button()] : []), liteTag, labMoreBtn)); // (round 36) 🔎 Lab search (tools/three-search-hook.js)
@@ -4512,6 +4535,7 @@ const ThreeLab = (() => {
     }));
     const report = () => ({
       sketch: current?.name,
+      ...(gameProject() ? { project: 'a game project: v2 layers get input, save and onStep (three_do help games); the owner playtests with ▶ Playtest' } : {}), // (round 180, gamekit)
       ...(current?.format === 'gpu' ? { format: 'v2' } : {}), // (Nov 9, Scenes v2: the director writes v2 layers here: three_do help v2)
       layer: sel()?.name,
       layers: layersSummary(),
