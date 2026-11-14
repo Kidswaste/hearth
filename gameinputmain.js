@@ -43,7 +43,7 @@ function key(e, input) {
     S.menu = true; wc.send('game:menu'); return false; // (the game gets its Esc too, as before)
   }
   if (S.menu && k === 'enter' && !mods) { e.preventDefault(); g.leave('key'); return true; }
-  if (k === 'f' && !mods && !input.isAutoRepeat && !S.locked && !S.menu) { wc.send('game:stats'); return false; }
+  if (k === (g.statsKey || 'f') && !mods && !input.isAutoRepeat && !S.locked && !S.menu) { wc.send('game:stats'); return false; } // (round 180, gamekit: F3 in a v2 scene's game, whose F is its own)
   if (process.platform !== 'darwin' && input.alt && k === ' ') { e.preventDefault(); return true; } // (Windows' window menu)
   return false;
 }
@@ -55,7 +55,7 @@ function attach(win, opts = {}) {
   const win32 = process.platform === 'win32';
   const wc = win.webContents;
   const state = { menu: false, locked: false, focus: null, keys: { held: mac ? 'every ⌘ shortcut (⌘Q / ⌘W leave)' : 'Alt+Space (Alt+F4 / Ctrl+W leave)', esc: 'the card, Esc again leaves', system: 'the system\'s (Electron refuses the browser keyboard lock)' }, lowLatency: Boolean(opts.lowLatency), raw: 'asked (unadjustedMovement, plain movement where the system has none)', selection: 'off' };
-  const g = cur = { win, state, leave: opts.leave || (() => win.close()) };
+  const g = cur = { win, state, leave: opts.leave || (() => win.close()), statsKey: opts.statsKey || 'f' };
   win.once('closed', () => { if (cur === g) cur = null; });
   wc.on('dom-ready', () => { wc.insertCSS(CSS).catch(() => {}); });
 

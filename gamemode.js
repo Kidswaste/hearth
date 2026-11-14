@@ -44,12 +44,15 @@ const GameMode = (() => {
       ...(L.precomp ? { precomp: L.precomp } : {}), ...(L.card ? { card: L.card } : {}),
       ...Object.fromEntries(['cropT', 'cropR', 'cropB', 'cropL', 'feather', 'blur', 'mask'].filter((k) => L[k]).map((k) => [k, L[k]])),
     })).filter((L) => L.code.trim() || L.precomp || L.card);
+    // (round 180, gamekit) a v2 (WebGPU) scene: its layers say so, as the Lab sends them (they fill the one scene renderer)
+    const v2 = s.format === 'gpu';
+    if (v2) for (const L of layers) L.gpu = true;
     const refs = (((await window.hub.kvGet('three-refs', {})) || {})[s.id] || []).map((x) => ({ key: x.key, kind: x.kind, path: x.path }));
     const ex = ((await window.hub.kvGet('three-lab-extras', {})) || {})[s.id] || {};
     const cur = Lab()?.scenes?.currentId?.() === s.id;
     const player = cur ? Lab()?.present?.player : null;
     const version = store.get('three.version', typeof ThreeData !== 'undefined' ? ThreeData.VERSIONS[0] : '0.186.1');
-    return { id: s.id, name: s.name || 'Lab scene', version, layers, refs, palette: s.palette || [], song: ex.media?.path ? { path: ex.media.path } : null, analysis: player?.analysis || null, values: {} };
+    return { id: s.id, name: s.name || 'Lab scene', version, layers, refs, palette: s.palette || [], song: ex.media?.path ? { path: ex.media.path } : null, analysis: player?.analysis || null, values: {}, ...(v2 ? { format: 'gpu' } : {}) };
   }
 
   // ---------- quiet while playing ----------
@@ -76,7 +79,7 @@ const GameMode = (() => {
         spec = await sceneSpec(s.id);
         s.title = spec.name;
         r = C.route(spec);
-        plan = C.mergePlan(spec.layers);
+        plan = spec.format === 'gpu' ? { merge: [], why: {}, fast: false, contexts: 1 } : C.mergePlan(spec.layers); // (round 180, gamekit) a v2 scene is one canvas already
         spec.plan = { merge: plan.merge, why: plan.why, fast: plan.fast && !latTest().copy }; // (round 56, playlatency) fast: the one canvas swapped, not copied, each frame
       }
       // gameready (another stream): assets prepared / cached first, with progress (its group loaded first: a lazy global
@@ -90,7 +93,7 @@ const GameMode = (() => {
       hold(true);
       let info;
       if (r?.route === 'live') info = await playLive(s, r, opts);
-      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), quality: qualityPref(), audio: { off: store.get('gameaudio.off', false) === true }, notes: Notes()?.prefs?.(), hitch: Hitch()?.prefs?.() }); // (round 62, playnotes62) notes: the note key (F8) and its label for the hint · (round 63, hitchmap63) hitch: { on } records the hitch map (off by default) // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
+      else info = await window.hub.game.play({ source: s, scene: spec, display: opts.display ?? Loop()?.display?.() ?? store.get('gamemode.display', null), macFullscreen: store.get('gamemode.macFullscreen', 'native'), input: inputPrefs(), stream: streamTest(), look: lookPref(), quality: qualityPref(), audio: { off: store.get('gameaudio.off', false) === true }, notes: Notes()?.prefs?.(), hitch: Hitch()?.prefs?.(), window: opts.window ?? windowPref(), saveStart: opts.saveStart || null }); // (round 180, gamekit) window: 'full' | '720' | '1080' · saveStart: the save this playtest starts from (the game reads save.start()) // (round 62, playnotes62) notes: the note key (F8) and its label for the hint · (round 63, hitchmap63) hitch: { on } records the hitch map (off by default) // (round 54, gameaudio: gameaudio.off leaves a game's sound as it is: a check's "before")
       if (info?.error) { const err = new Error(info.error); err.calm = true; err.offline = info.offline; throw err; } // (round 60, trimdrive60: e.g. offline before three.js was ever downloaded)
       now = { source: s, info, live: r?.route === 'live', at: Date.now(), plan };
       const own = plan ? Object.entries(plan.why).filter(([, w]) => w !== 'hidden') : [];
@@ -113,6 +116,31 @@ const GameMode = (() => {
   // gamestream.test = { off: true }: not a setting)
   const streamTest = () => { try { return { off: Boolean(JSON.parse(localStorage.getItem('gamestream.test') || 'null')?.off) }; } catch { return { off: false }; } };
   const inputPrefs = () => ({ lowLatency: store.get('gamemode.lowLatency', false) === true });
+  // (round 180, gamekit) "Play in": the whole screen, or a window (its picture 1280 × 720 or 1920 × 1080 of the screen's pixels)
+  const windowPref = () => C.windowMode(store.get('gamemode.window', 'full'));
+  const WIN_LABEL = { full: 'Full screen', 720: 'Window · 1280 × 720', 1080: 'Window · 1920 × 1080' };
+  // ---------- saves (round 180, gamekit): what a game wrote with save, per game (gamesavesmain.js) ----------
+  const ago = (at) => { const s = Math.max(0, (Date.now() - at) / 1000); return s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
+  const Saves = {
+    ask: (game, req) => window.hub.game.saves({ ...req, game }),
+    list: async (game) => (await Saves.ask(game, { op: 'list' }).catch(() => null))?.slots || [],
+    async remove(game, slot) { const r = await Saves.ask(game, { op: 'remove', slot }); toast(r.ok ? `Save “${slot}” is in the Trash` : `Not deleted: ${r.why}`, { timeout: 3500, ...(r.ok ? {} : { type: 'error' }) }); return r; },
+    async reset(game, title) { const r = await Saves.ask(game, { op: 'reset' }); toast(r.ok ? (r.removed ? `${title || 'The game'}'s saves are in the Trash: it starts fresh` : 'No saves to clear') : `Not cleared: ${r.why}`, { timeout: 4000, ...(r.ok ? {} : { type: 'error' }) }); return r; },
+    async show(game) { const r = await Saves.ask(game, { op: 'dir', show: true }); if (r?.empty) toast('This game has not saved anything yet', { timeout: 3000 }); return r; },
+    // the menu's part: each save with its date (▶ play from it · delete), clear all, show the folder
+    async items(src) {
+      const slots = await Saves.list(src);
+      const out = slots.slice(0, 20).map((x) => ({ label: `${x.slot}`, hint: `${ago(x.at)}${x.note ? ` · ${x.note}` : ''}`, items: () => [
+        { label: '▶ Playtest from this save', action: () => play(src, { saveStart: x.slot }).catch(fail) },
+        { label: 'Delete (to the Trash)', action: () => Saves.remove(src, x.slot).catch(fail) },
+      ] }));
+      if (!slots.length) out.push({ label: 'No saves yet', hint: 'a game writes them with save.write(…)', disabled: true });
+      if (slots.length > 20) out.push({ label: `… and ${slots.length - 20} older`, disabled: true });
+      out.push('-', { label: 'Show the saves folder', action: () => Saves.show(src).catch(fail) });
+      if (slots.length) out.push({ label: 'Clear all saves (to the Trash)', action: () => Saves.reset(src, src.title).catch(fail) });
+      return out;
+    },
+  };
   // (round 56, playlatency) a check's "before": localStorage playlatency.test = { copy: true } keeps the one canvas's per-frame copy (not a setting)
   const latTest = () => { try { return JSON.parse(localStorage.getItem('playlatency.test') || 'null') || {}; } catch { return {}; } };
   // the Lab drives it: the Stage window, full screen on the game's screen (the Lab's own controls keep working)
@@ -178,10 +206,14 @@ const GameMode = (() => {
     if (cur && !recent().some((x) => x.kind === 'lab' && x.id === cur)) { const sk = Lab().scenes.get(cur); items.push({ label: `▶ Play ${sk?.name || 'this scene'}`, hint: 'the Lab scene open now', action: () => play({ kind: 'lab', id: cur, title: sk?.name }).catch(fail) }); }
     items.push({ label: 'Play an HTML game…', action: async () => { const s = await pickHtml(); if (s) play(s).catch(fail); } });
     const ds = await window.hub.game.displays().catch(() => []);
+    // (round 180, gamekit) Play in: full screen or a window · Saves: the open scene's (else the last game's)
+    items.push('-', { label: `Play in: ${WIN_LABEL[windowPref()]}`, items: () => Object.keys(WIN_LABEL).map((k) => ({ label: WIN_LABEL[k], checked: windowPref() === k, action: () => { store.set('gamemode.window', k); toast(`▶ Play opens ${k === 'full' ? 'full screen' : `in a ${WIN_LABEL[k].replace('Window · ', '')} window`} from the next game`, { timeout: 2500 }); } })) });
+    const savesOf = (cur && H.activeId === 'tool:three' ? { kind: 'lab', id: cur, title: Lab().scenes.get(cur)?.name } : null) || last();
+    if (savesOf) { const saveItems = await Saves.items(savesOf).catch(() => []); items.push({ label: 'Saves', hint: savesOf.title, items: () => saveItems }); }
     if (ds.length > 1) {
       const want = store.get('gamemode.display', null);
       const pick = C.pickDisplay(ds, want);
-      items.push('-', { label: 'Play on', items: () => ds.map((d) => ({ label: `${d.label} · ${d.w}×${d.h} · ${C.hzLabel(d.hz)}`, checked: d.id === pick?.id, action: () => store.set('gamemode.display', d.id) })) });
+      items.push({ label: 'Play on', items: () => ds.map((d) => ({ label: `${d.label} · ${d.w}×${d.h} · ${C.hzLabel(d.hz)}`, checked: d.id === pick?.id, action: () => store.set('gamemode.display', d.id) })) });
     }
     // (round 72, labfps72) Quality: Auto (the resolution follows the frame rate: gamequality-preload.js) or Full
     items.push({ label: `Quality: ${qualityPref() === 'full' ? 'Full' : 'Auto'}`, items: () => [
@@ -322,5 +354,5 @@ const GameMode = (() => {
     for (const x of recent()) AppUI.addAction?.(`▶ Play ${x.title}`, () => play(x).catch(fail));
   } catch { /* no palette */ }
 
-  return { play, leave, rest, state, resolve, menu, menuItems, recent, last, sceneSpec, on: (fn) => { fns.add(fn); return () => fns.delete(fn); }, get playing() { return Boolean(now); } };
+  return { play, leave, rest, state, resolve, menu, menuItems, recent, last, sceneSpec, saves: Saves, windowPref, on: (fn) => { fns.add(fn); return () => fns.delete(fn); }, get playing() { return Boolean(now); } };
 })();

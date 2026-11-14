@@ -371,3 +371,25 @@ the hub); the owner: `/playtest`.
   picture's state + cameras through `PlayNotes.restore`, else its camera with `look` at the player), `.fix(source, map, i)`
   (`PlayNotes.toDirector`: drafted with the picture, never sent), `.command(text)` (`/playtest hitchmap [on | off | show |
   jump <n> | fix <n> | clear | status]`).
+
+## The game kit (round 180, gamekit): v2 scenes as games, saves, the window
+docs/upgrades/gamekit180.md. Main: `gamesavesmain.js`, `gamemodemain.js`; page: `tools/three-sandbox.html` ("gamekit").
+- **A v2 layer** (`format: 'gpu'`) gets, besides its scene: `input` (`held` / `pressed` / `released(code)`, `axis(neg, pos)`,
+  `mouse { x, y, dx, dy, wheel, left, middle, right, locked }`, `pad(i)`, `lock()` / `unlock()`; codes: `KeyboardEvent.code`,
+  `Mouse0` / `Mouse1` / `Mouse2`), `onStep(fn(dt, t))` (60 a second, lockstep, ≤ 5 a frame) and `save`.
+- **`save`** (promises): `write(slot, data, note?)` · `read(slot)` · `list()` → `[{ slot, at, bytes, note? }]` · `remove(slot)` ·
+  `get(key, fallback)` / `set(key, value)` · `start()`. Transport: `hearthGame.save(req)` → `game:save` in ▶ Play's window;
+  `{ type: 'game-save', id, req }` → the Lab → `game:saves` → `{ type: 'game-save-result', id, res }` in the preview; the
+  browser's storage in a page with no Hearth.
+- **`game:save`** (the game window only; the game is the one playing): `{ op: 'write' | 'read' | 'list' | 'remove' | 'get' |
+  'set' | 'start', slot?, data?, note?, key?, value? }` → `{ ok, … } | { ok: false, why }`.
+- **`game:saves`** (the hub only): the same with `game: { kind: 'lab', id } | { kind: 'html', path }`, plus `'reset'` (all of a
+  game's saves to the Trash) and `'dir'` (`show: true` opens the folder). Hub: `window.hub.game.saves(req)`, `GameMode.saves`
+  (`list`, `remove`, `reset`, `show`, `items(source)`: the Saves menu).
+- On disk: `<data>/game-saves/<game>/slots/<slot>.json` `{ v: 1, slot, at, note?, data }`, `settings.json` `{ key: value }`.
+- **`game:play`** `+ window: 'full' | '720' | '1080'` (store `gamemode.window`; `GameCore.windowPlan(display, want)`),
+  `+ saveStart`; `scene.format: 'gpu'` builds the page with three.webgpu.js / three.tsl.js and `&gpu=1`.
+  **`game:state`** `+ windowed, size, format, paused`.
+- Keys read in the main process for a Lab scene's game: F5 restart (`game:loop-ev { type: 'key', what: 'restart' }` →
+  `PlayLoop.restart()`), F6 pause / resume, F7 one frame; the stats chip is F3 in a v2 game (`gameinputmain` `statsKey`).
+- A game project: `workspace.kind === 'game'` (the card's Game start: `gamekit-core.js` `layers()`).

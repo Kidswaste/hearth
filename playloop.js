@@ -48,6 +48,7 @@ const PlayLoop = (() => {
   async function baseline() {
     const st = labGame();
     S.base = st ? { id: st.source.id, spec: runnable(await GM().sceneSpec(st.source.id)) } : null;
+    S.built = S.base ? { id: S.base.id, json: JSON.stringify(S.base.spec.layers) } : null; // (round 180, gamekit: what the page was built from, for F5)
   }
 
   // ---------- live edits ----------
@@ -157,6 +158,29 @@ const PlayLoop = (() => {
     return from;
   }
 
+  // (round 180, gamekit) F5: the game from the start, with the code as it is now. Its page is loaded again (nothing of
+  // the last run is left: no global, no timer, no listener), then the layers as they are in the Lab now when they
+  // changed since the page was built
+  async function restart() {
+    const st = labGame();
+    if (!st) return false;
+    if (st.resting) await wake();
+    S.stats.restarts = (S.stats.restarts || 0) + 1;
+    const built = S.built && S.built.id === st.source.id ? S.built.json : null;
+    const was = await ev('window.__hearthGame ? window.__hearthGame.started : 0').catch(() => 0);
+    await ev('void location.reload()').catch(() => {});
+    for (let i = 0; i < 160; i += 1) { await sleep(125); if (await ev('Boolean(window.__hearthGame && window.__hearthGame.started !== ' + (Number(was) || 0) + ' && window.__hearthGame.drawn)').catch(() => false)) break; }
+    const spec = runnable(await GM().sceneSpec(st.source.id));
+    if (JSON.stringify(spec.layers) !== built) {
+      const plan = st.plan || { merge: [], why: {} };
+      await post({ type: 'game-plan', merge: plan.merge, why: plan.why, fast: Boolean(plan.fast) });
+      await post({ type: 'run-layers', layers: spec.layers });
+    }
+    S.base = { id: st.source.id, spec };
+    blip('Restarted', true);
+    return true;
+  }
+
   // ---------- side by side ----------
   const sideOn = () => Boolean(store.get(KEY_SIDE, null));
   function display() { const v = store.get(KEY_SIDE, null); return v && v.display != null ? v.display : null; }
@@ -220,6 +244,7 @@ const PlayLoop = (() => {
     } else if (d.type === 'woke') GM().rest(false);
     else if (d.type === 'fix') fix(d).catch(fail);
     else if (d.type === 'key' && d.what === 'here') here().catch(fail);
+    else if (d.type === 'key' && d.what === 'restart') restart().catch(fail); // (round 180, gamekit) F5 in the game window
   });
   GM().on((e) => {
     if (e.type === 'start') {
@@ -269,5 +294,5 @@ const PlayLoop = (() => {
     run: async (args) => { const a = String(args || '').trim().toLowerCase(); const on = a ? !/^(off|no|0)$/.test(a) : !sideOn(); const r = await setSide(on); return r === on ? null : 'Side by side needs a second screen.'; },
   });
 
-  return { key, toggle, here, rest, wake, sync, diff, setSide, display, menuItems, fix, fixText, state: () => ({ base: S.base?.id || null, pending: S.pending, dirty: S.dirty, side: sideOn(), saved: [...S.saved.keys()], last: S.last, stats: { ...S.stats }, lastDraft: S.lastDraft || null }) };
+  return { key, toggle, here, restart, rest, wake, sync, diff, setSide, display, menuItems, fix, fixText, state: () => ({ base: S.base?.id || null, pending: S.pending, dirty: S.dirty, side: sideOn(), saved: [...S.saved.keys()], last: S.last, stats: { ...S.stats }, lastDraft: S.lastDraft || null }) };
 })();
