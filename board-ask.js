@@ -36,7 +36,7 @@
   // owner allows using the clip / picture itself.
   function allowFootage(list = sel(), on = !list.every((i) => i.footage)) {
     B.patch(list.map((i) => i.id), { footage: on || undefined }, on ? 'allow as footage' : 'vibe only');
-    toast(on ? 'Chats may use these as footage (their file goes with the vibe)' : 'Vibe only again');
+    toast(on ? 'Marked as yours: the AIs may use these files as they are' : 'A reference again: only its mood is used');
     return on;
   }
   const baseText = V.text;
@@ -145,13 +145,14 @@
   // ---------- menus ----------
   B._.itemExtras = (list) => [
     { label: 'Ask a chat about it', items: () => ASKS.map(([id, label]) => ({ label, action: () => ask(id, { itemIds: list.map((i) => i.id) }) })) },
-    ...(list.some((i) => ['video', 'image', 'gif'].includes(i.type)) ? [{ label: list.every((i) => i.footage) ? '✓ Chats may use it as footage' : 'Allow chats to use it as footage', action: () => allowFootage(list), more: true }] : []),
+    ...(list.some((i) => ['video', 'image', 'gif'].includes(i.type)) ? [{ label: list.every((i) => i.footage) ? '✓ This is mine: may be used as is' : 'This is mine: may be used as is', action: () => allowFootage(list), more: true }] : []),
     ...(list.length === 1 && list[0].type === 'video' && list[0].vibe?.cuts ? [{ label: 'Loop this shot', action: () => loopShot(list[0]), more: true }] : []),
   ];
   const baseBoard = B._.boardItems;
   B._.boardItems = () => [...baseBoard(),
     { label: 'Style everything', items: () => STYLES.map(([id, n]) => ({ label: n, action: () => styleBoard(id) })) },
     { label: 'Views', items: () => [{ label: 'Save this view…', action: async () => { const n = await Modal.prompt('Name this view', { value: `View ${(S.cur.views?.length || 0) + 1}` }); if (n) saveView(n); } }, ...(S.cur.views || []).map((v) => ({ label: `Go to ${v.name}`, action: () => goView(v.name) }))], more: true },
+    { label: '◐ Mood read…', action: async () => { await Lazy.load('projectbrief'); await MoodRead.open(S.cur.id); } }, // (round 179, moodread179) this board read deeply (moodread.js)
     { label: 'Untangle overlaps', action: () => untangle(), more: true },
     { label: 'Ask a chat about the board', more: true, items: () => ASKS.map(([id, label]) => ({ label, action: () => ask(id, { itemIds: [] }) })) }];
   const baseAdd = B._.addItems;
@@ -161,8 +162,8 @@
   const defs = [
     { name: 'board-ask', desc: 'Draft a question about the selected references (or the board) with their vibe attached: common, brief, palette, scene, shots, name, missing, odd, type, music, edit, words', args: '<question>', complete: () => ASKS.map(([id, n]) => ({ value: id, hint: n })),
       run: async (args, ctx) => { await B.ready(); const q = await ask(args.trim() || 'common', { agentId: ctx?.agentId, itemIds: sel().map((i) => i.id) }); return q ? null : 'Unknown question.'; } },
-    { name: 'board-footage', desc: 'Allow (or stop) chats using the selected clip / picture itself as footage — off by default, chats get vibes', args: '[on|off]', complete: () => [{ value: 'on' }, { value: 'off' }],
-      run: async (args) => { await B.ready(); if (!sel().length) return 'Select it on the board first.'; const on = allowFootage(sel(), args.trim() ? args.trim() !== 'off' : undefined); return on ? 'Footage allowed for the selection.' : 'Vibe only.'; } },
+    { name: 'board-footage', desc: 'Mark the selected clip / picture as yours (your own footage or artwork): the AIs may use the file itself. Off by default: a reference gives its mood only', args: '[on|off]', complete: () => [{ value: 'on' }, { value: 'off' }],
+      run: async (args) => { await B.ready(); if (!sel().length) return 'Select it on the board first.'; const on = allowFootage(sel(), args.trim() ? args.trim() !== 'off' : undefined); return on ? 'Marked as yours: may be used as is.' : 'A reference again: mood only.'; } },
     { name: 'board-view', desc: 'Save the current view under a name, or fly to a saved one', args: '<save name | name | number>', complete: () => (S.cur?.views || []).map((v) => ({ value: v.name })),
       run: async (args) => { activate('tool:board'); await B.ready(); const a = args.trim(); if (a.startsWith('save')) { const v = saveView(a.replace(/^save\s*/, '') || undefined); return `Saved "${v.name}".`; } return goView(a) ? null : 'No such view (/board-view save <name>).'; } },
     { name: 'board-loop-shot', desc: 'The selected clip loops the shot it is on (in / out at its cuts)', run: async () => { await B.ready(); const r = loopShot(); return Array.isArray(r) ? `Looping ${B._.fmtTime(r[0])}–${B._.fmtTime(r[1])}.` : null; } },

@@ -183,7 +183,7 @@ const BoardDrawer = (() => {
     el('div', { text: [s.light != null ? `${V.words.keyWord(s.light)}, ${V.words.contrastWord(s.contrast)} contrast` : null, s.sat != null ? V.words.satWord(s.sat) : null, s.motion != null ? `motion ${V.words.motionWord(s.motion)}` : null, s.moods.slice(0, 3).join(', ')].filter(Boolean).join(' · ') || 'Add pictures, clips or sites: Hearth reads their vibe.' }));
     // close to it ↔ only its spirit: per send, remembered per board
     const bandLabel = el('b', { class: 'bdd-band', text: Q.band(distanceFor(b)).name });
-    const dist = el('div', { class: 'bdd-dist', title: 'How close the chat may stay to your references.\nClose to it: every measured number, matched strictly.\nOnly its spirit: mood words only, and the chat is told not to reproduce the subject, layout or recognisable elements.' },
+    const dist = el('div', { class: 'bdd-dist', title: 'How close the chat may stay to your references.\nClose to it: every measured number, matched strictly (this moves toward a copy: best kept for your own pictures).\nOnly its spirit: mood words only, and the chat is told not to reproduce the subject, layout or recognisable elements.' },
       el('span', { text: 'Close to it' }),
       el('input', { type: 'range', min: '0', max: '100', step: '1', value: String(distanceFor(b)), attrs: { 'aria-label': 'Distance from the references: close to it … only its spirit' },
         on: { input: (e) => { bandLabel.textContent = Q.band(e.target.value).name; }, change: (e) => { bandLabel.textContent = Q.band(e.target.value).name; setDistance(b, e.target.value); renderMix(); } } }),

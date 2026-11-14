@@ -79,6 +79,7 @@ const ProjectBrief = (() => {
           const b = (typeof Board !== 'undefined' ? await Board.load(id).catch(() => null) : null) || await kv(`board-${id}`, null);
           const name = (typeof Board !== 'undefined' ? Board.boards().find((x) => x.id === id)?.name : null) || b?.name || p.items.find((x) => x.type === 'board' && x.ref === id)?.name || 'Moodboard';
           if (b) raw.board = { id, name, items: b.items || [] };
+          if (b && window.MoodRead) { await MoodRead.ready(); raw.moodRead = MoodRead.briefLines(id, b.items || []); } // (round 179, moodread179) the board's deep read: the brief is written from it
         }
       }
     }
@@ -257,6 +258,8 @@ const ProjectBrief = (() => {
     const box = el('input', { type: 'checkbox', checked: e?.eyes === true, on: { change: () => setEyes(pid, box.checked) } });
     return el('label', { class: 'pb-eyes', title: 'Off: the AI reads only words and numbers about the moodboard (colors, moods, notes). On: it also gets one small overview picture of it when the brief is prepared. Kept with this project.' }, box, ' Let the AI look at the moodboard');
   };
+  // (round 179, moodread179) ◐ Mood read: the moodboard read deeply (moodread.js); the brief and the directors work from it
+  const moodBtn = (p) => (boardOf(p) && window.MoodRead ? btn(`◐ Mood read${MoodRead.status(boardOf(p)) ? ` · ${MoodRead.status(boardOf(p))}` : ''}`, 'The moodboard read deeply: every picture at full size, the mood in precise words, checked against the measurements. The cost is shown first.', () => MoodRead.open(boardOf(p))) : null);
   // card(projectId, { agentId }) → HTMLElement: the plan (or, without a brief, the offer to prepare one)
   function card(pid, { agentId = null } = {}) {
     const p = project(pid);
@@ -267,7 +270,7 @@ const ProjectBrief = (() => {
     if (!b) {
       node.classList.add('pb-offer');
       node.append(el('div', { class: 'pb-head' }, el('b', { text: '✦ Plan before building' }), el('span', { class: 'pb-note', text: busy ? 'Looking at the project…' : 'The AI reads this project\'s moodboard, references, song and notes once (lightest model) and writes a short plan.' })),
-        el('div', { class: 'pb-acts' }, btn(busy ? 'Preparing…' : '✦ Prepare a brief', 'One short AI pass on the cheapest model; nothing is built', () => prepare(pid), 'small primary'), eyesBox(pid, e), btn('Hide', 'Hide this for this project', () => hide(pid))));
+        el('div', { class: 'pb-acts' }, btn(busy ? 'Preparing…' : '✦ Prepare a brief', 'One short AI pass on the cheapest model; nothing is built', () => prepare(pid), 'small primary'), moodBtn(p), eyesBox(pid, e), btn('Hide', 'Hide this for this project', () => hide(pid))));
       if (busy) node.querySelector('button').disabled = true;
       return node;
     }
@@ -293,6 +296,7 @@ const ProjectBrief = (() => {
       next >= 0 ? btn(`▶ Start with step ${next + 1}`, `Sends “${b.steps[next]}” to the director as your message`, () => start(pid, agentId), 'small primary') : null,
       btn('✎ Edit the brief', 'Change the mood, palette, steps or questions', () => edit(pid)),
       what.length ? btn(busy ? 'Refreshing…' : '↻ Refresh', 'Write the brief again from what the project has now (one short AI pass)', () => prepare(pid)) : null,
+      moodBtn(p),
       eyesBox(pid, e),
       btn('Hide', 'Hide the plan here (/brief show brings it back)', () => hide(pid))));
     node.append(det);
@@ -301,7 +305,7 @@ const ProjectBrief = (() => {
     return node;
   }
   // what a card shows, so a chat's redraw keeps the same card when nothing changed
-  const keyOf = (pid) => { const e = entry(pid); return JSON.stringify([e?.at || 0, e?.edited || 0, e?.done || [], e?.eyes === true, preparing.has(pid), (now.get(pid)?.fp && e?.fp) ? C.changed(e.fp, now.get(pid).fp) : [], window.BriefDraft?.key(pid) || '']); }; // (round 129, draft129: + the draft's state)
+  const keyOf = (pid) => { const e = entry(pid); return JSON.stringify([e?.at || 0, e?.edited || 0, e?.done || [], e?.eyes === true, preparing.has(pid), (now.get(pid)?.fp && e?.fp) ? C.changed(e.fp, now.get(pid).fp) : [], window.BriefDraft?.key(pid) || '', (project(pid) && window.MoodRead?.status(boardOf(project(pid)))) || '']); }; // (round 129, draft129: + the draft's state)
 
   // ---------- in the chats ----------
   function paintIn(agentId, v, chat) {
@@ -342,17 +346,20 @@ const ProjectBrief = (() => {
   let boardHeard = false;
   const hearBoard = () => { if (boardHeard || typeof Board === 'undefined' || !Board.onChange) return; boardHeard = true; Board.onChange((what) => { if (['items', 'vibe', 'boards'].includes(what)) { now.clear(); paintAll(); } }); };
   window.Projects?.onChange?.(() => paintAll());
+  window.MoodRead?.onChange?.(() => { now.clear(); paintAll(); }); // (round 179) a new or edited mood read: the card and the brief's staleness follow
 
   // ---------- three_do brief (three_brief): the whole brief, read on demand ----------
   if (typeof HubBridge !== 'undefined') HubBridge.register(['three_brief'], async (_tool, args, ctx = {}) => {
     await ready();
     if (window.Lazy && !Lazy.loaded('projects')) await Lazy.load('projects').catch(() => {});
     const p = projectOfChat(ctx.chatId);
-    if (!p) return { ok: true, value: 'This chat is in no project, so it has no brief. For a broad ask, look at the moodboard (board_vibe) and the references (three_do references) yourself and say a short plan first.' };
+    if (!p) { const mood0 = window.MoodRead ? await MoodRead.directorText(ctx.chatId).catch(() => '') : ''; return { ok: true, value: `This chat is in no project, so it has no brief. For a broad ask, look at the moodboard (board_vibe) and the references (three_do references) yourself and say a short plan first.${mood0 ? `\n\n${mood0}` : ''}` }; }
     const e = entry(p.id);
     // (round 129, draft129) {done: N}: the director ticks step N as it lands (✦ Build a first draft; any reply may)
     if (args?.done != null && window.BriefDraft) return { ok: true, value: [].concat(args.done).map((n) => BriefDraft.tick(p.id, n, ctx.chatId)).join('\n') };
-    return { ok: true, value: C.full(e?.brief || null, p.name, { at: e?.at, stale: staleWhat(p.id) }) };
+    // (round 179, moodread179) the brief ends with the moodboard's deep read and the inspiration rule (moodread.js)
+    const mood = window.MoodRead ? await MoodRead.directorText(ctx.chatId).catch(() => '') : '';
+    return { ok: true, value: `${C.full(e?.brief || null, p.name, { at: e?.at, stale: staleWhat(p.id) })}${mood ? `\n\n${mood}` : ''}` };
   });
 
   // ---------- /brief and Ctrl/⌘+K ----------

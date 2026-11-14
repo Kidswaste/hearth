@@ -5071,7 +5071,7 @@ const ThreeLab = (() => {
       const jpeg = await canvasDataUrl(c, 'image/jpeg', 0.85); // (round 20) encoded off the window's thread
       return { ok: true, images: [{ data: jpeg.split(',')[1], mime: 'image/jpeg' }], value: `Screenshot of "${d.getCode().sketch}" (${c.width}×${c.height}).` };
     }
-    return labCallMore(tool, args, d);
+    return labCallMore(tool, args, d, ctx);
   }
   function labCallMore(...a) { return labPart(K0, 'ai', 'labCallMore', a); } // tools/three-lab-ai.js
   // (round 23) the time machine notes who changed the scene (tools/three-history.js: Claude / Astra, and their turns)

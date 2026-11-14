@@ -52,6 +52,10 @@ const ProjectBriefCore = (() => {
         // what the fingerprint follows: each item's id, kind, title, note and vibe palette (moving one on the board doesn't count)
         sig: hash(items.map((i) => [i.id, i.type, i.title || '', i.note || i.text || '', (i.colors || [i.color]).join(), (i.vibe?.palette || []).map((c) => c.hex).join()])),
       };
+      // (round 179, moodread179) the board's deep mood read, in short (moodread-core.js briefLines): the brief is written
+      // from it, and it carries the rule that references are inspiration (only the owner's own material is used as is)
+      if (Array.isArray(raw.moodRead) && raw.moodRead.length) out.board.read = raw.moodRead.map((l) => clean(l, 720)).filter(Boolean).slice(0, 8);
+      out.board.mine = items.filter((i) => i.footage === true && isPic(i)).map((i) => clean(i.title || i.file || i.type, 48)).slice(0, 12);
     }
     if (Array.isArray(raw.refs) && raw.refs.length) out.refs = raw.refs.slice(0, 12).map((r) => ({ name: clean(r.name || r.key || 'reference', 40), kind: String(r.kind || 'file').slice(0, 12) }));
     const sg = raw.song;
@@ -78,13 +82,14 @@ const ProjectBriefCore = (() => {
       board: x.board ? x.board.sig : '', refs: x.refs ? hash(x.refs) : '',
       song: x.song ? hash(x.song.name) : '', // (the song by name: a check doesn't analyse it again)
       scene: x.scene ? hash([x.scene.name, x.scene.layers]) : '', notes: x.intent ? hash(x.intent) : '',
+      read: x.board?.read ? hash(x.board.read) : '', // (round 179) the mood read: a new or edited read makes the brief stale
     };
   }
-  const WHAT = { board: 'the moodboard', refs: 'the references', song: 'the song', scene: 'the scene', notes: 'your notes' };
+  const WHAT = { board: 'the moodboard', refs: 'the references', song: 'the song', scene: 'the scene', notes: 'your notes', read: 'the mood read' };
   // what changed since the brief (the scene is left out: the director changes it while it follows the brief)
   function changed(stored, now) {
     if (!stored || !now) return [];
-    return ['board', 'refs', 'song', 'notes'].filter((k) => (stored[k] || '') !== (now[k] || '')).map((k) => WHAT[k]);
+    return ['board', 'refs', 'song', 'notes', 'read'].filter((k) => (stored[k] || '') !== (now[k] || '')).map((k) => WHAT[k]);
   }
 
   // ---------- the one AI pass ----------
@@ -102,6 +107,8 @@ const ProjectBriefCore = (() => {
       if (b.titles.length) L.push(`  pictures: ${b.titles.join('; ')}`);
       if (b.notes.length) L.push(`  notes: ${b.notes.map((n) => `"${n}"`).join('; ')}`);
       if (pictures) L.push(`  the attached picture is the moodboard as one overview (the owner allowed you to look at it)`);
+      if (b.read?.length) L.push(...b.read);
+      else L.push(`  References are inspiration: no step may import, trace or rebuild a reference.${b.mine?.length ? ` The owner's own material (may be used as is): ${b.mine.map((t) => `"${t}"`).join(', ')}.` : ''}`);
     }
     if (x.refs) L.push(`Lab references: ${x.refs.map((r) => `${r.name} (${r.kind})`).join(', ')}`);
     if (x.song) {

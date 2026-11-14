@@ -23,3 +23,31 @@
 .pb-draft .pb-acts { margin-top: 0; }
 .pb-draft .pb-draft-now { font-weight: 600; }
 .pb-upto { font-size: 12px; }
+/* (round 179, moodread179) the mood read panel (moodread.js): the board read, then every picture's read next to its measurements */
+.mr-panel { width: min(920px, 94vw); max-height: 90vh; padding: 0; }
+.mr-panel[open] { display: flex; flex-direction: column; }
+.mr-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px 8px; border-bottom: 1px solid var(--border, rgba(255,255,255,.12)); }
+.mr-top h2 { margin: 0; font-size: 16px; }
+.mr-body { overflow: auto; flex: 1 1 auto; min-height: 0; padding: 10px 16px 16px; }
+.mr-body > * { margin-bottom: 10px; }
+.mr-acts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.mr-note { opacity: .7; font-size: 12px; margin: 2px 0; }
+.mr-now { font-weight: 600; margin: 2px 0; }
+.mr-flag { color: var(--warn, #e6b450); }
+.mr-panel label.mr-second, .mr-panel label.mr-mine { font-size: 12px; display: inline-flex; flex-direction: row; gap: 4px; align-items: center; opacity: .85; white-space: nowrap; width: auto; }
+.mr-panel label.mr-second input, .mr-panel label.mr-mine input { width: auto; margin: 0; }
+.mr-panel .mr-scope { width: auto; }
+.mr-board { border: 1px solid var(--border, rgba(255,255,255,.12)); border-left: 3px solid var(--accent); border-radius: 8px; padding: 8px 12px; }
+.mr-board h3 { margin: 2px 0 6px; font-size: 15px; }
+.mr-essence { margin: 4px 0; }
+.mr-line { margin: 3px 0; }
+.mr-list ul { margin: 2px 0 6px; padding-left: 18px; }
+.mr-sub { margin: 6px 0 0; font-size: 13px; }
+.mr-pics { display: grid; gap: 8px; }
+.mr-pic { display: grid; grid-template-columns: 120px 1fr; gap: 10px; padding: 8px; border: 1px solid var(--border, rgba(255,255,255,.1)); border-radius: 8px; }
+.mr-thumb { width: 120px; max-height: 160px; object-fit: contain; border-radius: 4px; background: rgba(0,0,0,.25); display: block; min-height: 40px; }
+.mr-pic-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.mr-words { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0; }
+.mr-word { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border, rgba(255,255,255,.2)); }
+.mr-check { font-size: 12px; margin: 3px 0; opacity: .9; }
+.mr-more summary { cursor: pointer; font-size: 12px; opacity: .8; }

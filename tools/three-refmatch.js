@@ -265,7 +265,7 @@ const LabRefMatch = (() => {
       if (r.error) body.push(el('p', { class: 'rm-note rm-err', text: r.error }));
       body.push(el('div', { class: 'rm-acts' },
         r.passes.length ? btn('↶ Undo', 'rm-undo', () => undo(), 'Put the scene back as it was before this pass (one step)') : null,
-        r.layer ? btn('Closer', 'rm-closer', () => again('closer'), 'One more pass: closer to the picture (the picture goes again; cost ≈ the line above)') : null,
+        r.layer ? btn('Closer', 'rm-closer', () => again('closer'), 'One more pass: closer to the picture (the picture goes again; cost ≈ the line above). This moves toward a copy: fine for your own pictures, not for someone else\'s.') : null,
         r.layer ? btn('Looser', 'rm-looser', () => again('looser'), 'One more pass: freer from the picture, same mood and palette') : null,
         btn('Keep', 'rm-keep', () => close(), 'Keep it and close the card')));
       if (r.layer) body.push(el('p', { class: 'rm-cost rm-again', text: 'Closer / Looser: one more pass on this layer, each its own undo step.' }));
