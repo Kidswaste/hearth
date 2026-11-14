@@ -224,7 +224,8 @@ const LabDropMedia = (() => {
         const x = ready[i]; const pl = plan[i];
         let key = x.refKey;
         if (!key || !(await refThere(key))) key = (await ThreeLab.addReference(x.path)).key;
-        const code = x.kind === 'video' ? C.footageCode(key, pl.a) : DragDropCore.pictureLayer(key);
+        const v2 = ThreeLab.director?.layers?.().format === 'v2'; // (round 179, v2only179: a v2 scene gets v2 layers)
+        const code = x.kind === 'video' ? C.footageCode(key, pl.a, { v2 }) : DragDropCore.pictureLayer(key, { v2 });
         specs.push({ name: `${x.kind === 'video' ? '🎞' : '🖼'} ${pl.name}`, code, props: { in: pl.a, out: pl.b, fadeIn: pl.fadeIn, fadeOut: pl.fadeOut, group: { ...group }, ...(cols.length ? { color: cols[i % cols.length] } : {}) } });
       }
       if (h.sketchId?.() !== sid) throw new Error('The scene changed while the files were read: drop them again');

@@ -191,14 +191,14 @@ const DragDrop = (() => {
         if (s.do === 'footage') {
           const r = await cmd.loadSong(e.path);
           if (r?.ok === false) throw new Error(r.error || `${name} didn't load`);
-          layers.push(d.addLayer({ template: 'footage-fill', name: stem(name) }, 1));
+          layers.push(d.addLayer({ template: d.layers?.().format === 'v2' ? 'v2-footage' : 'footage-fill', name: stem(name) }, 1)); // (round 179, v2only179: a v2 scene gets the v2 footage layer)
           done.push(`🎞 ${name} is a video layer (frame-exact on the timeline)`);
           continue;
         }
         if (s.do === 'model') { if (typeof ThreeModels === 'undefined') throw new Error('3D models load with the Lab: try again in a moment'); await ThreeModels.add(e.path); done.push(`🧊 ${name} is in the scene`); continue; }
         const r = await ThreeLab.addReference(s.do === 'picture' ? await picturePath(e) : e.path);
         if (s.do === 'ref') { done.push(`${name} is a reference (refs.${r.key})`); continue; }
-        layers.push(d.addLayer({ name: stem(name), code: C.pictureLayer(r.key) }, 1));
+        layers.push(d.addLayer({ name: stem(name), code: C.pictureLayer(r.key, { v2: d.layers?.().format === 'v2' }) }, 1));
         done.push(s.do === 'picture' ? `🖼 ${name} is a picture layer` : `🎞 ${name} is a video layer (looping, the song stays)`);
       } catch (err) { plan.skipped.push({ name, why: `${name}: ${err.message}` }); }
     }

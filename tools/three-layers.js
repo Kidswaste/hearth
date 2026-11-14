@@ -345,6 +345,17 @@ filter('${type}', P);
   punch: { value: 0, min: 0, max: 2, label: 'Kick punch', group: 'Music', hint: '0 = off' },`) },
   ];
   const isFilter = (code) => /\bfilter\(\s*['"]/.test(code || '');
+  // (round 179, v2filter179) a filter layer's code for a v2 scene: the same sliders and the same filter('type', P),
+  // as a v2 layer (the scene's one renderer runs the filter: tools/three-sandbox.html g2Filter). Code that is not a
+  // plain old filter layer (already v2, or with a renderer of its own) comes back unchanged.
+  const V2_FILTER_HEAD = '// v2 filter layer (WebGPU): it restyles everything below it on the scene\'s one renderer. No renderer, canvas or loop here.\n';
+  const V2_FILTER_NOT_YET = ['cgrade', 'crystal', 'oilpaint']; // (◐ Grade brings LUT textures of its own; the other two do not translate)
+  const v2Filter = (code) => {
+    const s = String(code || '');
+    if (!isFilter(s) || /\bexport\s+default\b|\bWebGL1?Renderer\b|\bfilter\.define\b/.test(s) || !/^filter\(/m.test(s)) return s;
+    if (V2_FILTER_NOT_YET.includes(/^filter\(\s*['"]([\w-]+)['"]/m.exec(s)?.[1])) return s; // (these stay old-format layers: see the round's doc)
+    return `${V2_FILTER_HEAD}export default async ({ tweak, filter }) => {\n${s.replace(/^filter\(/m, 'await filter(').replace(/\s+$/, '')}\n};\n`;
+  };
 
   // onSelect(id), onChange(id, props, { live }), onAdd(templateId | 'copy' | 'ask'), onRemove(id),
   // onReorder(idsBottomFirst), now() → playhead seconds, duration() → song length, loop() → { a, b } | null.
@@ -840,5 +851,5 @@ ${BODY}
 renderer.setAnimationLoop(() => renderer.render(scene, camera));
 `;
 
-  return { pickLayers, EMPTY_CODE, panel, shapeCode, SHAPES, TEMPLATES, FILTERS, isFilter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM,KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
+  return { pickLayers, EMPTY_CODE, panel, shapeCode, SHAPES, TEMPLATES, FILTERS, isFilter, v2Filter, ANIM_META, PRESETS, COLORS, BLENDS, defaults, newId, ANIM,KEY_EPS, evalKeys, upsertKey, keyAt, bezierAt, shiftKeysAt, copyKeysAt, pasteKeys, easeKeysAt, EASE_IDS: ['linear', 'ease', 'hold', 'curve', ...Object.keys(EASE_FN)] };
 })();

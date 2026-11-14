@@ -24,10 +24,17 @@
   }
 
   // a whole layer: an ES module that imports three and draws (its own renderer and loop), not a snippet
+  // (round 179, v2only179) or a v2 layer: a default-exported function that fills the `scene` it is given (no renderer,
+  // no loop of its own: the scene's one WebGPU renderer draws it). The AIs write these for every new scene.
+  function v2Layer(code) {
+    const s = String(code || '');
+    return /\bexport\s+default\s+(?:async\s+)?(?:function\b|\()/.test(s) && /\bscene\b/.test(s) && !/\bWebGL1?Renderer\b|\bsetAnimationLoop\b/.test(s);
+  }
   function wholeLayer(code, lang = 'js') {
     const s = String(code || '');
     if (!/^(js|javascript|mjs|)$/i.test(String(lang || ''))) return false;
     if (s.length < 80 || s.length > 400000) return false;
+    if (v2Layer(s)) return true;
     return /\bimport\b[^;\n]*['"]three['"]/.test(s) && /setAnimationLoop|requestAnimationFrame/.test(s) && /\.render\s*\(/.test(s);
   }
 
@@ -89,7 +96,7 @@
     return `[Lab scene "${clip(scene, 40)}" · layers, bottom first (* = selected): ${names.join(', ') || 'none'}${more}${picked ? ` · picked in the scene editor: ${clip(picked, 60)}` : ''}]`;
   }
 
-  const api = { caret, wholeLayer, staleRewrite, staleError, outcome, tellText, sceneLine, agoWords };
+  const api = { caret, wholeLayer, v2Layer, staleRewrite, staleError, outcome, tellText, sceneLine, agoWords };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.LabChatCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);

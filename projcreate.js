@@ -282,7 +282,9 @@ window.ProjCreate = (() => {
       if (t) { const r = TemplateCore.apply(t, {}); Ls = r.layers; if (r.palette?.length && !st.palette.length) x.palette = r.palette; }
     } else {
       const s = C.startOf(st.start);
-      if (s.start || s.layers) {
+      const fast = !(s.id === 'model' && st.model) && s.v2 && typeof ThreeData !== 'undefined' && ThreeData.v2Layers ? ThreeData.v2Layers({ layers: s.v2 }) : null; // (round 179, v2only179) the start as fast v2 layers, when it has them
+      if (fast?.length && fast.length === s.v2.length) Ls = fast;
+      else if (s.start || s.layers) {
         await Lazy.load('gallery');
         const G = LabGalleryData;
         const spec = s.id === 'model' && st.model ? { layers: s.withModel } : s.layers ? { layers: s.layers } : G.STARTS.find((z) => z.id === s.start);
@@ -291,7 +293,7 @@ window.ProjCreate = (() => {
     }
     if (Ls?.length) {
       const tune = (code) => { try { return typeof InstantCore !== 'undefined' ? InstantCore.tune(code, { palette: st.palette }).code : code; } catch { return code; } };
-      x.layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: st.palette.length && !L.filter ? tune(L.code) : L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) }));
+      x.layers = Ls.map((L, i) => ThreeLayers.defaults({ name: L.name, code: st.palette.length && !L.filter && !(typeof ThreeData !== 'undefined' && ThreeData.isV2Code(L.code)) ? tune(L.code) : L.code, slot: i, color: ThreeLayers.COLORS[i % ThreeLayers.COLORS.length], ...(L.blend ? { blend: L.blend } : {}), ...(L.opacity != null ? { opacity: L.opacity } : {}) }));
       x.code = x.layers[0].code;
       { const g = typeof ThreeData !== 'undefined' ? ThreeData.formatOf(x.layers) : x.format; if (g) x.format = g; else delete x.format; } // (round 176, gpuaware176) the scene's format follows the layers it was given
       last.steps.push(`layers: ${x.layers.map((L) => L.name).join(', ')}`);

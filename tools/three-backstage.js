@@ -432,11 +432,11 @@ function makeBackstage(opts = {}) {
         const Ls = layersOf(s());
         const old = [...ThreeLayers.TEMPLATES, ...ThreeLayers.FILTERS].find((x) => x.id === template); // (round 176, gpuaware176) a v2 scene: v2 layers, as on screen
         if (code == null && !old && s().format !== 'gpu' && ThreeData.v2Layer(template)) throw new Error(`"${template}" is a v2 layer: it runs in a v2 scene only (this scene is the old format).`); // (Nov 10, fastkit)
-        const t = code == null ? ((s().format === 'gpu' ? ThreeData.v2Layer(template) || (!old || template === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0]) : null;
+        const t = code == null ? ((s().format === 'gpu' && !ThreeLayers.FILTERS.some((x) => x.id === template) ? ThreeData.v2Layer(template) || (!old || template === 'empty' ? ThreeData.v2Layer('v2-cube') : null) : null) || old || ThreeLayers.TEMPLATES[0]) : null;
         const slot = Math.max(-1, ...Ls.map((L) => L.slot || 0)) + 1;
         let nm = name || t?.name || 'Layer'; let n = 2;
         while (Ls.some((L) => L.name === nm)) { nm = `${name || t?.name || 'Layer'} ${n}`; n += 1; }
-        const L = ThreeLayers.defaults({ color: ThreeLayers.COLORS[slot % ThreeLayers.COLORS.length], slot, ...Object.fromEntries(Object.entries(props).filter(([k]) => PROP_KEYS.includes(k))), name: nm, code: code ?? t.code });
+        const L = ThreeLayers.defaults({ color: ThreeLayers.COLORS[slot % ThreeLayers.COLORS.length], slot, ...Object.fromEntries(Object.entries(props).filter(([k]) => PROP_KEYS.includes(k))), name: nm, code: s().format === 'gpu' ? ThreeLayers.v2Filter(code ?? t.code) : code ?? t.code }); // (round 179, v2filter179: a plain filter layer's code becomes its v2 form in a v2 scene)
         Ls.push(L);
         changed();
         await load(s());

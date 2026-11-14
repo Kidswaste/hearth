@@ -261,8 +261,39 @@ const DragDropCore = (() => {
   const looksLikeName = (t) => { const s = String(t || '').trim(); return !s || (s.length < 260 && !/[\n\\/]/.test(s) && /\.[A-Za-z0-9]{1,8}$/.test(s)); };
 
   // ---------- a picture layer (a reference's texture, fitted to the frame) ----------
-  function pictureLayer(key) {
+  // (round 179, v2only179) in a v2 scene the same picture as a v2 layer: one quad drawn by the scene's one renderer
+  function pictureLayerV2(k) {
+    return `// v2 layer (WebGPU): a dropped picture, refTexture('${k}') (🖼 References), fitted to the frame. No renderer, canvas or loop here.
+export default ({ THREE, tsl, scene, tweak, size, onFrame }) => {
+  const { uniform, texture, uv, vec4, positionGeometry } = tsl;
+  const P = tweak({
+    fit: { value: 'cover', options: ['cover', 'fit', 'stretch'], label: 'Fit', group: 'Picture' },
+    zoom: { value: 1, min: 0.25, max: 4, label: 'Zoom', group: 'Picture' },
+    drift: { value: 0, min: 0, max: 1, label: 'Slow drift', group: 'Picture' },
+  });
+  const tex = refTexture('${k}');
+  const scale = uniform(new THREE.Vector2(1, 1));
+  const pic = texture(tex, uv());
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthTest: false, depthWrite: false });
+  mat.colorNode = pic.rgb; mat.opacityNode = pic.a;
+  mat.vertexNode = vec4(positionGeometry.xy.mul(scale), 0, 1); // (straight to the frame: no camera)
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  scene.add(quad);
+  onFrame((t) => {
+    const img = tex.image; const iw = img?.width || img?.videoWidth || 1; const ih = img?.height || img?.videoHeight || 1;
+    const ra = size.aspect; const ia = iw / ih;
+    let sx = 1; let sy = 1;
+    if (P.fit === 'cover') { if (ra > ia) sy = ra / ia; else sx = ia / ra; } else if (P.fit === 'fit') { if (ra > ia) sx = ia / ra; else sy = ra / ia; }
+    const d = 1 + P.drift * 0.06 * (1 + Math.sin((globalThis.layer?.scene ?? t) * 0.3));
+    scale.value.set(sx * P.zoom * d, sy * P.zoom * d);
+  });
+  return () => { quad.geometry.dispose(); mat.dispose(); };
+};
+`;
+  }
+  function pictureLayer(key, { v2 = false } = {}) {
     const k = String(key).replace(/[^\w$]/g, '_');
+    if (v2) return pictureLayerV2(k);
     return `import * as THREE from 'three';
 
 // A dropped picture as a layer: refTexture('${k}') (🖼 References), fitted to the frame.
