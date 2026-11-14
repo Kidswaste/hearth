@@ -8,7 +8,7 @@
 // save: this game's saves, kept by Hearth (▶ Play › right-click › Saves shows them).
 export default async ({ onStep, input, save }) => {
   const G = window.GAME = { player: { x: 0, y: 0, z: 0, vy: 0 }, coins: [], score: 0, best: 0, time: 0, paused: false, cam: { x: 0, y: 9, z: 11 } };
-  const spot = () => ({ x: (Math.random() - 0.5) * 16, z: (Math.random() - 0.5) * 16 });
+  const spot = () => { let c; do { c = { x: (Math.random() - 0.5) * 16, z: (Math.random() - 0.5) * 16 }; } while (Math.hypot(c.x - G.player.x, c.z - G.player.z) < 2); return c; }; // never on the player
   for (let i = 0; i < 6; i += 1) G.coins.push(spot());
   // the best score is a setting; "auto" is the run in progress. A playtest started from a save (Saves › ▶ Playtest
   // from this save) names it in save.start()

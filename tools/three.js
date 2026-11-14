@@ -901,6 +901,8 @@ const ThreeLab = (() => {
       if (tx) tx.textContent = ` ${label}`; else playBtn.textContent = `▶ ${label}`;
       playBtn.setAttribute('aria-label', label);
     }
+    // (a project marked as a game, or not any more, from its menu: the toolbar follows at once)
+    { const onProj = () => { try { gameUi(); } catch { /* the Lab is going */ } }; addEventListener('hearth:projects', onProj); life.undo.push(() => removeEventListener('hearth:projects', onProj)); }
     const presentHint = el('div', { class: 'present-hint', text: 'Esc to leave · Space play / pause · F freeze · B blackout · I info · PgUp / PgDn other sketches · 1–9 cues' });
     // Present info (I): the sketch, song time, BPM and frame size in a corner, for live shows and checks
     const presentHud = el('div', { class: 'present-hud', hidden: true });

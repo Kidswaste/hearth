@@ -4,6 +4,9 @@
 ## 🎮 A game is now a kind of project
 - **＋ New project › Start from › 🎮 Game** makes a project that begins as a small playable game: you move, jump and
   collect coins, with the score and your best kept between sessions. It is there to be changed into your own game.
+- **An existing project can become a game project**: open its menu (the project's name ▾, or ⋯ on its card) and
+  click **Game project** under Settings. Click it again to turn it off. Only the mark changes; nothing in the
+  project is touched. Do this once for Ascend to Heaven and Clink.
 - In a game project the Lab's ▶ Play button reads **▶ Playtest**, with **💾 Saves** next to it. Everything else in
   the Lab stays where it was.
 - The project's AI finds out it is building a game the first time it looks at the scene, and has a guide for the new
@@ -44,6 +47,5 @@
   input and save tools are for v2 scenes only.
 - **In the Lab preview, keys still do not reach a game** while PLAYER is on SEPARATE (the round 178 limit). Use
   ▶ Playtest to play, or switch PLAYER to IN-APP.
-- There is no button yet to turn an existing project into a game project (Ascend, Clink). Tell me and I will add it.
 - Saves stay on this PC; they are not synced to your other computers.
 - Not tried on a real second screen, with a real gamepad, or on the Mac.

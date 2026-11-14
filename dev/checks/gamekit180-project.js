@@ -37,7 +37,7 @@ try {
   const read = async () => { const r = await ThreeLab.director.evalInSketch('return JSON.stringify(window.GAME ? { coins: window.GAME.coins.length, time: window.GAME.time, score: window.GAME.score, best: window.GAME.best, hud: (document.body.innerText || "").slice(0, 40) } : null)').catch(() => null); try { return JSON.parse(r?.value); } catch { return null; } };
   const g = await until(async () => { const v = await read(); return v && v.coins === 6 && v.time > 0.05 ? v : null; }, 40000) || { raw: await ThreeLab.director.evalInSketch('return JSON.stringify({ game: Boolean(window.GAME), coins: window.GAME && window.GAME.coins.length, time: window.GAME && window.GAME.time, g2: window.__labG2 ? window.__labG2.state() : null })').catch((e) => String(e)), view: (typeof H !== 'undefined' && H.activeId) || null };
   // (a test copy never has the keyboard: its preview dozes, a few frames a second; a few steps of the rules are enough here)
-  step('the starter game runs in the Lab preview (its rules step, the HUD shows)', g && /Coins 0/.test(g.hud), g);
+  step('the starter game runs in the Lab preview (its rules step, the HUD shows)', g && /Coins 0/.test(g.hud) && g.score === 0, g);
   const playBtn = document.querySelector('.surface.active [data-feature="Play"]') || document.querySelector('[data-feature="Play"]');
   const savesBtn = document.querySelector('[data-feature="Game saves"]');
   step('the Lab toolbar reads ▶ Playtest, with 💾 Saves next to it', /Playtest/.test(playBtn?.textContent || '') && savesBtn && !savesBtn.hidden, { play: playBtn?.textContent, saves: savesBtn ? !savesBtn.hidden : null });
@@ -53,6 +53,15 @@ try {
   const b = await run();
   step('▶ Playtest runs it in its window; P pauses it', a && st.windowed === true && st.format === 'gpu' && b?.paused === true, { a, b, how: st.how, errors: await ev('JSON.stringify(window.__hearthGame && window.__hearthGame.errors)') });
   await G().leave(); await until(async () => !(await G().state())?.playing, 15000);
+  // the project menu's "Game project" row: off, then on again, the Lab's toolbar following
+  await Lazy.load('projmenu');
+  const gameRow = () => ProjectMenu.items(byName('Coin Run'), { where: 'menu' }).find((x) => x && x.id === 'game');
+  const was = gameRow();
+  await was.action(); await wait(400);
+  const off = { kind: byName('Coin Run').workspace.kind, play: playBtn.textContent, saves: !savesBtn.hidden, checked: gameRow().checked };
+  await gameRow().action(); await wait(400);
+  const on = { kind: byName('Coin Run').workspace.kind, play: playBtn.textContent, saves: !savesBtn.hidden, checked: gameRow().checked };
+  step('the project menu\'s Game project row marks and unmarks it; the Lab toolbar follows', was?.checked === true && off.kind == null && /Play$/.test(off.play.trim()) && !/Playtest/.test(off.play) && off.saves === false && off.checked === false && on.kind === 'game' && /Playtest/.test(on.play) && on.saves === true && on.checked === true, { off, on });
 } catch (err) { step('stopped', false, String(err?.stack || err).slice(0, 500)); for (const x of document.querySelectorAll('dialog[open]')) x.close(); }
 store.set('gamemode.window', 'full');
 return J.done();

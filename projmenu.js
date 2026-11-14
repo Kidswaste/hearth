@@ -118,6 +118,9 @@ const ProjectMenu = (() => {
       ws ? { id: 'personality', label: 'AI personality…', icon: 'setup', action: go(() => ProjectWorkspace.settings(p)) } : null,
       { id: 'frame', label: 'Aspect & frame rate…', icon: 'frames', hint: [pr.aspect, pr.fps ? `${pr.fps} fps` : ''].filter(Boolean).join(' · '), action: go(() => frameDialog(p)) },
       chat && has('Access') ? { id: 'access', label: 'Files the AI may use…', icon: 'lock', tip: 'The folders its chat may read or change', action: go(() => accessMenu(p, chat)) } : null,
+      // (round 180, gamekit) a game project or not (workspace.kind): the Lab shows ▶ Playtest and 💾 Saves for its scenes
+      // and tells the AI. Only the mark changes: its scenes, chats and files stay as they are.
+      { id: 'game', label: 'Game project', icon: 'setup', checked: p.workspace?.kind === 'game', tip: p.workspace?.kind === 'game' ? 'On: the Lab shows ▶ Playtest and 💾 Saves for its scenes. Click to turn it off (nothing else changes)' : 'Mark it as a game: the Lab shows ▶ Playtest and 💾 Saves for its scenes, and its AI knows it is a game', action: go(() => { const on = p.workspace?.kind !== 'game'; P.setWorkspace(p, { kind: on ? 'game' : null }); toast(on ? `“${p.name}” is a game project: its scenes show ▶ Playtest and 💾 Saves in the Lab` : `“${p.name}” is no longer marked as a game`, { timeout: 4000 }); }) },
       { id: 'status', label: 'Status', items: () => Object.entries(C.STATUS).map(([k, l]) => ({ label: l, checked: p.status === k, action: go(() => P.setStatus(p, k)) })) },
       S('Close'),
       { id: 'archive', label: archived ? 'Unarchive' : 'Archive', icon: 'stop', tip: archived ? 'Back with your projects' : 'Out of the lists, kept as it is (Projects › ⋯ › Archived projects)', action: go(() => setArchived(p, !archived)) },

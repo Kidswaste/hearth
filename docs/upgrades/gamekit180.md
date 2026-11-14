@@ -63,6 +63,8 @@ game's, saves that last, and a start to grow from. v2 (WebGPU) scenes first, as 
 - The new-project card's **Start from › 🎮 Game** (`projcreate-core.js`, `gamekit-core.js`): a v2 scene with four
   layers (World, Player, HUD, Game logic) that share `window.GAME`, read `input`, step in `onStep` and keep the run
   and the best score with `save`. The project's workspace gets `kind: 'game'`.
+- The project menu (`projmenu.js`, Settings › **Game project**, a tick) marks or unmarks any project
+  (`workspace.kind` `'game'` / `null`); the Lab's toolbar follows at once (`hearth:projects`).
 - In the Lab, a scene of a game project: ▶ Play reads **▶ Playtest**, with **💾 Saves** next to it. Nothing is
   hidden (song, timeline and render stay).
 - The AI: nothing in any prompt. The Lab's report says `project: 'a game project…'` and `three_do help gamekit`
@@ -89,7 +91,7 @@ game's, saves that last, and a start to grow from. v2 (WebGPU) scenes first, as 
   window, P pauses it through `input`.
 
 Results, Nov 14 2026, this PC (Windows 11, 3440 × 1440, silent): unit 7 / 7 groups, `gamekit180` 10 / 10 steps,
-`gamekit180-project` 7 / 7 steps. One extra run of the preview part with the separate Lab player
+`gamekit180-project` 8 / 8 steps (with the project menu's Game project row). `projmenu128` knows the new row; its one failing step is another row (`labwin`, no expectation in the check), there before this round. One extra run of the preview part with the separate Lab player
 (`HEARTH_LP_DEFAULT=1`): the layer ran inside the player with `input` / `onStep` / `save`, and its save landed on disk
 through the Lab.
 
@@ -107,7 +109,6 @@ that names `help gamekit`); the lean prompt (CORE) is unchanged.
   are handed to v2 layers only). F5 / F6 / F7 are no longer passed on to any Lab scene's game.
 - Keys in the Lab preview with the separate player (round 178's limit: its window takes no keyboard). ▶ Playtest is
   where a game is played; PLAYER › IN-APP gives the preview the keys.
-- No button to mark an existing project as a game (`workspace.kind = 'game'`); only the card's Game start sets it.
 - Saves are not synced between computers. No import / export of a save, no rename.
 - ▶ Playtest / 💾 Saves show for a game project's scene once the Projects group is loaded (always when the scene was
   opened from its project); the same Saves list is under ▶ Play's right-click everywhere.
@@ -132,6 +133,6 @@ that names `help gamekit`); the lean prompt (CORE) is unchanged.
 ## Files
 `gamesavesmain.js` (new), `gamekit-core.js` (new, lazy group "projcreate"), `gamemode.js`, `gamemode-core.js`,
 `gamemodemain.js`, `gameinputmain.js`, `game-preload.js`, `playloop.js`, `playloopmain.js`, `preload.js`,
-`projcreate.js`, `projcreate-core.js`, `lazy-data.js`, `tools/three-sandbox.html`, `tools/three.js`,
+`projcreate.js`, `projcreate-core.js`, `projmenu.js`, `lazy-data.js`, `tools/three-sandbox.html`, `tools/three.js`,
 `mcp/three-guide.js`, `tools/game-api.md`, `dev/gamekit-test.js`, `dev/checks/gamekit180.js`,
 `dev/checks/gamekit180-project.js`, `dev/run-checks.js`.
