@@ -14983,7 +14983,7 @@ const g2Is = (spec) => (spec.gpu === true || (GPU_PAGE && spec.gpu !== false)) &
 // its `three` imports read the WebGPU build (the same line count: errors keep their lines)
 const g2Code = (code) => String(code).replace(/(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])three\2/g, '$1$2three/webgpu$2');
 // ======== (round 180, gamekit) what a v2 layer of a game gets besides its scene: input, save, onStep ========
-// (docs/upgrades/gamekit180.md · the guide the AI reads: three_do help games)
+// (docs/upgrades/gamekit180.md · the guide the AI reads: three_do help gamekit)
 //   input   the keyboard, the mouse, gamepads, read each frame (made at the first read: a scene that never asks for it
 //           has no listener of it). Codes are the keys' places (KeyboardEvent.code: 'KeyW', 'Space', 'ArrowLeft') and
 //           'Mouse0' (left) · 'Mouse1' (middle) · 'Mouse2' (right).

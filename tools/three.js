@@ -4535,7 +4535,7 @@ const ThreeLab = (() => {
     }));
     const report = () => ({
       sketch: current?.name,
-      ...(gameProject() ? { project: 'a game project: v2 layers get input, save and onStep (three_do help games); the owner playtests with ▶ Playtest' } : {}), // (round 180, gamekit)
+      ...(gameProject() ? { project: 'a game project: v2 layers get input, save and onStep (three_do help gamekit); the owner playtests with ▶ Playtest' } : {}), // (round 180, gamekit)
       ...(current?.format === 'gpu' ? { format: 'v2' } : {}), // (Nov 9, Scenes v2: the director writes v2 layers here: three_do help v2)
       layer: sel()?.name,
       layers: layersSummary(),

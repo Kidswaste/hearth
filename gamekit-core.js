@@ -94,6 +94,6 @@ export default ({ onFrame }) => {
   // a project is a game when its workspace says so (set by the new-project card's Game start, or by the owner)
   const isGame = (p) => Boolean(p && p.workspace && p.workspace.kind === 'game');
   // what the Lab's report tells the AI in a game project (read on demand, never in the prompt)
-  const NOTE = 'a game project: v2 layers get input, save and onStep (three_do help games); the owner playtests with ▶ Playtest';
+  const NOTE = 'a game project: v2 layers get input, save and onStep (three_do help gamekit); the owner playtests with ▶ Playtest';
   return { layers, isGame, NOTE };
 });

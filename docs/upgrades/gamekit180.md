@@ -65,8 +65,9 @@ game's, saves that last, and a start to grow from. v2 (WebGPU) scenes first, as 
   and the best score with `save`. The project's workspace gets `kind: 'game'`.
 - In the Lab, a scene of a game project: ▶ Play reads **▶ Playtest**, with **💾 Saves** next to it. Nothing is
   hidden (song, timeline and render stay).
-- The AI: nothing in any prompt. The Lab's report says `project: 'a game project…'` and `three_do help games`
-  (also `game`, `save`, `saves`, `playtest`, `gamepad`) teaches the kit.
+- The AI: nothing in any prompt. The Lab's report says `project: 'a game project…'` and `three_do help gamekit`
+  (also `save`, `saves`, `gamepad`, `onstep`) teaches the kit; it is not part of any prompt, the full one included
+  (`help games` names it in a few words).
 
 ## Shapes
 - `game:play` request: `+ window: 'full' | '720' | '1080'`, `+ saveStart: slot | null`; `scene.format: 'gpu'`.
@@ -91,6 +92,13 @@ Results, Nov 14 2026, this PC (Windows 11, 3440 × 1440, silent): unit 7 / 7 gro
 `gamekit180-project` 7 / 7 steps. One extra run of the preview part with the separate Lab player
 (`HEARTH_LP_DEFAULT=1`): the layer ran inside the player with `input` / `onStep` / `save`, and its save landed on disk
 through the Lab.
+
+The older ▶ Play checks on this PC after the change: `gamemode` passes; `playloop` 17 / 18 (the one step expects a
+single screen, this PC has three); `gameinput` 21 / 23 (key timing p95 and the pointer lock, both in a window that
+never gets the keyboard: the same two fail on the commit before this round, run from a clean copy). Unit:
+`boot-test`, `slim116-test`, `selfmap118-test`, `gamemode-test`, `director-mcp-test` pass; `promptdiet-test`'s
+"Three Director (full)" was over its budget before (≈ 8870 of 7940) and is 8887 now (the one line in `help games`
+that names `help gamekit`); the lean prompt (CORE) is unchanged.
 
 ## Not done
 - The owner's games are not edited: Ascend to Heaven still writes `localStorage` (`'ascend.meta'`), which does not

@@ -81,13 +81,15 @@ const PC = require('../projcreate-core');
     const s = PC.startOf('game');
     assert.ok(s.id === 'game' && s.game === true && PC.STARTS.includes(s));
   });
-  await t('the guide: help games teaches input, onStep and save; game / save / playtest find it', async () => {
+  await t('the guide: help gamekit teaches input, onStep and save, on demand only (in no prompt)', async () => {
     const g = require('../mcp/three-guide');
     const help = g.help || g.topic || g.guide;
     assert.strictEqual(typeof help, 'function', 'the guide answers by topic');
-    const text = String(help('games'));
+    const text = String(help('gamekit'));
     for (const w of ['input.held', 'onStep(', 'save.write', 'save.start()', 'F5']) assert.ok(text.includes(w), w);
-    for (const a of ['game', 'save', 'saves', 'playtest', 'gamekit']) assert.strictEqual(String(help(a)), text, a);
+    for (const a of ['save', 'saves', 'gamepad', 'onstep']) assert.strictEqual(String(help(a)), text, a);
+    assert.ok(String(help('games')).includes('help gamekit') && String(help('game')).includes('help gamekit'), 'the games topic names it');
+    assert.ok(!g.FULL.includes('input.held') && !g.CORE.includes('gamekit'), 'no prompt carries it');
   });
   fs.rmSync(dir, { recursive: true, force: true });
   console.log(`\n${n} groups passed`);
