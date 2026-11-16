@@ -81,7 +81,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
           el('p', { class: 'hint forge-digest-line', text: digestLine(await kv.get('forge-digest', null)) }),
           el('button', { class: 'ghost small', text: 'Edit brief', on: { click: editBrief } }),
           el('button', { class: 'ghost small', text: '✦ Digest my notes', title: 'The AI reads your design notes once and writes a short digest of the game (what it is, its systems, where it stands). It costs one larger AI call; the digest is kept until you make a new one', on: { click: (e) => { const b = e.currentTarget; b.disabled = true; makeDigest().catch((err) => toast(calmError(err), { type: 'error' })).finally(() => { b.disabled = false; load(); }); } } }),
-          el('button', { class: 'ghost small', text: 'Read it', title: 'The digest the chat carries (you can edit it)', on: { click: () => editDigest().then(() => load()) } })));
+          el('button', { class: 'ghost small', text: 'Read it', title: 'The digest the chat carries (you can edit it)', on: { click: () => editDigest().then(() => load()).catch((err) => toast(calmError(err), { type: 'error' })) } })));
     }
     load();
     api.refreshDashboard = load;
@@ -151,7 +151,9 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       'Only what the notes say. No praise, no advice.', '',
       ...notes.map((n) => `<note name="${n.name}" changed="${n.changed}">\n${n.text}\n</note>`)].join('\n');
   }
-  async function makeDigest() {
+  let digesting = null; // (one digest at a time: the Dashboard's card is rebuilt each time it shows, with a fresh button)
+  function makeDigest() { digesting ||= makeDigest0().finally(() => { digesting = null; }); return digesting; }
+  async function makeDigest0() {
     const a = forgeAgent() || H.claudeAgent?.() || H.agents().find((x) => x.mode === 'native');
     if (!a) throw Error('Add a native AI in Settings first.');
     const all = (await files()).filter((f) => /\.md$/i.test(f.name)).sort((x, y) => (y.mtime || 0) - (x.mtime || 0));
