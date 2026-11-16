@@ -446,6 +446,7 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 // (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
 // reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
 const BRIEF_MAX = 640; // (round 128, aiprep128) the brief part's cap: projectbrief-core.js PART_MAX (600) + a little slack
+const MOOD_MAX = 2100; // (round 181, moodauto181) the mood part's cap: moodread-core.js PROMPT_MAX (2000) + a little slack
 function promptParts0(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
   const folder = fileFolder(agent);
@@ -517,6 +518,9 @@ function promptParts0(agent, session = null) {
   if (rules.length) add('instructions', `The user's standing instructions (always follow them):\n${rules.join('\n')}`);
   // (round 128, aiprep128) a director in a project with a brief: its compact form (≤ 600 characters, projectbrief-core.js)
   if (agent.projectBrief && sets.includes('threeTools') && agent.toolMode !== 'crew') add('brief', String(agent.projectBrief).slice(0, BRIEF_MAX));
+  // (round 181, moodauto181) and its moodboard's mood, from the deep read (moodread-core.js promptText, ≤ 2000 characters):
+  // after the brief, as it changes more often (every picture the owner adds is read and the mood follows)
+  if (agent.projectMood && sets.includes('threeTools') && agent.toolMode !== 'crew') add('mood', String(agent.projectMood).slice(0, MOOD_MAX));
   const acc = accessOf(agent);
   if (acc) add('access', accessLine(agent, acc));
   // (round 116, astraparity116) working on Hearth's own code (a chat's folder is a Hearth source folder): a short map of
@@ -1357,6 +1361,7 @@ function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } 
   // (round 128, aiprep128) the project brief (projectbrief.js sends its compact form for a director's chat in a project
   // with a brief): a text that only changes when the brief does, so the part stays cached; never for lean / crew runs
   if (typeof options.brief === 'string' && options.brief.trim() && !options.lean && !options.crew) agent = { ...agent, projectBrief: options.brief.slice(0, BRIEF_MAX) };
+  if (typeof options.mood === 'string' && options.mood.trim() && !options.lean && !options.crew) agent = { ...agent, projectMood: options.mood.slice(0, MOOD_MAX) }; // (round 181, moodauto181) the moodboard's mood, the same way
   // (round 41, toolslim) the AI's opt-in tool sets (board, capture, Adobe, publishing, apps) sleep until it's likely to
   // need them (used this week, named in the message, already in this session): toolwake.js
   const woke = Wake && agent.id ? Wake.plan(agent, { text, session, base, keep: options.captureTools ? ['captureTools'] : [] }) : null;

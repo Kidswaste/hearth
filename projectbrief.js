@@ -338,7 +338,10 @@ const ProjectBrief = (() => {
     Native.hooks.options.push((agentId, chat, _raw, _last, options) => {
       if (!chat || options.lean || options.crew) return;
       const p = projectOfChat(chat.id); const e = p && entry(p.id);
-      if (e?.compact && (isDirector(H.agent(agentId)) || options.asDirector === 'three' || p.workspace?.chatId === chat.id)) options.brief = e.compact;
+      const mine = p && (isDirector(H.agent(agentId)) || options.asDirector === 'three' || p.workspace?.chatId === chat.id);
+      if (e?.compact && mine) options.brief = e.compact;
+      // (round 181, moodauto181) and the moodboard's mood (the deep read, in short): with every message, not only on three_do brief
+      if (mine && window.MoodRead?.promptFor) { const m = MoodRead.promptFor(p); if (m) options.mood = m; }
     });
   }
   // a moodboard changed: the briefs check again when next asked (the card asks as it paints)

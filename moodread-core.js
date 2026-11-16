@@ -44,6 +44,19 @@ const MoodReadCore = (() => {
     return { add, gone, board: !entry?.board || entry.board.sig !== boardSig(items, entry?.scope || null, brief) || add.length > 0 || gone.length > 0, outside };
   }
 
+  // (round 181, moodauto181) the pictures a board reads BY ITSELF: one that just landed on it (added in the last `fresh`
+  // ms, and measured or a minute old, so its signature has settled) and one already read whose file or owner's words
+  // changed. Never an older picture that was simply never read (a big old board is the owner's click, with its cost),
+  // and never one whose read failed on this very file (no loop).
+  function autoDue(entry, items, { now = Date.now(), fresh = 15 * 60000 } = {}) {
+    const reads = entry?.items || {};
+    return media(items).filter((it) => {
+      const r = reads[it.id]; const added = Number(it.added) || 0;
+      if (r) return Boolean(r.sig) && r.sig !== itemSig(it);
+      return added > now - fresh && Boolean(it.natural || it.vibe || added < now - 60000);
+    }).map((it) => it.id);
+  }
+
   // ---------- the cost, before a run ----------
   const tokensOf = (w, h) => { const k = Math.min(1, FULL / Math.max(w, h, 1)); return Math.round((w * k * h * k) / 750); };
   const PROMPT_IN = 650; const LOOK_OUT = 380; const SECOND_OUT = 200; const BOARD_PER = 260; const BOARD_OUT = 1100;
@@ -272,6 +285,25 @@ const MoodReadCore = (() => {
     L.push('', RULE, mineLine(board.items));
     return L.join('\n');
   }
+  // (round 181, moodauto181) the mood as a prompt part: it rides along with every message of a director's chat in the
+  // board's project (engines.js `mood`, like the brief's part), so the mood is used without the AI having to ask for it.
+  // From the read alone (no dates, no counts that move): the same read gives the same bytes. Capped at PROMPT_MAX.
+  const PROMPT_MAX = 2000;
+  const PROMPT_RULE = 'References are inspiration, not sources: make something NEW in this mood (your own subject, forms and layout). Never rebuild a reference\'s subject or layout, and never put a reference\'s file in the scene unless the owner marked it as their own (three_do brief names those) or asks for that file.';
+  function promptText(entry) {
+    const b = entry?.board; if (!b?.mood) return '';
+    const head = `MOODBOARD MOOD ("${cap(entry.name || 'Moodboard', 40)}": the owner's references, read closely; the whole read: three_do brief). Work in this mood unless the owner says otherwise.`;
+    const bits = [`Mood: ${b.mood}`,
+      entry.corrections && `The owner's own words on it (they outrank the rest): "${cap(entry.corrections, 300)}"`,
+      b.essence && cap(b.essence, 420),
+      b.make?.length && `To make new work in it: ${b.make.map((s) => cap(s, 110)).join('; ')}`,
+      b.not?.length && `It is NOT: ${b.not.map((s) => cap(s, 70)).join('; ')}`,
+      b.threads?.length && `Threads (directions, not pictures to rebuild): ${b.threads.map((t) => `${t.name} (${cap(t.feel, 90)})`).join('; ')}`,
+      ...['colour', 'light', 'texture', 'motion'].map((k) => b[k] && `${k[0].toUpperCase()}${k.slice(1)}: ${cap(b[k], 130)}`)].filter(Boolean);
+    let out = head; const room = PROMPT_MAX - PROMPT_RULE.length - 1;
+    for (const s of bits) { if (out.length + 1 + s.length > room) continue; out = `${out}\n${s}`; }
+    return `${out}\n${PROMPT_RULE}`;
+  }
   // the few lines the project brief's own AI pass reads (projectbrief-core.js): the read in short + the same rule
   function briefLines(entry, board = {}) {
     const b = entry?.board; if (!b) return [];
@@ -298,7 +330,7 @@ const MoodReadCore = (() => {
   //         ask({ text, images, second }) → { ok, text, usage, by, error }, read() → the store, write(store), now(),
   //         summary(items) → the measured board line | '', progress({ i, n, title, step }), stopped() → bool }
   // opts: { scope: [item ids] | null (null: the whole board; undefined: as the last read), second (default true),
-  //         force: read every picture again }. Returns { entry, read, failed, usage, stopped }.
+  //         force: read every picture again, just: [item ids] read only these of what is due }. Returns { entry, read, failed, usage, stopped }.
   async function run(boardId, opts = {}, deps = {}) {
     if (!boardId) throw new Error('No board.');
     const now = () => (deps.now ? deps.now() : Date.now());
@@ -313,7 +345,7 @@ const MoodReadCore = (() => {
     const num = new Map(media(b.items).map((it, i) => [it.id, i + 1])); // a picture's number on the board
     const items = {};
     for (const it of list) if (was?.items?.[it.id]) items[it.id] = was.items[it.id];
-    const todo = list.filter((it) => opts.force || !items[it.id] || items[it.id].error || items[it.id].sig !== itemSig(it));
+    const todo = list.filter((it) => opts.force || !items[it.id] || items[it.id].error || items[it.id].sig !== itemSig(it)).filter((it) => !opts.just || opts.just.includes(it.id)); // (just: only these, the automatic read of what is new)
     let usage = { in: 0, out: 0, calls: 0 }; const failed = []; let by = was?.by || null; let secondBy = was?.second || null; let stopped = false;
     const save = async (patch = {}) => { store = put(await deps.read(), boardId, { name: b.name, items: { ...items }, scope, by, second: secondBy, ...patch }); await deps.write(store); };
     const ask = async (rq) => { const r = await deps.ask(rq); usage = addUsage(usage, r); if (!r?.ok) throw new Error(r?.error || 'The AI did not answer.'); return r; };
@@ -364,7 +396,7 @@ const MoodReadCore = (() => {
     return { entry: entry(store, boardId), read: todo.length - failed.filter((f) => !f.startsWith('the whole board')).length, failed, usage, stopped };
   }
 
-  const api = { STORE, MEDIA, FULL, CLIP_FRAMES, PERSONA, RULE, LOOK_HEADS, SECOND_HEAD, BOARD_HEAD, SCALES, BOARD_LINES, media, mine, isClip, itemSig, boardSig, stale, tokensOf, pictureTokens, estimate, costLine, kfmt, lookPrompt, secondPrompt, boardPrompt, parseLook, parseSecond, parseBoard, measured, check, agreement, toText, fromText, directorText, briefLines, mineLine, norm, entry, put, run, hash, cap };
+  const api = { STORE, MEDIA, FULL, CLIP_FRAMES, PERSONA, RULE, LOOK_HEADS, SECOND_HEAD, BOARD_HEAD, SCALES, BOARD_LINES, media, mine, isClip, itemSig, boardSig, stale, tokensOf, pictureTokens, estimate, costLine, kfmt, lookPrompt, secondPrompt, boardPrompt, parseLook, parseSecond, parseBoard, measured, check, agreement, toText, fromText, directorText, briefLines, mineLine, autoDue, promptText, PROMPT_MAX, norm, entry, put, run, hash, cap };
   if (typeof module !== 'undefined') module.exports = api;
   return api;
 })();

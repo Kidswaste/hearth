@@ -25,6 +25,7 @@ try {
   ok(typeof MoodRead !== 'undefined' && typeof MoodReadCore !== 'undefined', 'the projectbrief group has MoodRead');
   const bid = p.workspace.boardId; const chatId = p.workspace.chatId;
   ok(bid && await MoodRead.boardIdFor(chatId) === bid, 'the project\'s chat reads the project\'s moodboard', bid);
+  await MoodRead.ready(); await MoodRead.setAuto(false); // (round 181) steps 1–6 are the read on the owner's click; step 7 turns the automatic read back on
 
   // ---------- two pictures drawn here, on the project's board ----------
   const pic = async (name, draw) => { const c = document.createElement('canvas'); c.width = 480; c.height = 320; draw(c.getContext('2d')); return window.hub.board.save(name, c.toDataURL('image/png').split(',')[1]); };
@@ -103,6 +104,26 @@ try {
   ok(await MoodRead.refGate(att, { asked: true }, { chatId }) === null, '…and so is one the owner asked for in their message');
   const own = await window.hub.saveAttachment('own-upload.png', (await window.hub.fs.read(thirdP, { encoding: 'base64' })));
   ok(await MoodRead.refGate(own, {}, { chatId }) === null, 'a file the owner attached themselves is not touched by the gate');
+  // ---------- 7. (round 181, moodauto181) a new picture is read by itself, and the mood rides with every message ----------
+  const sendOptions = () => { const o = {}; for (const fn of Native.hooks.options) fn(claude.id, { id: chatId }, '', null, o); return o; };
+  const m0 = sendOptions().mood || '';
+  ok(/^MOODBOARD MOOD/.test(m0) && /3 pictures/.test(m0) && /less cosy, more threat/.test(m0) && /inspiration, not sources/.test(m0) && !/Warm corner|Pale blue slab|Green field/.test(m0), 'a message in the project\'s chat carries the mood (no reference\'s title)', m0.slice(0, 300));
+  ok(sendOptions().mood === m0 && !('mood' in (() => { const o = { lean: true }; for (const fn of Native.hooks.options) fn(claude.id, { id: chatId }, '', null, o); return o; })()), 'the same bytes message after message; never on a lean run');
+  const fourthP = await pic('mr-fourth.png', (g) => { g.fillStyle = '#301050'; g.fillRect(0, 0, 480, 320); g.fillStyle = '#ff40a0'; g.fillRect(200, 100, 120, 120); });
+  ok(document.querySelector('dialog.mr-panel[open] .mr-auto input')?.checked === false, 'the panel has the switch (off here so far)');
+  const added = Board.add('image', { title: 'Violet square', src: fourthP, natural: [480, 320], w: 240, h: 160, sized: true });
+  await wait(1500);
+  ok(!MoodRead.get(bid).items[added.id] && !MoodRead._.running.size, 'switched off: a new picture is not read by itself');
+  MoodRead.autoCfg.delay = 300;
+  await MoodRead.setAuto(true);
+  const got = await until(() => (MoodRead.get(bid).items[added.id]?.feeling && !MoodRead._.running.size && /4 pictures/.test(MoodRead.get(bid).board?.mood || '') ? MoodRead.get(bid) : null), 60000);
+  ok(got, 'switched on: the picture that just landed is read by itself, then the board again', { item: MoodRead.get(bid).items[added.id], mood: MoodRead.get(bid).board?.mood });
+  const m1 = sendOptions().mood || '';
+  ok(/4 pictures/.test(m1) && m1 !== m0, 'and the next message carries the new mood', m1.slice(0, 200));
+  const calls0 = MoodRead.get(bid).usage?.calls;
+  Board.patch([added.id], { x: 400 }, 'move');
+  await wait(1800);
+  ok(MoodRead.get(bid).usage?.calls === calls0 && !MoodRead._.running.size, 'moving a picture reads nothing');
   document.querySelector('dialog.mr-panel[open]')?.close();
   out.info.errors = HubBridge.log().filter((x) => x.error).map((x) => `${x.tool}: ${String(x.error).slice(0, 120)}`).slice(-6);
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }

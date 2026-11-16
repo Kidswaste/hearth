@@ -141,6 +141,8 @@
   });
   // usage tracking names for the few visible controls (usage.js reads data-feature)
   B.onChange((w) => { if (w === 'mount') { S.ui.boardBtn.dataset.feature = 'Board › Boards'; S.ui.addBtn.dataset.feature = 'Board › Add'; S.ui.zoomBtn.dataset.feature = 'Board › Zoom'; } });
+  // (round 181, moodauto181) a picture or clip just landed: the mood read's group comes in and reads it by itself (moodread.js)
+  B.onChange((w) => { if (w === 'items' && typeof MoodRead === 'undefined' && window.Lazy && (B.current()?.items || []).some((i) => ['image', 'gif', 'video', 'web'].includes(i.type) && (i.added || 0) > Date.now() - 60000)) Lazy.load('projectbrief').catch(() => {}); });
 
   // ---------- menus ----------
   B._.itemExtras = (list) => [

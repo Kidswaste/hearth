@@ -10,7 +10,9 @@
 //   · the directors: three_do brief ends with the board read and the inspiration rule (MoodRead.directorText), the
 //     project brief is written from it (MoodRead.briefLines), and three_references add refuses a moodboard picture
 //     that isn't marked as the owner's own (MoodRead.refGate)
-// Nothing is read or sent by itself: a read runs when the owner confirms its cost.
+// A whole board is read when the owner confirms its cost. (round 181, moodauto181) A picture that lands on a board is
+// read by itself a few seconds later (the panel's switch, on by default), and the mood rides along with every message
+// of a director's chat in the board's project (promptFor → the `mood` prompt part), not only on three_do brief.
 const MoodRead = (() => {
   const C = MoodReadCore;
   let data = C.norm(null); let readOk = false; let readP = null;
@@ -100,7 +102,7 @@ const MoodRead = (() => {
     const scope = opts.scope === undefined ? (e?.scope || null) : (opts.scope?.length ? opts.scope : null);
     const list = C.media(b.items, scope);
     const st = C.stale({ ...(e || {}), scope }, b.items, b.brief);
-    const todo = opts.force ? list : list.filter((it) => st.add.includes(it.id) || opts.only === it.id);
+    const todo = (opts.force ? list : list.filter((it) => st.add.includes(it.id) || opts.only === it.id)).filter((it) => !opts.just || opts.just.includes(it.id)); // (just: the automatic read of what is new)
     const second = opts.second !== false;
     const est = C.estimate(todo, { second, board: todo.length || st.board ? list.length : 0 });
     return { b, e, scope, list, todo, st, second, est, line: `${C.costLine(est)}${price(est.in + est.out)}` };
@@ -109,7 +111,7 @@ const MoodRead = (() => {
     if (running.has(boardId)) return running.get(boardId).task;
     const p = await plan(boardId, opts);
     if (!p.list.length) throw new Error('This board has no pictures or clips to read yet.');
-    if (!p.est.calls) { toast('The mood read is up to date: nothing to read again.'); return { entry: p.e, read: 0, failed: [] }; }
+    if (!p.est.calls) { if (!opts.auto) toast('The mood read is up to date: nothing to read again.'); return { entry: p.e, read: 0, failed: [] }; }
     if (opts.confirm !== false) {
       const who = [reader()?.name, p.second ? (secondReader(reader())?.name || `a second ${reader()?.name} pass`) : null].filter(Boolean).join(' + ');
       const yes = await Modal.confirm(`Read “${p.b.name}” deeply?`, `${p.todo.length ? `${p.todo.length} of ${p.list.length} picture${p.list.length === 1 ? '' : 's'} to read at full size (three looks each${p.second ? ' and a second, independent look' : ''}), then the whole board.` : 'The pictures are read; only the whole-board pass runs again.'} ${p.line}. Read by ${who}, on ${reader()?.name}'s own model. It is kept with the board, so you pay for a picture once.`, { ok: 'Read it' });
@@ -119,7 +121,7 @@ const MoodRead = (() => {
     secondBroken = false;
     state.task = (async () => {
       try {
-        const out = await C.run(boardId, { scope: p.scope, second: p.second, force: opts.force || undefined }, {
+        const out = await C.run(boardId, { scope: p.scope, second: p.second, force: opts.force || undefined, just: opts.just || undefined }, {
           board: async () => p.b,
           pictures, ask, read: async () => data, write: async (d) => { data = d; await write(); emit(boardId); },
           summary: (items) => { try { return BoardVibe.boardText(p.b.name, items, ['palette', 'light', 'color', 'texture', 'motion']).split('\n').slice(1).join('; '); } catch { return ''; } },
@@ -128,12 +130,39 @@ const MoodRead = (() => {
         const u = out.usage;
         toast(out.stopped ? `Mood read stopped: what was read is kept (${out.read} picture${out.read === 1 ? '' : 's'}).` : `◐ The mood read of “${p.b.name}” is ready${out.failed.length ? ` (${out.failed.length} couldn't be read)` : ''} · ${C.kfmt(u.in)} tokens in, ${C.kfmt(u.out)} out`, { timeout: 6000, action: { label: 'Show', fn: () => open(boardId) } });
         return out;
-      } finally { running.delete(boardId); emit(boardId); }
+      } finally { running.delete(boardId); emit(boardId); autoSoon(); } // (a picture that landed during the run is next)
     })();
     running.set(boardId, state);
     repaint(boardId);
     return state.task;
   }
+  // ---------- (round 181, moodauto181) a new picture is read by itself ----------
+  // A picture or clip that lands on the board on screen is read a few seconds later (once its measuring has settled),
+  // then the board pass runs again: no click, no cost question (the owner asked for exactly that; the switch is in the
+  // panel, on by default, kept in the store as `auto: false` when off). Only what just landed or changed
+  // (MoodReadCore.autoDue): a big board that was never read stays the owner's click, with its cost shown.
+  const autoCfg = { delay: 6000, fresh: 15 * 60000 };
+  let autoT = 0; const told = new Set();
+  const autoOn = () => data.auto !== false;
+  async function setAuto(on) { data = { ...data, auto: on ? undefined : false }; await write(); emit(null); if (on) autoSoon(); }
+  function autoSoon() { clearTimeout(autoT); autoT = setTimeout(() => { autoT = 0; autoCheck().catch((err) => console.warn('mood read: auto', err)); }, autoCfg.delay); }
+  async function autoCheck() {
+    await ready();
+    if (!readOk || !autoOn() || typeof Board === 'undefined') return null;
+    const cur = Board.current(); const id = cur?.id;
+    if (!id || running.has(id) || !reader()) return null; // (a run in flight checks again when it ends)
+    const e = entry(id);
+    const ids = C.autoDue(e, cur.items || [], { fresh: autoCfg.fresh });
+    if (!ids.length) return null;
+    const scope = e?.scope ? [...new Set([...e.scope, ...ids])] : undefined; // (a read of the owner's pick takes the new ones in)
+    toast(`◐ Reading ${ids.length === 1 ? 'the new picture' : `${ids.length} new pictures`} into the mood read…`, { timeout: 3200 });
+    const out = await run(id, { confirm: false, auto: true, just: ids, scope });
+    const b = Board.current()?.id === id ? Board.current() : null;
+    const left = b ? C.stale(entry(id), b.items || [], typeof b.brief === 'string' ? b.brief : '').add.filter((x) => !ids.includes(x)).length : 0;
+    if (left && !told.has(id)) { told.add(id); toast(`${left} older picture${left === 1 ? '' : 's'} on this board ${left === 1 ? 'isn\'t' : 'aren\'t'} in the mood read yet.`, { timeout: 9000, action: { label: 'Show', fn: () => open(id) } }); }
+    return out;
+  }
+
   // ↻ Read again (one picture): its stored read dropped first, so the run takes it up
   async function again(boardId, itemId) {
     const e = entry(boardId); if (!e) return null;
@@ -186,6 +215,12 @@ const MoodRead = (() => {
     return C.directorText(e, b || {});
   }
   const briefLines = (boardId, items) => { const e = entry(boardId); return e?.board ? C.briefLines(e, { items }) : []; };
+  // (round 181, moodauto181) the mood as a prompt part for a project's chats (projectbrief.js puts it in the send
+  // options; engines.js adds it as `mood`): the project's own moodboard, read from memory (no waiting at send time)
+  function promptFor(p) {
+    const id = p && (p.workspace?.boardId || (p.items || []).filter((x) => x.type === 'board').sort((a, b) => (b.at || 0) - (a.at || 0))[0]?.ref);
+    return id && readOk ? C.promptText(entry(id)) : '';
+  }
   // three_references add: a file that came from the moodboard (a tile dragged into the chat keeps its source in the
   // inspo-drop cache) and isn't marked as the owner's own is refused, unless the owner asked for that file in this message
   async function refGate(path, args = {}, ctx = {}) {
@@ -266,6 +301,8 @@ const MoodRead = (() => {
       head.append(el('div', { class: 'mr-acts' }, pick, el('label', { class: 'mr-second', title: 'Each picture is also read once more, alone, by another AI (Astra when it is set up); the two reads are shown side by side. About a quarter of the cost.' }, second, ' Second, independent look'),
         btn(e?.board ? (due ? `↻ Refresh the read${p.todo.length ? ` (${p.todo.length} to read)` : ''}` : '✓ Up to date') : '◐ Read this board deeply', 'Asks first, with the cost', () => run(boardId, { scope, second: panel.opts.second }), 'small primary'),
         e?.board ? btn('Read everything again', 'Every picture from scratch (the full cost again)', () => run(boardId, { scope, second: panel.opts.second, force: true })) : null));
+      const autoBox = el('input', { type: 'checkbox', checked: autoOn(), on: { change: () => setAuto(autoBox.checked).catch((err) => toast(calm(err), { type: 'error' })) } });
+      head.append(el('label', { class: 'mr-second mr-auto', title: 'A picture or clip you add to a board is read a few seconds later, without asking, and the mood the AIs work from follows. It costs about 4 AI passes a picture (a clip: six frames in each) plus the board pass. Off: nothing is read until you click.' }, autoBox, ' Read new pictures by themselves, as they land'));
       head.append(el('p', { class: 'mr-note mr-cost', text: due ? `${p.line}.` : e?.board ? `Read ${ago(e.board.at)}${e.by ? ` by ${e.by}` : ''}${e.second ? `, second look by ${e.second}` : ''}${e.usage ? ` · it cost ${C.kfmt(e.usage.in)} tokens in, ${C.kfmt(e.usage.out)} out so far` : ''}.` : '' }));
       if (e?.board && (st.add.length || st.gone.length)) head.append(el('p', { class: 'mr-flag', text: `The board changed since the read: ${[st.add.length && `${st.add.length} new or changed picture${st.add.length === 1 ? '' : 's'}`, st.gone.length && `${st.gone.length} removed`].filter(Boolean).join(', ')}. Refresh reads only those.` }));
       if (st.outside) head.append(el('p', { class: 'mr-note', text: `${st.outside} picture${st.outside === 1 ? ' is' : 's are'} outside this read (your pick).` }));
@@ -332,10 +369,12 @@ const MoodRead = (() => {
   if (typeof AppUI !== 'undefined') AppUI.addAction?.('Mood read: read this moodboard deeply (inspiration, not copies)', () => open().catch((err) => toast(calm(err), { type: 'error' })));
   // the board changes: the panel shows what is new
   let boardHeard = false;
-  const hearBoard = () => { if (boardHeard || typeof Board === 'undefined' || !Board.onChange) return; boardHeard = true; Board.onChange((what) => { if (['items', 'vibe', 'boards'].includes(what)) repaint(null); }); };
+  const hearBoard = () => { if (boardHeard || typeof Board === 'undefined' || !Board.onChange) return; boardHeard = true; Board.onChange((what) => { if (['items', 'vibe', 'boards'].includes(what)) repaint(null); if (what === 'items' || what === 'vibe') autoSoon(); }); };
   listeners.add(hearBoard);
+  hearBoard(); // (round 181) the board's group is often here first: heard at once, and what just landed is looked at
+  if (boardHeard) autoSoon();
 
   ready();
-  return { ready, open, close, run, again, plan, edit, corrections, correct, setMine, directorText, briefLines, refGate, status, boardIdFor, get: (id) => entry(id), onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, _: { data: () => data, set, pictures, ask, running, paint } };
+  return { ready, open, close, run, again, plan, edit, corrections, correct, setMine, directorText, briefLines, promptFor, autoCheck, setAuto, autoOn, refGate, status, boardIdFor, autoCfg, get: (id) => entry(id), onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, _: { data: () => data, set, pictures, ask, running, paint } };
 })();
 window.MoodRead = MoodRead;

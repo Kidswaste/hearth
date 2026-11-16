@@ -62,6 +62,29 @@ to be more precise."
    they move toward a copy (best kept for your own pictures). Everything the owner does by hand (moodboard fills,
    dropping a tile on the timeline or the preview, Add to the Lab sequence, ◎ How close am I?) is unchanged.
 
+## Round 181 (moodauto181): it works by itself
+The owner: "i just want it to be useful directly, each picture uploaded into the moodboard (or video) immediately gets
+scanned and used as inspiration for the prompts". Until then the read only ran on a click, and only reached a director
+that chose to call `three_do brief`.
+- **A new picture is read by itself.** `MoodReadCore.autoDue(entry, items, { now, fresh })`: a picture added in the
+  last 15 minutes (measured, or a minute old, so its signature has settled) and a read picture whose signature changed.
+  Never an older unread picture (a big old board stays the owner's click with its cost), never one whose read failed on
+  the same file. `moodread.js` hears the board's `items` / `vibe` changes, waits 6 s (`autoCfg.delay`), then
+  `run(id, { confirm: false, auto: true, just: ids })` (`just` in `MoodReadCore.run` and `plan`), then the board pass.
+  A read with a scope takes the new ones in. `board-ask.js` brings the `projectbrief` group in when a picture lands
+  and it isn't loaded. The switch: `auto: false` at the top of the `mood-reads` store, the panel's checkbox
+  (`MoodRead.setAuto`), on by default. One toast per board per session names older pictures outside the read.
+- **The mood is a prompt part.** `MoodReadCore.promptText(entry)` (≤ `PROMPT_MAX` 2000 characters, byte-stable: no
+  date, no titles): mood, corrections, essence, make, not, threads, colour / light / texture / motion, and a short
+  inspiration rule. `projectbrief.js`'s send-options hook sets `options.mood` (`MoodRead.promptFor(project)`) for the
+  same chats that get the brief part; `engines.js` adds it as the `mood` part after `brief` (`MOOD_MAX` 2100; never
+  lean / crew / plain chats).
+- Checks: `dev/moodread-test.js` step 8; `dev/checks/moodread179.js` step 7 (off: nothing read; on: the added picture
+  is read alone, the next message's mood follows; a move reads nothing).
+- Not done: a chat outside a project gets no mood part (its board link is read asynchronously); the brief is not
+  refreshed by itself; a picture with no `natural` size read before its measuring ends is read a second time when the
+  measurement arrives; the automatic read only watches the board on screen in this window.
+
 ## What it costs
 Shown before every run, in tokens and at the owner's own average price when there is one. Rough sizes (three looks +
 the second look + the board pass, on the reader's own model, not the cheap helper):
