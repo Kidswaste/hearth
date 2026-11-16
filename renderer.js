@@ -935,6 +935,9 @@ function apply({ config, themeCss, error }) {
   showError('');
   const first = !H.config;
   H.config = config;
+  // (round 183, forgechat183) the Forge chat lives in the Forgeheart window again: the agent that drives the live game
+  // (companion 'forge-game') is docked in that tool, like the Three Director in the Lab. Saved with the next settings change.
+  if (!(config?.agents || []).some((a) => a.dock === 'forgeheart')) { const fa = (config?.agents || []).find((a) => a.companion === 'forge-game' && a.mode === 'native' && !a.dock && a.enabled !== false); if (fa) { fa.dock = 'forgeheart'; setTimeout(() => { try { saveConfig(); } catch (err) { console.warn('forge dock', err); } }, 4000); } }
   applyTheme(themeCss);
   if (first) setTimeout(() => AppUI.offerSwirl(), 0);
   if (first) {

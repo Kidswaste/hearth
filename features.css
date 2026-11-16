@@ -162,6 +162,9 @@ select option { background: var(--sidebar); }
 #surfaces:not(.grid) > .surface.capturing:not(.active) { visibility: visible !important; z-index: -1; }
 .surface.with-companion { flex-direction: row; }
 .companion-game { flex: 0 0 var(--companion-w, 58%); min-width: 0; display: flex; flex-direction: column; background: #050608; }
+/* (round 183, forgechat183) the live game as a tab of the Forgeheart window (tools/forge.js liveTab): it fills the tab */
+.forge-live { display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0 !important; box-sizing: border-box; }
+.forge-live > .forge-live-game { flex: 1 1 auto; min-height: 0; } .forge-live[hidden] { display: none; }
 .companion-divider { flex: 0 0 5px; cursor: col-resize; background: var(--line); }
 .companion-divider:hover { background: var(--accent); }
 .companion-chat { flex: 1; min-width: 0; display: flex; flex-direction: column; }

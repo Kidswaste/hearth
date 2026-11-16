@@ -54,7 +54,7 @@ const Manager = (() => {
     { name: 'Astra Reviewer', mode: 'native', engine: 'codex', color: '#7c8cff', icon: '✦', effort: 'high', systemPrompt: 'You are Astra Reviewer. Find the real problems in what the user shows you (bugs, unclear parts, risks), ranked by importance, and say how to fix each. No praise padding.', askAll: false },
     { name: 'Astra Researcher', mode: 'native', engine: 'codex', color: '#4fb3ff', icon: '✦', effort: 'medium', webSearch: 'cached', systemPrompt: 'You are Astra Researcher. Separate facts from guesses, say how sure you are, compare options with pros and cons, and say where facts come from.', askAll: false },
     { name: 'Astra Quick', mode: 'native', engine: 'codex', color: '#19c39c', icon: '✦', effort: 'low', verbosity: 'low', systemPrompt: 'You are Astra Quick. Answer as briefly as possible: the answer first, no preamble.', askAll: false },
-    { name: 'Forge Debug', mode: 'native', engine: 'claude', color: '#e07a2f', icon: '⚒', gameTools: true, companion: 'forge-game', askAll: false },
+    { name: 'Forge Debug', mode: 'native', engine: 'claude', color: '#e07a2f', icon: '⚒', gameTools: true, companion: 'forge-game', dock: 'forgeheart', askAll: false },
     { name: 'Claude', mode: 'web', color: '#d97757', icon: 'C', url: 'https://claude.ai/new' },
     { name: 'ChatGPT', mode: 'web', color: '#10a37f', icon: 'G', url: 'https://chatgpt.com/' },
     { name: 'Kimi', mode: 'web', color: '#4f8cff', icon: 'K', url: 'https://www.kimi.com/' },

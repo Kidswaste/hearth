@@ -65,11 +65,11 @@ const OPT_IN = ['boardTools', 'captureTools', 'adobeTools', 'deployTools', 'apps
 // AI's opt-in sets now sends none of them (toolwake.js: the "asleep" column).
 // Before round 46 (promptdiet): claude 483, astra 310, director 2554, board 1052, capture 808, apps 757, astra + board 879, conn 624,
 // board + screens 1377, adobe 634, deploy 655, director + board 3123, forge 1625 (dev/promptdiet-test.js keeps its own cases).
-const BUDGET = { claude: 455, astra: 300, director: 2190, directorAstra: 2190, board: 1035, capture: 790, apps: 735, astraBoard: 880, conn: 600, boardCapture: 1370, adobe: 610, deploy: 630, directorBoard: 2770, forge: 1295 }; // (round 132, promptroom132) director 2265 → 2190, directorBoard 2845 → 2770 (measured 2143 / 2712, + ≈ 2 %)
+const BUDGET = { claude: 455, astra: 300, director: 2190, directorAstra: 2190, board: 1035, capture: 790, apps: 735, astraBoard: 880, conn: 600, boardCapture: 1370, adobe: 610, deploy: 630, directorBoard: 2770, forge: 1375 /* (round 183, forgechat183) + forge_docs and its guide line */ }; // (round 132, promptroom132) director 2265 → 2190, directorBoard 2845 → 2770 (measured 2143 / 2712, + ≈ 2 %)
 // each opt-in tool set's own list (mcp/cost.js measure; the chat list as a plain chat gets it)
 // (round 41, toolslim) before: chatLean 296, chatTools 532, board 785, capture 485, apps 455, adobe 301, deploy 232, forge 514
 // (round 46, promptdiet) before: chatLean 208, chatTools 256
-const SET_BUDGET = { chatLean: 200, chatTools: 250, boardTools: 495, captureTools: 340, appsTools: 240, adobeTools: 160, deployTools: 180, gameTools: 515 };
+const SET_BUDGET = { chatLean: 200, chatTools: 250, boardTools: 495, captureTools: 340, appsTools: 240, adobeTools: 160, deployTools: 180, gameTools: 580 /* (round 183, forgechat183) + forge_docs */ };
 
 async function connTokens() {
   const c = await F.mcpClient({ command: CONN.command, args: CONN.args });

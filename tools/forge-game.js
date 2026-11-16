@@ -58,6 +58,9 @@ const ForgeGame = (() => {
 
   // ---------- tool handlers (called by Claude through the bridge) ----------
   async function handleTool(tool, args) {
+    // (round 183, forgechat183) the design notes need no game; anything else opens ▶ Live game first when it isn't up
+    if (tool === 'forge_docs') return typeof Forge !== 'undefined' && Forge.docsTool ? Forge.docsTool(args || {}) : { ok: false, error: 'The Forgeheart window isn\'t loaded yet.' };
+    if ((!view?.isConnected || !ready) && typeof Forge !== 'undefined' && Forge.showLive) { if (!view?.isConnected || !view.offsetParent) { try { Forge.showLive(); } catch { /* shown by hand */ } } for (let i = 0; i < 120 && !ready; i += 1) await new Promise((r) => setTimeout(r, 150)); if (!view?.isConnected) return { ok: false, error: 'The live game isn\'t open: the owner can open the Forgeheart window › ▶ Live game.' }; }
     if (tool === 'forge_status') return exec(SNIPPETS.status);
     if (tool === 'forge_spawn') {
       const type = String(args.type || 'random');

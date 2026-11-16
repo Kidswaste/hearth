@@ -446,6 +446,7 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 // (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
 // reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
 const BRIEF_MAX = 640; // (round 128, aiprep128) the brief part's cap: projectbrief-core.js PART_MAX (600) + a little slack
+const GAME_BRIEF_MAX = 2700; // (round 183, forgechat183) tools/forge.js KNOW_MAX (2600) + a little slack
 const MOOD_MAX = 2100; // (round 181, moodauto181) the mood part's cap: moodread-core.js PROMPT_MAX (2000) + a little slack
 function promptParts0(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);
@@ -468,6 +469,9 @@ function promptParts0(agent, session = null) {
     add('game', 'The user\'s game Forgeheart runs live next to this chat (a debug instance): when they ask for something in it (spawn enemies, invincible, stage 80, faster drones), '
       + 'do it right away with the forge_* tools instead of explaining how; check with forge_status or forge_screenshot. Reply briefly with what you changed.');
     add('guide:gameTools', toolGuide('gameTools'));
+    // (round 183, forgechat183) what the game is: the owner's brief, the project folder and the design notes' names
+    // (tools/forge.js knowledge(), sent as options.gameBrief); the notes themselves come through forge_docs
+    if (agent.gameBrief) add('gamebrief', String(agent.gameBrief).slice(0, GAME_BRIEF_MAX));
   }
   const sets = hubToolsets(agent);
   if (sets.includes('chatTools')) {
@@ -1361,6 +1365,7 @@ function runAgent(agent, { chatId = '', session = {}, text = '', options = {} } 
   // (round 128, aiprep128) the project brief (projectbrief.js sends its compact form for a director's chat in a project
   // with a brief): a text that only changes when the brief does, so the part stays cached; never for lean / crew runs
   if (typeof options.brief === 'string' && options.brief.trim() && !options.lean && !options.crew) agent = { ...agent, projectBrief: options.brief.slice(0, BRIEF_MAX) };
+  if (typeof options.gameBrief === 'string' && options.gameBrief.trim() && !options.lean && !options.crew) agent = { ...agent, gameBrief: options.gameBrief.slice(0, GAME_BRIEF_MAX) }; // (round 183, forgechat183) what Forgeheart is, for an agent with the game's tools
   if (typeof options.mood === 'string' && options.mood.trim() && !options.lean && !options.crew) agent = { ...agent, projectMood: options.mood.slice(0, MOOD_MAX) }; // (round 181, moodauto181) the moodboard's mood, the same way
   // (round 41, toolslim) the AI's opt-in tool sets (board, capture, Adobe, publishing, apps) sleep until it's likely to
   // need them (used this week, named in the message, already in this session): toolwake.js

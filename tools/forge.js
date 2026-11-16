@@ -86,13 +86,87 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
 
   async function editBrief() {
     const brief = await kv.get('forge-brief', DEFAULT_BRIEF);
-    const next = await Modal.prompt('Forgeheart brief', { value: brief, multiline: true, label: 'Context Claude gets at the start of a Forgeheart chat.' });
-    if (next != null) { await kv.set('forge-brief', next); toast('Brief saved', { timeout: 1200 }); }
+    const next = await Modal.prompt('Forgeheart brief', { value: brief, multiline: true, label: 'What Forgeheart is, in your words. The Forge chat gets it with every message.' });
+    if (next != null) { await kv.set('forge-brief', next); knowledge({ fresh: true }).catch(() => {}); toast('Brief saved: the Forge chat reads it from its next message', { timeout: 2200 }); }
+  }
+  // (round 183, forgechat183) The chat is back in this window: the Forge agent (the one that drives the live game with
+  // the forge_* tools) is docked on the right, and it knows the game (knowledge() below rides along with its messages).
+  // 💬 Forgeheart chat opens that dock; with something to ask (a doc, a task, the balance table) it lands in its box.
+  // No Forge agent yet: one is made (like the Lab's /director-setup). Only when that isn't possible, the old way.
+  const forgeAgent = () => (typeof Tools !== 'undefined' && Tools.dockedAgent ? Tools.dockedAgent('forgeheart') : null) || H.agents().find((a) => a.mode === 'native' && a.dock === 'forgeheart') || null;
+  async function ensureAgent() {
+    let a = forgeAgent();
+    if (a) return a;
+    if (!H.agents().some((x) => x.mode === 'native')) return null;
+    const id = H.agent('forgedirector') ? `forgedirector${Date.now().toString(36)}` : 'forgedirector';
+    H.config.agents.push({ id, name: 'Forge Director', icon: '⚒', color: '#e07a2f', mode: 'native', engine: 'claude', dock: 'forgeheart', gameTools: true, companion: 'forge-game', askAll: false, enabled: true });
+    await saveConfig();
+    a = H.agent(id);
+    try { Tools.shown?.('forgeheart'); } catch { /* the dock follows on the next show */ }
+    toast('The Forge Director is in the Forgeheart window: it drives the live game and knows your notes.', { timeout: 5000 });
+    return a;
   }
   async function forgeChat(extra = '') {
-    const brief = await kv.get('forge-brief', DEFAULT_BRIEF);
-    draftToClaude(`${brief}${extra ? `\n\n${extra}` : ''}\n\n`);
+    const a = await ensureAgent().catch(() => null);
+    if (!a) { const brief = await kv.get('forge-brief', DEFAULT_BRIEF); draftToClaude(`${brief}${extra ? `\n\n${extra}` : ''}\n\n`); return; }
+    activate('tool:forgeheart');
+    Tools.openDock?.('forgeheart');
+    if (extra) { try { Native.setDraft(a.id, `${extra}\n\n`); } catch (err) { console.warn('forge chat draft', err); } }
+    setTimeout(() => { try { Native.focus?.(a.id); } catch { /* not mounted yet */ } }, 60);
   }
+  // ---------- what the Forge chat knows ----------
+  // The brief (the owner's own words, ✎ in the Dashboard), where the project lives, and the names of the design notes;
+  // the notes themselves are read on demand with forge_docs. Built once the tool is in, again when the brief changes
+  // or every few minutes; the same facts give the same bytes (the prompt part stays cached).
+  const KNOW_MAX = 2600;
+  let know = ''; let knowAt = 0;
+  async function knowledge({ fresh = false } = {}) {
+    if (know && !fresh && Date.now() - knowAt < 300000) return know;
+    const brief = String(await kv.get('forge-brief', DEFAULT_BRIEF).catch(() => DEFAULT_BRIEF) || DEFAULT_BRIEF).trim().slice(0, 1500);
+    let notes = [];
+    try { notes = (await files()).filter((f) => /\.md$/i.test(f.name)).sort((x, y) => String(x.name).localeCompare(String(y.name))).map((f) => baseName(f.name).replace(/\.md$/i, '')); } catch { /* the folder isn't here */ }
+    const head = 'FORGEHEART: the owner\'s own game. You are its chat, inside the Forgeheart window, beside the live game (the ▶ Live game tab). Speak as someone who knows this game; when a question is about its design, numbers or history, read the notes first instead of guessing.';
+    const where = `Project folder: ${folder()} (main build ${MAIN_BUILD}).`;
+    let list = '';
+    if (notes.length) { list = `Design notes (${notes.length}; forge_docs {name} reads one, forge_docs {find: "words"} searches them all): `; const room = KNOW_MAX - head.length - brief.length - where.length - list.length - 40; let names = ''; for (const n of notes) { if (names.length + n.length + 2 > room) { names += '…'; break; } names += `${names ? ', ' : ''}${n}`; } list += names; }
+    know = [head, brief, where, list].filter(Boolean).join('\n').slice(0, KNOW_MAX);
+    knowAt = Date.now();
+    return know;
+  }
+  // forge_docs (mcp/forge-game-mcp.js → tools/forge-game.js): the design notes, listed, read or searched
+  async function docsTool(args = {}) {
+    const all = (await files()).filter((f) => /\.md$/i.test(f.name)).sort((x, y) => (y.mtime || 0) - (x.mtime || 0));
+    const nameOf = (f) => baseName(f.name).replace(/\.md$/i, '');
+    if (args.find) {
+      const q = String(args.find).trim();
+      if (q.length < 2) return { ok: false, error: 'find needs at least two characters.' };
+      const hits = (await window.hub.fs.search(folder(), q, { match: '\\.md$' })) || [];
+      return { ok: true, value: { find: q, notes: hits.slice(0, 20).map((h) => ({ name: nameOf(h), matches: h.count, lines: (h.snippets || []).slice(0, 4).map((s) => String(s.text || '').slice(0, 240)) })), more: hits.length > 20 ? hits.length - 20 : undefined } };
+    }
+    if (args.name) {
+      const want = String(args.name).toLowerCase().replace(/\.md$/, '');
+      const f = all.find((x) => nameOf(x).toLowerCase() === want) || all.find((x) => nameOf(x).toLowerCase().includes(want));
+      if (!f) return { ok: false, error: `No note named "${args.name}". forge_docs {} lists them.` };
+      const text = String(await window.hub.fs.read(f.path) || '');
+      const from = Math.max(0, Number(args.offset) || 0); const CAP = 12000;
+      return { ok: true, value: { name: nameOf(f), changed: f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : undefined, length: text.length, offset: from || undefined, text: text.slice(from, from + CAP), more: text.length > from + CAP ? `forge_docs {name: "${nameOf(f)}", offset: ${from + CAP}}` : undefined } };
+    }
+    return { ok: true, value: { folder: folder(), mainBuild: MAIN_BUILD, brief: String(await kv.get('forge-brief', DEFAULT_BRIEF) || '').slice(0, 1500), notes: all.slice(0, 120).map((f) => ({ name: nameOf(f), changed: f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : undefined, kb: Math.max(1, Math.round((f.size || 0) / 1024)) })) } };
+  }
+  // the knowledge rides along with every message of an agent that has the game's tools (engines.js part 'gamebrief')
+  if (typeof Native !== 'undefined' && Native.hooks?.options) {
+    Native.hooks.options.push((agentId, chat, _raw, _last, options) => { if (options.lean || options.crew) return; const a = H.agent(agentId); if (a?.gameTools && know) options.gameBrief = know; });
+    knowledge().catch(() => {});
+  }
+  // ▶ Live game: the debug game the forge_* tools drive, here in the window (it used to sit beside its own chat elsewhere)
+  function liveTab(pane) {
+    pane.classList.add('forge-live');
+    const box = el('div', { class: 'companion-game forge-live-game' });
+    pane.append(box);
+    const go = () => { try { ForgeGame.mount(box); } catch (err) { box.append(el('p', { class: 'hint', text: calmError(err) })); } };
+    if (typeof ForgeGame !== 'undefined') go(); else if (window.Lazy) Lazy.when('addons', go);
+  }
+  const showLive = () => { activate('tool:forgeheart'); tabs?.show('live'); };
 
   // ---------- Builds (player with live reload) ----------
   function buildsTab(pane) {
@@ -842,8 +916,9 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     id: 'forgeheart', name: 'Forgeheart', icon: '⚒', color: '#e07a2f',
     description: 'Builds, docs, boards, tasks, releases and balance',
     mount(body, head) {
-      head.append(el('button', { class: 'ghost small', text: '💬 Forgeheart chat', on: { click: () => forgeChat() } }));
+      if (!forgeAgent()) head.append(el('button', { class: 'ghost small forge-chat-btn', text: '💬 Forgeheart chat', title: 'Put the Forge chat in this window: it drives the live game and knows your notes', on: { click: (e) => { const b = e.currentTarget; forgeChat().then(() => { if (forgeAgent()) b.remove(); }); } } })); // (round 183) with its chat docked, the dock's own 💬 button is the one
       tabs = Tabs(body, [
+        { id: 'live', label: '▶ Live game', render: liveTab }, // (round 183, forgechat183) the game the chat drives
         { id: 'dashboard', label: 'Dashboard', render: dashboardTab, onShow: () => api.refreshDashboard?.() },
         { id: 'builds', label: 'Play builds', render: buildsTab },
         { id: 'docs', label: 'Docs', render: docsTab },
@@ -858,6 +933,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       ], { storeKey: 'forge.tab' });
     },
     commands: [
+      { label: 'Forgeheart: the live game', run: () => showLive() },
       { label: 'Play the Forgeheart build', run: () => tabs?.show('builds') },
       { label: 'Forgeheart chat (with project brief)', run: () => forgeChat() },
       { label: 'Forgeheart docs', run: () => tabs?.show('docs') },
@@ -871,5 +947,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { forgeChat, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
+  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

@@ -123,6 +123,12 @@ owner-facing notes.
   before / after per reply in kv `labtxn-replies`): plain words per layer, ↶ Undo this layer (one undo step), Undo all, Keep some.
 - (round 138) The Lab's Ctrl/⌘+Z takes the newest change, an AI reply included (`LabTxn.labKey`); a step still settling is
   waited for, never skipped (`LabTxn.reserve`). Sections ▾ › 🎭 gives each section its mood (dial keys + looks, `tools/three-sectionmood*.js`).
+- (round 182) The Projects screen is the clean one: a card is a cover, a name and one line (`p.pitch`); Games / Music /
+  Videos (`projkind-core.js`: `workspace.kind`), pins, series, the wide Continue card, projects whose scenes are all
+  old-format folded under “Older version”, and “What could come next”. docs/upgrades/projclean182.md.
+- (round 183) The Forge chat is docked in the Forgeheart window (`dock: 'forgeheart'`, set for the `companion:
+  'forge-game'` agent when settings are applied); ▶ Live game is a tab of `tools/forge.js`; `forge_docs` reads the
+  design notes; the `gamebrief` prompt part says what the game is. docs/upgrades/forgechat183.md.
 - Other rail tools: Projects (`projects-home.js`), the mood board (`board.js`), Commands (`cmdpage.js`), ⋯ AI setup
   (`options.js`), the Creative board (`tools/creative-playground.js`), Forgeheart (`tools/forge.js`,
   `tools/forge-game.js`).

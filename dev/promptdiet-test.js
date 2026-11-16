@@ -21,7 +21,7 @@ const tok = (s) => Math.round(String(s || '').length / 4);
 // keepGoing 2506. Raise one only on purpose (an opt-in the owner asked for), never to make a growth pass.
 // (round 128, aiprep128) directorFull 9150 → 9225: full mode lists every tool, so the owner-asked project brief needs its own three_brief tool (≈ 50) + the broad-ask pre-check line in the guide (≈ 25)
 // (round 132, promptroom132) the room made visible: tool words one line each, details in help (full 9225 → 7782, lean 2170 → 2059 measured); each budget ≈ 2 % above, so a growth shows
-const BUDGET = { claude: 305, astra: 165, director: 2100, directorFull: 7940, directorAstra: 2100, forge: 1195, swarmClaude: 50, swarmAstra: 50, keepGoing: 2130 };
+const BUDGET = { claude: 305, astra: 165, director: 2100, directorFull: 7940, directorAstra: 2100, forge: 1275, /* (round 183, forgechat183) 1195 → 1275: the owner-asked forge_docs tool (the game's design notes) + one guide line */ swarmClaude: 50, swarmAstra: 50, keepGoing: 2130 };
 
 (async () => {
   // ---------- 1. budgets, byte-stable ----------
