@@ -87,6 +87,9 @@ step(document.querySelector('.pj-home .pj-p-cover img')?.src.startsWith('data:im
 // under "Project notes & setup", and every chat / scene in the lazy "Project files" shelf (the old .pj-sec lists are gone)
 step(document.querySelectorAll('.pj-home .pw-shelf-section').length >= 2 && [...document.querySelectorAll('.pj-home .pw-shelf-section h3')].some((h) => /Conversations/.test(h.textContent)) && /Project files · \d+/.test(document.querySelector('.pj-home .pw-project-files summary')?.textContent || '') && document.querySelector('.pj-home .pj-notes'), 'its page lists chats and scenes, with notes');
 await smoke({ shot: `${SHOTS}/2-project-page.png` });
+// (round 182, projclean182) the clean screen: old-format projects fold under “Older version” and only the Continue card (the project last worked on) carries the continue chips: this check's projects are kept current, Ronin the latest
+for (const p of Projects.live()) Projects.setField(p, 'shelf', 'current');
+Projects.touch(ronin); ronin.opened = Date.now() + 5000;
 ProjectsHome.show(null);
 await until(() => document.querySelectorAll('.pj-home .pj-card').length >= 3, 5000);
 const cards = [...document.querySelectorAll('.pj-home .pj-card')];
