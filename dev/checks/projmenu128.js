@@ -49,7 +49,7 @@ const seen = {};
 await section('1. the same menu everywhere', async () => {
   const want = M.items(pa, { where: 'desk' }).filter((x) => typeof x === 'object').map((x) => x.id);
   step('ProjectMenu.items: the same rows for the bar, Home, the Desk, the key and Ctrl/⌘+K', ['bar', 'home', 'key', 'palette', 'menu'].every((w) => JSON.stringify(M.items(pa, { where: w }).filter((x) => typeof x === 'object').map((x) => x.id)) === JSON.stringify(want)), want);
-  step('…in sections: Open · Make · AI · Look · Share & keep · Settings · Close', JSON.stringify(M.items(pa).filter((x) => typeof x === 'string')) === JSON.stringify(['Open', 'Make', 'AI', 'Look', 'Share & keep', 'Settings', 'Close']), M.items(pa).filter((x) => typeof x === 'string'));
+  step('…in sections: Open · Make · AI · What it is · Look · Share & keep · Settings · Close', JSON.stringify(M.items(pa).filter((x) => typeof x === 'string')) === JSON.stringify(['Open', 'Make', 'AI', 'What it is' /* (round 182, projclean182) */, 'Look', 'Share & keep', 'Settings', 'Close']), M.items(pa).filter((x) => typeof x === 'string'));
   step('Projects.menu (Search everything\'s project rows) is the same menu', JSON.stringify(P.menu(pa).filter((x) => typeof x === 'object').map((x) => x.id)) === JSON.stringify(want));
   // the Desk's ⋯
   const dots = [...document.querySelectorAll('.pj-home .pj-p-actions button')].find((b) => b.textContent.trim() === '⋯');
@@ -112,12 +112,16 @@ await section('2. every row runs or is hidden', async () => {
     offline: () => S.offline.calls.length > 0, versions: () => S.versions.calls.some((a) => a[0]?.id === pa.id), personality: () => S.settings.calls.length > 0, frame: () => S.form.calls.length > 0, game: () => pa.workspace?.kind === 'game', /* (round 180, gamekit) Settings › Game project marks it */
     access: () => menuOpen() && labels().some((t) => /^As in AI setup/.test(t)), archive: () => P.get(pa.id)?.status === 'archived', delete: () => vis(document.querySelector('dialog[open] .danger-fill')),
     template: () => vis(document.querySelector('dialog.ptpl[open]')), // (round 129, next129) Save as a template… opens its card
+    // (round 182, projclean182) What it is: the line and the series ask in a dialog; a pin and the shelf are set at once
+    pitch: () => vis(document.querySelector('dialog[open] textarea')), series: () => vis(document.querySelector('dialog[open] input')), pin: () => P.get(pa.id)?.pin === true, shelf: () => ['older', 'current'].includes(P.get(pa.id)?.shelf),
+    labwin: 'skip', // (its own window: checked by labwin's own check, not opened here)
     brief: () => S.brief?.calls.length > 0, next: () => (S.briefOpen?.calls.length || 0) > 0 || typeof ProjectBrief?.next === 'function',
   };
   const res = {};
   for (const it of M.items(pa).filter((x) => typeof x === 'object')) {
     for (const s of Object.values(S)) if (s) s.calls.length = 0;
     if (it.items) { const sub = (typeof it.items === 'function' ? it.items() : it.items).filter((x) => typeof x === 'object'); res[it.id] = sub.length > 0 && sub.every((x) => x.disabled || x.items || typeof x.action === 'function'); continue; }
+    if (expect[it.id] === 'skip') { res[it.id] = true; continue; }
     if (!expect[it.id]) { res[it.id] = 'no expectation'; continue; }
     try { it.action(); } catch (err) { res[it.id] = `threw ${err.message}`; continue; }
     res[it.id] = await until(expect[it.id], 4000);
