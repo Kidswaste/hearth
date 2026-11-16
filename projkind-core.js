@@ -19,12 +19,16 @@
   // the new-project card: the starts a kind offers (ProjCreateCore.STARTS ids), its own first
   const STARTS = { game: ['game', 'empty'], music: ['visualizer', 'particles', 'type', 'shader', 'empty'], video: ['footage', 'model', 'type', 'shader', 'particles', 'empty'] };
   const START_KIND = { game: 'game', visualizer: 'music', particles: 'music', footage: 'video', model: 'video' };
+  const PERSONA_KIND = { builder: 'game', producer: 'music' };
+  // a project that is a holding place, not a piece of work (projchats-core.js "Earlier chats"): never folded, never the Continue card, last
+  const HOLDING = ['pj-earlier-chats'];
+  const holding = (p) => HOLDING.includes(p?.id);
   const cap = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
   function kindOf(p) {
     const w = p?.workspace || {};
     if (IDS.includes(w.kind)) return w.kind;
-    return START_KIND[w.start] || null;
+    return START_KIND[w.start] || PERSONA_KIND[w.persona] || null; // (the personality the owner picked says it too: a game builder, a music producer)
   }
   const PITCH_MAX = 200;
   function pitchOf(p) {
@@ -39,6 +43,7 @@
   // formats: Map / object sceneId → format; a scene missing from it isn't here (not arrived, deleted): it says nothing
   function shelfOf(p, formats) {
     if (p?.shelf === 'older' || p?.shelf === 'current') return p.shelf;
+    if (holding(p)) return 'current';
     if (!formats) return 'current';
     const get = (id) => (formats instanceof Map ? (formats.has(id) ? formats.get(id) || '' : undefined) : (id in formats ? formats[id] || '' : undefined));
     const known = sceneIds(p).map(get).filter((f) => f !== undefined);
@@ -64,12 +69,12 @@
     for (const p of all) {
       const older = shelfOf(p, formats) === 'older';
       const pk = kindOf(p) || 'none';
-      if (older) counts.older += 1; else { counts.all += 1; counts[pk] += 1; }
-      if (k !== 'all' && pk !== k) continue;
+      if (older) counts.older += 1; else if (!holding(p)) { counts.all += 1; counts[pk] += 1; }
+      if (k !== 'all' && (pk !== k || holding(p))) continue;
       if (series && (p.series || '') !== series) continue;
       (older ? old : cur).push(p);
     }
-    const s = sorted(cur, sort);
+    const s = [...sorted(cur.filter((p) => !holding(p)), sort), ...cur.filter(holding)];
     return { pinned: s.filter((p) => p.pin), current: s.filter((p) => !p.pin), older: sorted(old, sort), counts };
   }
   const seriesOf = (list) => { const m = new Map(); for (const p of list || []) if (p?.series) m.set(p.series, (m.get(p.series) || 0) + 1); return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([name, n]) => ({ name, n })); };
@@ -136,5 +141,26 @@
     return out.follow.length || out.fresh.length ? out : null;
   }
 
-  return { KINDS, IDS, kind, STARTS, START_KIND, kindOf, pitchOf, PITCH_MAX, sceneIds, shelfOf, SORTS, sorted, arrange, seriesOf, nextName, followUps, ideasPrompt, parseIdeas, cap };
+  // ---------- ✦ Sort my projects: a kind and a line for the projects that have none (one AI call, the owner's click) ----------
+  const needs = (p) => !holding(p) && (!kindOf(p) || !pitchOf(p));
+  function sortPrompt(list) {
+    const rows = (list || []).filter(needs).slice(0, 40).map((p) => ({ id: p.id, name: cap(p.name, 48), kind: kindOf(p) || null, line: pitchOf(p) || null, notes: cap(p.notes, 240) || null, startedFrom: p.workspace?.start || null, has: [...new Set((p.items || []).map((x) => x.type))].join(' ') }));
+    if (!rows.length) return '';
+    return ['These are one maker\'s projects (games, music visuals and short videos made with three.js). For each, say what kind it is and write the one line that goes on its card.',
+      `Projects: ${JSON.stringify(rows)}`,
+      'Reply with JSON only: [{"id": "…", "kind": "game"|"music"|"video", "line": "one plain sentence, at most 18 words: what it is going to be"}]',
+      'Keep a kind or a line that is already there. Guess from the name and notes; when nothing tells, kind "video" and a line that says so honestly ("A visual experiment: …"). No filler words.'].join('\n');
+  }
+  function parseSort(text, list) {
+    const t = String(text || ''); const a = t.indexOf('['); const z = t.lastIndexOf(']');
+    if (a < 0 || z <= a) return null;
+    let j; try { j = JSON.parse(t.slice(a, z + 1)); } catch { return null; }
+    if (!Array.isArray(j)) return null;
+    const byId = new Map((list || []).map((p) => [p.id, p]));
+    const out = [];
+    for (const x of j) { const p = byId.get(x?.id); if (!p || !needs(p)) continue; const row = { id: p.id }; if (!kindOf(p) && IDS.includes(x.kind)) row.kind = x.kind; if (!pitchOf(p) && cap(x.line, PITCH_MAX)) row.pitch = cap(x.line, PITCH_MAX); if (row.kind || row.pitch) out.push(row); }
+    return out;
+  }
+
+  return { holding, needs, sortPrompt, parseSort, KINDS, IDS, kind, STARTS, START_KIND, kindOf, pitchOf, PITCH_MAX, sceneIds, shelfOf, SORTS, sorted, arrange, seriesOf, nextName, followUps, ideasPrompt, parseIdeas, cap };
 });

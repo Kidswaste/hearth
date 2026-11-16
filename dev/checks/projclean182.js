@@ -23,6 +23,12 @@ try {
   const music = mk('Night Drive', { start: 'visualizer', sceneId: 'sk-new' }, { updated: Date.now() - 3000, series: 'Night' });
   const video = mk('Harbor Film', { kind: 'video', sceneId: 'sk-new' }, { updated: Date.now() - 1000 });
   const old = mk('Stoop Ronin', { kind: 'music', sceneId: 'sk-old' }, { updated: Date.now() - 100 });
+  video.workspace.boardId = 'bd-harbor';
+  const earlier = Projects.get('pj-earlier-chats') || (() => { const p = Projects.create({ id: 'pj-earlier-chats', name: 'Earlier chats' }); return p; })();
+  earlier.workspace = { v: 1, sceneId: 'sk-old' }; earlier.updated = Date.now() + 60000;
+  // the last project's plan and its moodboard's mood, as their stores keep them
+  await window.hub.kvSet('project-briefs', { v: 1, list: [{ id: video.id, brief: { mood: 'storm', steps: ['Block the harbor in fog', 'Light the one lamp', 'Cut on the thunder'] }, done: [0] }] });
+  await window.hub.kvSet('mood-reads', { v: 1, list: [{ id: 'bd-harbor', items: {}, board: { mood: 'Cold light giving up at the edges' } }] });
   await Projects.flush();
   Projects.changed?.(null, 'check');
   await ProjectWorkspace.home();
@@ -33,8 +39,8 @@ try {
   const tab = (k) => root.querySelector(`.pj-tab[data-kind="${k}"]`);
 
   // ---------- 1. the cards ----------
-  await until(() => names().length === 3 && root.querySelector('.pj-older'));
-  ok(names().join() === 'Harbor Film,Night Drive,Clink', 'the three current projects, the last worked on first', names());
+  await until(() => names().length === 4 && root.querySelector('.pj-older'));
+  ok(names().join() === 'Harbor Film,Night Drive,Clink,Earlier chats', 'the three current projects, the last worked on first', names());
   ok(cards()[0].classList.contains('pj-feature') && /Continue/.test(cards()[0].querySelector('.pj-eyebrow')?.textContent || ''), 'the project last worked on is the wide Continue card');
   ok(tab('all')?.querySelector('i').textContent === '3' && tab('game')?.querySelector('i').textContent === '1' && tab('music')?.querySelector('i').textContent === '1' && tab('video')?.querySelector('i').textContent === '1', 'Games · Music · Videos count the current projects', [...root.querySelectorAll('.pj-tab')].map((b) => b.textContent));
   const olderBox = root.querySelector('.pj-older');
@@ -44,6 +50,9 @@ try {
   const clink = () => root.querySelector(`.pj-card[data-project="${game.id}"]`);
   ok(clink().querySelector('.pj-card-description')?.textContent === 'A coin game that never stops.' && /Game/.test(clink().querySelector('.pj-kind')?.textContent || '') && !clink().querySelector('.pj-meta') && !clink().querySelector('.pj-continue'), 'a card: its line and its kind, no counts and no chips', clink().textContent);
   ok(/Music/.test(root.querySelector(`.pj-card[data-project="${music.id}"] .pj-kind`)?.textContent || '') && root.querySelector(`.pj-card[data-project="${music.id}"] .pj-series`)?.textContent === 'Night', 'a visualizer start reads as Music; the series shows');
+  ok(await until(() => /Next step\s*Light the one lamp/.test(cards()[0].querySelector('.pj-upnext')?.textContent || '') && /Mood\s*Cold light giving up/.test(cards()[0].querySelector('.pj-upnext').textContent)), 'the Continue card says the plan\'s next step and the moodboard\'s mood', cards()[0].querySelector('.pj-upnext')?.textContent);
+  const earlierCard = root.querySelector('.pj-card[data-project="pj-earlier-chats"]');
+  ok(earlierCard && !earlierCard.classList.contains('pj-feature') && !earlierCard.closest('.pj-older') && [...root.querySelectorAll('.pj-home-body > .pj-grid > .pj-card')].at(-1) === earlierCard, '“Earlier chats” is last: never the Continue card, never folded away');
   ok(!root.querySelector('.pw-gallery-hero'), 'no hero banner unless the animated front page is on');
 
   // ---------- 2. a tab, a pin, the line ----------
@@ -53,9 +62,15 @@ try {
   tab('music').click();
   ok(await until(() => names().join() === 'Night Drive' && /Older version · 1/.test(root.querySelector('.pj-older summary')?.textContent || '')), 'Music shows the music project, the old one folded', names());
   tab('all').click();
-  await until(() => names().length === 3);
+  await until(() => names().length === 4);
+  { const dt = new DataTransfer(); const c = root.querySelector(`.pj-card[data-project="${music.id}"]`);
+    c.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    tab('video').dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    tab('video').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    ok(await until(() => ProjKindCore.kindOf(Projects.get(music.id)) === 'video'), 'a card dropped on Videos becomes a video', Projects.get(music.id).workspace);
+    Projects.setWorkspace(Projects.get(music.id), { kind: 'music' }); await until(() => tab('music')?.querySelector('i').textContent === '1'); }
   Projects.setField(game, 'pin', true);
-  ok(await until(() => clink()?.querySelector('.pj-pin') && names()[0] === 'Harbor Film' && names()[1] === 'Clink'), 'a pinned project comes first (after Continue, which stays) and shows ★', names());
+  ok(await until(() => clink()?.querySelector('.pj-pin') && cards()[0].classList.contains('pj-feature') && names()[0] !== 'Clink' && names()[1] === 'Clink'), 'a pinned project comes first (after Continue, which stays) and shows ★', names());
   const add = root.querySelector(`.pj-card[data-project="${video.id}"] .pj-pitch-add`);
   ok(add && /going to be/.test(add.textContent), 'a project with no line offers to write it');
   Projects.setField(video, 'pitch', 'One harbor, one storm, twenty seconds.');

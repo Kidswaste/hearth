@@ -95,4 +95,24 @@ ok('what could come next: follow-ups in the same series, a different series, and
 assert.ok(/small video game/.test(PC.namePrompt('x', null, 'game')) && /short video/.test(PC.namePrompt('x', null, 'video')) && /music-visual project\. Facts:/.test(PC.namePrompt('x', null)));
 ok('✦ Suggest a name is told what kind of project it is');
 
+// ---------- 7. the holding project, the personality, ✦ Sort my projects ----------
+const earlier = proj({ id: 'pj-earlier-chats', name: 'Earlier chats', workspace: { sceneId: 'old1' }, updated: 9e12, notes: 'Chats from before projects' });
+assert.equal(K.shelfOf(earlier, F), 'current', '“Earlier chats” is never folded away');
+const H2 = K.arrange([...list, earlier], { formats: F });
+assert.equal(H2.current.at(-1).id, 'pj-earlier-chats', 'it comes last, whatever its time');
+assert.equal(H2.counts.all, 4, 'and is not counted as a project');
+assert.ok(!K.arrange([...list, earlier], { formats: F, kind: 'none' }).current.some((p) => p.id === 'pj-earlier-chats'));
+assert.equal(K.kindOf(proj({ workspace: { persona: 'builder' } })), 'game', 'a game builder\'s project is a game');
+assert.equal(K.kindOf(proj({ workspace: { persona: 'producer' } })), 'music');
+assert.equal(K.kindOf(proj({ workspace: { persona: 'partner' } })), null);
+const unsorted = [proj({ id: 'u1', name: 'Goo orb' }), proj({ id: 'u2', name: 'Cat Simulator', workspace: { kind: 'game' } }), proj({ id: 'u3', name: 'Done', workspace: { kind: 'video' }, pitch: 'Has both.' }), earlier];
+assert.deepEqual(unsorted.filter(K.needs).map((p) => p.id), ['u1', 'u2']);
+const sp = K.sortPrompt(unsorted);
+assert.ok(/Goo orb/.test(sp) && /Cat Simulator/.test(sp) && !/"Done"/.test(sp) && !/Earlier chats/.test(sp), 'only the projects missing a kind or a line are asked about');
+assert.equal(K.sortPrompt([unsorted[2]]), '', 'nothing missing: nothing asked');
+const rows = K.parseSort('Here:\n[{"id":"u1","kind":"video","line":"A glossy orb that breathes with the bass."},{"id":"u2","kind":"music","line":"You are a cat. Knock things over."},{"id":"u3","kind":"game","line":"x"},{"id":"zzz","kind":"game","line":"x"},{"id":"u1b","kind":"opera"}]', unsorted);
+assert.deepEqual(rows, [{ id: 'u1', kind: 'video', pitch: 'A glossy orb that breathes with the bass.' }, { id: 'u2', pitch: 'You are a cat. Knock things over.' }], 'a kind or a line that is there is kept; unknown ids and kinds are dropped');
+assert.equal(K.parseSort('nope', unsorted), null);
+ok('“Earlier chats” stays out of the way; the personality hints the kind; ✦ Sort my projects only fills what is missing');
+
 console.log(`\nall passed (${passed})`);

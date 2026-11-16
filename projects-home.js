@@ -104,7 +104,7 @@ const ProjectsHome = (() => {
     if (text == null) return;
     P.setField(P.get(p.id) || p, 'pitch', text);
   }
-  let homeN = 0;
+  let homeN = 0; let dragged = null;
   function paintHome() {
     drawn=null;
     S.root.classList.remove('is-project');
@@ -117,14 +117,16 @@ const ProjectsHome = (() => {
     const A = K.arrange(live, { kind: view.kind, sort: view.sort, formats: S.formats, series: view.series });
     const all = [...A.pinned, ...A.current];
     // the project last worked on, wide: only on the unfiltered, recent view (elsewhere the grid is the answer)
-    const feature = view.kind === 'all' && view.sort === 'recent' && !view.series && all.length > 1 ? K.sorted(all, 'recent')[0] : null;
+    const feature = view.kind === 'all' && view.sort === 'recent' && !view.series && all.filter((p) => !K.holding(p)).length > 1 ? K.sorted(all.filter((p) => !K.holding(p)), 'recent')[0] : null;
     const list = all.filter((p) => p !== feature);
     const grid = el('div', { class: 'pj-grid' });
     const sugg = el('div', { class: 'pj-suggest' });
     window.ProjectFrontpage?.stop();
     const hero = store.get('projectFrontpage.enabled', false) ? ProjectFrontpage.hero(live) : null; // (the animated front page: only when switched on, Projects › ⋯)
     // Games · Music · Videos, and the sort
-    const tab = (id, label, count) => el('button', { type: 'button', class: `pj-tab${view.kind === id ? ' on' : ''}`, dataset: { kind: id }, attrs: { 'aria-pressed': view.kind === id ? 'true' : 'false' }, on: { click: () => setView({ kind: id }) } }, el('span', { text: label }), el('i', { text: String(count) }));
+    // (a card dragged onto Games / Music / Videos becomes that kind; onto “Older version”, it is folded there)
+    const dropOn = (node, fn) => { node.addEventListener('dragover', (e) => { if (!dragged) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; node.classList.add('pj-drop'); }); node.addEventListener('dragleave', () => node.classList.remove('pj-drop')); node.addEventListener('drop', (e) => { node.classList.remove('pj-drop'); const p = dragged && P.get(dragged); dragged = null; if (!p) return; e.preventDefault(); e.stopPropagation(); fn(p); }); return node; };
+    const tab = (id, label, count) => { const b = el('button', { type: 'button', class: `pj-tab${view.kind === id ? ' on' : ''}`, dataset: { kind: id }, title: K.IDS.includes(id) ? 'Click: only these · drop a project here to make it one' : '', attrs: { 'aria-pressed': view.kind === id ? 'true' : 'false' }, on: { click: () => setView({ kind: id }) } }, el('span', { text: label }), el('i', { text: String(count) })); return K.IDS.includes(id) ? dropOn(b, (p) => { P.setWorkspace(p, { kind: id }); toast(`“${p.name}” is ${id === 'music' ? 'music' : `a ${id}`} now`, { timeout: 2600 }); }) : b; };
     const series = K.seriesOf(live);
     const bar = el('div', { class: 'pj-bar', attrs: { role: 'toolbar', 'aria-label': 'Which projects' } },
       tab('all', 'All', A.counts.all), ...K.KINDS.map((k) => tab(k.id, `${k.icon} ${k.plural}`, A.counts[k.id])), A.counts.none ? tab('none', 'Not set', A.counts.none) : null,
@@ -136,6 +138,7 @@ const ProjectsHome = (() => {
       const og = el('div', { class: 'pj-grid pj-grid-older' });
       older = el('details', { class: 'pj-older', open: view.older }, el('summary', {}, el('b', { text: `Older version · ${A.older.length}` }), el('span', { class: 'pj-older-hint', text: 'Made for the old player. They open, edit and render as before.' })), og);
       const fill = () => { if (older.open && !og.children.length) og.append(...A.older.map((p) => card(p))); };
+      dropOn(older.querySelector('summary'), (p) => { P.setField(p, 'shelf', 'older'); toast(`“${p.name}” is under “Older version”`, { timeout: 3000, action: { label: 'Undo', fn: () => P.setField(p, 'shelf', 'current') } }); });
       older.addEventListener('toggle', () => { fill(); store.set(VIEW_KEY, { ...viewOf(), older: older.open }); });
       fill();
     }
@@ -195,6 +198,26 @@ const ProjectsHome = (() => {
       P.setField(P.get(p.id) || p, 'ideas', { ...ideas, at: Date.now() });
     } catch (err) { toast(calmError(err), { type: 'error' }); if (button) { button.disabled = false; button.textContent = '✦ Ideas from the AI'; } }
   }
+  // the Continue card says where the project stands: its brief's next step (kv 'project-briefs') and its moodboard's
+  // mood (kv 'mood-reads'), read from the stores (no group is loaded for it), kept for half a minute
+  let upCache = { at: 0, briefs: null, moods: null };
+  async function upNext(p) {
+    if (Date.now() - upCache.at > 30000) upCache = { at: Date.now(), briefs: window.hub.kvGet('project-briefs', null).catch(() => null), moods: window.hub.kvGet('mood-reads', null).catch(() => null) };
+    const out = [];
+    const b = (await upCache.briefs)?.list?.find((e) => e && e.id === p.id);
+    const steps = b?.brief?.steps || []; const done = b?.done || [];
+    const i = steps.findIndex((_s, k) => !done.includes(k));
+    if (i >= 0) out.push(['Next step', K.cap(steps[i], 140), `${done.length} of ${steps.length} steps done`]);
+    else if (steps.length) out.push(['Plan', 'Every step of the plan is done.', '']);
+    const m = p.workspace?.boardId && (await upCache.moods)?.list?.find((e) => e && e.id === p.workspace.boardId)?.board?.mood;
+    if (m) out.push(['Mood', K.cap(m, 140), 'From the moodboard\'s read']);
+    return out;
+  }
+  function upNextBox(p) {
+    const box = el('div', { class: 'pj-upnext', hidden: true });
+    upNext(p).then((rows) => { if (!rows.length || !box.isConnected) return; box.replaceChildren(...rows.map(([label, text, tip]) => el('p', { title: tip || '' }, el('b', { text: label }), el('span', { text: text })))); box.hidden = false; }).catch(() => {});
+    return box;
+  }
   function card(p, { feature = false } = {}) {
     const cover = P.coverOf(p);
     const pic = el('div', { class: 'pj-cover' }, cover ? el('img', { src: cover, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph }));
@@ -212,6 +235,7 @@ const ProjectsHome = (() => {
         pitch ? el('p', { class: 'pj-card-description', text: pitch })
           : el('button', { type: 'button', class: 'pj-go pj-card-description pj-pitch-add', text: 'What is it going to be?', title: 'Write one line on what this project is going to be', on: { click: (e) => { e.stopPropagation(); editPitch(p).catch((err) => toast(calmError(err), { type: 'error' })); } } }),
         p.series ? el('span', { class: 'pj-series', text: p.series, title: `Part of the series “${p.series}”` }) : null,
+        feature ? upNextBox(p) : null,
         feature ? el('div', { class: 'pj-continue' }, ...continueChips(p)) : null));
     const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
     tint(c, p.ident.color);
@@ -224,6 +248,9 @@ const ProjectsHome = (() => {
       else if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) { const cs = [...S.body.querySelectorAll('.pj-card')].filter((x) => x.offsetParent); const i = cs.indexOf(c); const cols = Math.max(1, Math.round((c.parentElement?.clientWidth || 1) / (c.offsetWidth + 18))); const j = i + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' ? cols : -cols); if (cs[j]) { e.preventDefault(); cs[j].focus(); } }
     });
     c.addEventListener('contextmenu', (e) => { e.preventDefault(); P.openMenu(p, e.clientX, e.clientY, 'home'); }); // (round 128, projmenu128)
+    c.draggable = true; // (round 182) onto Games / Music / Videos or “Older version”
+    c.addEventListener('dragstart', (e) => { dragged = p.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/x-hearth-project', p.id); } catch { /* the id is kept here */ } });
+    c.addEventListener('dragend', () => { setTimeout(() => { dragged = null; }, 0); });
     // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
     c.addEventListener('pointermove', prefetch); c.addEventListener('focus', prefetch, { once: true }); // (round 94, labload94: a pointer moving on it, not pointerenter: one resting where the cards are drawn at start isn't intent)
     // (round 74, projdesk74) the press is the click's first moment: the preview page starts loading now (let go in 4 s if no open claims it)
@@ -265,6 +292,7 @@ const ProjectsHome = (() => {
       { label: 'Open the Lab', action: () => activate('tool:three') },
       { label: 'Search everything…', key: 'Ctrl+Shift+K', action: () => ProjectsSearch.open() },
       { label: 'Suggest projects', action: () => suggestNow() },
+      (() => { const n = P.live().filter(K.needs).length; return n ? { label: `✦ Sort my projects (${n} without a kind or a line)`, hint: 'one small AI call', action: () => sortAll().catch((err) => toast(calmError(err), { type: 'error' })) } : null; })(), // (round 182, projclean182)
       // (round 116, projchats116) “Group chats by project” is gone: the chats list shows the open project's chats only
       // (round 74, projdesk74) opt-in: the preview page stays loaded behind this page, so opening a project is as quick as switching
       { label: `${ProjectWorkspace.keepLab() ? '✓ ' : ''}Keep the Lab ready behind Projects`, hint: 'Opens projects faster · uses more memory', action: () => { const on = ProjectWorkspace.keepLab(!ProjectWorkspace.keepLab()); toast(on ? 'The Lab stays ready behind Projects (uses more memory)' : 'The Lab is let go behind Projects', { timeout: 3000 }); } },
@@ -272,6 +300,23 @@ const ProjectsHome = (() => {
       // (round 72, projects72) a deleted project comes back with its notes, look and links (its chats and scenes never left)
       { label: 'Recently deleted projects', items: () => { const xs = P.trashed(); return xs.length ? xs.map((p) => ({ label: `${p.ident.glyph} ${p.name}`, hint: `Restore · deleted ${timeAgo(p.deletedAt)}`, action: () => { if (P.restoreProject(p.id)) toast(`“${p.name}” is back in Projects`, { timeout: 4000 }); } })) : [{ label: 'Nothing deleted', disabled: true }]; } },
     ].filter(Boolean);
+  }
+  // ✦ Sort my projects: one AI call gives the projects without a kind or a line both (never changing one that is there)
+  async function sortAll() {
+    const list = P.live(); const text = K.sortPrompt(list);
+    if (!text) { toast('Every project has its kind and its line.'); return 0; }
+    const a = H.claudeAgent?.() || H.agents().find((x) => x.mode === 'native');
+    if (!a) throw Error('Add a native AI in Settings first.');
+    const note = toast('✦ Sorting your projects…', { timeout: 0 });
+    try {
+      const r = await window.hub.askOnce({ agentId: a.id, text, options: { lean: true, helper: true } });
+      if (r?.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: a.id, usage: r.usage, source: 'sort projects' } }));
+      const rows = r?.ok ? K.parseSort(r.text, list) : null;
+      if (!rows) throw Error(r?.error || 'The answer could not be read. Try again.');
+      for (const row of rows) { const p = P.get(row.id); if (!p) continue; if (row.kind) P.setWorkspace(p, { kind: row.kind }); if (row.pitch) P.setField(p, 'pitch', row.pitch); }
+      toast(rows.length ? `✦ ${rows.length} project${rows.length === 1 ? '' : 's'} sorted: check their kinds and lines, and change any from the ⋯ menu` : 'Nothing to change.', { timeout: 6000 });
+      return rows.length;
+    } finally { note?.remove?.(); }
   }
   async function suggestNow() {
     const ss = await P.suggestions(6);
@@ -439,6 +484,6 @@ const ProjectsHome = (() => {
     ],
   });
 
-  return { show, formats: () => S.formats || null, editPitch, mounted: () => S.mounted, openProject: () => (visible() ? S.open : null), newProject, paint, isVisible: visible };
+  return { show, formats: () => S.formats || null, editPitch, sortAll, mounted: () => S.mounted, openProject: () => (visible() ? S.open : null), newProject, paint, isVisible: visible };
 })();
 window.ProjectsHome = ProjectsHome;
