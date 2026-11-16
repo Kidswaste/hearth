@@ -106,7 +106,7 @@ const ProjectMenu = (() => {
       // (round 182, projclean182) what the project is, for the clean Projects screen: its one line, its kind, its series, a pin, its shelf
       S('What it is'),
       { id: 'pitch', label: 'What it is going to be…', icon: 'pen', hint: p.pitch ? C.cap(p.pitch, 28) : '', tip: 'The one line on its card', action: go(() => pitchPrompt(p)) },
-      has('ProjKindCore') ? { id: 'kind', label: 'Kind', hint: ProjKindCore.kind(ProjKindCore.kindOf(p))?.label || 'not set', items: () => ProjKindCore.KINDS.map((k) => ({ label: `${k.icon} ${k.label}`, checked: ProjKindCore.kindOf(p) === k.id, action: go(() => P.setWorkspace(p, { kind: k.id })) })) } : null,
+      has('ProjKindCore') ? { id: 'kind', label: 'Kind', hint: ProjKindCore.kind(ProjKindCore.kindOf(p))?.label || 'not set', items: () => ProjKindCore.KINDS.map((k) => ({ label: `${k.icon} ${k.label}`, checked: ProjKindCore.kindOf(p) === k.id, action: go(() => P.setWorkspace(p, { kind: k.id }, { quiet: true })) })) } : null,
       { id: 'series', label: 'Series…', hint: p.series || '', tip: 'Projects of one series show its name and can be listed together', action: go(() => seriesPrompt(p)) },
       { id: 'pin', label: 'Pinned to the top', checked: Boolean(p.pin), action: go(() => P.setField(p, 'pin', !p.pin)) },
       has('ProjKindCore') ? (() => { const older = ProjKindCore.shelfOf(p, window.ProjectsHome?.formats?.()) === 'older'; return { id: 'shelf', label: older ? 'Move back with the current projects' : 'Move to “Older version”', tip: older ? 'Out of the Older version fold' : 'Fold it under “Older version” on the Projects screen (it stays as it is)', action: go(() => P.setField(p, 'shelf', older ? 'current' : 'older')) }; })() : null,

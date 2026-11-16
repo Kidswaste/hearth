@@ -112,8 +112,9 @@ const ProjectsHome = (() => {
     S.root.closest('.surface')?.classList.remove('pw-desk');
     const n = ++homeN;
     S.io?.disconnect();
-    const view = viewOf();
+    let view = viewOf();
     const live = P.live();
+    if (view.series && !K.seriesOf(live).some((x) => x.name === view.series)) { store.set(VIEW_KEY, { ...view, series: '' }); view = viewOf(); } // (its last project left the series: nothing is filtered by it)
     const A = K.arrange(live, { kind: view.kind, sort: view.sort, formats: S.formats, series: view.series });
     const all = [...A.pinned, ...A.current];
     // the project last worked on, wide: only on the unfiltered, recent view (elsewhere the grid is the answer)
@@ -127,7 +128,7 @@ const ProjectsHome = (() => {
     // Games · Music · Videos, and the sort
     // (a card dragged onto Games / Music / Videos becomes that kind; onto “Older version”, it is folded there)
     const dropOn = (node, fn) => { node.addEventListener('dragover', (e) => { if (!dragged) return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; node.classList.add('pj-drop'); }); node.addEventListener('dragleave', () => node.classList.remove('pj-drop')); node.addEventListener('drop', (e) => { node.classList.remove('pj-drop'); const p = dragged && P.get(dragged); dragged = null; if (!p) return; e.preventDefault(); e.stopPropagation(); fn(p); }); return node; };
-    const tab = (id, label, count) => { const b = el('button', { type: 'button', class: `pj-tab${view.kind === id ? ' on' : ''}`, dataset: { kind: id }, title: K.IDS.includes(id) ? 'Click: only these · drop a project here to make it one' : '', attrs: { 'aria-pressed': view.kind === id ? 'true' : 'false' }, on: { click: () => setView({ kind: id }) } }, el('span', { text: label }), el('i', { text: String(count) })); return K.IDS.includes(id) ? dropOn(b, (p) => { P.setWorkspace(p, { kind: id }); toast(`“${p.name}” is ${id === 'music' ? 'music' : `a ${id}`} now`, { timeout: 2600 }); }) : b; };
+    const tab = (id, label, count) => { const b = el('button', { type: 'button', class: `pj-tab${view.kind === id ? ' on' : ''}`, dataset: { kind: id }, title: K.IDS.includes(id) ? 'Click: only these · drop a project here to make it one' : '', attrs: { 'aria-pressed': view.kind === id ? 'true' : 'false' }, on: { click: () => setView({ kind: id }) } }, el('span', { text: label }), el('i', { text: String(count) })); return K.IDS.includes(id) ? dropOn(b, (p) => { P.setWorkspace(p, { kind: id }, { quiet: true }); toast(`“${p.name}” is ${id === 'music' ? 'music' : `a ${id}`} now`, { timeout: 2600 }); }) : b; };
     const series = K.seriesOf(live);
     const bar = el('div', { class: 'pj-bar', attrs: { role: 'toolbar', 'aria-label': 'Which projects' } },
       tab('all', 'All', A.counts.all), ...K.KINDS.map((k) => tab(k.id, `${k.icon} ${k.plural}`, A.counts[k.id])), A.counts.none ? tab('none', 'Not set', A.counts.none) : null,
@@ -314,7 +315,7 @@ const ProjectsHome = (() => {
       if (r?.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: a.id, usage: r.usage, source: 'sort projects' } }));
       const rows = r?.ok ? K.parseSort(r.text, list) : null;
       if (!rows) throw Error(r?.error || 'The answer could not be read. Try again.');
-      for (const row of rows) { const p = P.get(row.id); if (!p) continue; if (row.kind) P.setWorkspace(p, { kind: row.kind }); if (row.pitch) P.setField(p, 'pitch', row.pitch); }
+      for (const row of rows) { const p = P.get(row.id); if (!p) continue; if (row.kind) P.setWorkspace(p, { kind: row.kind }, { quiet: true }); if (row.pitch) P.setField(p, 'pitch', row.pitch); }
       toast(rows.length ? `✦ ${rows.length} project${rows.length === 1 ? '' : 's'} sorted: check their kinds and lines, and change any from the ⋯ menu` : 'Nothing to change.', { timeout: 6000 });
       return rows.length;
     } finally { note?.remove?.(); }

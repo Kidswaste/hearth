@@ -105,7 +105,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     H.config.agents.push({ id, name: 'Forge Director', icon: '⚒', color: '#e07a2f', mode: 'native', engine: 'claude', dock: 'forgeheart', gameTools: true, companion: 'forge-game', askAll: false, enabled: true });
     await saveConfig();
     a = H.agent(id);
-    try { Tools.shown?.('forgeheart'); } catch { /* the dock follows on the next show */ }
+    try { const t = Tools.get?.('forgeheart'); if (t) Tools.shown?.(t); } catch { /* the dock follows on the next show */ }
     toast('The Forge Director is in the Forgeheart window: it drives the live game and knows your notes.', { timeout: 5000 });
     return a;
   }
@@ -188,7 +188,9 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
       const q = String(args.find).trim();
       if (q.length < 2) return { ok: false, error: 'find needs at least two characters.' };
       const hits = (await window.hub.fs.search(folder(), q, { match: '\\.md$' })) || [];
-      return { ok: true, value: { find: q, notes: hits.slice(0, 20).map((h) => ({ name: nameOf(h), matches: h.count, lines: (h.snippets || []).slice(0, 4).map((s) => String(s.text || '').slice(0, 240)) })), more: hits.length > 20 ? hits.length - 20 : undefined } };
+      const known = new Set(all.map((f) => String(f.path).toLowerCase())); // (only notes forge_docs {name} can open: the search walks deeper than the list)
+      const mine = hits.filter((h) => known.has(String(h.path).toLowerCase()));
+      return { ok: true, value: { find: q, notes: mine.slice(0, 20).map((h) => ({ name: nameOf(h), matches: h.count, lines: (h.snippets || []).slice(0, 4).map((s) => String(s.text || '').slice(0, 240)) })), more: mine.length > 20 ? mine.length - 20 : undefined } };
     }
     if (args.name) {
       const want = String(args.name).toLowerCase().replace(/\.md$/, '');
@@ -202,7 +204,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
   }
   // the knowledge rides along with every message of an agent that has the game's tools (engines.js part 'gamebrief')
   if (typeof Native !== 'undefined' && Native.hooks?.options) {
-    Native.hooks.options.push((agentId, chat, _raw, _last, options) => { if (options.lean || options.crew) return; const a = H.agent(agentId); if (a?.gameTools && know) options.gameBrief = know; });
+    Native.hooks.options.push((agentId, chat, _raw, _last, options) => { if (options.lean || options.crew) return; const a = H.agent(agentId); if (!a?.gameTools) return; if (know) options.gameBrief = know; if (Date.now() - knowAt > 300000) knowledge().catch(() => {}); /* (a note added since: in the list from the next message) */ });
     knowledge().catch(() => {});
   }
   // ---------- what the game is doing right now, with each message ----------

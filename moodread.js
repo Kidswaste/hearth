@@ -129,8 +129,9 @@ const MoodRead = (() => {
         });
         const u = out.usage;
         toast(out.stopped ? `Mood read stopped: what was read is kept (${out.read} picture${out.read === 1 ? '' : 's'}).` : `◐ The mood read of “${p.b.name}” is ready${out.failed.length ? ` (${out.failed.length} couldn't be read)` : ''} · ${C.kfmt(u.in)} tokens in, ${C.kfmt(u.out)} out`, { timeout: 6000, action: { label: 'Show', fn: () => open(boardId) } });
+        if (out.stopped) stoppedAt.set(boardId, Date.now()); else if (!opts.auto) stoppedAt.delete(boardId); // (round 181) the owner's Stop holds: what was on the board then isn't read by itself
         return out;
-      } finally { running.delete(boardId); emit(boardId); autoSoon(); } // (a picture that landed during the run is next)
+      } finally { running.delete(boardId); emit(boardId); if (!stoppedAt.has(boardId) || Date.now() - stoppedAt.get(boardId) > 1000) autoSoon(); } // (a picture that landed during the run is next)
     })();
     running.set(boardId, state);
     repaint(boardId);
@@ -142,7 +143,8 @@ const MoodRead = (() => {
   // panel, on by default, kept in the store as `auto: false` when off). Only what just landed or changed
   // (MoodReadCore.autoDue): a big board that was never read stays the owner's click, with its cost shown.
   const autoCfg = { delay: 6000, fresh: 15 * 60000 };
-  let autoT = 0; const told = new Set();
+  let autoT = 0; const told = new Set(); const stoppedAt = new Map(); const asked = new Set();
+  const AUTO_MOST = 12; // more new pictures than this at once: asked first, with the cost (the panel)
   const autoOn = () => data.auto !== false;
   async function setAuto(on) { data = { ...data, auto: on ? undefined : false }; await write(); emit(null); if (on) autoSoon(); }
   function autoSoon() { clearTimeout(autoT); autoT = setTimeout(() => { autoT = 0; autoCheck().catch((err) => console.warn('mood read: auto', err)); }, autoCfg.delay); }
@@ -152,8 +154,10 @@ const MoodRead = (() => {
     const cur = Board.current(); const id = cur?.id;
     if (!id || running.has(id) || !reader()) return null; // (a run in flight checks again when it ends)
     const e = entry(id);
-    const ids = C.autoDue(e, cur.items || [], { fresh: autoCfg.fresh });
+    const stop = stoppedAt.get(id) || 0;
+    const ids = C.autoDue(e, cur.items || [], { fresh: autoCfg.fresh }).filter((x) => { if (!stop) return true; const it = (cur.items || []).find((i) => i.id === x); return e?.items?.[x]?.sig ? (e.items[x].at || 0) > stop : (Number(it?.added) || 0) > stop; }); // (after a Stop: only what landed since)
     if (!ids.length) return null;
+    if (ids.length > AUTO_MOST) { const key = `${id}:${ids.length}`; if (!asked.has(key)) { asked.add(key); toast(`${ids.length} new pictures on this board: read them into the mood read?`, { timeout: 12000, action: { label: 'Show the cost', fn: () => open(id) } }); } return null; }
     const scope = e?.scope ? [...new Set([...e.scope, ...ids])] : undefined; // (a read of the owner's pick takes the new ones in)
     toast(`◐ Reading ${ids.length === 1 ? 'the new picture' : `${ids.length} new pictures`} into the mood read…`, { timeout: 3200 });
     const out = await run(id, { confirm: false, auto: true, just: ids, scope });

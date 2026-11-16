@@ -268,7 +268,7 @@ const Projects = (() => {
   const FIELDS = { pitch: (v) => C.cap(v || '', 200) || undefined, series: (v) => C.cap(v || '', 40) || undefined, pin: (v) => (v ? true : undefined), shelf: (v) => (v === 'older' || v === 'current' ? v : undefined), ideas: (v) => (v && typeof v === 'object' ? v : undefined) };
   function setField(p, key, value) { if (!p || !FIELDS[key]) return false; const v = FIELDS[key](value); if (JSON.stringify(p[key]) === JSON.stringify(v)) return false; if (v === undefined) delete p[key]; else p[key] = v; if (key === 'pitch' || key === 'series') p.updated = Date.now(); /* (a pin, a shelf or new ideas isn't "worked on": the Continue card stays where it was) */ changed(p, key); return true; }
   function touch(p) { if (!p) return; p.opened = Date.now(); save(); }
-  function setWorkspace(p, patch) { p.workspace = { ...p.workspace, ...patch }; p.updated = Date.now(); changed(p, 'workspace'); }
+  function setWorkspace(p, patch, { quiet = false } = {}) { p.workspace = { ...p.workspace, ...patch }; if (!quiet) p.updated = Date.now(); /* (quiet: sorting projects into kinds isn't working on them) */ changed(p, 'workspace'); }
   async function flush() { clearTimeout(saveT); dirty = false; const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
   // deleting a project forgets the grouping only: chats, scenes and files stay where they are (Undo in the toast)
   // (round 72, projects72) and it waits in Recently deleted (Projects › ⋯), with its notes, look and links, until 30

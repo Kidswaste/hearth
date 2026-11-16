@@ -292,6 +292,7 @@ window.ProjCreate = (() => {
     if (kind && p.workspace?.kind !== kind) P().setWorkspace(p, { kind });
     if (st.intent.trim() && !p.pitch) P().setField(p, 'pitch', st.intent.trim());
     if (st.series) P().setField(p, 'series', st.series);
+    P().setField(p, 'shelf', 'current'); // (a project made now is current work, even from a start that still makes an old-format scene)
   }
   // the project's scene, before it opens: the start's layers (recolored with the palette), the palette, size, rate, footage
   async function prepare(p, st) {
