@@ -25,10 +25,22 @@
   const holding = (p) => HOLDING.includes(p?.id);
   const cap = (s, n) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 
+  // the last resort, for a project made before kinds: plain words in its name and its own line ("Visualizer3",
+  // "a loop for a techno song", "an idle game"). Only clear words; anything else stays "Not set" for the owner.
+  const WORDS = [
+    ['game', /\b(game|games|simulator|playable|player|level|levels|rpg|roguelike|idle|platformer|diablo|boss|enemies)\b/i],
+    ['music', /\b(visuali[sz]er|song|songs|track|techno|house|beat|beats|music|album|remix|lyric|lyrics|bass|kick|audio)\b/i],
+    ['video', /\b(film|video|footage|trailer|teaser|clip|short|edit|animation|loop)\b/i],
+  ];
+  function guess(p) {
+    const text = `${String(p?.name || '').replace(/(\D)(\d+)$/, '$1 $2')} ${p?.pitch || ''} ${p?.workspace?.description || ''} ${String(p?.notes || '').slice(0, 300)}`;
+    for (const [id, re] of WORDS) if (re.test(text)) return id;
+    return null;
+  }
   function kindOf(p) {
     const w = p?.workspace || {};
     if (IDS.includes(w.kind)) return w.kind;
-    return START_KIND[w.start] || PERSONA_KIND[w.persona] || null; // (the personality the owner picked says it too: a game builder, a music producer)
+    return START_KIND[w.start] || PERSONA_KIND[w.persona] || guess(p); // (the personality the owner picked says it too: a game builder, a music producer)
   }
   const PITCH_MAX = 200;
   function pitchOf(p) {
