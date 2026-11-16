@@ -14,6 +14,10 @@
   the names of your design notes.
 - **It can read your design notes by itself**: list them, open one, or search all of them for a word. It is told to
   read them before answering a question about the game's design or history, instead of guessing.
+- **✦ Digest my notes** (Dashboard › What the chat knows): one click and the AI reads your design notes once, then
+  writes a short digest of the game (what it is, its systems with your names and numbers, where it stands). The chat
+  carries it with every message from then on. You can read and edit it. It is one larger AI call, only when you
+  click; do it again after big changes.
 - **It sees what the game is doing.** Every message you send carries one hidden line: the stage, gold, HP, how many
   enemies and which kinds, the boss, god mode / pause / speed, and which tab or note you are looking at. So "why is
   this so hard?" gets an answer about what is on screen.

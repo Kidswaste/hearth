@@ -446,7 +446,7 @@ const REMEMBER_LINE = 'Rarely, when the user shares a lasting fact or preference
 // (round 36, tokenaudit) the prompt as named parts, in order ([key, text]): ⋯ AI setup → Spending → "Where its tokens go"
 // reads the same parts the engine gets (tokenauditmain.js); buildPrompt joins them, byte for byte as before.
 const BRIEF_MAX = 640; // (round 128, aiprep128) the brief part's cap: projectbrief-core.js PART_MAX (600) + a little slack
-const GAME_BRIEF_MAX = 2700; // (round 183, forgechat183) tools/forge.js KNOW_MAX (2600) + a little slack
+const GAME_BRIEF_MAX = 4300; // (round 183, forgechat183) tools/forge.js KNOW_MAX (4200, with a digest of the notes) + a little slack
 const MOOD_MAX = 2100; // (round 181, moodauto181) the mood part's cap: moodread-core.js PROMPT_MAX (2000) + a little slack
 function promptParts0(agent, session = null) {
   const usesApps = agent.engine === 'claude' ? enabledConnectors(agent).length > 0 : Boolean(agent.chatgptApps);

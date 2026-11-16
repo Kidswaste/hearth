@@ -92,6 +92,7 @@ window.ProjCreate = (() => {
     if (!agents.length) status.textContent = 'Add a native AI in Settings first.';
     const paint = () => {
       paintKinds(); paintSeries();
+      intent.placeholder = st.kind === 'game' ? 'e.g. a tiny roguelike: dodge the falling coins, one more run every time' : st.kind === 'video' ? 'e.g. a 20-second loop of a harbor at night, one lamp, then the storm' : 'e.g. a 30-second loop for a techno track, dark and glossy';
       const s = C.summary(st, agents);
       for (const [id, text] of Object.entries({ start: s.start, media: s.media, look: s.look, ai: s.ai })) secs[id].sum.textContent = text;
       secs.start.body.replaceChildren(...startPart());

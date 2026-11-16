@@ -32,7 +32,7 @@ assert.ok(!partsOf(FORGE, { gameBrief: brief, lean: true }).some((p) => p[0] ===
 assert.ok(!partsOf(FORGE, { gameBrief: brief, crew: true }).some((p) => p[0] === 'gamebrief'), 'never a crew helper');
 assert.ok(partsOf({ ...FORGE, id: 'astra', engine: 'codex', hubTools: true }, { gameBrief: brief }).some((p) => p[0] === 'gamebrief' && p[1] === brief), 'Astra with the game\'s tools gets it too');
 const long = partsOf(FORGE, { gameBrief: 'x'.repeat(9000) }).find((p) => p[0] === 'gamebrief')[1];
-assert.ok(long.length <= 2700, `capped (${long.length})`);
+assert.ok(long.length <= 4300, `capped (${long.length})`);
 ok('an agent with the game\'s tools is told what Forgeheart is: its own prompt part, capped, byte-stable, only for it');
 
 const mcp = require(path.join(dir, 'mcp', 'forge-game-mcp.js'));

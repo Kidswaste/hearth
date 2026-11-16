@@ -77,8 +77,11 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
           el('button', { class: backups.length > 30 ? 'primary small' : 'ghost small', text: 'Clean up / compare', on: { click: go('backups') } })),
         card('Devlog', el('p', {}, el('b', { text: `${Math.floor(todayMin / 60)}h ${todayMin % 60}m` }), ' today'), el('p', { class: 'hint', text: `${Math.round(weekMin / 6) / 10} h in the last 7 days` }),
           el('button', { class: 'ghost small', text: 'Open devlog', on: { click: go('devlog') } })),
-        card('Project brief', el('p', { class: 'hint', text: 'Sent at the start of every "Forgeheart chat" so Claude knows the game.' }),
-          el('button', { class: 'ghost small', text: 'Edit brief', on: { click: editBrief } })));
+        card('What the chat knows', el('p', { class: 'hint', text: 'Your brief, and a digest of your design notes, go with every message of the Forge chat.' }),
+          el('p', { class: 'hint forge-digest-line', text: digestLine(await kv.get('forge-digest', null)) }),
+          el('button', { class: 'ghost small', text: 'Edit brief', on: { click: editBrief } }),
+          el('button', { class: 'ghost small', text: '✦ Digest my notes', title: 'The AI reads your design notes once and writes a short digest of the game (what it is, its systems, where it stands). It costs one larger AI call; the digest is kept until you make a new one', on: { click: (e) => { const b = e.currentTarget; b.disabled = true; makeDigest().catch((err) => toast(calmError(err), { type: 'error' })).finally(() => { b.disabled = false; load(); }); } } }),
+          el('button', { class: 'ghost small', text: 'Read it', title: 'The digest the chat carries (you can edit it)', on: { click: () => editDigest().then(() => load()) } })));
     }
     load();
     api.refreshDashboard = load;
@@ -118,20 +121,64 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
   // The brief (the owner's own words, ✎ in the Dashboard), where the project lives, and the names of the design notes;
   // the notes themselves are read on demand with forge_docs. Built once the tool is in, again when the brief changes
   // or every few minutes; the same facts give the same bytes (the prompt part stays cached).
-  const KNOW_MAX = 2600;
+  const KNOW_MAX = 4200; // (2600 without a digest in practice: the brief, the folder, the notes' names)
+  const DIGEST_MAX = 1800;
   let know = ''; let knowAt = 0;
   async function knowledge({ fresh = false } = {}) {
     if (know && !fresh && Date.now() - knowAt < 300000) return know;
     const brief = String(await kv.get('forge-brief', DEFAULT_BRIEF).catch(() => DEFAULT_BRIEF) || DEFAULT_BRIEF).trim().slice(0, 1500);
     let notes = [];
     try { notes = (await files()).filter((f) => /\.md$/i.test(f.name)).sort((x, y) => String(x.name).localeCompare(String(y.name))).map((f) => baseName(f.name).replace(/\.md$/i, '')); } catch { /* the folder isn't here */ }
+    const dg = await kv.get('forge-digest', null).catch(() => null);
+    const digest = dg?.text ? `What the game is, digested from the design notes${dg.at ? ` (${new Date(dg.at).toISOString().slice(0, 10)})` : ''}:\n${String(dg.text).trim().slice(0, DIGEST_MAX)}` : '';
     const head = 'FORGEHEART: the owner\'s own game. You are its chat, inside the Forgeheart window, beside the live game (the ▶ Live game tab). Speak as someone who knows this game; when a question is about its design, numbers or history, read the notes first instead of guessing.';
     const where = `Project folder: ${folder()} (main build ${MAIN_BUILD}).`;
     let list = '';
-    if (notes.length) { list = `Design notes (${notes.length}; forge_docs {name} reads one, forge_docs {find: "words"} searches them all): `; const room = KNOW_MAX - head.length - brief.length - where.length - list.length - 40; let names = ''; for (const n of notes) { if (names.length + n.length + 2 > room) { names += '…'; break; } names += `${names ? ', ' : ''}${n}`; } list += names; }
-    know = [head, brief, where, list].filter(Boolean).join('\n').slice(0, KNOW_MAX);
+    if (notes.length) { list = `Design notes (${notes.length}; forge_docs {name} reads one, forge_docs {find: "words"} searches them all): `; const room = KNOW_MAX - head.length - brief.length - digest.length - where.length - list.length - 40; let names = ''; for (const n of notes) { if (names.length + n.length + 2 > room) { names += '…'; break; } names += `${names ? ', ' : ''}${n}`; } list += names; }
+    know = [head, brief, digest, where, list].filter(Boolean).join('\n').slice(0, KNOW_MAX);
     knowAt = Date.now();
     return know;
+  }
+  // ---------- ✦ Digest my notes ----------
+  // One AI call (the owner's click): the newest notes first, each from its start, up to DIGEST_IN characters in all;
+  // the answer is a plain digest of the game (≤ DIGEST_MAX), kept in kv 'forge-digest' { text, at, notes, by } and
+  // carried by knowledge(). The owner can read and edit it.
+  const DIGEST_IN = 90000;
+  const digestLine = (dg) => (dg?.text ? `Digest: ${dg.text.length} characters from ${dg.notes || '?'} notes, ${timeAgo(dg.at)}${dg.edited ? ' (you edited it)' : ''}.` : 'No digest yet: the chat knows the brief and the notes\' names, and reads a note when it needs one.');
+  function digestPrompt(notes) {
+    return ['Below are the design notes of one game, newest first. Write a DIGEST of the game for an assistant that will help its maker: so it can talk about the game as someone who knows it.',
+      `At most ${DIGEST_MAX} characters, plain text, no Markdown headings. In this order: 1) what the game is and its core loop, in two sentences; 2) its systems, one line each with the real names and key numbers from the notes; 3) where it stands: what changed lately and what is open; 4) the maker's own vocabulary worth knowing.`,
+      'Only what the notes say. No praise, no advice.', '',
+      ...notes.map((n) => `<note name="${n.name}" changed="${n.changed}">\n${n.text}\n</note>`)].join('\n');
+  }
+  async function makeDigest() {
+    const a = forgeAgent() || H.claudeAgent?.() || H.agents().find((x) => x.mode === 'native');
+    if (!a) throw Error('Add a native AI in Settings first.');
+    const all = (await files()).filter((f) => /\.md$/i.test(f.name)).sort((x, y) => (y.mtime || 0) - (x.mtime || 0));
+    if (!all.length) throw Error('No design notes (.md) in the project folder.');
+    const per = Math.max(1500, Math.floor(DIGEST_IN / all.length));
+    const notes = []; let used = 0;
+    for (const f of all) { if (used >= DIGEST_IN) break; const text = String(await window.hub.fs.read(f.path).catch(() => '') || '').slice(0, per); if (!text.trim()) continue; used += text.length; notes.push({ name: baseName(f.name).replace(/\.md$/i, ''), changed: f.mtime ? new Date(f.mtime).toISOString().slice(0, 10) : '', text }); }
+    const note = toast(`✦ Reading ${notes.length} notes…`, { timeout: 0 });
+    try {
+      const r = await window.hub.askOnce({ agentId: a.id, text: digestPrompt(notes), options: { lean: true, helper: true, persona: 'You digest a game\'s design notes into what an assistant needs to know. Plain, exact, no filler.' } });
+      if (r?.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: a.id, usage: r.usage, source: 'forge digest' } }));
+      const text = r?.ok ? String(r.text || '').trim().slice(0, DIGEST_MAX) : '';
+      if (text.length < 80) throw Error(r?.error || 'No digest came back. Try again.');
+      await kv.set('forge-digest', { text, at: Date.now(), notes: notes.length, by: a.name });
+      await knowledge({ fresh: true });
+      toast(`✦ The Forge chat now carries a digest of ${notes.length} notes (${text.length} characters)`, { timeout: 6000 });
+      return text;
+    } finally { note?.remove?.(); }
+  }
+  async function editDigest() {
+    const dg = await kv.get('forge-digest', null);
+    const next = await Modal.prompt('What the chat knows: the digest', { value: dg?.text || '', multiline: true, label: `What Forgeheart is, from your notes (at most ${DIGEST_MAX} characters). The Forge chat gets it with every message. Empty: no digest.` });
+    if (next == null) return;
+    const text = String(next).trim().slice(0, DIGEST_MAX);
+    await kv.set('forge-digest', text ? { ...(dg || {}), text, at: dg?.at || Date.now(), edited: Date.now() } : null);
+    await knowledge({ fresh: true });
+    toast(text ? 'Digest saved: the Forge chat reads it from its next message' : 'Digest removed', { timeout: 2400 });
   }
   // forge_docs (mcp/forge-game-mcp.js → tools/forge-game.js): the design notes, listed, read or searched
   async function docsTool(args = {}) {
@@ -979,5 +1026,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
+  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, makeDigest, editDigest, digestPrompt, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

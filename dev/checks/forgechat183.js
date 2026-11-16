@@ -70,6 +70,16 @@ try {
   ok(!('gameBrief' in opts({ lean: true })), 'never on a lean run');
   const other = { }; for (const fn of Native.hooks.options) { try { fn(H.claudeAgent().id, { id: 'c-y' }, '', null, other); } catch { /* */ } }
   ok(!H.claudeAgent().gameTools ? !('gameBrief' in other) : true, 'a chat without the game\'s tools doesn\'t get it');
+  // the digest of the notes: asked of the AI on a click, kept, and carried with the knowledge
+  const dp = Forge.digestPrompt([{ name: 'gameplay-rifts', changed: '2026-09-21', text: 'A rift opens every ten stages.' }]);
+  ok(/<note name="gameplay-rifts" changed="2026-09-21">\nA rift opens every ten stages\.\n<\/note>/.test(dp) && /At most 1800 characters/.test(dp) && /Only what the notes say/.test(dp), 'the digest is asked from the notes themselves, newest first, capped');
+  await window.hub.kvSet('forge-digest', { text: 'Forgeheart: survive waves, forge the loot, feed the factory. Rifts every ten stages drop shards.', at: Date.UTC(2026, 10, 16), notes: 2, by: 'Claude' });
+  const know2 = await Forge.knowledge({ fresh: true });
+  ok(/digested from the design notes \(2026-11-16\):\nForgeheart: survive waves/.test(know2) && know2.indexOf('digested') < know2.indexOf('Project folder:') && /gameplay-rifts/.test(know2) && know2.length <= 4200, 'a digest rides along after the brief, before the notes\' names', know2.slice(0, 500));
+  ok(opts({}).gameBrief === know2, 'and with the chat\'s next message');
+  let digestTry = null; try { digestTry = await Forge.makeDigest(); } catch (err) { digestTry = `error: ${err.message}`; }
+  out.info.digest = String(digestTry).slice(0, 160);
+  ok(typeof digestTry === 'string' && digestTry.length > 0, '✦ Digest my notes asks the AI once (the stand-in AI here) and answers or says why not', out.info.digest);
 
   // ---------- 6. what the game is doing right now, with each message ----------
   const line = Forge.nowLine({ onTitleScreen: false, stage: 12, maxStage: 20, gold: 52000, hp: 80, hpMax: 143, dps: 4300, enemies: 22, byType: { a: 9, b: 7, c: 4, d: 2 }, boss: null, debug: { god: true, paused: false, timeScale: 2 } }, { tab: 'docs', doc: 'gameplay-rifts' });

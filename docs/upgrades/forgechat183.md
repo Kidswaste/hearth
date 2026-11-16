@@ -32,8 +32,12 @@ pasted in: no game tools, no game.
 6. **What the game is doing right now, with each message.** A compose hook (`tools/forge.js` `nowLine`) adds one line
    to what the docked Forge chat is sent (not to the bubble): stage, gold, HP, DPS, enemies by type, boss, the debug
    switches, and the tab (and note) the owner is on. Only while the game is up; at most 0.7 s is waited.
-7. Three more quick chips in the dock: 📊 Status, 📸 Look at it, 📚 My notes (`director-dock.js`).
-8. "Ask Claude about this" on a doc, a task or the balance table now lands in the docked chat's box.
+7. **✦ Digest my notes** (Dashboard › What the chat knows): one AI call reads the notes (newest first, up to 90,000
+   characters in all) and writes a digest of the game (≤ 1,800 characters: what it is, its systems with their real
+   names and numbers, where it stands, the owner's vocabulary). Kept in kv `forge-digest`, carried by `knowledge()`
+   after the brief (`KNOW_MAX` 4200, `GAME_BRIEF_MAX` 4300), readable and editable ("Read it"). Never by itself.
+8. Three more quick chips in the dock: 📊 Status, 📸 Look at it, 📚 My notes (`director-dock.js`).
+9. "Ask Claude about this" on a doc, a task or the balance table now lands in the docked chat's box.
 
 ## Where it lives
 - `renderer.js` (`apply`), `manager.js` (preset), `tools/forge.js` (`forgeAgent`, `ensureAgent`, `forgeChat`,
@@ -53,6 +57,7 @@ pasted in: no game tools, no game.
   loaded in ▶ Live game (3 s), `forge_status`, `forge_debug {start}` and `forge_spawn` (20 foes) worked, `forge_docs`
   listed the 34 notes, read one and searched them, and the knowledge came to 1,841 characters with every note's name.
   Not tried in the owner's own running app.
+- No digest was made of the real notes (it is the owner's click: one larger AI call). The check used the stand-in AI.
 - No real AI conversation was run: whether the answers read as "knowing Forgeheart" is unjudged.
 - Astra also has the game's tools in the owner's settings: it gets the game brief too once the Forgeheart window has
   been opened in the session (the brief is built by that window's code).
