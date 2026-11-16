@@ -29,7 +29,11 @@ pasted in: no game tools, no game.
 5. **`forge_docs`**: the design notes themselves. No args: the list (name, date, size) with the brief; `name` reads
    one (part of the name is enough; 12,000 characters at a time, `offset` for the next part); `find` searches every
    note. The guide tells the AI to read the notes before answering a design or history question.
-6. "Ask Claude about this" on a doc, a task or the balance table now lands in the docked chat's box.
+6. **What the game is doing right now, with each message.** A compose hook (`tools/forge.js` `nowLine`) adds one line
+   to what the docked Forge chat is sent (not to the bubble): stage, gold, HP, DPS, enemies by type, boss, the debug
+   switches, and the tab (and note) the owner is on. Only while the game is up; at most 0.7 s is waited.
+7. Three more quick chips in the dock: 📊 Status, 📸 Look at it, 📚 My notes (`director-dock.js`).
+8. "Ask Claude about this" on a doc, a task or the balance table now lands in the docked chat's box.
 
 ## Where it lives
 - `renderer.js` (`apply`), `manager.js` (preset), `tools/forge.js` (`forgeAgent`, `ensureAgent`, `forgeChat`,
@@ -45,8 +49,10 @@ pasted in: no game tools, no game.
   515 → 580.
 
 ## Not done / not verified
-- Not tried against the real game build or the real notes folder (the check uses the stand-in game and two notes).
-  With the 33 real notes the names should fit the prompt part; past the cap the list ends with "…".
+- Tried once against the real build and the real notes folder, in a throwaway copy of the app (read-only): the game
+  loaded in ▶ Live game (3 s), `forge_status`, `forge_debug {start}` and `forge_spawn` (20 foes) worked, `forge_docs`
+  listed the 34 notes, read one and searched them, and the knowledge came to 1,841 characters with every note's name.
+  Not tried in the owner's own running app.
 - No real AI conversation was run: whether the answers read as "knowing Forgeheart" is unjudged.
 - Astra also has the game's tools in the owner's settings: it gets the game brief too once the Forgeheart window has
   been opened in the session (the brief is built by that window's code).

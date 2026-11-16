@@ -33,9 +33,20 @@
 - ★ **Pin** a project to the top (⋯ menu, or P on a card).
 - **Order**: last worked on, newest first, or by name.
 - **Keyboard**: `/` jumps to the search, `N` starts a new project; on a card Enter opens, F2 renames, the arrows move.
+- **Drag a card** onto Games, Music or Videos to change its kind, or onto "Older version" to fold it away.
+- **✦ Sort my projects** (Projects › ⋯): one small AI call gives every project without a kind or a line both. It never
+  changes one you set.
+- **Where it stands**: the Continue card and each project's page show the plan's next step and the moodboard's mood,
+  when there is a plan or a mood read.
+- `/new-game`, `/new-music`, `/new-video` open the new-project card with the kind picked. The card also remembers the
+  kind you made last.
+- "Earlier chats" is always the last card.
 - The big animated banner only shows when you switch it on (Projects › ⋯ › Animated frontpage).
 
 ## Good to know
-- I have not seen this with your real projects. Clink and Ascend to Heaven will be under "Older version" if all
-  their scenes are in the old format: move them back from the ⋯ menu if you want them on top.
+- I previewed it over a copy of your project list: 4 projects are current (Ascend to Heaven, Idleworld, Stroben,
+  Visualizer3) and 21 are under "Older version". **Clink is among the 21**, because both its scenes are in the old
+  format: ⋯ › Move back with the current projects puts it on top again.
+- Projects made before this are sorted into Games / Music / Videos by words in their name and line, so some will be
+  wrong or "Not set": drag them, or use ✦ Sort my projects.
 - Your existing projects have no line yet unless they had a description.

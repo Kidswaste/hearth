@@ -158,6 +158,38 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     Native.hooks.options.push((agentId, chat, _raw, _last, options) => { if (options.lean || options.crew) return; const a = H.agent(agentId); if (a?.gameTools && know) options.gameBrief = know; });
     knowledge().catch(() => {});
   }
+  // ---------- what the game is doing right now, with each message ----------
+  // One line added to what the Forge chat is sent (not to what the owner sees in the bubble): the live game's stage,
+  // gold, HP, enemies, boss and debug switches, and the tab (and note) the owner is looking at. So "why is this so
+  // hard?" needs no forge_status first. Only while the game is up; at most 0.7 s is waited for it.
+  const short = (n) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e4 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
+  function nowLine(st, where = {}) {
+    const bits = [];
+    if (st && typeof st === 'object') {
+      if (st.onTitleScreen) bits.push('on the title screen');
+      if (st.stage != null) bits.push(`stage ${st.stage}${st.maxStage != null && st.maxStage !== st.stage ? ` (best ${st.maxStage})` : ''}`);
+      if (st.gold != null) bits.push(`gold ${short(Number(st.gold) || 0)}`);
+      if (st.hp != null) bits.push(`HP ${Math.round(st.hp)}${st.hpMax != null ? `/${Math.round(st.hpMax)}` : ''}`);
+      if (st.dps != null) bits.push(`DPS ${short(Number(st.dps) || 0)}`);
+      if (st.enemies != null) { const top = Object.entries(st.byType || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}`).join(', '); bits.push(`${st.enemies} enem${st.enemies === 1 ? 'y' : 'ies'}${top ? ` (${top})` : ''}`); }
+      if (st.boss) bits.push(`boss: ${typeof st.boss === 'string' ? st.boss : st.boss.name || st.boss.type || 'yes'}`);
+      const d = st.debug || {}; const sw = [d.god && 'god', d.oneshot && '1-shot', d.paused && 'paused', d.timeScale != null && d.timeScale !== 1 && `speed ${d.timeScale}×`].filter(Boolean);
+      if (sw.length) bits.push(sw.join(', '));
+    }
+    const tab = where.tab && where.tab !== 'live' ? `the owner is on the ${where.tab} tab${where.doc ? `, reading "${where.doc}"` : ''}` : '';
+    if (!bits.length && !tab) return '';
+    return `[Forgeheart now: ${[bits.join(' · '), tab].filter(Boolean).join(' | ')}]`.slice(0, 420);
+  }
+  if (typeof Native !== 'undefined' && Native.hooks?.compose) {
+    Native.hooks.compose.push(async (agentId, chat, raw, msg) => {
+      const a = H.agent(agentId);
+      if (!a?.gameTools || a.dock !== 'forgeheart' || msg?.role !== 'user' || typeof raw !== 'string' || /\[Forgeheart now:/.test(raw)) return undefined;
+      let st = null;
+      if (typeof ForgeGame !== 'undefined' && ForgeGame.isReady()) { try { const r = await Promise.race([ForgeGame.handleTool('forge_status', {}), new Promise((res) => setTimeout(() => res(null), 700))]); st = r?.ok ? r.value : null; } catch { /* no line */ } }
+      const line = nowLine(st, { tab: tabs?.current, doc: tabs?.current === 'docs' && api.openDoc ? baseName(api.openDoc).replace(/\.md$/i, '') : '' });
+      return line ? `${raw}\n\n${line}` : undefined;
+    });
+  }
   // ▶ Live game: the debug game the forge_* tools drive, here in the window (it used to sit beside its own chat elsewhere)
   function liveTab(pane) {
     pane.classList.add('forge-live');
@@ -266,7 +298,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     }, 250);
     search.addEventListener('input', doSearch);
     async function show(path, edit = false) {
-      open = path;
+      open = path; api.openDoc = path; // (round 183) the Forge chat is told which note is on screen
       const text = await window.hub.fs.read(path);
       render();
       const body = el('div', { class: 'doc-body body', html: renderMarkdown(text) });
@@ -868,7 +900,7 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     if (tab) tabs?.show(tab);
     return Boolean(tabs);
   }
-  const TAB_IDS = ['dashboard', 'builds', 'docs', 'board', 'tasks', 'patch', 'release', 'balance', 'backups', 'files', 'devlog'];
+  const TAB_IDS = ['live', 'dashboard', 'builds', 'docs', 'board', 'tasks', 'patch', 'release', 'balance', 'backups', 'files', 'devlog'];
   // "Fix rift timer #bug !1" → a To-do task tagged bug, priority 1.
   async function addTask(text, { col = 'todo' } = {}) {
     const tag = (text.match(/#(\w+)/) || [])[1] || '';
@@ -947,5 +979,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
+  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

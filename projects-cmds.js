@@ -122,6 +122,12 @@
         complete: () => [{ value: 'on', hint: 'faster opens, more memory' }, { value: 'off', hint: 'nothing loaded behind Projects' }],
         run: (args) => { const a = String(args || '').trim().toLowerCase(); const on = a ? ProjectWorkspace.keepLab(!/^(off|no|0|false)$/.test(a)) : ProjectWorkspace.keepLab(); return on ? 'The Lab stays ready behind Projects (uses more memory). /keep-lab-ready off to let it go.' : 'Nothing stays loaded behind Projects (the default). /keep-lab-ready on keeps the Lab ready there.'; } });
     }
+    // (round 182, projclean182) a new project of one kind, in one go: /new-game, /new-music, /new-video [name] (the new-project card, the kind picked)
+    for (const k of (typeof ProjKindCore !== 'undefined' ? ProjKindCore.KINDS : [])) {
+      if (Commands.get(`new-${k.id}`)) continue;
+      Commands.register({ name: `new-${k.id}`, area: 'Projects', args: '[name]', desc: `A new ${k.label.toLowerCase()} project: the new-project card opens with ${k.label} picked (${k.line.toLowerCase()})`, keywords: `new project create start ${k.id} ${k.plural.toLowerCase()}`,
+        run: async (args) => { await P.ready(); await ProjectWorkspace.wizard({ kind: k.id, name: String(args || '').trim() }); return null; } });
+    }
     if (!Commands.get('projects')) {
       Commands.register({ name: 'projects', area: 'Projects', args: '', desc: 'Every project (Home shows them as cards with covers)', keywords: 'list projects home',
         run: async (args, ctx) => { await P.ready(); if (ctx.source !== 'code') P.openHome(); return P.live().length ? P.live().slice(0, 15).map(lineOf).join('\n') : 'No projects yet: /project new <name>, or /project suggest.'; } });

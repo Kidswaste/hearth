@@ -35,6 +35,15 @@ the old player in a separate, 'Older version' under-folder. Separate games from 
    Series…, Pinned to the top, Move to "Older version" / back. The animated front-page banner only shows when it is
    switched on (Projects › ⋯ › Animated frontpage).
 
+9. **More conveniences.** A card dragged onto Games / Music / Videos becomes that kind; onto "Older version", it is
+   folded there (Undo in the note). Projects › ⋯ › ✦ Sort my projects gives every project without a kind or a line
+   both, in one small AI call (`sortPrompt` / `parseSort`; what is there is never changed). The Continue card and a
+   project's Desk show where it stands: the brief's next step (kv `project-briefs`) and the moodboard's mood (kv
+   `mood-reads`). "Earlier chats" is always last, never Continue, never folded. A project made before kinds is sorted
+   by its personality (game builder, music producer), then by plain words in its name and line ("Visualizer3", "a
+   loop for a techno song"); the Lab's game features still follow `workspace.kind` only. `/new-game`, `/new-music`,
+   `/new-video [name]`. The new-project card offers the kind made last.
+
 ## Where it lives
 - `projkind-core.js` (new, pure; group `projects`): kinds, the line, the shelf, the lists, follow-ups, the AI prompt.
 - `projects-home.js`: `paintHome`, `card`, `nextIdeas`, `ideaRows`, `askIdeas`, `editPitch`; the Desk's line and
@@ -50,10 +59,13 @@ the old player in a separate, 'Older version' under-folder. Separate games from 
 - `dev/checks/project-workspaces.js` waits for the new screen instead of the hero banner.
 
 ## Not done / not verified
-- Not seen with the owner's real projects: which of them land under "Older version" is by rule, not checked by eye.
-  Clink and Ascend to Heaven fold away if all their scenes are old-format; Projects › ⋯ on the card moves them back.
+- Previewed once over a copy of the owner's project list (26 projects, 54 scenes, 6 of them v2), in a throwaway app
+  copy: 4 current (Ascend to Heaven, Idleworld, Stroben, Visualizer3) plus Earlier chats, 21 under "Older version",
+  Clink among them (its two scenes are old-format; ⋯ › Move back with the current projects). Not seen in the owner's
+  own running app.
 - A pin, a shelf move and AI ideas don't stamp the project's `updated` time (so Continue stays put); if the two
   computers change the same project at once, that change may lose to the other side's.
+- When no project is current (all are older), the fold is open by default.
 - Existing projects have no line until one is written (or a description exists).
 - The Desk (a project's own page) keeps its layout; only the line and the ideas were added.
 - macOS not checked.

@@ -197,7 +197,7 @@ function addProjects(dir, { count, sketches, longIds, sentence, int, pick, now, 
     if (heavy) { for (let k = 0; k < 220; k++) items.push({ type: 'capture', ref: W(`captures/clink-${k}.png`), name: `clink-${k}.png` }); for (let k = 0; k < 120; k++) items.push({ type: 'render', ref: `rj-bp-${k}`, name: `Clink render ${k}` }); }
     links.links[chatId] = { sketch: sceneId, auto: '', at };
     const status = i >= count - 7 && i < count - 4 ? 'paused' : i >= count - 4 && i < count - 2 ? 'archived' : 'active';
-    list.push({ id, name, ident: ident(i), status, notes: heavy ? sentence(700).slice(0, 3800) : sentence(int(0, 40)), from: 'hand', make: null, cover: null, at: at - 30 * DAY, updated: at, opened: at,
+    list.push({ id, name, shelf: 'current' /* (round 182, projclean182) its scenes are old-format: kept with the current projects, so the cards screen these checks time still draws them */, ident: ident(i), status, notes: heavy ? sentence(700).slice(0, 3800) : sentence(int(0, 40)), from: 'hand', make: null, cover: null, at: at - 30 * DAY, updated: at, opened: at,
       items: items.map((x, k) => ({ id: `${x.type}:${x.ref}`, type: x.type, ref: x.ref, name: x.name, at: at - k * 6e4 })),
       workspace: { v: 1, persona: pick(['partner', 'director', 'builder']), plugins: [], description: rnd() < 0.5 ? sentence(20) : '', chatId, sceneId, boardId } });
   }

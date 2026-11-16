@@ -111,9 +111,9 @@ const Projects = (() => {
     sketches: () => cached('sketches', 20000, async () => labScenes()?.all?.() || (await window.hub.kvGet('three-sketches', [])) || []),
     // (round 73, startfast73) the scenes' ids, names and times only (Home's cards, suggestions, timing): a few KB instead of
     // every scene's code (2 MB with 50 scenes, ≈ 0.1–0.2 s for the window to take in when Home is the first screen)
-    sceneList: () => cached('sceneList', 20000, async () => labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'name', 'updatedAt']).catch(() => null)) || (await Src.sketches())),
+    sceneList: () => cached('sceneList', 20000, async () => labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'name', 'updatedAt', 'format']).catch(() => null)) || (await Src.sketches())), // (round 182: + format, for the “Older version” shelf: one read for both)
     // (round 182, projclean182) every scene's format (Map id → 'gpu' | ''): the Projects screen's “Older version” shelf (ProjKindCore.shelfOf)
-    sceneFormats: () => cached('sceneFormats', 20000, async () => { const l = labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'format']).catch(() => null)) || (await Src.sketches()); return new Map((l || []).map((x) => [x.id, x.format || ''])); }),
+    sceneFormats: async () => new Map(((await Src.sceneList()) || []).map((x) => [x.id, x.format || ''])),
     // the Lab's own small stills (kv 'three-thumbs', taken a few seconds after a scene runs)
     sceneThumbs: () => cached('sceneThumbs', 120000, async () => (await window.hub.kvGet('three-thumbs', {})) || {}),
     // (the board's own index and the board on screen when the board is loaded: they're ahead of their saves)

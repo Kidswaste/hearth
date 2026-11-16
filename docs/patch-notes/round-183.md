@@ -14,9 +14,14 @@
   the names of your design notes.
 - **It can read your design notes by itself**: list them, open one, or search all of them for a word. It is told to
   read them before answering a question about the game's design or history, instead of guessing.
+- **It sees what the game is doing.** Every message you send carries one hidden line: the stage, gold, HP, how many
+  enemies and which kinds, the boss, god mode / pause / speed, and which tab or note you are looking at. So "why is
+  this so hard?" gets an answer about what is on screen.
 - "Ask Claude about this" on a doc, a task or the balance table now goes to this chat.
 
 ## Good to know
-- Checked with a stand-in game and two test notes, not with your real build and notes folder, and no real
-  conversation was run. Try: "what are rifts for?" and "spawn 20 drones".
+- Tried in a throwaway copy of Hearth with your real build and notes: the game loaded and took commands, and all 34
+  notes were listed, read and searched. No real conversation was run, so how well it answers is for you to judge.
+  Try: "what are rifts for?" and "spawn 20 drones".
+- Three new buttons under the chat: 📊 Status, 📸 Look at it, 📚 My notes.
 - If you have no Forge chat at all, the "💬 Forgeheart chat" button in the window makes one.

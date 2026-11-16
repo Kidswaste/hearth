@@ -70,6 +70,15 @@ try {
   ok(!('gameBrief' in opts({ lean: true })), 'never on a lean run');
   const other = { }; for (const fn of Native.hooks.options) { try { fn(H.claudeAgent().id, { id: 'c-y' }, '', null, other); } catch { /* */ } }
   ok(!H.claudeAgent().gameTools ? !('gameBrief' in other) : true, 'a chat without the game\'s tools doesn\'t get it');
+
+  // ---------- 6. what the game is doing right now, with each message ----------
+  const line = Forge.nowLine({ onTitleScreen: false, stage: 12, maxStage: 20, gold: 52000, hp: 80, hpMax: 143, dps: 4300, enemies: 22, byType: { a: 9, b: 7, c: 4, d: 2 }, boss: null, debug: { god: true, paused: false, timeScale: 2 } }, { tab: 'docs', doc: 'gameplay-rifts' });
+  ok(line === '[Forgeheart now: stage 12 (best 20) · gold 52k · HP 80/143 · DPS 4300 · 22 enemies (a 9, b 7, c 4) · god, speed 2× | the owner is on the docs tab, reading "gameplay-rifts"]', 'the line: stage, gold, HP, enemies, switches, and what the owner is looking at', line);
+  ok(Forge.nowLine(null, { tab: 'live' }) === '', 'nothing to say: no line');
+  const compose = async (agentId, text) => { let raw = text; for (const fn of Native.hooks.compose) { try { const t = await fn(agentId, { id: 'c-z', agentId, messages: [] }, raw, { role: 'user', text }); if (typeof t === 'string') raw = t; } catch { /* another hook's own needs */ } } return raw; };
+  const sent = await compose('forge-debug', 'why is this so hard?');
+  ok(/^why is this so hard\?/.test(sent) && /\[Forgeheart now: stage \d+/.test(sent) && /enem/.test(sent), 'a message to the Forge chat carries the live game\'s state', sent.slice(0, 300));
+  ok(!/Forgeheart now/.test(await compose(H.claudeAgent().id, 'hello')), 'no other chat gets it');
   await wait(600);
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }
 out.problems = fail;

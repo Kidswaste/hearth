@@ -118,6 +118,7 @@ const ProjectsHome = (() => {
     const all = [...A.pinned, ...A.current];
     // the project last worked on, wide: only on the unfiltered, recent view (elsewhere the grid is the answer)
     const feature = view.kind === 'all' && view.sort === 'recent' && !view.series && all.filter((p) => !K.holding(p)).length > 1 ? K.sorted(all.filter((p) => !K.holding(p)), 'recent')[0] : null;
+    const real = all.filter((p) => !K.holding(p)); // (“Earlier chats” is a holding place: it is not what the screen is about)
     const list = all.filter((p) => p !== feature);
     const grid = el('div', { class: 'pj-grid' });
     const sugg = el('div', { class: 'pj-suggest' });
@@ -136,14 +137,14 @@ const ProjectsHome = (() => {
     let older = null;
     if (A.older.length) {
       const og = el('div', { class: 'pj-grid pj-grid-older' });
-      older = el('details', { class: 'pj-older', open: view.older }, el('summary', {}, el('b', { text: `Older version · ${A.older.length}` }), el('span', { class: 'pj-older-hint', text: 'Made for the old player. They open, edit and render as before.' })), og);
+      older = el('details', { class: 'pj-older', open: view.older || !real.length /* (nothing current: the fold is the screen, so it is open) */ }, el('summary', {}, el('b', { text: `Older version · ${A.older.length}` }), el('span', { class: 'pj-older-hint', text: 'Made for the old player. They open, edit and render as before.' })), og);
       const fill = () => { if (older.open && !og.children.length) og.append(...A.older.map((p) => card(p))); };
       dropOn(older.querySelector('summary'), (p) => { P.setField(p, 'shelf', 'older'); toast(`“${p.name}” is under “Older version”`, { timeout: 3000, action: { label: 'Undo', fn: () => P.setField(p, 'shelf', 'current') } }); });
-      older.addEventListener('toggle', () => { fill(); store.set(VIEW_KEY, { ...viewOf(), older: older.open }); });
+      older.addEventListener('toggle', () => { fill(); if (real.length) store.set(VIEW_KEY, { ...viewOf(), older: older.open }); });
       fill();
     }
-    const nothing = !all.length ? (live.length ? el('p', { class: 'pj-empty', text: A.older.length ? 'Nothing here on the new player yet. Your earlier projects are under “Older version” below.' : 'No project of this kind yet. ＋ New project makes one.' }) : empty()) : null;
-    S.body.replaceChildren(...[hero, live.length ? bar : null, feature ? card(feature, { feature: true }) : null, nothing, list.length ? grid : null, older, nextIdeas(feature || all[0] || null), sugg].filter(Boolean));
+    const nothing = !real.length ? (live.length ? el('p', { class: 'pj-empty', text: A.older.length ? 'Nothing here on the new player yet. Your earlier projects are under “Older version” below.' : 'No project of this kind yet. ＋ New project makes one.' }) : empty()) : null;
+    S.body.replaceChildren(...[hero, live.length ? bar : null, feature ? card(feature, { feature: true }) : null, nothing, list.length ? grid : null, older, nextIdeas(feature || real[0] || null), sugg].filter(Boolean));
     let at = 0;
     const more = () => {
       const next = list.slice(at, at + CHUNK);
@@ -349,6 +350,7 @@ const ProjectsHome = (() => {
         el('div', { class: 'pj-p-line' }, mark, name, status),
         el('button', { type: 'button', class: `pj-p-pitch${K.pitchOf(p) ? '' : ' pj-pitch-add'}`, text: K.pitchOf(p) || 'What is it going to be?', title: 'What this project is going to be: click to write it', on: { click: () => editPitch(p).catch((err) => toast(calmError(err), { type: 'error' })) } }), // (round 182, projclean182)
         el('div', { class: 'pj-meta', text: `${C.countText(p)} · made ${p.from === 'make' ? 'from a make' : p.from === 'suggest' ? 'from a suggestion' : 'by hand'} · ${timeAgo(p.at)}` }),
+        upNextBox(p), // (round 182, projclean182) where it stands: the plan's next step, the moodboard's mood
         syncLine(p), revivedNote(p), // (round 76, projsync76)
         el('div', { class: 'pj-p-actions' },
           el('button', { type: 'button', class: 'primary small', text: '▶ Scene', title: 'Resume the scene', on: { click: () => ProjectWorkspace.go('scene') } }),

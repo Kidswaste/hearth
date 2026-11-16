@@ -50,7 +50,7 @@ window.ProjCreate = (() => {
       start: 'empty', myWork: null /* (round 134, starters134) */, copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
       palette: [], paletteName: '', frame: d0.frame, fps: d0.fps, agentId: defaults.agentId && agents.some((a) => a.id === defaults.agentId) ? defaults.agentId : d0.agentId,
       persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: String(defaults.intent || '').slice(0, 2000),
-      kind: KC()?.IDS.includes(defaults.kind) ? defaults.kind : '', series: String(defaults.series || '').slice(0, 40), personaTouched: false, // (round 182, projclean182) a game, music or a video; the series a follow-up continues
+      kind: KC()?.IDS.includes(defaults.kind) ? defaults.kind : (defaults.kind === undefined && KC()?.IDS.includes(store.get(KEY, {})?.kind) ? store.get(KEY, {}).kind : ''), /* (the kind made last is offered again; a click on it un-picks it) */ series: String(defaults.series || '').slice(0, 40), personaTouched: false, // (round 182, projclean182) a game, music or a video; the series a follow-up continues
     };
     if (st.kind) { const k = KC().kind(st.kind); st.start = k.start; st.persona = k.persona; }
     const lists = { scenes: null, projects: null, templates: null, recipes: null, boards: null, projTemplates: null };
@@ -247,7 +247,7 @@ window.ProjCreate = (() => {
   async function make(st, { name, retryId = null }) {
     const nm = String(name || '').trim();
     if (!nm) throw Error('Give your project a name.');
-    store.set(KEY, { frame: st.frame, fps: st.fps, agentId: st.agentId });
+    store.set(KEY, { frame: st.frame, fps: st.fps, agentId: st.agentId, kind: st.kind || undefined });
     last.made = null; last.brief = null; last.steps = [];
     if (st.start === 'duplicate') {
       const src = P().get(st.dupProject);
