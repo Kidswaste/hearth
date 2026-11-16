@@ -50,6 +50,7 @@ const ProjectsHome = (() => {
     S.root.addEventListener('dragleave', (e) => { if (!S.root.contains(e.relatedTarget)) S.root.classList.remove('pb-drop'); });
     S.root.addEventListener('drop', (e) => { S.root.classList.remove('pb-drop'); if (S.open && window.ProjAudit?.deskDrop(e, S.open)) return; /* (round 91, projaudit91) files / a chat dropped on a project's Desk join it */ const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length) return; e.preventDefault(); if (!fs.some((f) => /\.hearthproject$/i.test(f.name))) { toast('Drop a .hearthproject file here to import a project', { timeout: 3500 }); return; } P.bundle((B) => B.dropFiles(fs)); });
     input.addEventListener('input', () => { const on = Boolean(input.value.trim()); S.root.querySelector('.pj-home-find').hidden = !on; S.body.hidden = on; });
+    S.root.addEventListener('keydown', (e) => { if (S.open || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input,textarea,select,[contenteditable]')) return; if (e.key === '/') { e.preventDefault(); input.focus(); } else if (e.key.toLowerCase() === 'n' && !e.target.closest('.pj-card')) { e.preventDefault(); newProject(); } }); // (round 182, projclean182)
     input.addEventListener('keydown', (e) => { if (e.key === 'Escape' && input.value) { e.preventDefault(); input.value = ''; input.dispatchEvent(new Event('input')); } });
     P.onChange(e => { if(e.why==='notes'&&e.id===drawn&&S.body.querySelector('.pj-notes')?.value===e.project.notes)return;deskSig=null;S.stale = true; if (visible()) paintSoon(); });
     addEventListener('hearth:view', () => { if (visible() && S.stale) paintSoon(); });
@@ -68,6 +69,7 @@ const ProjectsHome = (() => {
     S.stale = false;
     await P.ready();
     await P.lookFor();
+    S.formats = (await P.Src.sceneFormats?.().catch(() => null)) || S.formats || null; // (round 182, projclean182) the scenes' formats: which projects are “Older version”
     if (version !== paintVersion) return;
     if (!visible()) { S.stale = true; return; }
     // (round 74, projdesk74) back on the Desk of the same project with nothing it shows changed (deskSigOf): the Desk
@@ -82,27 +84,68 @@ const ProjectsHome = (() => {
   // what the Desk shows, as text: each item's name, time, picture and presence (a few ms for 771 items), the scene's
   // modules, the current scene, and the minute its times are written in (sources re-read after 15–30 s give new
   // arrays with the same content: compared by what they say, not by identity)
-  const deskSigOf = (p) => { const sc = (typeof ThreeLab !== 'undefined' ? ThreeLab : null)?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); }; // (round 76, projsync76) ThreeLab is a const, never on window: the scene's modules were left out of the sig (a Desk visit after a layer changed kept the old list)
+  const deskSigOf = (p) => { const sc = (typeof ThreeLab !== 'undefined' ? ThreeLab : null)?.scenes?.get?.(ProjectWorkspace.currentScene() || p.workspace?.sceneId); return JSON.stringify([p.updated, p.pitch || '', p.series || '', p.ideas?.at || 0, p.items.map((x) => `${P.nameOf(x)}\u0001${P.timeOf(x) || x.at}\u0001${P.thumbOf(x) || ''}\u0001${P.gone(x) ? 1 : 0}`), sc ? sc.layers?.map((x) => `${x.id}:${x.name}:${x.visible !== false}`) : null, ProjectWorkspace.currentScene(), Math.floor(Date.now() / 60000)]); }; // (round 76, projsync76) ThreeLab is a const, never on window: the scene's modules were left out of the sig (a Desk visit after a layer changed kept the old list)
 
   // ---------- the cards ----------
+  // (round 182, projclean182) The clean Projects screen: a card is a cover, a name and ONE line on what the project is
+  // going to be. Above the cards: Games · Music · Videos (ProjKindCore.kindOf) and a sort; the project last worked on
+  // is the wide "Continue" card; pinned ones come first. Projects whose scenes were all made for the old player fold
+  // under "Older version" (ProjKindCore.shelfOf, from the scenes' formats: S.formats). Under the cards: what could
+  // come next (follow-ups of the last project, and something from a different series), one click into the new-project
+  // card. What a card used to list (counts, three continue chips, the status) is in its tooltip and its ⋯ menu.
+  const K = ProjKindCore;
+  const VIEW_KEY = 'projects.view';
+  const viewOf = () => { const v = store.get(VIEW_KEY, {}) || {}; return { kind: ['all', 'none', ...K.IDS].includes(v.kind) ? v.kind : 'all', sort: K.SORTS.some(([id]) => id === v.sort) ? v.sort : 'recent', older: Boolean(v.older), series: typeof v.series === 'string' ? v.series : '' }; };
+  const setView = (patch) => { store.set(VIEW_KEY, { ...viewOf(), ...patch }); paint(); };
+  const openProject = (p) => ProjectWorkspace.open(p.id).catch((err) => { if (!err?.shown) toast(calmError(err), { type: 'error' }); });
+  const kindTag = (p) => { const k = K.kind(K.kindOf(p)); return k ? el('span', { class: 'pj-kind', dataset: { kind: k.id }, text: `${k.icon} ${k.label}` }) : null; };
+  async function editPitch(p) {
+    const text = await Modal.prompt(`What is “${p.name}” going to be?`, { value: p.pitch || K.pitchOf(p), multiline: true, label: 'One or two lines: what it is, and what makes it worth finishing. It shows on the project’s card.' });
+    if (text == null) return;
+    P.setField(P.get(p.id) || p, 'pitch', text);
+  }
   let homeN = 0;
   function paintHome() {
     drawn=null;
     S.root.classList.remove('is-project');
+    S.root.classList.add('pj-clean');
     S.root.closest('.surface')?.classList.remove('pw-desk');
     const n = ++homeN;
     S.io?.disconnect();
-    const list = P.live();
+    const view = viewOf();
+    const live = P.live();
+    const A = K.arrange(live, { kind: view.kind, sort: view.sort, formats: S.formats, series: view.series });
+    const all = [...A.pinned, ...A.current];
+    // the project last worked on, wide: only on the unfiltered, recent view (elsewhere the grid is the answer)
+    const feature = view.kind === 'all' && view.sort === 'recent' && !view.series && all.length > 1 ? K.sorted(all, 'recent')[0] : null;
+    const list = all.filter((p) => p !== feature);
     const grid = el('div', { class: 'pj-grid' });
     const sugg = el('div', { class: 'pj-suggest' });
     window.ProjectFrontpage?.stop();
-    const hero=ProjectFrontpage.hero(list);
-    S.body.replaceChildren(hero, list.length ? grid : empty(), sugg);
+    const hero = store.get('projectFrontpage.enabled', false) ? ProjectFrontpage.hero(live) : null; // (the animated front page: only when switched on, Projects › ⋯)
+    // Games · Music · Videos, and the sort
+    const tab = (id, label, count) => el('button', { type: 'button', class: `pj-tab${view.kind === id ? ' on' : ''}`, dataset: { kind: id }, attrs: { 'aria-pressed': view.kind === id ? 'true' : 'false' }, on: { click: () => setView({ kind: id }) } }, el('span', { text: label }), el('i', { text: String(count) }));
+    const series = K.seriesOf(live);
+    const bar = el('div', { class: 'pj-bar', attrs: { role: 'toolbar', 'aria-label': 'Which projects' } },
+      tab('all', 'All', A.counts.all), ...K.KINDS.map((k) => tab(k.id, `${k.icon} ${k.plural}`, A.counts[k.id])), A.counts.none ? tab('none', 'Not set', A.counts.none) : null,
+      series.length ? el('select', { class: 'pj-series-pick', title: 'Only one series', attrs: { 'aria-label': 'Series' }, on: { change: (e) => setView({ series: e.target.value }) } }, el('option', { value: '', text: 'Every series' }), ...series.map((x) => el('option', { value: x.name, text: `${x.name} · ${x.n}`, selected: x.name === view.series }))) : null,
+      el('select', { class: 'pj-sort', title: 'Order', attrs: { 'aria-label': 'Order' }, on: { change: (e) => setView({ sort: e.target.value }) } }, ...K.SORTS.map(([id, label]) => el('option', { value: id, text: label, selected: id === view.sort }))));
+    // "Older version": made for the old player; they open, edit and render as before
+    let older = null;
+    if (A.older.length) {
+      const og = el('div', { class: 'pj-grid pj-grid-older' });
+      older = el('details', { class: 'pj-older', open: view.older }, el('summary', {}, el('b', { text: `Older version · ${A.older.length}` }), el('span', { class: 'pj-older-hint', text: 'Made for the old player. They open, edit and render as before.' })), og);
+      const fill = () => { if (older.open && !og.children.length) og.append(...A.older.map((p) => card(p))); };
+      older.addEventListener('toggle', () => { fill(); store.set(VIEW_KEY, { ...viewOf(), older: older.open }); });
+      fill();
+    }
+    const nothing = !all.length ? (live.length ? el('p', { class: 'pj-empty', text: A.older.length ? 'Nothing here on the new player yet. Your earlier projects are under “Older version” below.' : 'No project of this kind yet. ＋ New project makes one.' }) : empty()) : null;
+    S.body.replaceChildren(...[hero, live.length ? bar : null, feature ? card(feature, { feature: true }) : null, nothing, list.length ? grid : null, older, nextIdeas(feature || all[0] || null), sugg].filter(Boolean));
     let at = 0;
     const more = () => {
       const next = list.slice(at, at + CHUNK);
       at += next.length;
-      grid.append(...next.map(card));
+      grid.append(...next.map((p) => card(p)));
       if (at < list.length) { const s = el('div', { class: 'pj-sentinel' }); grid.append(s); S.io.observe(s); }
     };
     S.io = new IntersectionObserver((es) => { for (const e of es) if (e.isIntersecting) { S.io.unobserve(e.target); e.target.remove(); more(); } }, { root: S.root, rootMargin: '400px' });
@@ -114,24 +157,72 @@ const ProjectsHome = (() => {
   }
   function empty() {
     return el('div', { class: 'pj-empty' },
-      el('p', { text: 'No projects yet. A project gathers the chats, Lab scenes, boards, renders and files of one piece of work, so you can pick it up on either computer.' }),
-      el('p', { class: 'hint', text: 'Make one with ＋ New project, or from a suggestion below the search. Every chat belongs to one project: right-click a chat › Move to project… Makes become projects by themselves.' })); // (round 116, projchats116)
+      el('p', { text: 'No projects yet. A project is one thing you are making: a game, a visual for a song, or a video. It keeps its chat, its scene and its moodboard together.' }),
+      el('p', { class: 'hint', text: 'Make one with ＋ New project, or from a suggestion below. Every chat belongs to one project: right-click a chat › Move to project… Makes become projects by themselves.' })); // (round 116, projchats116)
   }
-  function card(p) {
+  // what could come next: a row of ideas, each one click into the new-project card (name, kind and pitch filled in)
+  const startIdea = (idea) => ProjectWorkspace.wizard({ name: idea.name || '', kind: idea.kind, intent: idea.pitch || '', series: idea.series || '' }).catch((err) => toast(calmError(err), { type: 'error' }));
+  function ideaChip(idea) {
+    const k = K.kind(idea.kind);
+    return el('button', { type: 'button', class: `pj-idea${idea.ai ? ' pj-idea-ai' : ''}`, title: `${idea.pitch}\nClick: start it as a new project (you can change everything first)`, dataset: { kind: idea.kind }, on: { click: () => startIdea(idea) } },
+      el('span', { class: 'pj-idea-kind', text: k ? k.icon : '✦' }), el('span', { class: 'pj-idea-text' }, el('b', { text: idea.name || idea.label }), el('span', { text: idea.name ? idea.label : idea.pitch })));
+  }
+  function ideaRows(p, { ai = true } = {}) {
+    const ideas = p.ideas?.follow?.length || p.ideas?.fresh?.length ? p.ideas : K.followUps(p);
+    const rows = [
+      ideas.follow?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: `After “${K.cap(p.name, 28)}”` }), ...ideas.follow.map(ideaChip)) : null,
+      ideas.fresh?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: 'A different series' }), ...ideas.fresh.map(ideaChip)) : null];
+    if (ai) rows.push(el('div', { class: 'pj-next-row pj-next-more' },
+      el('button', { type: 'button', class: 'ghost small', text: p.ideas ? '✦ Other ideas' : '✦ Ideas from the AI', title: 'One small AI call: three follow-ups for this project and three ideas for a different series, from what it is and what else you made', on: { click: (e) => askIdeas(p, e.currentTarget) } }),
+      p.ideas ? el('button', { type: 'button', class: 'ghost small', text: 'Back to the plain ones', title: 'Forget the AI’s ideas for this project', on: { click: () => P.setField(P.get(p.id) || p, 'ideas', null) } }) : null));
+    return rows.filter(Boolean);
+  }
+  function nextIdeas(p) {
+    if (!p) return null;
+    return el('section', { class: 'pj-next', dataset: { project: p.id } }, el('h3', { text: 'What could come next' }), ...ideaRows(p));
+  }
+  async function askIdeas(p, button) {
+    const a = H.claudeAgent?.() || H.agents().find((x) => x.mode === 'native');
+    if (!a) { toast('Add a native AI in Settings first.', { type: 'error' }); return; }
+    if (button) { button.disabled = true; button.textContent = '✦ Thinking…'; }
+    try {
+      let mood = '';
+      try { if (window.MoodRead && p.workspace?.boardId) { await MoodRead.ready(); mood = MoodRead.get(p.workspace.boardId)?.board?.mood || ''; } } catch { /* no read */ }
+      const r = await window.hub.askOnce({ agentId: a.id, text: K.ideasPrompt(p, P.live(), { mood }), options: { lean: true, helper: true } });
+      if (r?.ok && r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: a.id, usage: r.usage, source: 'project ideas' } }));
+      const ideas = r?.ok ? K.parseIdeas(r.text, p) : null;
+      if (!ideas) throw Error(r?.error || 'No ideas came back. Try again.');
+      P.setField(P.get(p.id) || p, 'ideas', { ...ideas, at: Date.now() });
+    } catch (err) { toast(calmError(err), { type: 'error' }); if (button) { button.disabled = false; button.textContent = '✦ Ideas from the AI'; } }
+  }
+  function card(p, { feature = false } = {}) {
     const cover = P.coverOf(p);
     const pic = el('div', { class: 'pj-cover' }, cover ? el('img', { src: cover, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph }));
     ProjectFrontpage.decorate(pic,p);
-    const cont = el('div', { class: 'pj-continue' }, ...continueChips(p));
-    const c = el('div', { class: `pj-card pj-st-${p.status}`, tabIndex: 0, title: `${p.name}${p.notes ? `\n${C.cap(p.notes, 200)}` : ''}\nClick: resume this project · right-click: more`, dataset: { project: p.id } },
+    const pitch = K.pitchOf(p);
+    const tag = kindTag(p);
+    if (tag) pic.append(tag);
+    if (p.pin) pic.append(el('span', { class: 'pj-pin', text: '★', title: 'Pinned to the top (the ⋯ menu unpins it)' }));
+    const c = el('div', { class: `pj-card pj-st-${p.status}${feature ? ' pj-feature' : ''}`, tabIndex: 0, title: `${p.name}${pitch ? `\n${pitch}` : ''}\n${C.countText(p)}\nClick: resume this project · right-click: more · F2: rename`, dataset: { project: p.id, kind: K.kindOf(p) || '' } },
       pic,
-      el('div', { class: 'pj-card-head' }, el('span', { class: 'pj-mark', text: p.ident.glyph }), el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null, p.revived ? el('span', { class: 'pj-pill pj-pill-revived', text: 'Deleted elsewhere?', title: 'Deleted on your other computer, but it changed after that: open it to keep it or delete it' }) : null, // (round 76, projsync76)
-        el('button', { type: 'button', class: 'ghost small pj-go pj-card-more', text: '⋯', title: 'This project’s menu', attrs: { 'aria-label': `${p.name}: menu`, 'aria-haspopup': 'menu' }, on: { click: (e) => { e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect(); P.openMenu(p, b.left, b.bottom + 4, 'home'); } } })), // (round 128, projmenu128) the one project menu
-      el('p', { class: 'pj-card-description', text: p.workspace?.description || C.cap(p.notes || 'Open your project workspace', 110) }),
-      el('div', { class: 'pj-meta', text: C.countText(p) }), cont);
+      el('div', { class: 'pj-card-text' },
+        feature ? el('span', { class: 'pj-eyebrow', text: 'Continue' }) : null,
+        el('div', { class: 'pj-card-head' }, el('b', { class: 'pj-name', text: p.name }), p.status !== 'active' ? el('span', { class: 'pj-pill', text: C.STATUS[p.status] }) : null, p.revived ? el('span', { class: 'pj-pill pj-pill-revived', text: 'Deleted elsewhere?', title: 'Deleted on your other computer, but it changed after that: open it to keep it or delete it' }) : null, // (round 76, projsync76)
+          el('button', { type: 'button', class: 'ghost small pj-go pj-card-more', text: '⋯', title: 'This project’s menu', attrs: { 'aria-label': `${p.name}: menu`, 'aria-haspopup': 'menu' }, on: { click: (e) => { e.stopPropagation(); const b = e.currentTarget.getBoundingClientRect(); P.openMenu(p, b.left, b.bottom + 4, 'home'); } } })), // (round 128, projmenu128) the one project menu
+        pitch ? el('p', { class: 'pj-card-description', text: pitch })
+          : el('button', { type: 'button', class: 'pj-go pj-card-description pj-pitch-add', text: 'What is it going to be?', title: 'Write one line on what this project is going to be', on: { click: (e) => { e.stopPropagation(); editPitch(p).catch((err) => toast(calmError(err), { type: 'error' })); } } }),
+        p.series ? el('span', { class: 'pj-series', text: p.series, title: `Part of the series “${p.series}”` }) : null,
+        feature ? el('div', { class: 'pj-continue' }, ...continueChips(p)) : null));
     const identity=el('button',{type:'button',class:'pj-go pw-banner-edit',text:'✦',title:'Generate a Three.js banner / logo',attrs:{'aria-label':`Design ${p.name} banner`},on:{click:e=>{e.stopPropagation();ProjectFrontpage.edit(p).catch(err=>toast(calmError(err),{type:'error'}));}}});pic.append(identity);
     tint(c, p.ident.color);
-    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
-    c.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target===c) ProjectWorkspace.open(p.id).catch(err=>{if(!err?.shown)toast(calmError(err),{type:'error'});}); });
+    c.addEventListener('click', (e) => { if (e.target.closest('.pj-go')) return; openProject(p); });
+    c.addEventListener('keydown', (e) => {
+      if (e.target !== c) return;
+      if (e.key === 'Enter') openProject(p);
+      else if (e.key === 'F2') { e.preventDefault(); P.renamePrompt(p); } // (round 182) the card under the keyboard: F2 renames, P pins, the arrows walk the cards
+      else if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); P.setField(p, 'pin', !p.pin); }
+      else if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) { const cs = [...S.body.querySelectorAll('.pj-card')].filter((x) => x.offsetParent); const i = cs.indexOf(c); const cols = Math.max(1, Math.round((c.parentElement?.clientWidth || 1) / (c.offsetWidth + 18))); const j = i + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowDown' ? cols : -cols); if (cs[j]) { e.preventDefault(); cs[j].focus(); } }
+    });
     c.addEventListener('contextmenu', (e) => { e.preventDefault(); P.openMenu(p, e.clientX, e.clientY, 'home'); }); // (round 128, projmenu128)
     // (round 72) the pointer on a card: the workspace's code starts loading (the first open of a session waits less)
     c.addEventListener('pointermove', prefetch); c.addEventListener('focus', prefetch, { once: true }); // (round 94, labload94: a pointer moving on it, not pointerenter: one resting where the cards are drawn at start isn't intent)
@@ -211,6 +302,7 @@ const ProjectsHome = (() => {
       el('div', { class: 'pj-p-titles' },
         el('button', { type: 'button', class: 'ghost small pj-back', text: '‹ Projects', on: { click: () => ProjectWorkspace.home() } }),
         el('div', { class: 'pj-p-line' }, mark, name, status),
+        el('button', { type: 'button', class: `pj-p-pitch${K.pitchOf(p) ? '' : ' pj-pitch-add'}`, text: K.pitchOf(p) || 'What is it going to be?', title: 'What this project is going to be: click to write it', on: { click: () => editPitch(p).catch((err) => toast(calmError(err), { type: 'error' })) } }), // (round 182, projclean182)
         el('div', { class: 'pj-meta', text: `${C.countText(p)} · made ${p.from === 'make' ? 'from a make' : p.from === 'suggest' ? 'from a suggestion' : 'by hand'} · ${timeAgo(p.at)}` }),
         syncLine(p), revivedNote(p), // (round 76, projsync76)
         el('div', { class: 'pj-p-actions' },
@@ -234,7 +326,8 @@ const ProjectsHome = (() => {
     const about=el('details',{class:'pw-about'},el('summary',{text:'Project notes & setup'}),notes,p.workspace?.description?el('p',{class:'pw-about-copy',text:p.workspace.description}):null,row('Project setup','spark',()=>ProjectWorkspace.settings(p)),row('Write description with AI','chat',()=>ProjectWorkspace.describe(p)));
     const conversations=chats.length>1?block('Conversations',...chats.map(x=>row(P.nameOf(x),'chat',()=>ProjectWorkspace.conversation(p,x.ref)))):null;
     const files=filesShelf(p,state);
-    S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),materials,modules,...(conversations?[conversations]:[]),about,files); // (round 116, slim116: no quest card, no Instruments block) (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
+    const next=el('details',{class:'pj-next pw-next'},el('summary',{text:'What could come next'}),...ideaRows(p)); // (round 182, projclean182) follow-ups of this project, and a different series
+    S.body.replaceChildren(head,...(window.ProjFind?[ProjFind.box(p)]:[]),materials,modules,...(conversations?[conversations]:[]),about,next,files); // (round 116, slim116: no quest card, no Instruments block) (round 81, projsearch81) ProjFind.box: Find in this project, one box for everything in it (projfind.js)
     for(const d of S.body.querySelectorAll('details'))d.open=(state.open||[]).includes(d.className);
     if(modules.open)paintModules();
     if(window.DeskPaint)DeskPaint.place(S,state.scroll||0,{now:Boolean(state.focus)});else S.top=S.root.scrollTop=state.scroll||0; // (round 89, desk89) the place set in the coming frame (desk-paint-core.js): the write laid out the whole window inside this task (≈ 15–30 ms of Clink's 50–70) · (round 86: S.top, see keepDesk; a clamped place comes back by its scroll event)
@@ -346,6 +439,6 @@ const ProjectsHome = (() => {
     ],
   });
 
-  return { show, mounted: () => S.mounted, openProject: () => (visible() ? S.open : null), newProject, paint, isVisible: visible };
+  return { show, formats: () => S.formats || null, editPitch, mounted: () => S.mounted, openProject: () => (visible() ? S.open : null), newProject, paint, isVisible: visible };
 })();
 window.ProjectsHome = ProjectsHome;

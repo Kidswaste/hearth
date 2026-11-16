@@ -79,8 +79,8 @@
   const briefOptions = (st) => ({ moodboard: Boolean(st.consent), refs: true, song: true, scene: true, notes: String(st.intent || '').trim() });
   // "Suggest a name": the words to the AI, and its answer made into a name
   const base = (p) => String(p || '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-  function namePrompt(intent, song) {
-    return `Suggest one short, evocative name (1 to 4 words) for a music-visual project. Facts: ${JSON.stringify({ idea: String(intent || '').slice(0, 600), song: song ? base(song) : null })}. Reply with the name only.`;
+  function namePrompt(intent, song, kind = '') {
+    return `Suggest one short, evocative name (1 to 4 words) for a ${kind === 'game' ? 'small video game' : kind === 'video' ? 'short video' : 'music-visual'} project. Facts: ${JSON.stringify({ idea: String(intent || '').slice(0, 600), song: song ? base(song) : null })}. Reply with the name only.`;
   }
   function cleanName(text) {
     const line = String(text || '').split('\n').map((l) => l.trim()).find(Boolean) || '';

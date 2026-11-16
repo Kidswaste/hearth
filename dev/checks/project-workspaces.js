@@ -2,7 +2,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const until=async(fn,name)=>{for(let i=0;i<240;i++){if(await fn())return;await wait(50);}throw Error('Timed out: '+name);};
 const check=(v,name)=>{if(!v)throw Error(name);};
 await Lazy.load('projects');await Projects.ready();
-await ProjectWorkspace.home();await until(()=>document.querySelector('.pw-gallery-hero'),'gallery');
+await ProjectWorkspace.home();await until(()=>document.querySelector('.pj-home.pj-clean .pj-bar,.pj-home.pj-clean .pj-empty,.pw-gallery-hero'),'gallery');
 check(!document.querySelector('#agent-buttons [data-space=chat]'),'chat secondary');
 check(document.querySelector('#agent-buttons [data-shortcut=forgeheart] svg'),'spaceship');
 await ProjectWorkspace.wizard({name:'Watchdog / motion'});await smoke({shot:window.SMOKE_SAVES+'/new-project.png'});document.querySelector('.pw-wizard').close();

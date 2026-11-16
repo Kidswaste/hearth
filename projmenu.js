@@ -64,6 +64,9 @@ const ProjectMenu = (() => {
     return bits.join(' · ');
   }
 
+  async function pitchPrompt(p) { const t = await Modal.prompt(`What is “${p.name}” going to be?`, { value: p.pitch || (has('ProjKindCore') ? ProjKindCore.pitchOf(p) : ''), multiline: true, label: 'One or two lines. It shows on the project’s card.' }); if (t != null) P.setField(p, 'pitch', t); }
+  async function seriesPrompt(p) { const names = has('ProjKindCore') ? ProjKindCore.seriesOf(P.live()).map((x) => x.name) : []; const t = await Modal.prompt(`The series of “${p.name}”`, { value: p.series || '', label: `A name shared by projects that belong together${names.length ? ` (yours: ${names.slice(0, 6).join(', ')})` : ''}. Empty: not in a series.` }); if (t != null) P.setField(p, 'series', t); }
+
   // ---------- the rows ----------
   const S = (label) => label; // a section's title (a plain string: showMenu draws it as a heading)
   function items(p, { where = 'menu' } = {}) {
@@ -100,6 +103,13 @@ const ProjectMenu = (() => {
     ].filter(Boolean);
     if (ai.length) out.push(S('AI'), ...ai);
     out.push(
+      // (round 182, projclean182) what the project is, for the clean Projects screen: its one line, its kind, its series, a pin, its shelf
+      S('What it is'),
+      { id: 'pitch', label: 'What it is going to be…', icon: 'pen', hint: p.pitch ? C.cap(p.pitch, 28) : '', tip: 'The one line on its card', action: go(() => pitchPrompt(p)) },
+      has('ProjKindCore') ? { id: 'kind', label: 'Kind', hint: ProjKindCore.kind(ProjKindCore.kindOf(p))?.label || 'not set', items: () => ProjKindCore.KINDS.map((k) => ({ label: `${k.icon} ${k.label}`, checked: ProjKindCore.kindOf(p) === k.id, action: go(() => P.setWorkspace(p, { kind: k.id })) })) } : null,
+      { id: 'series', label: 'Series…', hint: p.series || '', tip: 'Projects of one series show its name and can be listed together', action: go(() => seriesPrompt(p)) },
+      { id: 'pin', label: 'Pinned to the top', checked: Boolean(p.pin), action: go(() => P.setField(p, 'pin', !p.pin)) },
+      has('ProjKindCore') ? (() => { const older = ProjKindCore.shelfOf(p, window.ProjectsHome?.formats?.()) === 'older'; return { id: 'shelf', label: older ? 'Move back with the current projects' : 'Move to “Older version”', tip: older ? 'Out of the Older version fold' : 'Fold it under “Older version” on the Projects screen (it stays as it is)', action: go(() => P.setField(p, 'shelf', older ? 'current' : 'older')) }; })() : null,
       S('Look'),
       { id: 'rename', label: 'Rename…', icon: 'pen', action: go(() => P.renamePrompt(p)) },
       { id: 'look', label: 'Colour and mark…', icon: 'vibe', action: go(() => lookDialog(p)) },

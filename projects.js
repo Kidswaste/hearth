@@ -112,6 +112,8 @@ const Projects = (() => {
     // (round 73, startfast73) the scenes' ids, names and times only (Home's cards, suggestions, timing): a few KB instead of
     // every scene's code (2 MB with 50 scenes, ≈ 0.1–0.2 s for the window to take in when Home is the first screen)
     sceneList: () => cached('sceneList', 20000, async () => labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'name', 'updatedAt']).catch(() => null)) || (await Src.sketches())),
+    // (round 182, projclean182) every scene's format (Map id → 'gpu' | ''): the Projects screen's “Older version” shelf (ProjKindCore.shelfOf)
+    sceneFormats: () => cached('sceneFormats', 20000, async () => { const l = labScenes()?.all?.() || (await window.hub.kvPick?.('three-sketches', ['id', 'format']).catch(() => null)) || (await Src.sketches()); return new Map((l || []).map((x) => [x.id, x.format || ''])); }),
     // the Lab's own small stills (kv 'three-thumbs', taken a few seconds after a scene runs)
     sceneThumbs: () => cached('sceneThumbs', 120000, async () => (await window.hub.kvGet('three-thumbs', {})) || {}),
     // (the board's own index and the board on screen when the board is loaded: they're ahead of their saves)
@@ -133,11 +135,11 @@ const Projects = (() => {
   addEventListener('hearth:synced', (e) => {
     const rels = (e.detail?.files || []).map((f) => f.rel);
     // (round 77, storeack77) kv/projects.json: StoreAck (below) writes, reads again, acks
-    if (rels.some((r) => /^kv\/(three-sketches|three-thumbs)\.json$/.test(r))) forget('sketches', 'sceneList', 'sceneThumbs');
+    if (rels.some((r) => /^kv\/(three-sketches|three-thumbs)\.json$/.test(r))) forget('sketches', 'sceneList', 'sceneThumbs', 'sceneFormats');
     if (rels.some((r) => /^kv\/boards?/.test(r))) forget('boards');
     if (rels.some((r) => /^workspace\//.test(r))) forget('workspace');
   });
-  addEventListener('hearth:sketch', () => forget('sketches', 'sceneList'));
+  addEventListener('hearth:sketch', () => forget('sketches', 'sceneList', 'sceneFormats'));
   // (round 76, projsync76) a change made here in the last moment (a rename, notes, an item taken out) was dropped when
   // the other computer's version arrived: it's written first (sync's write guard merges it with what arrived). Then sync
   // is told this window now holds what arrived, so a later "take out" of something that came from the other computer
@@ -261,6 +263,10 @@ const Projects = (() => {
   function setCover(p, id) { if (!C.setCover(p, id)) return false; changed(p, 'cover'); return true; }
   function nextColor(p) { C.setIdent(p, { ci: p.ident.ci + 1 }); changed(p, 'ident'); }
   function nextMark(p) { C.setIdent(p, { gi: p.ident.gi + 1 }); changed(p, 'ident'); }
+  // (round 182, projclean182) what the clean Projects screen keeps on a project: what it is going to be (pitch), its
+  // series, a pin, and the shelf the owner chose ('older' | 'current'; unset: by its scenes' format)
+  const FIELDS = { pitch: (v) => C.cap(v || '', 200) || undefined, series: (v) => C.cap(v || '', 40) || undefined, pin: (v) => (v ? true : undefined), shelf: (v) => (v === 'older' || v === 'current' ? v : undefined), ideas: (v) => (v && typeof v === 'object' ? v : undefined) };
+  function setField(p, key, value) { if (!p || !FIELDS[key]) return false; const v = FIELDS[key](value); if (JSON.stringify(p[key]) === JSON.stringify(v)) return false; if (v === undefined) delete p[key]; else p[key] = v; if (key === 'pitch' || key === 'series') p.updated = Date.now(); /* (a pin, a shelf or new ideas isn't "worked on": the Continue card stays where it was) */ changed(p, key); return true; }
   function touch(p) { if (!p) return; p.opened = Date.now(); save(); }
   function setWorkspace(p, patch) { p.workspace = { ...p.workspace, ...patch }; p.updated = Date.now(); changed(p, 'workspace'); }
   async function flush() { clearTimeout(saveT); dirty = false; const r = await window.hub.kvSet(KEY, data); if (r?.error) throw Error(r.error); }
@@ -574,7 +580,7 @@ const Projects = (() => {
 
   return {
     ready: () => ready, isLoaded: () => loaded, all, live, get, find, ofItem, projectOfChat, here, hereChat, currentScene, currentBoard,
-    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, // (round 121, listtidy121) hidesMake: gone
+    create, add, remove, rename, setStatus, setNotes, setCover, setWorkspace, setField, flush, nextColor, nextMark, touch, removeProject, restoreProject, trashed, replaceWith, settleRevived, fromMake, syncMakes, // (round 121, listtidy121) hidesMake: gone
    
     sceneLinked, madeHere, onRenderJob, suggestions, acceptSuggestion, dismissSuggestion, things,
     openItem, openChat, openScene, openBoard, openHome, continueIn, itemMenu, projectMenu, menu, openMenu /* (round 128, projmenu128) */, addMenu, renamePrompt, notesPrompt, bundle,

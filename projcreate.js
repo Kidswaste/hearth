@@ -19,6 +19,7 @@ window.ProjCreate = (() => {
   const KEY = 'projcreate.last';
   const P = () => Projects;
   const PW = () => ProjectWorkspace;
+  const KC = () => (typeof ProjKindCore !== 'undefined' ? ProjKindCore : null); // (round 182, projclean182)
   const last = { made: null, brief: null, steps: [] }; // (checks) what the last Create did
   let card = null; // the open card's { d, st, paint }
 
@@ -48,14 +49,23 @@ window.ProjCreate = (() => {
     const st = {
       start: 'empty', myWork: null /* (round 134, starters134) */, copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
       palette: [], paletteName: '', frame: d0.frame, fps: d0.fps, agentId: defaults.agentId && agents.some((a) => a.id === defaults.agentId) ? defaults.agentId : d0.agentId,
-      persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: '',
+      persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: String(defaults.intent || '').slice(0, 2000),
+      kind: KC()?.IDS.includes(defaults.kind) ? defaults.kind : '', series: String(defaults.series || '').slice(0, 40), personaTouched: false, // (round 182, projclean182) a game, music or a video; the series a follow-up continues
     };
+    if (st.kind) { const k = KC().kind(st.kind); st.start = k.start; st.persona = k.persona; }
     const lists = { scenes: null, projects: null, templates: null, recipes: null, boards: null, projTemplates: null };
     const d = el('dialog', { class: 'ui-modal pw-wizard pcw', attrs: { 'aria-label': 'New project' } });
     const form = el('form');
     const title = el('input', { value: defaults.name || '', placeholder: 'Name this little world', required: true, maxLength: 48, attrs: { 'aria-label': 'Project name' } });
     const intent = el('textarea', { rows: 2, placeholder: 'e.g. a 30-second loop for a techno track, dark and glossy', maxLength: 2000, attrs: { 'aria-label': 'What are you making?' } });
+    intent.value = st.intent;
     intent.addEventListener('input', () => { st.intent = intent.value; });
+    // (round 182, projclean182) first: what kind of thing it is. The starts below follow it; nothing picked keeps every start
+    const kinds = el('div', { class: 'pcw-kinds', attrs: { role: 'group', 'aria-label': 'What kind of project' } });
+    const pickKind = (id) => { const k = KC().kind(id); const same = st.kind === id; st.kind = same ? '' : id; if (!same) { if (!KC().STARTS[id].includes(st.start) || st.start === 'empty') st.start = k.start; if (!st.personaTouched) st.persona = k.persona; } paint(); };
+    const paintKinds = () => { if (!KC()) { kinds.hidden = true; return; } kinds.replaceChildren(...KC().KINDS.map((k) => el('button', { type: 'button', class: `pcw-kind${st.kind === k.id ? ' on' : ''}`, dataset: { kind: k.id }, attrs: { 'aria-pressed': st.kind === k.id ? 'true' : 'false' }, on: { click: () => pickKind(k.id) } }, el('span', { class: 'pcw-kind-icon', text: k.icon }), el('b', { text: k.label }), el('span', { text: k.line })))); };
+    const seriesLine = el('p', { class: 'pcw-series', hidden: true });
+    const paintSeries = () => { seriesLine.hidden = !st.series; if (st.series) seriesLine.replaceChildren(el('span', { text: `Part of the series “${st.series}”` }), el('button', { type: 'button', class: 'ghost small', text: 'Not a series', on: { click: () => { st.series = ''; paintSeries(); } } })); };
     const status = el('p', { class: 'hint pcw-status', attrs: { role: 'status' } });
     const nameBtn = button('✦ Suggest a name', 'A short name from what you are making and the song: one small AI call, only when you click', async () => {
       if (!st.intent.trim() && !st.song) throw Error('Write what you are making (or pick a song) first.');
@@ -72,14 +82,16 @@ window.ProjCreate = (() => {
       return node;
     };
     form.append(
-      el('div', { class: 'pw-eyebrow', text: 'NEW / PROJECT' }), el('h2', { text: 'Give your idea a home.' }),
+      el('div', { class: 'pw-eyebrow', text: 'NEW / PROJECT' }), el('h2', { text: 'What are you making?' }),
+      kinds, seriesLine,
       el('label', { class: 'pw-field' }, el('span', { text: 'Project name' }), el('div', { class: 'pcw-row' }, title, nameBtn)),
-      el('label', { class: 'pw-field' }, el('span', { text: 'What are you making? (optional)' }), intent),
+      el('label', { class: 'pw-field' }, el('span', { text: 'What is it going to be? (optional: it shows on the project’s card)' }), intent),
       section('start', 'Start from', true), section('media', 'Music & footage'), section('look', 'Look'), section('ai', 'AI'),
       status,
       el('div', { class: 'dialog-actions' }, button('Cancel', 'Close without making anything', () => d.close()), el('button', { type: 'submit', class: 'primary', text: 'Create project ↗', disabled: !agents.length })));
     if (!agents.length) status.textContent = 'Add a native AI in Settings first.';
     const paint = () => {
+      paintKinds(); paintSeries();
       const s = C.summary(st, agents);
       for (const [id, text] of Object.entries({ start: s.start, media: s.media, look: s.look, ai: s.ai })) secs[id].sum.textContent = text;
       secs.start.body.replaceChildren(...startPart());
@@ -104,7 +116,7 @@ window.ProjCreate = (() => {
 
     function startPart() {
       const out = [el('div', { class: 'pcw-chips', attrs: { role: 'group', 'aria-label': 'Start from' } },
-        ...C.STARTS.map((s) => chip(`${s.icon} ${s.label}`, s.hint, st.start === s.id, () => set({ start: s.id }))),
+        ...C.STARTS.filter((s) => !st.kind || !KC() || KC().STARTS[st.kind].includes(s.id)).map((s) => chip(`${s.icon} ${s.label}`, s.hint, st.start === s.id, () => set({ start: s.id }))),
         chip('⧉ Copy one of my scenes…', 'A copy of a scene you made, with its song and frame size', st.start === 'copy', choose('scenes', 'copy')),
         // (round 134, starters134) ★ My work: past scenes, templates, standout layers and looks, with pictures (mywork.js)
         chip('★ My work…', 'Your past scenes, templates, standout layers and palettes, with pictures; ✦ Like my past work suggests 3', st.start === 'mywork', async () => {
@@ -180,7 +192,7 @@ window.ProjCreate = (() => {
     }
     function aiPart() {
       const tick = (label, title, on, fn) => el('label', { class: 'check', title }, el('input', { type: 'checkbox', checked: on, on: { change: (e) => fn(e.target.checked) } }), ` ${label}`);
-      const persona = el('select', { on: { change: (e) => { st.persona = e.target.value; } } }, ...Object.entries(ProjectWorkspaceCore.PERSONAS).map(([id, [label]]) => el('option', { value: id, text: label, selected: id === st.persona })));
+      const persona = el('select', { on: { change: (e) => { st.persona = e.target.value; st.personaTouched = true; } } }, ...Object.entries(ProjectWorkspaceCore.PERSONAS).map(([id, [label]]) => el('option', { value: id, text: label, selected: id === st.persona })));
       return [
         el('div', { class: 'pcw-label', text: 'Who directs' }),
         el('div', { class: 'pcw-chips', attrs: { role: 'group', 'aria-label': 'Who directs' } }, ...agents.map((a) => chip(a.name, a.engine === 'codex' ? 'Astra (Codex) directs this project' : 'Claude directs this project', st.agentId === a.id, () => set({ agentId: a.id })))),
@@ -245,6 +257,7 @@ window.ProjCreate = (() => {
       if (!np) throw Error('The copy didn’t work. Nothing was changed.');
       if (nm !== np.name) P().rename(np, nm);
       if (st.intent.trim() && !np.notes) P().setNotes(np, st.intent.trim());
+      kindAndPitch(np, st);
       await P().flush();
       await PW().open(np.id);
       last.made = { id: np.id, start: 'duplicate' };
@@ -266,8 +279,18 @@ window.ProjCreate = (() => {
       resumeId: retryId, name: nm, brief: st.intent.trim(), persona: st.persona, agentId: st.agentId, sceneId: st.start === 'copy' ? st.copyScene : '',
       boardId: st.boardCopy, plugins: [], files, describe: st.describe, prepare: (proj) => prepare(proj, st),
     });
-    last.made = { id: p.id, start: st.start };
+    kindAndPitch(p, st);
+    last.made = { id: p.id, start: st.start, kind: KC()?.kindOf(p) || null };
     return p;
+  }
+  // (round 182, projclean182) what the project is: its kind (picked, else read from its start), the line on what it is
+  // going to be (the owner's words on the card), and the series a follow-up continues
+  function kindAndPitch(p, st) {
+    const K = KC(); if (!K || !p) return;
+    const kind = st.kind || K.START_KIND[st.start] || null;
+    if (kind && p.workspace?.kind !== kind) P().setWorkspace(p, { kind });
+    if (st.intent.trim() && !p.pitch) P().setField(p, 'pitch', st.intent.trim());
+    if (st.series) P().setField(p, 'series', st.series);
   }
   // the project's scene, before it opens: the start's layers (recolored with the palette), the palette, size, rate, footage
   async function prepare(p, st) {
@@ -381,7 +404,7 @@ window.ProjCreate = (() => {
   async function suggestName(st, agents) {
     const a = agents.find((x) => x.id === st.agentId) || agents[0];
     if (!a) throw Error('Add a native AI first.');
-    const r = await window.hub.askOnce({ agentId: a.id, text: C.namePrompt(st.intent, st.song), options: { lean: true, helper: true, persona: 'You name creative projects. Reply with the name only.' } });
+    const r = await window.hub.askOnce({ agentId: a.id, text: C.namePrompt(st.intent, st.song, st.kind), options: { lean: true, helper: true, persona: 'You name creative projects. Reply with the name only.' } });
     if (!r?.ok) throw Error(r?.error || 'The AI did not reply.');
     if (r.usage) document.dispatchEvent(new CustomEvent('hearth:usage', { detail: { agentId: a.id, usage: r.usage, source: 'projcreate' } }));
     return C.cleanName(r.text);
