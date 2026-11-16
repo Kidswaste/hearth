@@ -166,17 +166,17 @@ const ProjectsHome = (() => {
       el('p', { class: 'hint', text: 'Make one with ＋ New project, or from a suggestion below. Every chat belongs to one project: right-click a chat › Move to project… Makes become projects by themselves.' })); // (round 116, projchats116)
   }
   // what could come next: a row of ideas, each one click into the new-project card (name, kind and pitch filled in)
-  const startIdea = (idea) => ProjectWorkspace.wizard({ name: idea.name || '', kind: idea.kind, intent: idea.pitch || '', series: idea.series || '' }).catch((err) => toast(calmError(err), { type: 'error' }));
-  function ideaChip(idea) {
+  const startIdea = (idea, from) => ProjectWorkspace.wizard({ name: idea.name || '', kind: idea.kind, intent: idea.pitch || '', series: idea.series || '', from: idea.series && from ? from.id : '' }).catch((err) => toast(calmError(err), { type: 'error' }));
+  function ideaChip(idea, from) {
     const k = K.kind(idea.kind);
-    return el('button', { type: 'button', class: `pj-idea${idea.ai ? ' pj-idea-ai' : ''}`, title: `${idea.pitch}\nClick: start it as a new project (you can change everything first)`, dataset: { kind: idea.kind }, on: { click: () => startIdea(idea) } },
+    return el('button', { type: 'button', class: `pj-idea${idea.ai ? ' pj-idea-ai' : ''}`, title: `${idea.pitch}\nClick: start it as a new project (you can change everything first)`, dataset: { kind: idea.kind }, on: { click: () => startIdea(idea, from) } },
       el('span', { class: 'pj-idea-kind', text: k ? k.icon : '✦' }), el('span', { class: 'pj-idea-text' }, el('b', { text: idea.name || idea.label }), el('span', { text: idea.name ? idea.label : idea.pitch })));
   }
   function ideaRows(p, { ai = true } = {}) {
     const ideas = p.ideas?.follow?.length || p.ideas?.fresh?.length ? p.ideas : K.followUps(p);
     const rows = [
-      ideas.follow?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: `After “${K.cap(p.name, 28)}”` }), ...ideas.follow.map(ideaChip)) : null,
-      ideas.fresh?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: 'A different series' }), ...ideas.fresh.map(ideaChip)) : null];
+      ideas.follow?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: `After “${K.cap(p.name, 28)}”` }), ...ideas.follow.map((x) => ideaChip(x, p))) : null,
+      ideas.fresh?.length ? el('div', { class: 'pj-next-row' }, el('span', { class: 'pj-next-label', text: 'A different series' }), ...ideas.fresh.map((x) => ideaChip(x, null))) : null];
     if (ai) rows.push(el('div', { class: 'pj-next-row pj-next-more' },
       el('button', { type: 'button', class: 'ghost small', text: p.ideas ? '✦ Other ideas' : '✦ Ideas from the AI', title: 'One small AI call: three follow-ups for this project and three ideas for a different series, from what it is and what else you made', on: { click: (e) => askIdeas(p, e.currentTarget) } }),
       p.ideas ? el('button', { type: 'button', class: 'ghost small', text: 'Back to the plain ones', title: 'Forget the AI’s ideas for this project', on: { click: () => P.setField(P.get(p.id) || p, 'ideas', null) } }) : null));

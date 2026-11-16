@@ -116,7 +116,7 @@ try {
   wiz.querySelector('input[aria-label="Project name"]').value = 'Harbor Run';
   wiz.querySelector('form').requestSubmit();
   const made = await until(() => Projects.live().find((p) => p.name === 'Harbor Run' && p.workspace?.sceneId && ProjCreate.last?.made?.id === p.id), 90000, 250);
-  ok(made && made.workspace.kind === 'game' && /What happens after Harbor Film/.test(made.pitch || '') && made.series === 'Harbor Film', 'Create makes a game, with its line and its series', made && { kind: made.workspace?.kind, pitch: made.pitch, series: made.series });
+  ok(made && made.workspace.kind === 'game' && /What happens after Harbor Film/.test(made.pitch || '') && made.series === 'Harbor Film' && Projects.get(video.id).series === 'Harbor Film', 'Create makes a game, with its line and its series (the project it follows joins the series)', made && { kind: made.workspace?.kind, pitch: made.pitch, series: made.series });
   out.info.steps = ProjCreate.last?.steps;
   // ▶ Play on the new game's card starts its scene in the play window (in a window here, silent)
   await ProjectWorkspace.home().catch(() => {});

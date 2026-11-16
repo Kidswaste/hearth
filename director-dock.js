@@ -38,6 +38,7 @@ const DirectorDock = (() => {
       // (round 183, forgechat183) the chat is in the Forgeheart window again: what is going on, what it looks like, what the notes say
       { label: '📊 Status', send: 'The live game\'s status in three lines: the stage, what is on screen, anything odd.' },
       { label: '📸 Look at it', send: 'Take a screenshot of the game and tell me briefly what you see.' },
+      { label: '💾 Keep that', send: 'Save what you just changed in the game as a patch (forge_patch save) with a clear name and a one-line description, so it survives a reload.' },
       { label: '📚 My notes', send: 'List my design notes (forge_docs), newest first, with one line on what each covers.' },
     ],
   };

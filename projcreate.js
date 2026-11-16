@@ -50,7 +50,7 @@ window.ProjCreate = (() => {
       start: 'empty', myWork: null /* (round 134, starters134) */, copyScene: '', dupProject: '', myTemplate: '', projTemplate: '', projTemplateName: '', recipe: '', model: null, song: null, footage: null, pictures: [], boardCopy: '',
       palette: [], paletteName: '', frame: d0.frame, fps: d0.fps, agentId: defaults.agentId && agents.some((a) => a.id === defaults.agentId) ? defaults.agentId : d0.agentId,
       persona: 'partner', consent: false, brief: false, briefTouched: false, describe: false, intent: String(defaults.intent || '').slice(0, 2000),
-      kind: KC()?.IDS.includes(defaults.kind) ? defaults.kind : (defaults.kind === undefined && KC()?.IDS.includes(store.get(KEY, {})?.kind) ? store.get(KEY, {}).kind : ''), /* (the kind made last is offered again; a click on it un-picks it) */ series: String(defaults.series || '').slice(0, 40), personaTouched: false, // (round 182, projclean182) a game, music or a video; the series a follow-up continues
+      kind: KC()?.IDS.includes(defaults.kind) ? defaults.kind : (defaults.kind === undefined && KC()?.IDS.includes(store.get(KEY, {})?.kind) ? store.get(KEY, {}).kind : ''), /* (the kind made last is offered again; a click on it un-picks it) */ series: String(defaults.series || '').slice(0, 40), from: String(defaults.from || ''), personaTouched: false, // (round 182, projclean182) a game, music or a video; the series a follow-up continues
     };
     if (st.kind) { const k = KC().kind(st.kind); st.start = k.start; st.persona = k.persona; }
     const lists = { scenes: null, projects: null, templates: null, recipes: null, boards: null, projTemplates: null };
@@ -65,7 +65,7 @@ window.ProjCreate = (() => {
     const pickKind = (id) => { const k = KC().kind(id); const same = st.kind === id; st.kind = same ? '' : id; if (!same) { if (!KC().STARTS[id].includes(st.start) || st.start === 'empty') st.start = k.start; if (!st.personaTouched) st.persona = k.persona; } paint(); };
     const paintKinds = () => { if (!KC()) { kinds.hidden = true; return; } kinds.replaceChildren(...KC().KINDS.map((k) => el('button', { type: 'button', class: `pcw-kind${st.kind === k.id ? ' on' : ''}`, dataset: { kind: k.id }, attrs: { 'aria-pressed': st.kind === k.id ? 'true' : 'false' }, on: { click: () => pickKind(k.id) } }, el('span', { class: 'pcw-kind-icon', text: k.icon }), el('b', { text: k.label }), el('span', { text: k.line })))); };
     const seriesLine = el('p', { class: 'pcw-series', hidden: true });
-    const paintSeries = () => { seriesLine.hidden = !st.series; if (st.series) seriesLine.replaceChildren(el('span', { text: `Part of the series “${st.series}”` }), el('button', { type: 'button', class: 'ghost small', text: 'Not a series', on: { click: () => { st.series = ''; paintSeries(); } } })); };
+    const paintSeries = () => { seriesLine.hidden = !st.series; if (st.series) seriesLine.replaceChildren(el('span', { text: `Part of the series “${st.series}”` }), el('button', { type: 'button', class: 'ghost small', text: 'Not a series', on: { click: () => { st.series = ''; st.from = ''; paintSeries(); } } })); };
     const status = el('p', { class: 'hint pcw-status', attrs: { role: 'status' } });
     const nameBtn = button('✦ Suggest a name', 'A short name from what you are making and the song: one small AI call, only when you click', async () => {
       if (!st.intent.trim() && !st.song) throw Error('Write what you are making (or pick a song) first.');
@@ -291,7 +291,7 @@ window.ProjCreate = (() => {
     const kind = st.kind || K.START_KIND[st.start] || null;
     if (kind && p.workspace?.kind !== kind) P().setWorkspace(p, { kind });
     if (st.intent.trim() && !p.pitch) P().setField(p, 'pitch', st.intent.trim());
-    if (st.series) P().setField(p, 'series', st.series);
+    if (st.series) { P().setField(p, 'series', st.series); const src = st.from && P().get(st.from); if (src && !src.series) { const was = src.updated; P().setField(src, 'series', st.series); src.updated = was; } } // (the project it follows joins the series too, without counting as worked on)
     P().setField(p, 'shelf', 'current'); // (a project made now is current work, even from a start that still makes an old-format scene)
   }
   // the project's scene, before it opens: the start's layers (recolored with the palette), the palette, size, rate, footage
