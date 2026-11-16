@@ -42,6 +42,9 @@
 .pj-clean .pj-card .pw-banner-edit { opacity: 0; transition: opacity 0.12s; }
 .pj-clean .pj-card:hover .pw-banner-edit, .pj-clean .pj-card .pw-banner-edit:focus-visible { opacity: 1; }
 .pj-kind { position: absolute; left: 8px; bottom: 8px; z-index: 2; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #000000a6; color: #f1ecf3; backdrop-filter: blur(6px); }
+.pj-clean .pj-play { position: absolute; right: 8px; bottom: 8px; z-index: 2; padding: 3px 11px; border-radius: 999px; border: 0; background: #000000a6; color: #fff; font-size: 12px; backdrop-filter: blur(6px); opacity: 0; transition: opacity 0.12s, background 0.12s; cursor: pointer; }
+.pj-clean .pj-card:hover .pj-play, .pj-clean .pj-card:focus-within .pj-play, .pj-clean .pj-feature .pj-play { opacity: 1; }
+.pj-clean .pj-play:hover { background: var(--pj, #ffb27b); color: #111; }
 .pj-pin { position: absolute; left: 10px; top: 8px; z-index: 2; color: #ffd27a; font-size: 14px; text-shadow: 0 1px 4px #000a; }
 .pj-series { display: inline-block; margin-top: 5px; font-size: 11px; color: color-mix(in srgb, var(--pj) 70%, var(--muted)); }
 .pj-series:before { content: '◆ '; font-size: 8px; vertical-align: 1px; }

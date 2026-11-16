@@ -79,6 +79,8 @@ that chose to call `three_do brief`.
   inspiration rule. `projectbrief.js`'s send-options hook sets `options.mood` (`MoodRead.promptFor(project)`) for the
   same chats that get the brief part; `engines.js` adds it as the `mood` part after `brief` (`MOOD_MAX` 2100; never
   lean / crew / plain chats).
+- After a review: the owner's Stop holds (a stopped board only reads by itself what lands after the Stop; a run
+  started by hand clears it), and more than 12 new pictures at once ask first (a note with "Show the cost").
 - Checks: `dev/moodread-test.js` step 8; `dev/checks/moodread179.js` step 7 (off: nothing read; on: the added picture
   is read alone, the next message's mood follows; a move reads nothing).
 - Not done: a chat outside a project gets no mood part (its board link is read asynchronously); the brief is not

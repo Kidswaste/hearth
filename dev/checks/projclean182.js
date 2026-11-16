@@ -49,6 +49,7 @@ try {
   ok(await until(() => olderBox.querySelector('.pj-card .pj-name')?.textContent === 'Stoop Ronin'), 'opened, it shows the project');
   const clink = () => root.querySelector(`.pj-card[data-project="${game.id}"]`);
   ok(clink().querySelector('.pj-card-description')?.textContent === 'A coin game that never stops.' && /Game/.test(clink().querySelector('.pj-kind')?.textContent || '') && !clink().querySelector('.pj-meta') && !clink().querySelector('.pj-continue'), 'a card: its line and its kind, no counts and no chips', clink().textContent);
+  ok(clink().querySelector('.pj-play') && !root.querySelector(`.pj-card[data-project="${music.id}"] .pj-play`), 'a game\'s card has ▶ Play; a music project\'s doesn\'t');
   ok(/Music/.test(root.querySelector(`.pj-card[data-project="${music.id}"] .pj-kind`)?.textContent || '') && root.querySelector(`.pj-card[data-project="${music.id}"] .pj-series`)?.textContent === 'Night', 'a visualizer start reads as Music; the series shows');
   ok(await until(() => /Next step\s*Light the one lamp/.test(cards()[0].querySelector('.pj-upnext')?.textContent || '') && /Mood\s*Cold light giving up/.test(cards()[0].querySelector('.pj-upnext').textContent)), 'the Continue card says the plan\'s next step and the moodboard\'s mood', cards()[0].querySelector('.pj-upnext')?.textContent);
   const earlierCard = root.querySelector('.pj-card[data-project="pj-earlier-chats"]');
@@ -117,6 +118,15 @@ try {
   const made = await until(() => Projects.live().find((p) => p.name === 'Harbor Run' && p.workspace?.sceneId && ProjCreate.last?.made?.id === p.id), 90000, 250);
   ok(made && made.workspace.kind === 'game' && /What happens after Harbor Film/.test(made.pitch || '') && made.series === 'Harbor Film', 'Create makes a game, with its line and its series', made && { kind: made.workspace?.kind, pitch: made.pitch, series: made.series });
   out.info.steps = ProjCreate.last?.steps;
+  // ▶ Play on the new game's card starts its scene in the play window (in a window here, silent)
+  await ProjectWorkspace.home().catch(() => {});
+  store.set('gamemode.window', '720');
+  const playBtn = await until(() => document.querySelector(`.pj-home.pj-clean .pj-card[data-project="${made?.id}"] .pj-play`), 15000);
+  ok(playBtn, 'the new game\'s card has ▶ Play');
+  playBtn?.click();
+  const playing = await until(async () => (await window.hub.game.state())?.pid, 60000, 300);
+  ok(playing, '▶ Play starts the game from its card, without opening the project', await window.hub.game.state().catch(() => null));
+  try { await window.hub.game.stop?.(); } catch { /* the app closes it with the check */ }
   await wait(1500);
   await ProjectWorkspace.home().catch(() => {});
   await until(() => document.querySelector('.pj-home.pj-clean .pj-bar'), 8000);

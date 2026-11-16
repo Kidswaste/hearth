@@ -44,6 +44,12 @@ the old player in a separate, 'Older version' under-folder. Separate games from 
    loop for a techno song"); the Lab's game features still follow `workspace.kind` only. `/new-game`, `/new-music`,
    `/new-video [name]`. The new-project card offers the kind made last.
 
+10. **▶ Play on a game's card** (`playProject` → `GameMode.play({ kind: 'lab', id: workspace.sceneId })`): only for
+    `kindOf(p) === 'game'` with a main scene. Checked: it starts the play window from the card.
+11. **After a review of the diff**: a project made now is marked `shelf: 'current'` (a start that still makes an
+    old-format scene no longer lands it in the fold); a series filter whose series is gone is dropped; a kind set by
+    drag, the menu or ✦ Sort doesn't stamp the project as worked on (`setWorkspace(p, patch, { quiet })`).
+
 ## Where it lives
 - `projkind-core.js` (new, pure; group `projects`): kinds, the line, the shelf, the lists, follow-ups, the AI prompt.
 - `projects-home.js`: `paintHome`, `card`, `nextIdeas`, `ideaRows`, `askIdeas`, `editPitch`; the Desk's line and

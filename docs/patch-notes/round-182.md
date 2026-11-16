@@ -33,6 +33,8 @@
 - ★ **Pin** a project to the top (⋯ menu, or P on a card).
 - **Order**: last worked on, newest first, or by name.
 - **Keyboard**: `/` jumps to the search, `N` starts a new project; on a card Enter opens, F2 renames, the arrows move.
+- **▶ Play on a game's card**: point at a game and press Play to run its main scene in the play window, without
+  opening the project (Esc there comes back).
 - **Drag a card** onto Games, Music or Videos to change its kind, or onto "Older version" to fold it away.
 - **✦ Sort my projects** (Projects › ⋯): one small AI call gives every project without a kind or a line both. It never
   changes one you set.

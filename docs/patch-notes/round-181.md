@@ -9,6 +9,8 @@
 - Changing "What I like about this" or a picture's note reads that picture again. Moving a picture reads nothing.
 - **Only what you just added.** A board full of older pictures that were never read is still your click (◐ Mood read),
   with the cost shown first. Hearth tells you once when a board has older pictures outside the read.
+- **Stop means stop**: after you stop a read, only pictures you add afterwards are read by themselves. More than 12
+  new pictures at once ask first, with the cost.
 - The switch is in the ◐ Mood read panel: **"Read new pictures by themselves, as they land"**, on by default.
 
 ## 🎨 The mood goes into every message

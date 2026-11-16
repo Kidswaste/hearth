@@ -220,6 +220,7 @@ const ProjectsHome = (() => {
     upNext(p).then((rows) => { if (!rows.length || !box.isConnected) return; box.replaceChildren(...rows.map(([label, text, tip]) => el('p', { title: tip || '' }, el('b', { text: label }), el('span', { text: text })))); box.hidden = false; }).catch(() => {});
     return box;
   }
+  const playProject = (p) => (window.Lazy ? Lazy.load('gamemode') : Promise.resolve()).then(() => GameMode.play({ kind: 'lab', id: p.workspace.sceneId, title: p.name })).then(() => P.touch(p)).catch((err) => toast(calmError(err), { type: 'error' }));
   function card(p, { feature = false } = {}) {
     const cover = P.coverOf(p);
     const pic = el('div', { class: 'pj-cover' }, cover ? el('img', { src: cover, alt: '', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'pj-cover-mark', text: p.ident.glyph }));
@@ -227,6 +228,8 @@ const ProjectsHome = (() => {
     const pitch = K.pitchOf(p);
     const tag = kindTag(p);
     if (tag) pic.append(tag);
+    // (round 182) a game plays from its card: its main scene in the play window (gamemode.js), without opening the project
+    if (K.kindOf(p) === 'game' && p.workspace?.sceneId) pic.append(el('button', { type: 'button', class: 'pj-go pj-play', text: '▶ Play', title: `Play ${p.name}: its main scene in the play window (Esc there comes back)`, attrs: { 'aria-label': `Play ${p.name}` }, on: { click: (e) => { e.stopPropagation(); playProject(p); } } }));
     if (p.pin) pic.append(el('span', { class: 'pj-pin', text: '★', title: 'Pinned to the top (the ⋯ menu unpins it)' }));
     const c = el('div', { class: `pj-card pj-st-${p.status}${feature ? ' pj-feature' : ''}`, tabIndex: 0, title: `${p.name}${pitch ? `\n${pitch}` : ''}\n${C.countText(p)}\nClick: resume this project · right-click: more · F2: rename`, dataset: { project: p.id, kind: K.kindOf(p) || '' } },
       pic,
