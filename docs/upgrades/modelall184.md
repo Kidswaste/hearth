@@ -18,6 +18,16 @@ The owner's ask (17 Nov 2026): "could you update all my current chats to fable 5
   starts with a data folder (8 s after the chat commands load, once the chat list is in), marks the settings
   (`modelSweep: 'fable-5-2'`) and never runs again. It shows a note with Undo. It does not run under the checks.
 
+## Smart routing kept the model from applying (found the same day)
+The owner asked the Forge chat "are you claude fable?" after the switch and was told Sonnet. The engine's own
+transcript confirmed `claude-sonnet-5-5` answered: `router.js` (Smart: on for an agent whose effort is unset or
+medium) sends chat / quick messages to `haiku` / `sonnet` unless the chat pins its own model.
+- `agent.keepModel` (new): `Router.pickFor` treats the agent's model as pinned, so Smart picks the effort only.
+- `modelAll` sets it on the engine's agents (kept in the undo store as `keep`); `modelUndo` clears it.
+- `modelOnce` marks `modelSweep: 'fable-5-2-keep'`. Where the first version already ran (`'fable-5-2'`), it only
+  adds `keepModel` to Claude agents still on `claude-fable-5-2` and says so in a note.
+- `/keep-model [on | off]` for one AI.
+
 ## Checks
 - `node dev/smoke.js --fake-engines --script dev/checks/modelall184.js` (silent): the agents' default, a chat with its
   own model, a plain chat, Astra left alone, the undo store, a second run, undo, the one-time switch and its mark.

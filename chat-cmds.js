@@ -910,6 +910,12 @@ const ChatCmds = (() => {
     run: async (args) => { const a = String(args || '').trim(); if (!a) return 'Say which model: /model-all claude-fable-5-2 (or /model-all undo).'; const r = /^undo$/i.test(a) ? await modelUndo() : await modelAll(a); return r.text; },
   });
   R({
+    name: 'keep-model', area: 'Agents', args: '[on | off]', desc: 'This AI answers every message on its own model: Smart still picks how hard it thinks, never a lighter model (no word: shows it)',
+    keywords: 'smart router model lighter sonnet haiku always same fable',
+    complete: pick(['on', 'off']),
+    run: async (args, ctx) => { const a = H.agent(ctx.agentId); const w = String(args || '').trim().toLowerCase(); if (!w) return a.keepModel ? `**${a.name}** answers every message on ${a.model || 'its model'}.` : `Smart may send **${a.name}**'s short messages to a lighter model. /keep-model on stops that.`; if (/^(on|yes|1)$/.test(w)) a.keepModel = true; else delete a.keepModel; await saveConfig(); return a.keepModel ? `**${a.name}** answers every message on ${a.model || 'its model'} from now on.` : `Smart may pick a lighter model for **${a.name}**'s short messages again.`; },
+  });
+  R({
     name: 'effort', area: 'Agents', args: '<low | medium | high | xhigh>', desc: 'How hard this agent thinks (agent setting; higher = slower, more tokens)',
     complete: pick(['low', 'medium', 'high', 'xhigh', 'default']),
     run: async (args, ctx) => {
@@ -1562,9 +1568,9 @@ const ChatCmds = (() => {
     if (!m || /\s/.test(m)) return { ok: false, text: 'That isn\'t a model name.' };
     const agents = (H.config?.agents || []).filter((a) => a.mode === 'native' && a.engine === engine);
     if (!agents.length) return { ok: false, text: 'No agent uses that engine.' };
-    const was = { at: Date.now(), model: m, engine, agents: {}, chats: {} };
-    for (const a of agents) { if (a.model !== m) { was.agents[a.id] = a.model || ''; a.model = m; } }
-    if (Object.keys(was.agents).length) await saveConfig();
+    const was = { at: Date.now(), model: m, engine, agents: {}, chats: {}, keep: {} };
+    for (const a of agents) { if (a.model !== m) { was.agents[a.id] = a.model || ''; a.model = m; } if (!a.keepModel) { was.keep[a.id] = false; a.keepModel = true; } } // (keepModel: Smart never routes a message to a lighter model, router.js)
+    if (Object.keys(was.agents).length || Object.keys(was.keep).length) await saveConfig();
     // a chat of one of these agents that has its own model: back to its agent's default (which is the model now)
     const ids = new Set(agents.map((a) => a.id));
     const list = (Array.isArray(H.chats) ? H.chats : []).filter((c) => ids.has(c.agentId) && c.model);
@@ -1572,17 +1578,18 @@ const ChatCmds = (() => {
     for (const c of list) {
       try { if (await Native.setModelOf(c.id, '')) was.chats[c.id] = c.model; } catch (err) { failed += 1; console.warn('model-all', c.id, err); }
     }
-    const nA = Object.keys(was.agents).length; const nC = Object.keys(was.chats).length;
-    if (nA || nC) { const old = await window.hub.kvGet(SWEEP, null).catch(() => null); await window.hub.kvSet(SWEEP, { ...was, before: old && !old.undone ? { agents: old.agents, chats: old.chats, model: old.model } : undefined }); }
+    const nA = Object.keys(was.agents).length; const nC = Object.keys(was.chats).length; const nK = Object.keys(was.keep).length;
+    if (nA || nC || nK) { const old = await window.hub.kvGet(SWEEP, null).catch(() => null); await window.hub.kvSet(SWEEP, { ...was, before: old && !old.undone ? { agents: old.agents, chats: old.chats, model: old.model } : undefined, ...(!nA && !nC && old && !old.undone ? { agents: old.agents, chats: old.chats } : {}) }); /* (only the keep mark changed: what to put back stays the earlier models) */ }
     try { H.chats = await window.hub.listChats(); Panel.render?.(); for (const a of agents) Native.refresh?.(a.id, { keepScroll: true }); } catch { /* shown on the next paint */ }
-    const text = nA || nC ? `Every ${engine === 'claude' ? 'Claude' : engine} chat now uses **${m}**: ${plural(nA, 'agent')} set to it${nC ? `, ${plural(nC, 'chat')} that had ${nC === 1 ? 'its' : 'their'} own model follow it` : ''}${failed ? ` (${plural(failed, 'chat')} couldn't be changed)` : ''}. /model-all undo puts back what they used.` : `Every ${engine === 'claude' ? 'Claude' : engine} chat already uses ${m}.`;
+    const text = nA || nC ? `Every ${engine === 'claude' ? 'Claude' : engine} chat now uses **${m}**: ${plural(nA, 'agent')} set to it${nC ? `, ${plural(nC, 'chat')} that had ${nC === 1 ? 'its' : 'their'} own model follow it` : ''}${failed ? ` (${plural(failed, 'chat')} couldn't be changed)` : ''}. Smart keeps choosing how hard it thinks, never a lighter model. /model-all undo puts back what they used.` : nK ? `Every ${engine === 'claude' ? 'Claude' : engine} chat already uses ${m}; from now on Smart never sends a message to a lighter model.` : `Every ${engine === 'claude' ? 'Claude' : engine} chat already uses ${m}.`;
     if (!quiet && (nA || nC)) toast(text.replace(/\*\*/g, ''), { timeout: 9000, action: { label: 'Undo', fn: () => modelUndo().then((r) => toast(r.text.replace(/\*\*/g, ''), { timeout: 5000 })) } });
-    return { ok: true, text, agents: nA, chats: nC, failed };
+    return { ok: true, text, agents: nA, chats: nC, keep: nK, failed };
   }
   async function modelUndo() {
     const was = await window.hub.kvGet(SWEEP, null).catch(() => null);
-    if (!was || was.undone || (!Object.keys(was.agents || {}).length && !Object.keys(was.chats || {}).length)) return { ok: false, text: 'Nothing to put back.' };
+    if (!was || was.undone || (!Object.keys(was.agents || {}).length && !Object.keys(was.chats || {}).length && !Object.keys(was.keep || {}).length)) return { ok: false, text: 'Nothing to put back.' };
     let n = 0;
+    for (const id of Object.keys(was.keep || {})) { const a = H.agent(id); if (a?.keepModel) { delete a.keepModel; n += Object.prototype.hasOwnProperty.call(was.agents || {}, id) ? 0 : 1; } }
     for (const [id, model] of Object.entries(was.agents || {})) { const a = H.agent(id); if (a) { if (model) a.model = model; else delete a.model; n += 1; } }
     if (n) await saveConfig();
     let c = 0;
@@ -1593,12 +1600,21 @@ const ChatCmds = (() => {
   }
   // The owner asked (17 Nov 2026) for all their current chats on Fable 5.2: done once per data folder, the first time
   // this version starts (the mark is in the settings; /model-all undo reverses it, and it never runs again).
-  const ONCE = 'fable-5-2';
+  // 'fable-5-2': the first version of this switch (the models only). 'fable-5-2-keep': and Smart never routes those
+  // agents' messages to a lighter model (the owner asked the Forge chat "are you Fable?" and Sonnet answered).
+  const ONCE = 'fable-5-2-keep';
   async function modelOnce() {
-    if (H.settings().modelSweep === ONCE || !Array.isArray(H.chats)) return null;
+    const mark = H.settings().modelSweep;
+    if (mark === ONCE || !Array.isArray(H.chats)) return null;
     H.config.settings = { ...H.config.settings, modelSweep: ONCE };
+    if (mark === 'fable-5-2') { // the models were switched already: only agents still on Fable 5.2 get the keep mark
+      let n = 0; for (const a of H.config.agents || []) if (a.mode === 'native' && a.engine === 'claude' && a.model === 'claude-fable-5-2' && !a.keepModel) { a.keepModel = true; n += 1; }
+      await saveConfig();
+      if (n) toast(`${plural(n, 'Claude AI')} now ${n === 1 ? 'answers' : 'answer'} every message on Fable 5.2: Smart no longer sends short questions to a lighter model`, { timeout: 9000 });
+      return { ok: true, text: '', agents: 0, chats: 0, keep: n, failed: 0 };
+    }
     const r = await modelAll('claude-fable-5-2');
-    if (!r.agents) await saveConfig(); // (the mark, when nothing else saved it)
+    if (!r.agents && !r.keep) await saveConfig(); // (the mark, when nothing else saved it)
     return r;
   }
   if (!window.__smoke) setTimeout(() => { const go = (n) => (Array.isArray(H.chats) ? modelOnce().catch((err) => console.warn('model sweep', err)) : n > 0 ? setTimeout(() => go(n - 1), 2000) : null); go(15); }, 8000);

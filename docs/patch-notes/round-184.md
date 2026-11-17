@@ -10,6 +10,13 @@
 - **`/model-all <model>`** does the same any time, for any Claude model (`/model-all opus`, `/model-all
   claude-fable-5-2`). **`/model-all undo`** puts back what every agent and chat used before.
 
+## 🎯 Every message, not just the long ones
+- **Short questions now stay on Fable 5.2 too.** "Smart" (how hard an AI thinks) was sending short or chatty
+  messages to a lighter model: you asked the Forge chat "are you Claude Fable?" and Sonnet answered. For your Claude
+  AIs, Smart now only chooses how hard to think, never a lighter model. This is applied by itself the next time
+  Hearth starts.
+- `/keep-model on` or `off` sets this for one AI. `/model-all` turns it on, and its undo turns it off again.
+
 ## Good to know
 - A chat in the middle of a long conversation carries on with the new model from its next message.
 - Fable 5.2 costs more per message than Opus: your usage meter will show it.

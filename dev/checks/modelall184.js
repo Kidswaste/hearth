@@ -25,11 +25,20 @@ try {
   ok(sum('ma-own')?.model === 'sonnet' && !sum('ma-plain')?.model, 'the chats are there, one with its own model', H.chats.filter((c) => /^ma-/.test(c.id)).map((c) => [c.id, c.model]));
   ok(H.settings().modelSweep === undefined, 'the one-time switch did not run by itself under the checks', H.settings().modelSweep);
 
+  // Smart, before: a short question on a medium-effort agent goes to a lighter model
+  const route = () => Router.pickFor(claude.id, { id: 'ma-own', agentId: claude.id, messages: [{ role: 'user', text: 'are you claude fable?' }] }, 'are you claude fable?', { role: 'user', text: 'are you claude fable?' }, {});
+  delete H.agent(claude.id).effort; delete H.agent(claude.id).keepModel;
+  const before = route();
+  ok(before && before.model && /sonnet|haiku/.test(before.model), 'before: Smart sends a short question to a lighter model', before);
+
   // ---------- 1. every Claude chat on one model ----------
   const r = await ChatCmds.modelAll('claude-fable-5-2', { quiet: true });
   out.info.text = r.text;
   ok(r.ok && r.agents >= 1 && H.agent(claude.id).model === 'claude-fable-5-2', 'the Claude agents\' default is the model', { r, model: H.agent(claude.id).model });
-  ok(H.agents().filter((a) => a.mode === 'native' && a.engine === 'claude').every((a) => a.model === 'claude-fable-5-2'), 'every Claude agent');
+  ok(H.agents().filter((a) => a.mode === 'native' && a.engine === 'claude').every((a) => a.model === 'claude-fable-5-2' && a.keepModel === true), 'every Claude agent, marked to keep its model');
+  const after = route();
+  ok(after && !after.model && after.effort && /Fable/.test(after.label), 'after: Smart still picks the effort, but the short question stays on Fable', after);
+  ok(astra ? !H.agent(astra.id).keepModel : true, 'Astra is not marked');
   await until(async () => { H.chats = await window.hub.listChats(); return !sum('ma-own')?.model; }, 8000, 300);
   ok(!sum('ma-own')?.model, 'a Claude chat that had its own model follows the default again', sum('ma-own'));
   ok(!sum('ma-plain')?.model, 'a chat with no model of its own is not touched');
@@ -44,14 +53,21 @@ try {
   // ---------- 2. undo ----------
   const u = await ChatCmds.modelUndo();
   await until(async () => { H.chats = await window.hub.listChats(); return sum('ma-own')?.model === 'sonnet'; }, 8000, 300);
-  ok(u.ok && H.agent(claude.id).model === 'claude-opus-5-5' && sum('ma-own')?.model === 'sonnet', '/model-all undo puts back the agents\' and the chats\' models', { u, agent: H.agent(claude.id).model, chat: sum('ma-own')?.model });
+  ok(u.ok && H.agent(claude.id).model === 'claude-opus-5-5' && !H.agent(claude.id).keepModel && sum('ma-own')?.model === 'sonnet', '/model-all undo puts back the agents\' and the chats\' models', { u, agent: H.agent(claude.id).model, chat: sum('ma-own')?.model });
   ok((await ChatCmds.modelUndo()).ok === false, 'nothing more to put back');
 
   // ---------- 3. the one-time switch ----------
   const once = await ChatCmds.modelOnce();
-  ok(once?.ok && H.settings().modelSweep === 'fable-5-2' && H.agent(claude.id).model === 'claude-fable-5-2', 'asked once: the current chats go to Fable 5.2 and the mark is set', { once, mark: H.settings().modelSweep });
+  ok(once?.ok && H.settings().modelSweep === 'fable-5-2-keep' && H.agent(claude.id).model === 'claude-fable-5-2' && H.agent(claude.id).keepModel === true, 'asked once: the current chats go to Fable 5.2 and the mark is set', { once, mark: H.settings().modelSweep });
   H.agent(claude.id).model = 'claude-opus-5-5'; await saveConfig(); await wait(600);
   ok((await ChatCmds.modelOnce()) === null && H.agent(claude.id).model === 'claude-opus-5-5', 'it never runs a second time (a model the owner picks afterwards stays)');
+  // a data folder where the first version of the switch already ran (the owner's): only the keep mark is added
+  H.config.settings = { ...H.config.settings, modelSweep: 'fable-5-2' }; for (const a of H.config.agents) if (a.engine === 'claude') { a.model = a.id === claude.id ? 'claude-fable-5-2' : 'sonnet'; delete a.keepModel; }
+  await saveConfig(); await wait(600);
+  const up = await ChatCmds.modelOnce();
+  ok(up?.keep >= 1 && H.agent(claude.id).keepModel === true && H.agent(claude.id).model === 'claude-fable-5-2' && H.settings().modelSweep === 'fable-5-2-keep' && H.agents().filter((a) => a.engine === 'claude' && a.id !== claude.id).every((a) => !a.keepModel && a.model === 'sonnet'), 'where the models were already switched: Fable agents get the keep mark, an agent the owner moved since is left alone', { up, agents: H.agents().map((a) => [a.id, a.model, a.keepModel]) });
+  const km = await Commands.get('keep-model').run('off', { agentId: claude.id });
+  ok(/lighter model/.test(km) && !H.agent(claude.id).keepModel, '/keep-model off gives Smart its choice back', km);
   const cmd = await Commands.get('model-all').run('', {});
   ok(/Say which model/.test(cmd), 'the command with no model says how to use it', cmd);
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }

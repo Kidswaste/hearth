@@ -140,7 +140,9 @@ const Router = (() => {
     return decide({
       engine, text: last?.role === 'user' ? last.text : raw, attachments: last?.attachments, images: (last?.images || []).length,
       director: Boolean(agent.dock), history: chat.messages.slice(0, last?.role === 'user' ? -1 : undefined),
-      pinned: { model: options.model, effort: options.effort }, baseModel: twin ? twin.model : agent.model, force,
+      // (round 184, modelall184) keepModel: the owner put this AI on one model for everything (/model-all, /keep-model):
+      // Smart still picks how hard it thinks, never a lighter model (a short question went to Sonnet on a Fable agent)
+      pinned: { model: options.model || (agent.keepModel && !twin && agent.model ? agent.model : undefined), effort: options.effort }, baseModel: twin ? twin.model : agent.model, force,
       learned: typeof RouterLearn !== 'undefined' ? RouterLearn.shifts(agentId) : null, // (round 39) what Smart learned from the owner
     });
   }
