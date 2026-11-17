@@ -117,6 +117,38 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     if (extra) { try { Native.setDraft(a.id, `${extra}\n\n`); } catch (err) { console.warn('forge chat draft', err); } }
     setTimeout(() => { try { Native.focus?.(a.id); } catch { /* not mounted yet */ } }, 60);
   }
+  // ---------- (round 185, forgefolder185) the Forge chat works in the game's own folder without asking ----------
+  // The Forge agent's files setting only named its small folder inside Hearth (data/projects/forge-debug), while the
+  // game lives in the project folder: every read, edit and command there was "outside the chat's folders" and showed
+  // an approval card (309 in the owner's log). The game's folder is added to the agent's folders (⋯ AI setup › Files
+  // on this computer), once per folder: the owner can take it out there and it is not added again. What still asks
+  // is what should: pushing to GitHub, deleting for good, installing software, the network.
+  // The folder: the project's root when the project folder is its "outputs" beside a "work" folder (the builds and
+  // the game's git checkout sit side by side), else the project folder itself.
+  async function gameRoot() {
+    const f = String(folder() || '').replace(/[\\/]+$/, '');
+    if (!f || !(await window.hub.fs.stat(f).catch(() => null))?.isDir) return '';
+    const parent = f.replace(/[\\/][^\\/]+$/, '');
+    if (/[\\/]outputs$/i.test(f) && parent && (await window.hub.fs.stat(join(parent, 'work')).catch(() => null))?.isDir) return parent;
+    return f;
+  }
+  const low = (p) => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  async function grantFolder({ quiet = false } = {}) {
+    const a = forgeAgent();
+    if (!a || typeof Access === 'undefined' || !Access.addAiFolder || !Access.aiEffective) return null;
+    const root = await gameRoot();
+    if (!root || H.settings().forgeFolderAccess === root) return null;
+    const cur = Access.aiEffective(a);
+    const covered = (cur.folders || []).some((x) => low(root) === low(x) || low(root).startsWith(`${low(x)}/`));
+    if (!covered && cur.level !== 'off') await Access.addAiFolder(a.id, root);
+    H.config.settings = { ...H.config.settings, forgeFolderAccess: root };
+    await saveConfig();
+    const added = !covered && cur.level !== 'off';
+    if (added && !quiet) toast(`${a.name} may now work in the game's folder without asking (${root}). It still asks before pushing to GitHub, deleting for good or installing software. ⋯ AI setup › Files changes this.`, { timeout: 12000 });
+    return added ? root : null;
+  }
+  if (!window.__smoke) setTimeout(() => grantFolder().catch((err) => console.warn('forge folder', err)), 5000);
+
   // ---------- what the Forge chat knows ----------
   // The brief (the owner's own words, ✎ in the Dashboard), where the project lives, and the names of the design notes;
   // the notes themselves are read on demand with forge_docs. Built once the tool is in, again when the brief changes
@@ -1030,5 +1062,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, makeDigest, editDigest, digestPrompt, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
+  return { grantFolder, gameRoot, forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, makeDigest, editDigest, digestPrompt, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

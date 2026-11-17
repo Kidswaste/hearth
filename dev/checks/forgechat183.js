@@ -81,6 +81,25 @@ try {
   out.info.digest = String(digestTry).slice(0, 160);
   ok(typeof digestTry === 'string' && digestTry.length > 0, '✦ Digest my notes asks the AI once (the stand-in AI here) and answers or says why not', out.info.digest);
 
+  // ---------- (round 185, forgefolder185) the Forge chat works in the game's folder without asking ----------
+  await Lazy.load('access');
+  await Access.setAiLevel('forge-debug', 'full');
+  const classify = (tool, input) => AccessRules.classify({ tool, input, level: Access.aiEffective(H.agent('forge-debug')).level, folders: Access.aiEffective(H.agent('forge-debug')).folders, cwd: base, home: base });
+  const note1 = `${dir}${sep}gameplay-rifts.md`;
+  ok(classify('Read', { file_path: note1 }).verdict === 'ask' && classify('Edit', { file_path: note1 }).verdict === 'ask', 'before: reading or editing a file of the game asks (outside the chat\'s folders)', classify('Read', { file_path: note1 }));
+  ok(await Forge.gameRoot() === dir, 'the game\'s folder is the project folder (no outputs / work pair here)', await Forge.gameRoot());
+  const granted = await Forge.grantFolder({ quiet: true });
+  ok(granted === dir && Access.aiEffective(H.agent('forge-debug')).folders.some((f) => f.toLowerCase() === dir.toLowerCase()) && H.settings().forgeFolderAccess === dir, 'the game\'s folder joins the Forge AI\'s folders, once', { granted, folders: Access.aiEffective(H.agent('forge-debug')).folders });
+  ok(classify('Read', { file_path: note1 }).verdict === 'allow' && classify('Edit', { file_path: note1 }).verdict === 'allow' && classify('Bash', { command: `cd "${dir.replace(/\\/g, '/')}" && node build.js` }).verdict === 'allow', 'after: reading, editing and running there need no card', [classify('Read', { file_path: note1 }).verdict, classify('Bash', { command: `cd "${dir.replace(/\\/g, '/')}" && node build.js` })]);
+  ok(classify('Bash', { command: `cd "${dir.replace(/\\/g, '/')}" && git push` }).verdict === 'ask', 'pushing to GitHub still asks');
+  await Access.removeAiFolder('forge-debug', dir);
+  ok((await Forge.grantFolder({ quiet: true })) === null && !Access.aiEffective(H.agent('forge-debug')).folders.some((f) => f.toLowerCase() === dir.toLowerCase()), 'taken out by the owner, it is not added again');
+  // a project folder that is "outputs" beside "work": the root holds both
+  await window.hub.fs.write(`${dir}${sep}proj${sep}outputs${sep}a.md`, 'x'); await window.hub.fs.write(`${dir}${sep}proj${sep}work${sep}b.js`, 'x');
+  H.config.settings = { ...H.config.settings, forgeheartFolder: `${dir}${sep}proj${sep}outputs` }; await saveConfig(); await wait(500);
+  ok(await Forge.gameRoot() === `${dir}${sep}proj`, 'outputs beside work: the root of both is the game\'s folder', await Forge.gameRoot());
+  H.config.settings = { ...H.config.settings, forgeheartFolder: dir }; await saveConfig(); await wait(500);
+
   // ---------- 6. what the game is doing right now, with each message ----------
   const line = Forge.nowLine({ onTitleScreen: false, stage: 12, maxStage: 20, gold: 52000, hp: 80, hpMax: 143, dps: 4300, enemies: 22, byType: { a: 9, b: 7, c: 4, d: 2 }, boss: null, debug: { god: true, paused: false, timeScale: 2 } }, { tab: 'docs', doc: 'gameplay-rifts' });
   ok(line === '[Forgeheart now: stage 12 (best 20) · gold 52k · HP 80/143 · DPS 4300 · 22 enemies (a 9, b 7, c 4) · god, speed 2× | the owner is on the docs tab, reading "gameplay-rifts"]', 'the line: stage, gold, HP, enemies, switches, and what the owner is looking at', line);
