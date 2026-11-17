@@ -900,6 +900,15 @@ const ChatCmds = (() => {
       if (chat) Native.refresh(ctx.agentId, { keepScroll: true });
     },
   });
+  // (round 184, modelall184) /model-all <model>: every chat of one engine on one model. The engine's agents get it as
+  // their default (so new chats use it too), and a chat that had its own model follows that default again. What they
+  // used before is kept (kv 'model-sweep'), and /model-all undo puts it back.
+  R({
+    name: 'model-all', area: 'Agents', args: '<model | undo>', desc: 'Every Claude chat on one model: the Claude agents\' default, and each chat that had its own (undo puts back what they used)',
+    keywords: 'model all chats every switch fable opus sonnet default engine',
+    complete: (args) => [...Native.MODEL_CHOICES.claude, 'claude-fable-5-2', 'undo'].filter(has(args)).map((m) => ({ value: m })),
+    run: async (args) => { const a = String(args || '').trim(); if (!a) return 'Say which model: /model-all claude-fable-5-2 (or /model-all undo).'; const r = /^undo$/i.test(a) ? await modelUndo() : await modelAll(a); return r.text; },
+  });
   R({
     name: 'effort', area: 'Agents', args: '<low | medium | high | xhigh>', desc: 'How hard this agent thinks (agent setting; higher = slower, more tokens)',
     complete: pick(['low', 'medium', 'high', 'xhigh', 'default']),
@@ -1546,5 +1555,52 @@ const ChatCmds = (() => {
       first ? `From ${new Date(first).toLocaleString()} to ${new Date(last).toLocaleString()}` : null,
     ].filter(Boolean).join('\n')) ?? toast('Stats unavailable');
   }
-  return { undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle, boxRows, messageLook, stats };
+  // ---------- (round 184, modelall184) every chat of an engine on one model ----------
+  const SWEEP = 'model-sweep';
+  async function modelAll(model, { engine = 'claude', quiet = false } = {}) {
+    const m = String(model || '').trim();
+    if (!m || /\s/.test(m)) return { ok: false, text: 'That isn\'t a model name.' };
+    const agents = (H.config?.agents || []).filter((a) => a.mode === 'native' && a.engine === engine);
+    if (!agents.length) return { ok: false, text: 'No agent uses that engine.' };
+    const was = { at: Date.now(), model: m, engine, agents: {}, chats: {} };
+    for (const a of agents) { if (a.model !== m) { was.agents[a.id] = a.model || ''; a.model = m; } }
+    if (Object.keys(was.agents).length) await saveConfig();
+    // a chat of one of these agents that has its own model: back to its agent's default (which is the model now)
+    const ids = new Set(agents.map((a) => a.id));
+    const list = (Array.isArray(H.chats) ? H.chats : []).filter((c) => ids.has(c.agentId) && c.model);
+    let failed = 0;
+    for (const c of list) {
+      try { if (await Native.setModelOf(c.id, '')) was.chats[c.id] = c.model; } catch (err) { failed += 1; console.warn('model-all', c.id, err); }
+    }
+    const nA = Object.keys(was.agents).length; const nC = Object.keys(was.chats).length;
+    if (nA || nC) { const old = await window.hub.kvGet(SWEEP, null).catch(() => null); await window.hub.kvSet(SWEEP, { ...was, before: old && !old.undone ? { agents: old.agents, chats: old.chats, model: old.model } : undefined }); }
+    try { H.chats = await window.hub.listChats(); Panel.render?.(); for (const a of agents) Native.refresh?.(a.id, { keepScroll: true }); } catch { /* shown on the next paint */ }
+    const text = nA || nC ? `Every ${engine === 'claude' ? 'Claude' : engine} chat now uses **${m}**: ${plural(nA, 'agent')} set to it${nC ? `, ${plural(nC, 'chat')} that had ${nC === 1 ? 'its' : 'their'} own model follow it` : ''}${failed ? ` (${plural(failed, 'chat')} couldn't be changed)` : ''}. /model-all undo puts back what they used.` : `Every ${engine === 'claude' ? 'Claude' : engine} chat already uses ${m}.`;
+    if (!quiet && (nA || nC)) toast(text.replace(/\*\*/g, ''), { timeout: 9000, action: { label: 'Undo', fn: () => modelUndo().then((r) => toast(r.text.replace(/\*\*/g, ''), { timeout: 5000 })) } });
+    return { ok: true, text, agents: nA, chats: nC, failed };
+  }
+  async function modelUndo() {
+    const was = await window.hub.kvGet(SWEEP, null).catch(() => null);
+    if (!was || was.undone || (!Object.keys(was.agents || {}).length && !Object.keys(was.chats || {}).length)) return { ok: false, text: 'Nothing to put back.' };
+    let n = 0;
+    for (const [id, model] of Object.entries(was.agents || {})) { const a = H.agent(id); if (a) { if (model) a.model = model; else delete a.model; n += 1; } }
+    if (n) await saveConfig();
+    let c = 0;
+    for (const [id, model] of Object.entries(was.chats || {})) { try { if (await Native.setModelOf(id, model)) c += 1; } catch (err) { console.warn('model-all undo', id, err); } }
+    await window.hub.kvSet(SWEEP, { ...was, undone: Date.now() });
+    try { H.chats = await window.hub.listChats(); Panel.render?.(); } catch { /* next paint */ }
+    return { ok: true, text: `Put back: ${plural(n, 'agent')} and ${plural(c, 'chat')} use the model they had before.` };
+  }
+  // The owner asked (17 Nov 2026) for all their current chats on Fable 5.2: done once per data folder, the first time
+  // this version starts (the mark is in the settings; /model-all undo reverses it, and it never runs again).
+  const ONCE = 'fable-5-2';
+  async function modelOnce() {
+    if (H.settings().modelSweep === ONCE || !Array.isArray(H.chats)) return null;
+    H.config.settings = { ...H.config.settings, modelSweep: ONCE };
+    const r = await modelAll('claude-fable-5-2');
+    if (!r.agents) await saveConfig(); // (the mark, when nothing else saved it)
+    return r;
+  }
+  if (!window.__smoke) setTimeout(() => { const go = (n) => (Array.isArray(H.chats) ? modelOnce().catch((err) => console.warn('model sweep', err)) : n > 0 ? setTimeout(() => go(n - 1), 2000) : null); go(15); }, 8000);
+  return { modelAll, modelUndo, modelOnce, undo: () => Commands.run('undo'), TEMPLATES, TONES, PERSONAS, LANGS, localTitle, boxRows, messageLook, stats };
 })();

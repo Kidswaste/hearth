@@ -3035,6 +3035,9 @@ const Native = (() => {
     toast(model ? `This chat now uses ${model}` : 'This chat uses the agent\'s default model', { timeout: 1600 });
   }
 
+  // (round 184, modelall184) one chat's own model, by id (as rename and pin do it: loaded, changed, remembered). '' = the agent's default
+  async function setModelOf(chatId, model) { const chat = await loadChat(chatId); if (!chat) return false; const v = model || undefined; if (chat.model === v) return false; chat.model = v; remember(chat); return true; }
+
   // Copies a chat to another native agent; the next message sends the history along as context.
   async function continueWith(chatId, targetId) {
     const chat = await loadFull(chatId);
@@ -3270,7 +3273,7 @@ const Native = (() => {
     isAgentBusy: (agentId) => Boolean(pendingFor(agentId)),
     hasView: (agentId) => views.has(agentId),
     // other files refresh after changing something messages draw from: every message is drawn again (see nodeFor)
-    mount, selectChat, refresh: (agentId, opts = {}) => { gen += 1; return render(agentId, opts); }, focus, send, open, newChat, rename, remove, togglePin, setDraft, continueWith, copyLastReply, foldAll,
+    mount, selectChat, refresh: (agentId, opts = {}) => { gen += 1; return render(agentId, opts); }, focus, send, open, newChat, rename, remove, togglePin, setDraft, setModelOf, continueWith, copyLastReply, foldAll,
     attachPaths: async (agentId, paths) => { for (const p of paths) await addPath(agentId, p); },
     isBusy: (chatId) => pending.has(chatId),
     note,
