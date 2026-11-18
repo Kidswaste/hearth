@@ -295,6 +295,10 @@ const Native = (() => {
     // How much context each message sends now (the last reply's input tokens); click to compact.
     const ctx = el('button', { class: 'ctx-meter', hidden: true, on: { click: () => compactChat(agentId) } }, el('span', { class: 'ctx-bar' }, el('i')), el('span', { class: 'ctx-text' }));
     const header = el('header', { class: 'native-head' }, title, meta, ctx, el('span', { class: 'spacer' }), modelSel, menuBtn, newBtn);
+    if (H.agent(agentId)?.engine === 'codex') {
+      header.insertBefore(el('button', { class: 'ghost small', text: 'Model', title: 'Choose from the live Codex model catalog',
+        on: { click: () => Lazy.load('astraconnect').then(() => AstraConnect.models(agentId)).catch(err => toast(err.message, { type: 'error' })) } }), menuBtn);
+    }
     if (H.agent(agentId)?.engine === 'codex') header.insertBefore(el('button', { class: 'ghost small ac-launch', text: 'Astra tools', on: { click: () => Lazy.load('astraconnect').then(() => AstraConnect.open(agentId)).catch(err => console.warn(err)) } }), menuBtn);
     // Docked director chats are narrow: the header keeps only what fits (model and more live in ⋯ and /model).
     if (root.classList.contains('tool-dock')) { newBtn.textContent = '＋'; root.classList.add('dock-chat'); }

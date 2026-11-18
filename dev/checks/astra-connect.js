@@ -34,6 +34,14 @@ ok(dialog.querySelector('select').value === 'max', 'Maximum reasoning was lost')
 [...dialog.querySelectorAll('button')].find(b => b.textContent === 'Apply to this chat').click();
 await until(() => !document.querySelector('.ac-dialog:modal'));
 ok(chat.model === 'test' && chat.effort === 'max', 'Model capabilities selection was not saved');
+await AstraConnect.models(a.id);
+const refreshed = document.querySelector('.ac-dialog:modal');
+const custom = refreshed.querySelector('[aria-label="Custom model ID"]');
+custom.closest('details').open = true;
+custom.value = 'future-model';
+[...refreshed.querySelectorAll('button')].find(b => b.textContent === 'Use model ID').click();
+await until(() => !document.querySelector('.ac-dialog:modal'));
+ok(chat.model === 'future-model' && chat.effort === 'default', 'Custom model did not replace the old model and effort');
 let rejected = false; try { await AstraConnect.steer(a.id, 'Late'); } catch { rejected = true; }
 ok(rejected, 'Ended turn accepted a steer');
 ok(!chat.messages.some(m => m.text === 'Blue'), 'Question answers persisted unexpectedly');

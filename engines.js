@@ -57,6 +57,12 @@ const CODEX_DISABLED_FEATURES = [
 ];
 
 // Reasoning efforts each engine accepts (anything else is dropped rather than failing the run).
+// Codex publishes model-specific efforts in its live catalog.
+function codexEffort(selected, fallback) {
+  if (selected === 'default') return undefined;
+  return typeof selected === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(selected)
+    ? selected : pick(fallback, EFFORTS.codex);
+}
 const EFFORTS = {
   claude: ['low', 'medium', 'high', 'xhigh', 'max'],
   codex: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
@@ -880,7 +886,7 @@ function codexArgs0(agent, session, options = {}) {
     else args.push('-c', `sandbox_mode="${edit ? 'workspace-write' : 'read-only'}"`, '-c', 'approval_policy="never"');
     if (edit && !codexOpen(agent, acc)) args.push('-c', `sandbox_workspace_write.writable_roots=[${roots.map(tomlStr).join(', ')}]`, '-c', 'sandbox_workspace_write.network_access=false');
   }
-  let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  let effort = codexEffort(options.effort, agent.effort);
   // minimal reasoning can't use the web search tool: with web on it becomes low instead of failing
   if (effort === 'minimal' && web !== 'disabled') effort = 'low';
   if (effort) args.push('-c', `model_reasoning_effort="${effort}"`);
@@ -928,7 +934,7 @@ function codexServerPlan0(agent, session, options = {}) {
   // approvals that Hearth's previous isolated exec invocation did not expose.
   args.push('-c', `sandbox_mode=${tomlStr(sandbox)}`, '-c', `features.shell_tool=${Boolean(folder || acc || agent.codexFeatures?.includes('shell_tool'))}`);
   const model = options.model || agent.model;
-  let effort = pick(options.effort, EFFORTS.codex) || pick(agent.effort, EFFORTS.codex);
+  let effort = codexEffort(options.effort, agent.effort);
   const web = pick(options.webSearch, WEB_SEARCH) || pick(agent.webSearch, WEB_SEARCH) || 'disabled';
   if (effort === 'minimal' && web !== 'disabled') effort = 'low';
   const summary = agent.showThinking === false ? 'none' : pick(agent.reasoningSummary, SUMMARIES);
