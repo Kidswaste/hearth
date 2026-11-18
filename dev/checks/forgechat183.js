@@ -94,6 +94,10 @@ try {
   ok(classify('Bash', { command: `cd "${dir.replace(/\\/g, '/')}" && git push` }).verdict === 'ask', 'pushing to GitHub still asks');
   await Access.removeAiFolder('forge-debug', dir);
   ok((await Forge.grantFolder({ quiet: true })) === null && !Access.aiEffective(H.agent('forge-debug')).folders.some((f) => f.toLowerCase() === dir.toLowerCase()), 'taken out by the owner, it is not added again');
+  // (round 186, noask186) the Forge AI works without asking, set once; turned off by the owner it stays off
+  ok((await Forge.trustOnce({ quiet: true })) === true && H.agent('forge-debug').noAsk === true && H.settings().forgeNoAsk === true, 'the Forge AI works without asking, marked once', { noAsk: H.agent('forge-debug').noAsk, mark: H.settings().forgeNoAsk });
+  await Access.setNoAsk('forge-debug', false);
+  ok((await Forge.trustOnce({ quiet: true })) === null && !H.agent('forge-debug').noAsk, 'turned off by the owner, it is not turned on again');
   // a project folder that is "outputs" beside "work": the root holds both
   await window.hub.fs.write(`${dir}${sep}proj${sep}outputs${sep}a.md`, 'x'); await window.hub.fs.write(`${dir}${sep}proj${sep}work${sep}b.js`, 'x');
   H.config.settings = { ...H.config.settings, forgeheartFolder: `${dir}${sep}proj${sep}outputs` }; await saveConfig(); await wait(500);

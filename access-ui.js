@@ -6,7 +6,7 @@
 const AccessUI = (() => {
   const U = Access._ui;
   const { R, ICON, short, chatFor, chatNow, agentOf, effective, aiEffective, entries, undo, save, paths, openSetup, setLevel, useAi, addFolder, removeFolder,
-    setAiLevel, addAiFolder, removeAiFolder, addHome, onWindows, setNoSandbox } = U;
+    setAiLevel, addAiFolder, removeAiFolder, addHome, onWindows, setNoSandbox, setNoAsk } = U;
   function dialog(title, body, cls = '') {
     const d = el('dialog', { class: `ui-modal access-modal ${cls}` }, el('form', { method: 'dialog' }, el('h2', { text: title }), body, el('div', { class: 'dialog-actions' }, el('span', { class: 'spacer' }), el('button', { class: 'primary', text: 'Done' }))));
     d.addEventListener('close', () => setTimeout(() => d.remove(), 0));
@@ -69,6 +69,13 @@ const AccessUI = (() => {
         kids.push(el('div', { class: 'opt-row access-ai-add' },
           el('button', { type: 'button', class: 'ghost small', text: '＋ Add a folder…', on: { click: () => addAiFolder(agentId).then(again).catch(fail) } }),
           home && acc.folders.includes(home) ? null : el('button', { type: 'button', class: 'ghost small', text: 'My home folder', title: 'Everywhere in your home folder (asks you first)', on: { click: () => addHome(agentId).then((r) => { if (r) again(); }).catch(fail) } })));
+      }
+      // (round 186, noask186) no approval cards for this AI (Claude at Full: Astra's sandbox decides for itself)
+      if (a.engine !== 'codex' && (acc.level === 'full' || a.noAsk)) {
+        const on = a.noAsk === true;
+        const b = el('button', { type: 'button', class: 'opt-switch', role: 'switch', attrs: { 'aria-checked': String(on), 'aria-label': 'Work without asking' }, on: { click: () => setNoAsk(agentId, !on).then(again).catch(fail) } }, el('i'));
+        kids.push(el('label', { class: 'opt-row access-ai-noask', title: 'No approval cards: it pushes, deletes, installs and uses the network by itself. It still asks before files that hold keys, changes to the system, and deleting or writing outside its folders.' }, el('span', { class: 'opt-label', text: `${on ? '⚠ ' : ''}Work without asking` }), b));
+        if (on) kids.push(el('p', { class: 'opt-hint access-ai-hint', text: 'It pushes to GitHub, deletes, installs software and uses the network without a card. Everything is in its activity log; plain deletes still go to the Trash. It still asks before files that hold keys or passwords, changes to the system, and deleting or writing outside its folders.' }));
       }
       // (winshell) Astra on Windows: its sandbox can block every command; a warned opt-in runs them without it
       if (a.engine === 'codex' && (onWindows() || a.astraNoSandbox) && (R.rank(acc.level) >= R.rank('write') || a.astraNoSandbox)) {

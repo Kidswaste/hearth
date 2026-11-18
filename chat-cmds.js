@@ -370,7 +370,7 @@ const ChatCmds = (() => {
       if (!args || args === 'all') { Native.foldAll(ctx.agentId, true); return; }
       const i = mustIndex(chat, args);
       const node = Native.view(ctx.agentId).list.querySelector(`.msg[data-index="${i}"]`);
-      if (node && !node.classList.contains('collapsed')) node.querySelector('[data-msg-act="fold"]')?.click() || (node.classList.add('collapsed'), node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })));
+      if (node && !node.classList.contains('collapsed')) node.querySelector('[data-msg-act="fold"]')?.click() || (node.classList.add('collapsed'), (node.querySelector(':scope > .body') || node.lastChild).after(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })));
     },
   });
   R({

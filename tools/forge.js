@@ -144,10 +144,21 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     H.config.settings = { ...H.config.settings, forgeFolderAccess: root };
     await saveConfig();
     const added = !covered && cur.level !== 'off';
-    if (added && !quiet) toast(`${a.name} may now work in the game's folder without asking (${root}). It still asks before pushing to GitHub, deleting for good or installing software. ⋯ AI setup › Files changes this.`, { timeout: 12000 });
+    if (added && !quiet) toast(`${a.name} may now work in the game's folder without asking (${root}). ⋯ AI setup › Files changes this.`, { timeout: 12000 });
     return added ? root : null;
   }
-  if (!window.__smoke) setTimeout(() => grantFolder().catch((err) => console.warn('forge folder', err)), 5000);
+  // (round 186, noask186) the owner asked that the Forge chat stop asking for the rest too (pushes, deletes, installs,
+  // the network): its AI works without approval cards (Access.setNoAsk), set once; turned off in ⋯ AI setup it stays off.
+  async function trustOnce({ quiet = false } = {}) {
+    const a = forgeAgent();
+    if (!a || typeof Access === 'undefined' || !Access.setNoAsk || H.settings().forgeNoAsk) return null;
+    if (a.noAsk !== true) await Access.setNoAsk(a.id, true, { confirm: false });
+    H.config.settings = { ...H.config.settings, forgeNoAsk: true };
+    await saveConfig();
+    if (!quiet) toast(`${a.name} now works without asking: it pushes, deletes, installs and uses the network by itself (all in its activity log). ⋯ AI setup › Files › "Work without asking" turns this off.`, { timeout: 12000 });
+    return true;
+  }
+  if (!window.__smoke) setTimeout(() => grantFolder().catch((err) => console.warn('forge folder', err)).then(() => trustOnce()).catch((err) => console.warn('forge no-ask', err)), 5000);
 
   // ---------- what the Forge chat knows ----------
   // The brief (the owner's own words, ✎ in the Dashboard), where the project lives, and the names of the design notes;
@@ -1062,5 +1073,5 @@ When you suggest changes, be concrete (numbers, names, files) and keep the game'
     ],
   });
 
-  return { grantFolder, gameRoot, forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, makeDigest, editDigest, digestPrompt, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
+  return { grantFolder, trustOnce, gameRoot, forgeChat, forgeAgent, ensureAgent, knowledge, docsTool, showLive, nowLine, makeDigest, editDigest, digestPrompt, parseCsv, open, addTask, taskList, devlog, TAB_IDS, folder };
 })();

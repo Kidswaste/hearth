@@ -196,6 +196,25 @@ const Access = (() => {
     log(chatNow(agentId)?.id || null, { action: 'level', what: `${agent.name}: commands ${on ? 'without its sandbox (Windows)' : 'in its sandbox'}`, result: 'set', by: 'you' });
     return true;
   }
+  // (round 186, noask186) An AI the owner trusts to work without approval cards (agent.noAsk, ⋯ AI setup › Files on
+  // this computer; the Forge chat gets it once, tools/forge.js). What asked before goes ahead and is logged ("by:
+  // trust"): pushing, deleting, installing, the network, commands, other tools. Plain deletes still go to the Trash.
+  // What still asks: files that hold keys or passwords, changes to the system, deleting / writing / moving outside
+  // its folders, and commands Hearth can't read. What is refused stays refused (passwords, Hearth's data folder).
+  const stillAsks = (c) => c.action === 'secrets' || c.action === 'system' || (/^(delete|write|move)$/.test(c.action) && /outside/.test(c.why || '')) || /Hearth can't/.test(c.why || '');
+  async function setNoAsk(agentId, on, { confirm = true } = {}) {
+    const agent = agentOf(agentId);
+    if (!agent) throw new Error('No such AI.');
+    if (on && confirm && typeof Modal !== 'undefined') {
+      const yes = await Modal.confirm(`Let ${agent.name} work without asking?`,
+        `${agent.name} then pushes to GitHub, deletes, installs software and uses the network without showing a card first. Everything is still written in its activity log, and plain deletes still go to the Trash. It keeps asking before reading files that hold keys or passwords, changing the system, and deleting or writing outside its folders. You can turn this off again here.`,
+        { ok: 'Stop asking', danger: true });
+      if (!yes) return false;
+    }
+    await saveAgent(agent, { noAsk: on ? true : undefined });
+    log(chatNow(agentId)?.id || null, { action: 'level', what: `${agent.name}: ${on ? 'works without asking (pushes, deletes, installs, network)' : 'asks before risky things again'}`, result: 'set', by: 'you' });
+    return true;
+  }
   // "My home folder": everything under it, after a plain warning (Full there = files and commands anywhere in it).
   async function addHome(agentId, { confirm = true } = {}) {
     const agent = agentOf(agentId);
@@ -377,6 +396,7 @@ const Access = (() => {
     if (c.verdict === 'ask' && attached) by = 'attached';
     else if (c.verdict === 'ask') {
       if (c.grant && acc.grants.includes(c.grant)) by = 'grant';
+      else if (agentOf(agentId)?.noAsk === true && !stillAsks(c)) by = 'trust'; // (round 186, noask186)
       else {
         const r = await card({ agentId, chatId, action: c.action, what: c.what, where: c.where, why: c.why, detail, risk: c.risk, canAlways: Boolean(c.grant), trashNote: Boolean(c.trash) });
         if (!r.allow) {
@@ -677,10 +697,10 @@ const Access = (() => {
 
   return {
     // (round 139, room139) what access-ui.js reads (its panels were here)
-    _ui: { R, ICON, short, chatFor, chatNow, agentOf, effective, aiEffective, entries, undo, save, paths, openSetup, setLevel, useAi, addFolder, removeFolder, setAiLevel, addAiFolder, removeAiFolder, addHome, onWindows, setNoSandbox, dirs: () => dirs },
+    _ui: { R, ICON, short, chatFor, chatNow, agentOf, effective, aiEffective, entries, undo, save, paths, openSetup, setLevel, useAi, addFolder, removeFolder, setAiLevel, addAiFolder, removeAiFolder, addHome, onWindows, setNoSandbox, setNoAsk, dirs: () => dirs },
     ask, check, trash, effective, sendOptions, setLevel, addFolder, removeFolder, isOn, menuItem, panel, logPanel, entries, undo, log,
     // (round 32) the AI's own setting (AI setup), and a chat going back to it
-    aiEffective, setAiLevel, addAiFolder, removeAiFolder, addHome, useAi, aiSection, setNoSandbox, onWindows,
+    aiEffective, setAiLevel, addAiFolder, removeAiFolder, addHome, useAi, aiSection, setNoSandbox, setNoAsk, stillAsks, onWindows,
     // native.js: a folder dropped on a chat becomes one of its folders
     async maybeFolder(agentId, p) {
       const st = await window.hub.fs.stat(p).catch(() => null);

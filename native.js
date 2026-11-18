@@ -800,7 +800,10 @@ const Native = (() => {
       if (/[<[]/.test(text)) setDraft(agentId, `${text.split(/\s[<[]/)[0]} `); else Commands.exec(text, agentId);
       return;
     }
-    const act = t.closest('[data-msg-act]');
+    // (round 186) a click on a folded reply's text opens it, like its "Show full reply" button (not on a link, a
+    // picture or a button in it, nor while selecting text)
+    const foldedBody = !t.closest('[data-msg-act], a, button, img, video, summary') && !String(getSelection?.() || '') ? t.closest('.msg.collapsed > .body') : null;
+    const act = foldedBody ? foldedBody.parentElement.querySelector('.show-more-msg') : t.closest('[data-msg-act]');
     if (act) {
       const idx = Number(act.closest('.msg').dataset.index);
       const what = act.dataset.msgAct;
@@ -808,7 +811,7 @@ const Native = (() => {
       if (what === 'continue') { send(agentId, 'Continue exactly where you stopped.').catch((err) => toast(err.message, { type: 'error' })); return; }
       if (what === 'copy-error') { copyText(rawOf(act.closest('.msg')), 'Error copied'); return; }
       if (what === 'engines') { Commands.exec('/engines', agentId); return; }
-      if (what === 'fold') { const node = act.closest('.msg'); unfolded.delete(`${H.activeChat[agentId]}:${idx}`); node.classList.add('collapsed'); act.remove(); node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); node.scrollIntoView({ block: 'nearest' }); return; }
+      if (what === 'fold') { const node = act.closest('.msg'); unfolded.delete(`${H.activeChat[agentId]}:${idx}`); node.classList.add('collapsed'); act.remove(); (node.querySelector(':scope > .body') || node.lastChild).after(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); node.scrollIntoView({ block: 'nearest' }); return; }
       if (what === 'branch') branchFrom(agentId, idx);
       if (what === 'speak') speak(rawOf(act.closest('.msg')), act);
       if (what === 'savemd') { const m = chats.get(H.activeChat[agentId])?.messages[idx]; if (m) saveReply(m); }
@@ -1229,7 +1232,8 @@ const Native = (() => {
       if (heights[i] <= COLLAPSE_PX || node.classList.contains('collapsed') || node.querySelector('.show-more-msg')) return;
       node.classList.add('collapsed');
       const words = (rawOf(node).match(/\S+/g) || []).length;
-      node.append(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
+      // (round 186) right under the folded text: at the reply's end it sat below its pictures and cards, out of sight
+      (node.querySelector(':scope > .body') || node.lastChild).after(el('button', { class: 'show-more-msg msg-act', text: `Show full reply · ${words.toLocaleString()} words`, dataset: { msgAct: 'more' } }));
     });
   }
   // (round 45, chatswitch) one watch per chat list (each recent chat keeps its own list, see usePane)
@@ -2967,7 +2971,7 @@ const Native = (() => {
     if (!v) return;
     for (const node of v.list.querySelectorAll('.msg.assistant:not(.streaming)')) {
       const key = `${chat?.id}:${node.dataset.index}`;
-      if (fold) { unfolded.delete(key); if (node.querySelector('.body').scrollHeight > COLLAPSE_PX / 3 && !node.classList.contains('collapsed')) { node.classList.add('collapsed'); if (!node.querySelector('.show-more-msg')) node.append(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); } }
+      if (fold) { unfolded.delete(key); if (node.querySelector('.body').scrollHeight > COLLAPSE_PX / 3 && !node.classList.contains('collapsed')) { node.classList.add('collapsed'); if (!node.querySelector('.show-more-msg')) (node.querySelector(':scope > .body') || node.lastChild).after(el('button', { class: 'show-more-msg msg-act', text: 'Show full reply', dataset: { msgAct: 'more' } })); } }
       else { unfolded.add(key); node.classList.remove('collapsed'); node.querySelector('.show-more-msg')?.remove(); }
     }
   }
