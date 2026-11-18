@@ -86,28 +86,61 @@ const AstraConnect = (() => {
     body.append(button('Refresh connections', load), button('AI setup', () => { d.close(); Commands.exec('/connections', agentId); })); await load();
   }
   async function models(agentId) {
-    const agent = agentFor(agentId); const target = Native.chatOf(agentId);
-    const { d, body } = sheet('Available Astra models'); const status = para('Loading model capabilities…'); body.append(status);
-    try {
-      const r = await api().capabilities({ kind: 'models', refresh: true }); if (!d.isConnected) return;
-      status.textContent = 'Choose a model and reasoning depth for this chat. Your current settings stay until you choose Apply.';
-      if (!target) body.append(para('Send your first message to create a chat, then choose its model here.'));
-      else if (Native.isBusy(target.id)) body.append(para('Wait for the current reply to finish before changing its model.'));
-      for (const m of r.data.filter(m => !m.hidden)) {
-        const efforts = m.supportedReasoningEfforts.filter(x => ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(x.reasoningEffort));
-        const select = el('select', { attrs: { 'aria-label': `${m.displayName} reasoning` } }, ...efforts.map(e => el('option', { value: e.reasoningEffort, text: e.reasoningEffort })));
-        const wanted = target?.effort || agent.effort || 'max';
-        select.value = efforts.some(e => e.reasoningEffort === wanted) ? wanted : efforts.at(-1)?.reasoningEffort || '';
-        const apply = button('Apply to this chat', async () => {
-          if (!target || Native.chatOf(agentId)?.id !== target.id) throw new Error('The active chat changed. Open the model picker again.');
-          if (Native.isBusy(target.id)) throw new Error('Wait for this reply to finish before changing models.');
-          target.model = m.model; if (select.value) target.effort = select.value; else delete target.effort;
-          Native.save(target); Native.refresh(agentId, { keepScroll: true }); d.close(); toast(`${m.displayName} · ${select.value || 'default reasoning'} from the next reply`);
-        }); apply.disabled = !target || Native.isBusy(target.id) || !efforts.length;
-        body.append(el('section', { class: 'ac-card' }, el('strong', { text: m.displayName }), para(m.description), para(`Accepts ${(m.inputModalities || []).join(', ') || 'unspecified input'}`), select, apply));
-      }
-    } catch (err) { status.textContent = `Models unavailable: ${calmError(err)}`; }
+    const agent = agentFor(agentId);
+    const target = Native.chatOf(agentId);
+    const { d, body } = sheet('Available Astra models');
+    const status = para('');
+    const list = el('div');
+    const custom = el('input', { placeholder: 'Exact Codex model ID', attrs: { 'aria-label': 'Custom model ID' } });
+    const applyModel = (model, effort, label = model) => {
+      if (!target || Native.chatOf(agentId)?.id !== target.id) throw new Error('Open this chat and try again.');
+      if (Native.isBusy(target.id)) throw new Error('Wait for the current reply to finish.');
+      target.model = model;
+      target.effort = effort || 'default';
+      Native.save(target);
+      Native.refresh(agentId, { keepScroll: true });
+      d.close();
+      toast(`${label} · ${effort || 'default reasoning'} from the next reply`);
+    };
+    const applyCustom = button('Use model ID', () => {
+      const id = custom.value.trim();
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}$/.test(id)) throw new Error('Enter a valid Codex model ID.');
+      applyModel(id, '');
+    });
+    applyCustom.disabled = !target;
+    const refresh = button('Refresh models', async () => load());
+    async function load() {
+      refresh.disabled = true;
+      status.textContent = 'Checking the Codex model catalog…';
+      try {
+        const result = await api().capabilities({ kind: 'models', refresh: true });
+        if (!d.isConnected) return;
+        const models = (result.data || []).filter(model => !model.hidden && model.model);
+        list.replaceChildren();
+        status.textContent = !target ? 'Open a chat first to set its model.'
+          : models.length ? `Current model: ${target.model || agent.model || 'Codex default'}` : 'Codex returned no visible models.';
+        for (const model of models) {
+          const label = model.displayName || model.model;
+          const efforts = (model.supportedReasoningEfforts || []).map(entry => entry.reasoningEffort)
+            .filter(effort => /^[a-z][a-z0-9_-]{0,31}$/.test(effort || '') && effort !== 'default');
+          const select = el('select', { attrs: { 'aria-label': `${label} reasoning` } },
+            el('option', { value: '', text: 'Model default' }),
+            ...efforts.map(effort => el('option', { value: effort, text: effort })));
+          const wanted = target?.effort || agent.effort || 'max';
+          select.value = efforts.includes(wanted) ? wanted : '';
+          const apply = button('Apply to this chat', () => applyModel(model.model, select.value, label));
+          apply.disabled = !target;
+          list.append(el('section', { class: 'ac-card' }, el('strong', { text: label }), para(model.description || model.model), select, apply));
+        }
+      } catch (err) {
+        if (d.isConnected) status.textContent = `Models unavailable: ${calmError(err)}`;
+      } finally { refresh.disabled = false; }
+    }
+    body.append(refresh, status, list, el('details', {}, el('summary', { text: 'Use a model ID directly' }),
+      para('Codex must support the model and your account must have access.'), custom, applyCustom));
+    await load();
   }
+
   async function steer(agentId, text) {
     agentFor(agentId); const chat = Native.chatOf(agentId); const turnId = turns.get(chat?.id);
     if (!chat || !turnId || !Native.isBusy(chat.id)) throw new Error('No active Astra reply is ready for a follow-up.');
