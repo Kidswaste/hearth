@@ -112,6 +112,18 @@ try {
   const sent = await compose('forge-debug', 'why is this so hard?');
   ok(/^why is this so hard\?/.test(sent) && /\[Forgeheart now: stage \d+/.test(sent) && /enem/.test(sent), 'a message to the Forge chat carries the live game\'s state', sent.slice(0, 300));
   ok(!/Forgeheart now/.test(await compose(H.claudeAgent().id, 'hello')), 'no other chat gets it');
+  // ---------- (round 187, forgegpt187) the chat's AI: Claude or ChatGPT ----------
+  const entry = DirectorDock.entry('forgeheart');
+  const eb = surf.querySelector('.dd-strip .dd-engine');
+  ok(eb && !eb.hidden && /Claude/.test(eb.textContent) && entry?.engNow() === 'claude', 'the strip says which AI the chat runs on', eb?.textContent);
+  H.agent('forge-debug').model = 'claude-fable-5-2'; H.agent('forge-debug').keepModel = true; await saveConfig();
+  const modelBefore = H.agent('forge-debug').model;
+  const went = await entry.setEngine('codex');
+  out.info.health = typeof EngineHealth !== 'undefined' ? EngineHealth.report?.()?.codex : null;
+  ok(went && H.agent('forge-debug').engine === 'codex' && H.agent('forge-debug').hubTools === true && H.agent('forge-debug').gameTools === true && H.agent('forge-debug').dock === 'forgeheart', 'switched: the same docked chat runs on ChatGPT with the game\'s tools', { went, a: H.agent('forge-debug') });
+  ok(/ChatGPT/.test(surf.querySelector('.dd-strip .dd-engine')?.textContent || ''), 'the strip says ChatGPT', surf.querySelector('.dd-strip .dd-engine')?.textContent);
+  ok(/\[Forgeheart now: stage \d+/.test(await compose('forge-debug', 'and now?')), 'its messages still carry the live game\'s state');
+  ok(await entry.setEngine('claude') && H.agent('forge-debug').engine === 'claude' && H.agent('forge-debug').model === modelBefore, 'and back to Claude, on the model it had', H.agent('forge-debug'));
   await wait(600);
 } catch (err) { fail.push(`threw: ${err.stack || err}`); }
 out.problems = fail;

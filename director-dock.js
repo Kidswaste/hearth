@@ -64,7 +64,34 @@ const DirectorDock = (() => {
     const askBtn = el('button', { type: 'button', class: 'dd-btn dd-ask', text: '✦', title: 'Quick asks and dock options (right-click the dock for the same)' });
     const foldBtn = el('button', { type: 'button', class: 'dd-btn dd-fold', text: '⇥', title: 'Collapse the chat to a thin bar (double-click the divider too)' });
     const list = el('div', { class: 'dd-list', hidden: true });
-    const strip = el('div', { class: 'dd-strip', dataset: { feature: 'Director activity' } }, calls, sum, el('span', { class: 'spacer' }), thumb, critBtn, undoBtn, askBtn, foldBtn, list);
+    // (round 187, forgegpt187) the Forgeheart chat's AI: "✳ Claude ▾" / "✧ ChatGPT ▾" at the left of its strip. The switch
+    // itself is the one directors already had (/director-engine: same chat, the game's tools and what the chat knows
+    // on both engines, the task state handed over); the Lab has its own switcher (director-switch.js).
+    const engNow = () => { const a = H.agent(agent.id) || agent; return (typeof Astra !== 'undefined' && Astra.chatEngine ? Astra.chatEngine(a) : null) || a.engine || 'claude'; };
+    const engBtn = el('button', { type: 'button', class: 'dd-btn dd-engine', hidden: toolId !== 'forgeheart', dataset: { feature: 'Forge chat AI' } });
+    const paintEngine = () => { const codex = engNow() === 'codex'; engBtn.textContent = codex ? '✧ ChatGPT ▾' : '✳ Claude ▾'; engBtn.dataset.engine = codex ? 'codex' : 'claude'; engBtn.title = `This chat runs on ${codex ? 'ChatGPT (Codex; Hearth calls it Astra)' : 'Claude'}. Click to switch: same chat, same game tools.`; };
+    async function setEngine(engine) {
+      if (engNow() === engine) return false;
+      if (engine === 'codex') {
+        // signed out or not installed: say so instead of switching to an AI that can't answer
+        try { if (window.Lazy && typeof EngineHealth === 'undefined') await Lazy.load('enginehealth'); } catch { /* not known */ }
+        const r = typeof EngineHealth !== 'undefined' ? EngineHealth.report?.()?.codex || (await EngineHealth.check({ engines: ['codex'] }).catch(() => null))?.codex : null;
+        if (r && (!r.found || r.signedIn === false)) {
+          toast(r.found ? 'ChatGPT (Codex) is signed out on this computer.' : 'ChatGPT needs Codex, which isn\'t installed on this computer.', { type: 'error', timeout: 9000, ...(r.found && EngineHealth.signIn ? { action: { label: 'Sign in', fn: () => EngineHealth.signIn('codex') } } : {}) });
+          return false;
+        }
+      }
+      await Commands.exec(`/director-engine ${engine === 'codex' ? 'astra' : 'claude'}`, agent.id);
+      paintEngine();
+      return engNow() === engine;
+    }
+    const engineItems = () => [
+      { label: '✳ Claude', checked: engNow() !== 'codex', action: () => setEngine('claude') },
+      { label: '✧ ChatGPT (Codex)', checked: engNow() === 'codex', action: () => setEngine('codex') },
+    ];
+    engBtn.addEventListener('click', () => { const r = engBtn.getBoundingClientRect(); showMenu(r.left, r.bottom + 2, engineItems()); });
+    paintEngine();
+    const strip = el('div', { class: 'dd-strip', dataset: { feature: 'Director activity' } }, engBtn, calls, sum, el('span', { class: 'spacer' }), thumb, critBtn, undoBtn, askBtn, foldBtn, list);
     const chips = el('div', { class: 'dd-chips', dataset: { feature: 'Director chips' } });
     const rail = el('button', { type: 'button', class: 'dd-rail', title: `Show the ${agent.name} chat` },
       el('span', { class: 'dd-rail-icon', text: agent.icon || '◆' }), el('span', { class: 'dd-rail-dot' }), el('span', { class: 'dd-rail-name', text: agent.name }));
@@ -96,6 +123,7 @@ const DirectorDock = (() => {
         undoBtn.title = h ? `Undo the director's last code edit: "${h.layer}" (${nameOf(h.tool)}, ${timeAgo(h.at)})${ThreeDirector.history().length > 1 ? ` · ${ThreeDirector.history().length} in its history` : ''}` : 'Undo the director\'s last code edit (none yet)';
       }
       if (listOpen) paintList(log);
+      if (!engBtn.hidden) paintEngine();
       globalThis.DirectorSwitch?.paint(); // (round 114, directorswitch) the AI switcher's marks: another chat working / a new reply
     }
     function paintList(log) {
@@ -138,6 +166,7 @@ const DirectorDock = (() => {
           { label: 'Width', hint: `${w} px`, items: () => [...WIDTHS.map((px) => ({ label: `${px} px`, checked: w === px, action: () => setWidth(s, px) })), { label: 'Reset (420 px)', action: () => setWidth(s, 420) }] },
           { label: 'Collapse to a thin bar', key: 'Alt+Shift+D', action: () => setCollapsed(s, true) },
         ] },
+        ...(toolId === 'forgeheart' ? [{ label: 'Run this chat on', items: engineItems }] : []), // (round 187, forgegpt187)
         ...(toolId === 'three' && globalThis.DirectorSwitch ? [{ label: 'Switch AI…', key: 'Alt+Shift+A', action: () => DirectorSwitch.open() }] : []), // (round 114, directorswitch)
         { label: 'What this director costs per message', action: () => Commands.exec('/director-cost', agent.id) },
       ];
@@ -186,7 +215,7 @@ const DirectorDock = (() => {
     applyCollapsed(s);
     divider(s);
     const entry = {
-      s, agentId: agent.id, strip, chips, rail, paint, paintChips, menuItems,
+      s, agentId: agent.id, strip, chips, rail, paint, paintChips, menuItems, setEngine, engNow,
       off() {
         offCall(); offHist(); mo.disconnect(); document.removeEventListener('pointerdown', onDocDown);
         Native.hooks.send.splice(Native.hooks.send.indexOf(onSend) >>> 0, 1);
